@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Character System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Character System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="character-system">Character System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> SceneServer subsystem for the full player character lifecycle — authentication-triggered loading, async database hydration with session claiming, prefab instantiation, scene validation, network spawning, periodic persistence with session lease refresh, teleportation, death/respawn, out-of-bounds correction, social data broadcast, and connection cleanup with save-then-release semantics.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Character system is the SceneServer authority for player character lifecycle management. It handles authentication-triggered character loading, async database hydration with session claiming, prefab instantiation, scene validation, FishNet network spawning/despawning, periodic persistence, teleportation across scenes, death/respawn logic, out-of-bounds correction, social data broadcasting, and connection cleanup with save-then-release semantics.</p>
+<p>The implementation uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> Unity/FishNet object lifecycle, map mutations, prefab instantiation, controller hydration, scene validation, network broadcasts, periodic out-of-bounds checks, and main-thread queue drain.</li>
+<li><strong>Async worker:</strong> database load/save/session operations (claim, release, lease refresh), social data fetches, and character persistence via <code>EnqueueAsyncWork</code>.</li>
+<li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe context via <code>ICharacterSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>Character sessions are explicitly claimed and released to prevent dual-server ownership. The session lifecycle uses <code>TryClaimAsync</code> during load, <code>RefreshSessionLeaseAsync</code> during periodic saves, and <code>ReleaseAsync</code> on disconnect, teleport, error, or deinitialize. All release paths follow save-then-release ordering to ensure data is persisted while the session lock is still held.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Authentication-triggered character load with per-connection rate limiting (<code>AuthCallbackCooldownSeconds = 2.0s</code>)</li>
+<li>Async database fetch of character and 13 sub-entity data sets within a single Unit of Work for a consistent snapshot</li>
+<li>Early session claim (<code>TryClaimAsync</code>) before sub-entity hydration to fail fast if another server owns the character</li>
+<li>Race-template-based prefab instantiation from the FishNet object pool</li>
+<li>Full controller hydration from pre-fetched DTOs: attributes, inventory, bank, equipment, abilities, known abilities, achievements, friends, guild, party, hotkeys, buffs, factions</li>
+<li>Equipment attribute modifier application during load (<code>item.Equippable.Equip</code>)</li>
+<li>Buff restoration with tick-based expiry/next-tick recalculation from remaining time</li>
+<li>Scene validation and FishNet scene loading for both world scenes and instances</li>
+<li>Two-phase client scene handshake: <code>SceneManager_OnClientLoadedStartScenes</code> → <code>ClientValidatedSceneBroadcast</code> → <code>OnClientValidatedSceneBroadcastReceived</code></li>
+<li>Network spawning with physics scene assignment for stacked scene support</li>
+<li>Immortality toggling during teleport (immortal) and scene entry (mortal)</li>
+<li><code>IsLoaded</code> flag management to prevent controller actions before the character is fully in the world</li>
+<li>Immediate non-DB payload broadcast after spawn: known abilities, known ability events, achievements, inventory, bank, hotkeys</li>
+<li>Async social payload broadcast after spawn: guild members, party members, friend online status</li>
+<li>Targeted broadcast helpers by character name (case-insensitive) or character ID</li>
+<li>Periodic save with configurable interval, main-thread DTO snapshot, async persistence, session lease refresh even on save failure, and atomic processing guard to prevent overlapping save cycles</li>
+<li>Periodic out-of-bounds check with respawn point teleportation for characters outside scene boundaries</li>
+<li>Teleport flow: teleporter validation, scene unload, immortality, position/scene update, instance flag removal, save-then-release with reconnect through world routing</li>
+<li>Death/respawn: player marked <code>IsDead</code>, death dialog shown on client. Player chooses Respawn (teleport to bind + revive) or waits for Resurrect (revive at corpse location). Reconnect-while-dead re-shows the death dialog. NPC despawn with corpse decay timer; pet killed event with immediate despawn</li>
+<li>Connection disconnect cleanup: waiting-scene-load character pool return with session release, spawned character mapping removal with save-then-despawn</li>
+<li>Graceful deinitialize: main-thread DTO snapshot of all characters, async persist all, release all sessions (spawned + waiting-to-load)</li>
+<li>Optimistic concurrency via <code>character.Version++</code> on every save</li>
+<li>Runtime mapping caches for fast lookups: by ID, by lowercase name, by world, by connection, waiting-scene-load, session tokens</li>
+<li>Lifecycle events for cross-system coordination: <code>OnBeforeLoadCharacter</code>, <code>OnAfterLoadCharacter</code>, <code>OnConnect</code>, <code>OnDisconnect</code>, <code>OnSpawnCharacter</code>, <code>OnDespawnCharacter</code>, <code>OnPetKilled</code></li>
+<li>Per-system main-thread queue isolation with configurable drain cap per frame</li>
+<li>Async worker backpressure via <code>EnqueueAsyncWork</code> with entity-key-based consistent routing and diagnostic caller names</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework (ServerManager, SceneManager, NetworkObject, NetworkConnection, object pooling)</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>ICharacterSystem</code>, <code>ICharacterMappingData</code>, <code>ICharacterSystemRuntimeData</code>, <code>ICharacterSystemMainThreadQueueData</code>, <code>ISceneServerSystem</code>, <code>ISceneServerRuntimeData</code>, <code>IAsyncWorkerData</code>, <code>CharacterSessionInfo</code>, <code>SceneServerAuthenticator</code>, broadcast types (<code>ClientValidatedSceneBroadcast</code>, <code>ClientScenesUnloadedBroadcast</code>, <code>GuildAddBroadcast</code>, <code>GuildAddMultipleBroadcast</code>, <code>PartyAddBroadcast</code>, <code>PartyAddMultipleBroadcast</code>, <code>FriendAddBroadcast</code>, <code>FriendAddMultipleBroadcast</code>, <code>KnownAbilityAddBroadcast</code>, <code>KnownAbilityAddMultipleBroadcast</code>, <code>KnownAbilityEventAddBroadcast</code>, <code>KnownAbilityEventAddMultipleBroadcast</code>, <code>AchievementUpdateBroadcast</code>, <code>AchievementUpdateMultipleBroadcast</code>, <code>InventorySetItemBroadcast</code>, <code>InventorySetMultipleItemsBroadcast</code>, <code>BankSetItemBroadcast</code>, <code>BankSetMultipleItemsBroadcast</code>, <code>HotkeySetBroadcast</code>, <code>HotkeySetMultipleBroadcast</code>), <code>WorldSceneDetails</code>, <code>SceneTeleporterDetails</code>, <code>CharacterRespawnPositionDetails</code>, and <code>IPeriodicUpdateSystem</code></li>
+<li><strong>FishMMO Database</strong> — provides <code>ICharacterService</code>, <code>IUnitOfWorkService</code>, <code>ICharacterInventoryService</code>, <code>ICharacterBankService</code>, <code>ICharacterEquipmentService</code>, <code>ICharacterAttributeService</code>, <code>ICharacterAbilityService</code>, <code>ICharacterKnownAbilityService</code>, <code>ICharacterAchievementService</code>, <code>ICharacterFriendService</code>, <code>ICharacterGuildService</code>, <code>ICharacterPartyService</code>, <code>ICharacterHotkeyService</code>, <code>ICharacterBuffService</code>, <code>ICharacterFactionService</code>, <code>CharacterData</code>, and all sub-entity data DTOs</li>
+<li><strong>FishMMO Shared</strong> — provides <code>IPlayerCharacter</code>, <code>ICharacterDamageController</code>, <code>ICharacterAttributeController</code>, <code>IAbilityController</code>, <code>IAchievementController</code>, <code>IInventoryController</code>, <code>IBankController</code>, <code>IEquipmentController</code>, <code>IFriendController</code>, <code>IGuildController</code>, <code>IPartyController</code>, <code>IBuffController</code>, <code>IFactionController</code>, <code>RaceTemplate</code>, <code>CharacterFlags</code>, <code>AccessLevel</code>, <code>Item</code>, <code>Ability</code>, <code>Buff</code>, <code>Faction</code>, <code>Achievement</code>, <code>HotkeyData</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>CharacterSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code>). The asset is created via <code>Create &gt; FishMMO &gt; Server &gt; SceneServer &gt; Character System</code>.</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>CharacterMappingData</code> → <code>ICharacterMappingData&lt;NetworkConnection&gt;</code></li>
+<li><code>CharacterSystemRuntimeData</code> → <code>ICharacterSystemRuntimeData</code></li>
+<li><code>CharacterSystemMainThreadQueueData</code> → <code>ICharacterSystemMainThreadQueueData</code></li>
+<li><code>AsyncWorkerData</code> (shared async work queue)</li>
+</ul>
+</li>
+<li>Verify that <code>ISceneServerSystem&lt;NetworkConnection&gt;</code> is registered in <code>BehaviourRegistry</code> for scene loading and validation.</li>
+<li>Verify that <code>SceneServerAuthenticator</code> exists in the scene for authentication event subscription.</li>
+<li>Verify that <code>ICharacterService</code> and all sub-entity services are registered in <code>Database.ServiceRegistry</code>.</li>
+<li>Adjust inspector parameters (<code>saveRate</code>, <code>outOfBoundsCheckRate</code>, <code>maxMainThreadActionsPerFrame</code>) as needed.</li>
+<li>On initialize, <code>CharacterSystem</code> registers the authenticator callback, broadcast handlers (<code>ClientValidatedSceneBroadcast</code>, <code>ClientScenesUnloadedBroadcast</code>, <code>RespawnAtBindPointBroadcast</code>, <code>ResurrectAcceptBroadcast</code>), scene manager events, connection state events, character events (<code>IPlayerCharacter.OnTeleport</code>, <code>ICharacterDamageController.OnKilled</code>), and periodic callbacks for save and out-of-bounds checks.</li>
+<li>On deinitialize, it unregisters all event handlers, snapshots and persists all character data, and releases all claimed sessions.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>int</td>
+<td>200</td>
+<td>Max character-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>saveRate</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Interval in seconds between periodic character saves (min 1.0)</td>
+</tr>
+<tr>
+<td><code>outOfBoundsCheckRate</code></td>
+<td>float</td>
+<td>2.5</td>
+<td>Interval in seconds between out-of-bounds checks (min 0.1)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="constants">Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AuthCallbackCooldownSeconds</code></td>
+<td>2.0</td>
+<td>Minimum seconds between auth-callback character load requests per connection</td>
+</tr>
+</tbody>
+</table>
+<h3 id="required-data-containers">Required Data Containers</h3>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Container Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[RequiresDataContainer]</code></td>
+<td><code>CharacterMappingData</code></td>
+<td>Runtime mapping caches (connection, ID, name, world, waiting load, session tokens)</td>
+</tr>
+<tr>
+<td><code>[RequiresDataContainer]</code></td>
+<td><code>CharacterSystemRuntimeData</code></td>
+<td>Periodic save processing guard (atomic begin/end save)</td>
+</tr>
+<tr>
+<td><code>[RequiresDataContainer]</code></td>
+<td><code>CharacterSystemMainThreadQueueData</code></td>
+<td>Per-system main-thread queue for marshaling async completions</td>
+</tr>
+<tr>
+<td><code>[RequiresDataContainer]</code></td>
+<td><code>AsyncWorkerData</code></td>
+<td>Shared async work queue with entity-key routing</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runtime-mapping-model">Runtime Mapping Model</h3>
+<p><code>CharacterMappingData</code> maintains synchronized runtime indices:</p>
+<table>
+<thead>
+<tr>
+<th>Map</th>
+<th>Key → Value</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CharactersByID</code></td>
+<td>characterID → <code>IPlayerCharacter</code></td>
+<td>Fast lookup by character ID</td>
+</tr>
+<tr>
+<td><code>CharactersByLowerCaseName</code></td>
+<td>lowercase name → <code>IPlayerCharacter</code></td>
+<td>Case-insensitive name lookup</td>
+</tr>
+<tr>
+<td><code>CharactersByWorld</code></td>
+<td>worldID → (characterID → <code>IPlayerCharacter</code>)</td>
+<td>Per-world character grouping</td>
+</tr>
+<tr>
+<td><code>ConnectionCharacters</code></td>
+<td>connection → <code>IPlayerCharacter</code></td>
+<td>Active spawned character per connection</td>
+</tr>
+<tr>
+<td><code>WaitingSceneLoadCharacters</code></td>
+<td>connection → <code>IPlayerCharacter</code></td>
+<td>Character loaded from DB but not yet scene-validated</td>
+</tr>
+<tr>
+<td><code>SessionTokens</code></td>
+<td>characterID → <code>CharacterSessionInfo</code></td>
+<td>Claimed session ownership (Token + ServerID)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Responsibilities</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Unity/FishNet object lifecycle, prefab instantiation, controller hydration, map mutations, scene validation, broadcasts, out-of-bounds checks, main-thread queue drain</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>DB load/save/session operations (claim, release, lease refresh), social data fetches, character persistence</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="registered-broadcasts">Registered Broadcasts</h3>
+<p><code>CharacterSystem</code> registers the following server-side broadcast handlers on initialize:</p>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ClientValidatedSceneBroadcast</code></td>
+<td><code>OnClientValidatedSceneBroadcastReceived</code></td>
+<td>Client confirms scene loaded; server spawns character and sends initial payloads</td>
+</tr>
+<tr>
+<td><code>ClientScenesUnloadedBroadcast</code></td>
+<td><code>OnClientScenesUnloadedBroadcastReceived</code></td>
+<td>Client confirms scene unloaded; server disconnects if no character is loaded</td>
+</tr>
+</tbody>
+</table>
+<h3 id="subscribed-events">Subscribed Events</h3>
+<table>
+<thead>
+<tr>
+<th>Event Source</th>
+<th>Event</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SceneServerAuthenticator</code></td>
+<td><code>OnClientAuthenticationResult</code></td>
+<td><code>Authenticator_OnClientAuthenticationResult</code></td>
+<td>Entry point for character loading after authentication</td>
+</tr>
+<tr>
+<td><code>SceneManager</code></td>
+<td><code>OnClientLoadedStartScenes</code></td>
+<td><code>SceneManager_OnClientLoadedStartScenes</code></td>
+<td>Validates character scene and sends <code>ClientValidatedSceneBroadcast</code></td>
+</tr>
+<tr>
+<td><code>IPlayerCharacter</code></td>
+<td><code>OnTeleport</code></td>
+<td><code>IPlayerCharacter_OnTeleport</code></td>
+<td>Handles teleportation between scenes</td>
+</tr>
+<tr>
+<td><code>ICharacterDamageController</code></td>
+<td><code>OnKilled</code></td>
+<td><code>CharacterDamageController_OnKilled</code></td>
+<td>Handles player death, NPC despawn, pet death</td>
+</tr>
+<tr>
+<td><code>RespawnAtBindPointBroadcast</code></td>
+<td>Client broadcast</td>
+<td><code>OnClientRespawnAtBindPointBroadcastReceived</code></td>
+<td>Handles dead player respawn at bind point</td>
+</tr>
+<tr>
+<td><code>ResurrectAcceptBroadcast</code></td>
+<td>Client broadcast</td>
+<td><code>OnClientResurrectAcceptBroadcastReceived</code></td>
+<td>Handles dead player accepting a resurrect</td>
+</tr>
+<tr>
+<td>Connection state</td>
+<td>Remote connection stopped</td>
+<td><code>OnRemoteConnectionStopped</code></td>
+<td>Cleans up auth rate-limit tracking and character mappings</td>
+</tr>
+</tbody>
+</table>
+<h3 id="exposed-lifecycle-events">Exposed Lifecycle Events</h3>
+<p><code>CharacterSystem</code> exposes the following events for cross-system coordination:</p>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Signature</th>
+<th>When Fired</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnBeforeLoadCharacter</code></td>
+<td><code>Action&lt;NetworkConnection, long&gt;</code></td>
+<td>Before character is loaded from the database</td>
+</tr>
+<tr>
+<td><code>OnAfterLoadCharacter</code></td>
+<td><code>Action&lt;NetworkConnection, IPlayerCharacter&gt;</code></td>
+<td>After character is successfully loaded and scene load initiated</td>
+</tr>
+<tr>
+<td><code>OnConnect</code></td>
+<td><code>Action&lt;NetworkConnection, IPlayerCharacter&gt;</code></td>
+<td>After character is added to active connection mapping (post-spawn)</td>
+</tr>
+<tr>
+<td><code>OnDisconnect</code></td>
+<td><code>Action&lt;NetworkConnection, IPlayerCharacter&gt;</code></td>
+<td>After character is removed from active mapping (disconnect or teleport)</td>
+</tr>
+<tr>
+<td><code>OnSpawnCharacter</code></td>
+<td><code>Action&lt;NetworkConnection, IPlayerCharacter, Scene&gt;</code></td>
+<td>After character is spawned in the scene via <code>ServerManager.Spawn</code></td>
+</tr>
+<tr>
+<td><code>OnDespawnCharacter</code></td>
+<td><code>Action&lt;NetworkConnection, IPlayerCharacter&gt;</code></td>
+<td>After character is despawned during save-and-despawn</td>
+</tr>
+<tr>
+<td><code>OnPetKilled</code></td>
+<td><code>Action&lt;NetworkConnection, IPlayerCharacter&gt;</code></td>
+<td>After a pet owned by a player character is killed</td>
+</tr>
+</tbody>
+</table>
+<h3 id="character-load-pipeline">Character Load Pipeline</h3>
+<p><strong>Step 1 — Authentication callback</strong> (<code>Authenticator_OnClientAuthenticationResult</code>):</p>
+<ol>
+<li>Rate-limits per-connection auth callbacks (<code>AuthCallbackCooldownSeconds</code>).</li>
+<li>Validates: connection not already loading, authenticated, account name resolved, <code>ISceneServerSystem</code> available, <code>ICharacterService</code> available, server ID valid.</li>
+<li>Enqueues <code>LoadCharacterAsync</code> to the async worker.</li>
+</ol>
+<p><strong>Step 2 — Async DB snapshot + session claim</strong> (<code>LoadCharacterAsync</code>):</p>
+<ol>
+<li>Begins <code>IUnitOfWork</code> for consistent snapshot.</li>
+<li>Fetches the selected character for the account via <code>ICharacterService.FetchByAccountAsync</code>.</li>
+<li>Claims character session via <code>TryClaimAsync(characterID, serverID)</code> before heavy hydration — fails fast if another server owns the character.</li>
+<li>Fetches 13 sub-entity datasets sequentially within the UoW: inventory, bank, equipment, attributes, abilities, known abilities, achievements, friends, guild, party, hotkeys, buffs, factions.</li>
+<li>Commits the read-only transaction.</li>
+<li>Bundles all data into <code>CharacterLoadContext</code> and marshals to main thread.</li>
+<li>On failure after claim: releases session and kicks connection.</li>
+</ol>
+<p><strong>Step 3 — Main-thread instantiate + hydrate</strong> (<code>InstantiateAndLoadCharacter</code>):</p>
+<ol>
+<li>Validates connection is still active; releases session if not.</li>
+<li>Validates character is not already loaded.</li>
+<li>Fires <code>OnBeforeLoadCharacter</code>.</li>
+<li>Looks up <code>RaceTemplate</code> and instantiates prefab from FishNet object pool.</li>
+<li>Populates base character fields from <code>CharacterData</code> (ID, name, account, world, scene, bind point, instance, race, flags, etc.).</li>
+<li>Hydrates all controllers from pre-fetched DTOs: attributes (resource vs regular), inventory, bank, equipment (with <code>Equippable.Equip</code>), abilities, known abilities, achievements, friends, guild, party, hotkeys, buffs (with tick recalculation), factions.</li>
+<li>Resolves scene (world or instance) and attempts scene load via <code>ISceneServerSystem.TryLoadSceneForConnection</code>.</li>
+<li>On success: fires <code>OnAfterLoadCharacter</code>, stores session token, moves character to <code>WaitingSceneLoadCharacters</code>.</li>
+<li>On failure: releases session, pools prefab, disconnects.</li>
+</ol>
+<p><strong>Step 4 — Scene validation + spawn</strong> (<code>SceneManager_OnClientLoadedStartScenes</code> → <code>OnClientValidatedSceneBroadcastReceived</code>):</p>
+<ol>
+<li><code>SceneManager_OnClientLoadedStartScenes</code>: verifies character exists in <code>WaitingSceneLoadCharacters</code>, validates scene is loaded and valid, sends <code>ClientValidatedSceneBroadcast</code> to client.</li>
+<li><code>OnClientValidatedSceneBroadcastReceived</code>: promotes character from <code>WaitingSceneLoadCharacters</code> into all active maps (<code>ConnectionCharacters</code>, <code>CharactersByID</code>, <code>CharactersByLowerCaseName</code>, <code>CharactersByWorld</code>), sets physics scene, toggles mortal, activates GameObject, enables <code>IsLoaded</code> flag, spawns via <code>ServerManager.Spawn</code>, fires <code>OnSpawnCharacter</code> and <code>OnConnect</code>, sends non-DB payloads, enqueues async social data fetch.</li>
+</ol>
+<h3 id="initial-payloads-after-spawn">Initial Payloads After Spawn</h3>
+<p><strong>Immediate non-DB payloads</strong> (<code>SendNonDbCharacterData</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Payload</th>
+<th>Broadcast Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Known base abilities</td>
+<td><code>KnownAbilityAddMultipleBroadcast</code></td>
+</tr>
+<tr>
+<td>Known ability events</td>
+<td><code>KnownAbilityEventAddMultipleBroadcast</code></td>
+</tr>
+<tr>
+<td>Achievements</td>
+<td><code>AchievementUpdateMultipleBroadcast</code></td>
+</tr>
+<tr>
+<td>Inventory items</td>
+<td><code>InventorySetMultipleItemsBroadcast</code></td>
+</tr>
+<tr>
+<td>Bank items</td>
+<td><code>BankSetMultipleItemsBroadcast</code></td>
+</tr>
+<tr>
+<td>Hotkeys</td>
+<td><code>HotkeySetMultipleBroadcast</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Async social payloads</strong> (<code>SendAllCharacterDataAsync</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Payload</th>
+<th>Broadcast Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Guild members</td>
+<td><code>GuildAddMultipleBroadcast</code></td>
+</tr>
+<tr>
+<td>Party members</td>
+<td><code>PartyAddMultipleBroadcast</code></td>
+</tr>
+<tr>
+<td>Friend online status</td>
+<td><code>FriendAddMultipleBroadcast</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="session-ownership-and-release">Session Ownership and Release</h3>
+<p>Character sessions are explicitly claimed/released to prevent dual-server ownership:</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Method</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claim</td>
+<td><code>TryClaimAsync(characterID, serverID)</code></td>
+<td>During <code>LoadCharacterAsync</code>, before sub-entity hydration</td>
+</tr>
+<tr>
+<td>Lease refresh</td>
+<td><code>RefreshSessionLeaseAsync(characterID, serverID, token)</code></td>
+<td>During <code>SaveAllCharactersAsync</code>, per character (even on save failure)</td>
+</tr>
+<tr>
+<td>Release</td>
+<td><code>ReleaseAsync(characterID, serverID, token)</code></td>
+<td>On disconnect, teleport, load failure, scene validation failure, deinitialize</td>
+</tr>
+</tbody>
+</table>
+<p>All release paths follow <strong>save-then-release</strong> ordering via <code>SaveAndReleaseCharacterAsync</code> to ensure data is persisted while the session lock is still held. <code>TryExtractAndReleaseSession</code> is used for non-save release paths (waiting-to-load characters, scene validation failures).</p>
+<h3 id="periodic-save">Periodic Save</h3>
+<p><code>OnPeriodicSave(deltaTime)</code> fires at <code>saveRate</code> intervals:</p>
+<ol>
+<li>Validates initialization and character count.</li>
+<li>Acquires atomic processing guard via <code>TryBeginSave</code>.</li>
+<li>Snapshots character DTOs on the main thread via <code>BuildCharacterData</code> (increments <code>character.Version</code> for optimistic concurrency).</li>
+<li>Captures all session tokens.</li>
+<li>Enqueues <code>SaveAllCharactersAsync</code>:
+<ul>
+<li>Persists each character via <code>ICharacterService.PersistAsync</code>.</li>
+<li>Refreshes session lease for each character regardless of save success.</li>
+<li>Releases processing guard in <code>finally</code>.</li>
+</ul>
+</li>
+</ol>
+<h3 id="periodic-out-of-bounds-check">Periodic Out-of-Bounds Check</h3>
+<p><code>OnPeriodicOutOfBoundsCheck(deltaTime)</code> fires at <code>outOfBoundsCheckRate</code> intervals:</p>
+<ol>
+<li>Iterates all <code>ConnectionCharacters</code>.</li>
+<li>Resolves scene name (instance or world).</li>
+<li>Checks character position against <code>WorldSceneDetails.Boundaries</code>.</li>
+<li>If out of bounds: selects a random respawn position and teleports the character.</li>
+</ol>
+<h3 id="teleport-flow">Teleport Flow</h3>
+<p><code>IPlayerCharacter_OnTeleport(character)</code>:</p>
+<ol>
+<li>Validates character exists and <code>IsTeleporting</code>.</li>
+<li>Resolves current scene from <code>WorldSceneDetailsCache</code>.</li>
+<li>Validates teleporter exists in scene details.</li>
+<li>Tells connection to unload current world scene.</li>
+<li>Sets character immortal.</li>
+<li>Fires <code>OnDisconnect</code> early (requires current scene context).</li>
+<li>Updates <code>SceneName</code> and position/rotation to teleporter destination.</li>
+<li>Removes instance and loaded flags.</li>
+<li>Calls <code>RemoveCharacterConnectionMapping</code> with <code>skipOnDisconnect: true</code> — triggers save-then-release, forcing reconnect through world routing.</li>
+</ol>
+<h3 id="deathrespawn-flow">Death/Respawn Flow</h3>
+<p><code>CharacterDamageController_OnKilled(killer, defender)</code>:</p>
+<ol>
+<li>Removes all buffs from the defender.</li>
+<li><strong>Player character:</strong>
+<ul>
+<li>Sets <code>IsDead</code> flag, sends <code>DeathBroadcast</code> to client to show death dialog.</li>
+<li>Player chooses: &quot;Respawn at Bind Point&quot; (teleports to bind + revives) or waits for &quot;Resurrect&quot; from another player (revives at corpse location).</li>
+<li>Reconnect-while-dead: <code>IsDead</code> flag is persisted; <code>DeathBroadcast</code> re-sent after scene load so dialog reappears.</li>
+</ul>
+</li>
+<li><strong>NPC:</strong> calls <code>npc.Despawn()</code> which enters corpse state for <code>CorpseDecayDuration</code> seconds before returning to the object pool.</li>
+<li><strong>Pet:</strong> calls <code>pet.Despawn()</code> which returns to pool immediately (no corpse timer).</li>
+</ol>
+<p>Client-side death handlers:</p>
+<ul>
+<li><code>RespawnAtBindPointBroadcast</code> → <code>OnClientRespawnAtBindPointBroadcastReceived</code>: revives character, teleports to bind.</li>
+<li><code>ResurrectAcceptBroadcast</code> → <code>OnClientResurrectAcceptBroadcastReceived</code>: revives character at current position (no teleport).</li>
+</ul>
+<h3 id="targeted-broadcasts">Targeted Broadcasts</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Lookup</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SendBroadcastToCharacter&lt;T&gt;(string characterName, T msg)</code></td>
+<td><code>CharactersByLowerCaseName</code> (case-insensitive)</td>
+<td><code>true</code> if sent</td>
+</tr>
+<tr>
+<td><code>SendBroadcastToCharacter&lt;T&gt;(long characterID, T msg)</code></td>
+<td><code>CharactersByID</code></td>
+<td><code>true</code> if sent</td>
+</tr>
+</tbody>
+</table>
+<h3 id="disconnect-cleanup">Disconnect Cleanup</h3>
+<p><code>OnRemoteConnectionStopped(conn)</code>:</p>
+<ol>
+<li>Removes auth callback rate-limit tracking for the connection.</li>
+<li>Calls <code>RemoveCharacterConnectionMapping(conn)</code>.</li>
+</ol>
+<p><code>RemoveCharacterConnectionMapping(conn, skipOnDisconnect)</code>:</p>
+<ol>
+<li>Checks for waiting-scene-load character: removes from map, extracts and releases session, fires <code>OnDisconnect</code>, pools prefab.</li>
+<li>Checks for spawned character: removes from all mapping dictionaries (<code>ConnectionCharacters</code>, <code>CharactersByID</code>, <code>CharactersByLowerCaseName</code>, <code>CharactersByWorld</code>).</li>
+<li>Fires <code>OnDisconnect</code> (unless <code>skipOnDisconnect</code>).</li>
+<li>Extracts session info from <code>SessionTokens</code>.</li>
+<li>Calls <code>SaveAndDespawnCharacter</code>: disables <code>IsLoaded</code>, snapshots DTO on main thread, enqueues <code>SaveAndReleaseCharacterAsync</code>, despawns immediately.</li>
+</ol>
+<h3 id="deinitialize">Deinitialize</h3>
+<p><code>OnDeinitialize</code>:</p>
+<ol>
+<li>Unregisters all event handlers (authenticator, broadcasts, scene manager, connection state, character events, periodic callbacks).</li>
+<li>Snapshots all character DTOs on the main thread.</li>
+<li>Captures all session tokens (spawned + waiting-to-load).</li>
+<li>Synchronously runs async task: persists all characters, releases all sessions.</li>
+</ol>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Auth rate-limited connections are silently skipped (timestamp not updated).</li>
+<li>Invalid authentication state results in <code>Kick(UnusualActivity)</code>.</li>
+<li>Failed <code>TryClaimAsync</code> results in kick — no sub-entity data is fetched.</li>
+<li>Connection dying between async load and main-thread marshal triggers session release without kick.</li>
+<li>Duplicate character load attempts are detected via <code>CharactersByID</code> and result in session release + kick.</li>
+<li>Failed scene load releases session, pools prefab, and disconnects.</li>
+<li>Scene validation failures after <code>WaitingSceneLoadCharacters</code> release session, pool prefab, and kick.</li>
+<li>Failed <code>EnqueueAsyncWork</code> logs a warning; critical paths (load, save-and-despawn) also take fallback action.</li>
+<li><code>SaveAllCharactersAsync</code> refreshes session leases even when individual saves fail.</li>
+<li>Deinitialize catches per-character snapshot/save/release failures independently.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>CharacterSystem</code> logs &quot;Initialized (SaveRate=30s, OutOfBoundsCheckRate=2.5s)&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>ICharacterMappingData</code>, <code>ICharacterSystemRuntimeData</code>, <code>ICharacterSystemMainThreadQueueData</code>, and <code>IAsyncWorkerData</code> all resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Scene server system available</td>
+<td>Verify <code>ISceneServerSystem&lt;NetworkConnection&gt;</code> resolves from <code>BehaviourRegistry</code></td>
+</tr>
+<tr>
+<td>Authenticator found</td>
+<td>Verify <code>SceneServerAuthenticator</code> exists in the scene and <code>OnClientAuthenticationResult</code> is subscribed</td>
+</tr>
+<tr>
+<td>Character service available</td>
+<td>Verify <code>ICharacterService</code> resolves from <code>Database.ServiceRegistry</code></td>
+</tr>
+<tr>
+<td>Auth rate limiting</td>
+<td>Send rapid repeated auth callbacks from the same connection; confirm excess requests are logged as rate-limited</td>
+</tr>
+<tr>
+<td>Character load</td>
+<td>Authenticate a client with a selected character; confirm character is loaded, hydrated, and placed in <code>WaitingSceneLoadCharacters</code></td>
+</tr>
+<tr>
+<td>Session claim</td>
+<td>During load, confirm <code>TryClaimAsync</code> succeeds and session token is stored in <code>SessionTokens</code></td>
+</tr>
+<tr>
+<td>Session claim conflict</td>
+<td>Attempt to load a character already claimed by another server; confirm <code>TryClaimAsync</code> fails and connection is kicked</td>
+</tr>
+<tr>
+<td>Sub-entity hydration</td>
+<td>After load, confirm all 13 sub-entity datasets are populated on the character's controllers</td>
+</tr>
+<tr>
+<td>Scene validation</td>
+<td>Confirm <code>SceneManager_OnClientLoadedStartScenes</code> validates the scene and sends <code>ClientValidatedSceneBroadcast</code></td>
+</tr>
+<tr>
+<td>Character spawn</td>
+<td>Confirm <code>OnClientValidatedSceneBroadcastReceived</code> promotes character into active maps, spawns network object, and fires <code>OnSpawnCharacter</code></td>
+</tr>
+<tr>
+<td>Non-DB payload broadcast</td>
+<td>After spawn, confirm client receives known abilities, achievements, inventory, bank, and hotkeys broadcasts</td>
+</tr>
+<tr>
+<td>Social payload broadcast</td>
+<td>After spawn, confirm client receives guild members, party members, and friend online status broadcasts</td>
+</tr>
+<tr>
+<td>Periodic save</td>
+<td>Wait for <code>saveRate</code> interval; confirm <code>OnPeriodicSave</code> fires, characters are persisted, and session leases are refreshed</td>
+</tr>
+<tr>
+<td>Save processing guard</td>
+<td>Trigger overlapping save cycles; confirm only one executes at a time via <code>TryBeginSave</code></td>
+</tr>
+<tr>
+<td>Session lease refresh</td>
+<td>During periodic save, confirm <code>RefreshSessionLeaseAsync</code> is called for each character even on save failure</td>
+</tr>
+<tr>
+<td>Out-of-bounds check</td>
+<td>Move a character outside scene boundaries; confirm <code>OnPeriodicOutOfBoundsCheck</code> teleports them to a respawn point</td>
+</tr>
+<tr>
+<td>Teleport flow</td>
+<td>Trigger a valid teleporter; confirm scene unload, immortality, position update, and save-then-release with reconnect</td>
+</tr>
+<tr>
+<td>Invalid teleporter</td>
+<td>Trigger a non-existent teleporter name; confirm it is logged and no mutation occurs</td>
+</tr>
+<tr>
+<td>Player death (same scene)</td>
+<td>Kill a player character whose bind scene matches current scene; confirm full heal and respawn at bind position</td>
+</tr>
+<tr>
+<td>Player death (cross-scene)</td>
+<td>Kill a player character whose bind scene differs; confirm scene/position update, flag removal, and disconnect</td>
+</tr>
+<tr>
+<td>NPC death</td>
+<td>Kill an NPC; confirm <code>Despawn()</code> is called</td>
+</tr>
+<tr>
+<td>Pet death</td>
+<td>Kill a pet; confirm <code>OnPetKilled</code> is fired for the pet owner</td>
+</tr>
+<tr>
+<td>Disconnect cleanup</td>
+<td>Disconnect a client; confirm character is saved, despawned, session released, and all mappings removed</td>
+</tr>
+<tr>
+<td>Waiting character disconnect</td>
+<td>Disconnect a client with a character in <code>WaitingSceneLoadCharacters</code>; confirm session released and prefab pooled</td>
+</tr>
+<tr>
+<td>Deinitialize</td>
+<td>Trigger server deinitialize; confirm all characters are saved, all sessions released, and all handlers unregistered</td>
+</tr>
+<tr>
+<td>Optimistic concurrency</td>
+<td>Save a character; confirm <code>character.Version</code> is incremented in the persisted <code>CharacterData</code></td>
+</tr>
+<tr>
+<td>Main-thread queue drain</td>
+<td>Confirm queued async results are dispatched on the main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Async backpressure</td>
+<td>Saturate async worker queue; confirm new work is rejected with a logged warning</td>
+</tr>
+<tr>
+<td>Connection dead after async</td>
+<td>Kill a connection during async load; confirm session is released without kick on main-thread marshal</td>
+</tr>
+<tr>
+<td>Duplicate load prevention</td>
+<td>Attempt to load an already-loaded character; confirm session release and kick</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Spawn[Character spawn request] --&gt; Sys[CharacterSystem]
+    Sys --&gt;|load state| DB[(PostgreSQL Characters)]
+    Sys --&gt;|instantiate| Scene[Scene world]
+    Scene --&gt;|tick / state changes| Sys
+    Sys --&gt;|persist diffs| DB
+    Sys --&gt;|broadcast updates| Clients[Nearby Clients]
+</code></pre>
+<h3 id="character-load-pipeline-1">Character Load Pipeline</h3>
+<pre><code>Authenticator_OnClientAuthenticationResult(conn, authenticated)
+│
+├─ 1. Rate-limit check (AuthCallbackCooldownSeconds)
+├─ 2. Validate: not already loading, authenticated, account name, dependencies
+├─ 3. Resolve serverID on main thread
+└─ 4. EnqueueAsyncWork → LoadCharacterAsync
+       │
+       ├─ IUnitOfWorkService.BeginAsync → UoW
+       ├─ ICharacterService.FetchByAccountAsync(accountName, selected: true)
+       ├─ ICharacterService.TryClaimAsync(characterID, serverID) → sessionToken
+       ├─ Fetch 13 sub-entity datasets within UoW:
+       │    inventory, bank, equipment, attributes, abilities,
+       │    knownAbilities, achievements, friends, guild, party,
+       │    hotkeys, buffs, factions
+       ├─ UoW.CommitAsync (read-only)
+       └─ TryEnqueueMainThread → InstantiateAndLoadCharacter(CharacterLoadContext)
+              │
+              ├─ Validate connection still active
+              ├─ Validate character not already loaded
+              ├─ OnBeforeLoadCharacter(conn, characterID)
+              ├─ RaceTemplate.Get → Instantiate prefab from pool
+              ├─ Populate base character fields from CharacterData
+              ├─ Hydrate controllers: attributes, inventory, bank,
+              │    equipment (+Equip), abilities, knownAbilities,
+              │    achievements, friends, guild, party, hotkeys,
+              │    buffs (tick recalc), factions
+              ├─ TryLoadSceneForConnection(conn, instance)
+              ├─ OnAfterLoadCharacter(conn, character)
+              ├─ Store SessionTokens[characterID]
+              └─ WaitingSceneLoadCharacters.Add(conn, character)
+</code></pre>
+<h3 id="scene-validation--spawn">Scene Validation + Spawn</h3>
+<pre><code>SceneManager_OnClientLoadedStartScenes(conn, asServer)
+│
+├─ Validate character in WaitingSceneLoadCharacters
+├─ Validate scene is loaded and valid
+└─ Broadcast ClientValidatedSceneBroadcast to conn
+
+OnClientValidatedSceneBroadcastReceived(conn, msg, channel)
+│
+├─ Remove from WaitingSceneLoadCharacters
+├─ Add to ConnectionCharacters, CharactersByID,
+│    CharactersByLowerCaseName, CharactersByWorld
+├─ Set physics scene (stacked scene support)
+├─ Set mortal, activate GameObject, enable IsLoaded
+├─ ServerManager.Spawn(nob, conn, scene)
+├─ OnSpawnCharacter(conn, character, scene)
+├─ OnConnect(conn, character)
+├─ SendNonDbCharacterData (immediate, main thread):
+│    knownAbilities, knownAbilityEvents, achievements,
+│    inventory, bank, hotkeys
+└─ EnqueueAsyncWork → SendAllCharacterDataAsync:
+       guildMembers, partyMembers, friendOnlineStatus
+</code></pre>
+<h3 id="disconnect--save">Disconnect + Save</h3>
+<pre><code>OnRemoteConnectionStopped(conn)
+│
+├─ Remove auth rate-limit tracking
+└─ RemoveCharacterConnectionMapping(conn)
+       │
+       ├─ [Waiting character] Remove from WaitingSceneLoadCharacters
+       │    ├─ TryExtractAndReleaseSession
+       │    ├─ OnDisconnect(conn, character)
+       │    └─ Pool prefab
+       │
+       └─ [Spawned character] Remove from all mappings
+            ├─ OnDisconnect(conn, character)
+            ├─ Extract SessionTokens entry
+            └─ SaveAndDespawnCharacter(conn, character, sessionInfo)
+                   │
+                   ├─ DisableFlags(IsLoaded)
+                   ├─ BuildCharacterData (Version++)
+                   ├─ EnqueueAsyncWork → SaveAndReleaseCharacterAsync
+                   │    ├─ SaveCharacterAsync (persist while holding lock)
+                   │    └─ ReleaseCharacterSessionAsync (Online → Offline)
+                   ├─ OnDespawnCharacter(conn, character)
+                   └─ ServerManager.Despawn(nob, Pool)
+</code></pre>
+<h3 id="teleport">Teleport</h3>
+<pre><code>IPlayerCharacter_OnTeleport(character)
+│
+├─ Validate character exists and IsTeleporting
+├─ Resolve current scene from WorldSceneDetailsCache
+├─ Validate teleporter in SceneTeleporterDetails
+├─ UnloadSceneForConnection(conn, currentScene)
+├─ Set immortal
+├─ OnDisconnect(conn, character) [early, needs current scene]
+├─ Update SceneName, position, rotation to destination
+├─ DisableFlags(IsInInstance, IsLoaded)
+└─ RemoveCharacterConnectionMapping(conn, skipOnDisconnect: true)
+       └─ Save-then-release → reconnect via world routing
+</code></pre>
+<h3 id="deathrespawn">Death/Respawn</h3>
+<pre><code>CharacterDamageController_OnKilled(killer, defender)
+│
+├─ RemoveAll buffs
+├─ [Player + different bind scene]
+│    ├─ Heal(999999)
+│    ├─ Update SceneName/position to bind point
+│    ├─ DisableFlags(IsInInstance, IsLoaded)
+│    └─ Disconnect → reconnect via world server
+├─ [Player + same bind scene]
+│    ├─ Heal(999999)
+│    └─ SetPositionAndRotationAndVelocity(bindPosition)
+├─ [NPC] → Despawn()
+└─ [Pet] → OnPetKilled(petOwner.conn, petOwner)
+</code></pre>
+<h3 id="periodic-save-1">Periodic Save</h3>
+<pre><code>OnPeriodicSave(deltaTime)
+│
+├─ Validate initialized, characters exist
+├─ TryBeginSave (atomic guard)
+├─ Snapshot all CharacterData DTOs on main thread (Version++)
+├─ Capture all SessionTokens
+└─ EnqueueAsyncWork → SaveAllCharactersAsync
+       │
+       ├─ For each character:
+       │    ├─ ICharacterService.PersistAsync(charData)
+       │    └─ ICharacterService.RefreshSessionLeaseAsync(charID, serverID, token)
+       └─ finally: EndSave (release guard)
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Character/
+├── CharacterSystem.cs                    # Core lifecycle: initialization, deinitialize, update, main-thread queue, async work helpers
+├── CharacterSystem.Connection.cs         # Partial: disconnect handling, teleportation, out-of-bounds checks, death/respawn
+├── CharacterSystem.Loading.cs            # Partial: auth callback, async DB fetch, prefab instantiation, scene validation, spawn
+├── CharacterSystem.Saving.cs             # Partial: periodic save, save-and-despawn, session claim/release, BuildCharacterData
+├── CharacterSystem.Social.cs             # Partial: async guild/party/friend fetch, non-DB payload broadcast, targeted broadcasts
+├── CharacterMappingData.cs               # Runtime mapping caches (connection, ID, name, world, waiting load, session tokens)
+├── CharacterSystemRuntimeData.cs         # Runtime state: atomic save processing guard (TryBeginSave/EndSave)
+├── CharacterSystemMainThreadQueueData.cs # Per-system main-thread queue container
+└── README.md
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<pre><code>Server/Core/World/SceneServer/Character/
+├── ICharacterSystem.cs
+├── ICharacterMappingData.cs
+├── ICharacterSystemMainThreadQueueData.cs
+├── ICharacterSystemRuntimeData.cs
+└── CharacterSessionInfo.cs
+
+Server/Core/RuntimeData/
+├── IAsyncWorkerData.cs
+└── IMainThreadQueueData.cs
+</code></pre>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<p><strong>Behaviour:</strong></p>
+<pre><code>ServerBehaviour
+└── CharacterSystem : ICharacterSystem&lt;NetworkConnection, Scene&gt;
+        Partial classes:
+        ├── CharacterSystem.Connection.cs
+        ├── CharacterSystem.Loading.cs
+        ├── CharacterSystem.Saving.cs
+        └── CharacterSystem.Social.cs
+</code></pre>
+<p><strong>Runtime Data Containers:</strong></p>
+<pre><code>RuntimeDataContainer
+├── CharacterMappingData : ICharacterMappingData&lt;NetworkConnection&gt;
+├── CharacterSystemRuntimeData : ICharacterSystemRuntimeData
+└── SystemMainThreadQueueData (abstract)
+    └── CharacterSystemMainThreadQueueData : ICharacterSystemMainThreadQueueData
+</code></pre>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

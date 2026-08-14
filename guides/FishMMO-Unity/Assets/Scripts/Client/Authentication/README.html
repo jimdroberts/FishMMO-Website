@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Client Authentication | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Client Authentication | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Client/Authentication/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="client-authentication">Client Authentication</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Client/Authentication/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> The client authentication module implements the client side of SRP-6a (Secure Remote Password) authentication with X25519 ECDH key exchange, AES-256-GCM encrypted transport, counter-based nonce management, token-based reconnection, and account creation — all orchestrated through FishNet broadcast handlers.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The client authentication module handles the entire client-side lifecycle of authenticating with FishMMO servers. The Unity-facing class <code>ClientLoginAuthenticator</code> is a <strong>thin FishNet adapter</strong> that owns an inner sealed <code>LoginAuthenticatorCore : ClientAuthenticatorCore</code> (from <code>FishMMO-Auth.dll</code>). The engine-independent <code>ClientAuthenticatorCore</code> runs the entire client-side state machine — ephemeral X25519 keypair generation, handshake, cookie echoing, ECDH + transcript-bound HKDF key derivation, AES-256-GCM encrypt/decrypt with counter-based nonces, SRP verify/proof, account creation, token reconnection, two-factor verification, duplicate-message guards, and key-material zeroing.</p>
+<p>The Unity wrapper's job is purely routing:</p>
+<ul>
+<li>Implements the abstract <code>Send*</code> callbacks on <code>ClientAuthenticatorCore</code> by emitting FishNet broadcasts via <code>Client.Broadcast(...)</code>.</li>
+<li>Implements <code>Disconnect()</code> by calling <code>Client.ForceDisconnect()</code>.</li>
+<li>Forwards FishNet <code>OnClientConnectionState</code> (<code>Started</code> / <code>Stopping</code> / <code>Stopped</code>) into <code>core.OnConnected()</code> / <code>core.OnDisconnected()</code>.</li>
+<li>Forwards incoming <code>ServerHandshake</code>, <code>SrpVerifyBroadcast</code>, <code>SrpSuccessBroadcast</code>, <code>ClientAuthResultBroadcast</code>, and <code>TwoFactorSetupBroadcast</code> broadcasts into the matching core handlers.</li>
+<li>Surfaces <code>OnClientAuthenticationResult</code> and <code>OnTwoFactorSetupReceived</code> as Unity-facing events.</li>
+<li>Disposes the core in <code>OnDestroy()</code>.</li>
+</ul>
+<p>With the encrypted channel established by the core, the authenticator supports four flows:</p>
+<ol>
+<li><p><strong>Login (SRP verify/proof)</strong> — Encrypted username and SRP ephemeral are sent, the encrypted salt and server ephemeral come back, and the core computes the client proof via <code>ClientSrpData</code>, sends the encrypted proof, and verifies the server's proof from <code>SrpSuccessBroadcast</code>. Credentials are nulled inside the core immediately after proof generation.</p>
+</li>
+<li><p><strong>Account creation</strong> — The core generates an SRP salt and verifier from the username and password via <code>ClientSrpData.GetSaltAndVerifier()</code>, encrypts all three fields, and sends <code>CreateAccountBroadcast</code>. The server's <code>AccountCreationSystem</code> pipeline processes the request.</p>
+</li>
+<li><p><strong>Token-based reconnection</strong> — After a successful SRP login with the LoginServer, the core stores an encrypted auth token. On subsequent connections to World/Scene servers, the stored token is encrypted and sent via <code>TokenAuthBroadcast</code>, bypassing the full SRP flow.</p>
+</li>
+<li><p><strong>Two-factor authentication</strong> — If the server returns <code>TwoFactorRequired</code> after SRP proof, the public <code>SendTotpCode(string)</code> API encrypts and sends a TOTP code (6-digit) or recovery code (XXXXX-XXXXX) via <code>TwoFactorVerifyBroadcast</code>. During account creation, the server may send <code>TwoFactorSetupBroadcast</code> containing the encrypted otpauth URI and recovery codes; the core surfaces this via <code>OnTwoFactorSetupReceived</code>.</p>
+</li>
+</ol>
+<p><code>ClientSrpData</code> (from <code>FishMMO.Auth.Core</code>) wraps the <code>SrpClient</code> library (2048-bit group, SHA-512) to generate ephemeral values, compute client proofs, generate salt/verifier pairs for registration, and verify server proofs. All SRP references are explicitly nulled on cleanup to allow GC collection of sensitive string data.</p>
+<p>All cryptographic operations are performed by the core through three static service classes in the <code>FishMMO.Auth.Implementation</code> namespace (shipped via <code>FishMMO-Auth.dll</code>):</p>
+<ul>
+<li><strong><code>HandshakeService</code></strong> — X25519 ECDH key agreement and transcript-hash computation.</li>
+<li><strong><code>SrpService</code></strong> — Client-side SRP field encryption/decryption (username, ephemeral, proof, salt, registration fields, TOTP, 2FA setup, account verify, auth token).</li>
+<li><strong><code>TokenService</code></strong> — Client-side token encryption for World/Scene server authentication.</li>
+</ul>
+<p>Every AES-GCM encrypt/decrypt call inside the core is wrapped in <code>try/catch (CryptographicException)</code> with immediate disconnect (via the wrapper's <code>Disconnect()</code> callback) and buffer zeroing on failure. Duplicate-message guards (<code>srpVerifyProcessed</code>, <code>srpSuccessProcessed</code>, <code>cookieEchoed</code>) inside the core prevent replay of critical protocol messages within a session.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Full SRP-6a + AES-256-GCM authentication pipeline</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Full SRP-6a + AES-256-GCM authentication pipeline</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>Yes</td>
+<td>Full SRP-6a + AES-256-GCM authentication pipeline</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version / Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unity</td>
+<td>6.3 LTS</td>
+</tr>
+<tr>
+<td>Scripting Backend</td>
+<td>IL2CPP</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>X25519 ECDH key exchange</strong> — generates a fresh ephemeral keypair per connection; the private key is zeroed and disposed via <code>X25519EphemeralKeyPair.Dispose()</code> immediately after ECDH derivation.</li>
+<li><strong>Transcript-bound key derivation</strong> — the shared secret is derived over a SHA-256 transcript hash incorporating domain separator, both public keys, client min/max versions, and the agreed version, preventing downgrade and key-substitution attacks.</li>
+<li><strong>Directional AES-256-GCM session keys</strong> — HKDF derives separate <code>clientToServerKey</code> and <code>serverToClientKey</code> plus directional nonce prefixes, ensuring send and receive channels are cryptographically independent.</li>
+<li><strong>Counter-based deterministic nonces</strong> — 12-byte nonces composed of a 4-byte HKDF-derived prefix, 1-byte direction flag (<code>0x00</code> = client→server, <code>0x01</code> = server→client), 3 bytes zero padding, and a 4-byte big-endian counter; overflow at <code>uint.MaxValue</code> throws <code>CryptographicException</code> to prevent nonce reuse.</li>
+<li><strong>Additional Authenticated Data (AAD)</strong> — each ciphertext is bound to <code>(messageType, agreedVersion, sequenceNumber)</code> via <code>CryptoHelper.BuildAad()</code>, preventing cross-message-type transplant attacks.</li>
+<li><strong>Stateless cookie challenge</strong> — the server may send a cookie for proof-of-reachability; the client echoes it back exactly once per connection (<code>cookieEchoed</code> guard) before the full X25519 handshake proceeds.</li>
+<li><strong>Protocol version negotiation</strong> — the client advertises <code>[MinSupportedProtocolVersion, MaxSupportedProtocolVersion]</code> and validates the server's <code>AgreedVersion</code> falls within that range.</li>
+<li><strong>SRP-6a authentication (2048-bit, SHA-512)</strong> — client generates ephemeral, receives encrypted salt + server ephemeral, computes proof, and verifies server proof via <code>ClientSrpData</code>.</li>
+<li><strong>Account creation flow</strong> — generates SRP salt and verifier, encrypts username/salt/verifier, and sends <code>CreateAccountBroadcast</code> with implicit sequence encoding (server derives per-field sequences from a single <code>Seq</code> value).</li>
+<li><strong>Token-based reconnection</strong> — after LoginServer SRP success, an encrypted auth token is stored and automatically sent via <code>TokenAuthBroadcast</code> on subsequent World/Scene server connections; token expiration is enforced server-side.</li>
+<li><strong>Two-factor authentication</strong> — <code>SendTotpCode(code)</code> encrypts and sends a TOTP or recovery code via <code>TwoFactorVerifyBroadcast</code>. The <code>code</code> parameter accepts both 6-digit TOTP codes and XXXXX-XXXXX recovery codes. <code>OnTwoFactorSetupReceived(string, string[], int)</code> fires during account creation with the otpauth URI, recovery codes, and verification code.</li>
+<li><strong>Token failure handling</strong> — <code>ClientAuthResultBroadcast</code> with <code>TokenInvalid</code>, <code>TokenExpired</code>, or <code>TokenRevoked</code> results automatically clears the stored token via <code>ClearAuthToken()</code> to prevent infinite retry loops.</li>
+<li><strong>Credential clearing</strong> — <code>username</code> and <code>password</code> are nulled immediately after <code>SrpData.GetProof()</code> (the last point of use) and again as a safety net in <code>ClearKeyMaterial()</code> on disconnect.</li>
+<li><strong>Key material zeroing</strong> — <code>clientToServerKey</code>, <code>serverToClientKey</code>, all decrypted plaintext buffers (salt, ephemeral, proof), and <code>GcmNonceContext</code> session prefixes are zeroed with <code>CryptographicOperations.ZeroMemory()</code> on disconnect or after use.</li>
+<li><strong>Duplicate-message guards</strong> — <code>srpVerifyProcessed</code>, <code>srpSuccessProcessed</code>, and <code>cookieEchoed</code> flags prevent reprocessing of critical protocol messages within a single connection.</li>
+<li><strong>Pre-validation</strong> — username length is checked client-side (3–32 characters) before consuming a sequence number, failing fast on payloads that the server would reject.</li>
+<li><strong>Strict UTF-8 decoding</strong> — all decrypted byte arrays are decoded via <code>CryptoHelper.StrictUtf8</code> with <code>DecoderFallbackException</code> handling; malformed data triggers disconnect.</li>
+<li><strong>Max payload size enforcement</strong> — all incoming encrypted fields are checked against <code>CryptoHelper.MaxSrpPayloadBytes</code> before decryption.</li>
+<li><strong>SRP state cleanup</strong> — <code>ClientSrpData.Clear()</code> nulls all <code>SrpClient</code>, <code>ClientEphemeral</code>, and <code>Session</code> references so GC can collect sensitive SRP strings.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS with IL2CPP scripting backend.</li>
+<li>FishNet Networking framework (<code>FishNet.Authenticating.Authenticator</code> base class, <code>NetworkManager</code>, <code>ClientManager</code>, <code>Broadcast</code> system).</li>
+<li><code>SecureRemotePassword</code> library — provides <code>SrpClient</code>, <code>SrpParameters</code>, <code>SrpEphemeral</code>, <code>SrpSession</code> for 2048-bit SHA-512 SRP-6a.</li>
+<li><code>FishMMO-Auth.dll</code> — Shared authentication library providing:
+<ul>
+<li><code>FishMMO.Auth.Core</code>: <code>CryptoHelper</code> (AES-256-GCM, X25519 ECDH, HKDF-SHA256, <code>GcmNonceContext</code>, <code>StrictUtf8</code>, nonce builder, protocol version constants), <code>ClientSrpData</code>, <code>ClientAuthenticationResult</code>, <code>AccessLevel</code>.</li>
+<li><code>FishMMO.Auth.Implementation</code>: <code>HandshakeService</code>, <code>SrpService</code>, <code>TokenService</code> — static service classes that encapsulate all client-side crypto operations.</li>
+</ul>
+</li>
+<li><code>FishMMO.Shared.Authentication</code> — centralized validation rules (<code>IsAllowedUsername</code>: 3–32 chars, alphanumeric + underscores; <code>IsAllowedPassword</code>: 8–32 chars, expanded charset).</li>
+<li><code>Client</code> class — FishNet client wrapper providing <code>Broadcast()</code> and <code>ForceDisconnect()</code>.</li>
+<li><code>FishMMO.Logging</code> — structured logging via <code>Log.Warning()</code>, <code>Log.Error()</code>, <code>Log.Debug()</code>.</li>
+<li>Shared broadcast message types: <code>ClientHandshake</code>, <code>ServerHandshake</code>, <code>SrpVerifyBroadcast</code>, <code>SrpProofBroadcast</code>, <code>SrpSuccessBroadcast</code>, <code>CreateAccountBroadcast</code>, <code>TokenAuthBroadcast</code>, <code>ClientAuthResultBroadcast</code>, <code>TwoFactorVerifyBroadcast</code>, <code>TwoFactorSetupBroadcast</code>.</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO Unity project. The client authentication classes are compiled as part of the client assembly. They depend on <code>FishMMO-Auth.dll</code> (auto-copied to <code>Assets/Dependencies/</code> by the FishMMO-Auth build) for all crypto service classes and core types, and on the shared <code>Authentication</code> validation utilities.</p>
+<p>Ensure <code>ClientLoginAuthenticator</code> is attached as the authenticator on the FishNet <code>NetworkManager</code> used for client connections, and that <code>SetClient()</code> is called with a valid <code>Client</code> instance before any connection attempt.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="logging-in">Logging In</h3>
+<ol>
+<li>Obtain a reference to the <code>ClientLoginAuthenticator</code> from the <code>NetworkManager</code>.</li>
+<li>Call <code>SetClient(client)</code> with the active <code>Client</code> instance.</li>
+<li>Subscribe to <code>OnClientAuthenticationResult</code> to receive authentication outcomes.</li>
+<li>Call <code>SetLoginCredentials(username, password, register: false)</code>.</li>
+<li>Initiate the FishNet client connection — the authenticator automatically starts the X25519 handshake on <code>LocalConnectionState.Started</code>.</li>
+<li>The SRP verify → proof → success flow completes automatically; <code>OnClientAuthenticationResult</code> fires with the result.</li>
+</ol>
+<h3 id="registering-a-new-account">Registering a New Account</h3>
+<ol>
+<li>Follow steps 1–3 from the login guide.</li>
+<li>Call <code>SetLoginCredentials(username, password, register: true)</code>.</li>
+<li>Initiate the connection — the authenticator sends a <code>CreateAccountBroadcast</code> with encrypted username, salt, and verifier after the handshake completes.</li>
+</ol>
+<h3 id="token-based-reconnection">Token-Based Reconnection</h3>
+<ol>
+<li>After a successful SRP login, the authenticator automatically stores the auth token from the <code>SrpSuccessBroadcast</code>.</li>
+<li>On subsequent connections to World/Scene servers, the authenticator detects <code>HasAuthToken == true</code> and sends a <code>TokenAuthBroadcast</code> instead of initiating SRP.</li>
+<li>If the token is rejected (<code>TokenInvalid</code>, <code>TokenExpired</code>, <code>TokenRevoked</code>), the authenticator clears it automatically and <code>OnClientAuthenticationResult</code> fires with the failure reason.</li>
+<li>Call <code>ClearAuthToken()</code> explicitly on user logout.</li>
+</ol>
+<h3 id="two-factor-authentication">Two-Factor Authentication</h3>
+<ol>
+<li>Subscribe to <code>OnTwoFactorSetupReceived</code> for account-creation 2FA setup events (provides otpauth URI and recovery codes).</li>
+<li>During login, if <code>OnClientAuthenticationResult</code> fires with <code>TwoFactorRequired</code>, prompt the user for a TOTP code or recovery code.</li>
+<li>Call <code>authenticator.SendTotpCode(code)</code> with the 6-digit TOTP code or XXXXX-XXXXX recovery code.</li>
+<li><code>OnClientAuthenticationResult</code> fires again with <code>LoginSuccess</code> (on valid code) or <code>TwoFactorInvalid</code> (on failure — retry allowed).</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="clientloginauthenticator-properties">ClientLoginAuthenticator Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Access</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Client</code></td>
+<td><code>Client</code></td>
+<td>Public (set via <code>SetClient()</code>)</td>
+<td>FishNet client wrapper for broadcasting messages</td>
+</tr>
+<tr>
+<td><code>HasAuthToken</code></td>
+<td><code>bool</code></td>
+<td>Public (read-only)</td>
+<td>Whether a stored auth token exists for token-based reconnection</td>
+</tr>
+</tbody>
+</table>
+<h3 id="credential-setup">Credential Setup</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Parameters</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SetLoginCredentials()</code></td>
+<td><code>string username, string password, bool register = false</code></td>
+<td>Sets login credentials and register flag before connection</td>
+</tr>
+<tr>
+<td><code>SetClient()</code></td>
+<td><code>Client client</code></td>
+<td>Assigns the FishNet client instance for broadcasting</td>
+</tr>
+<tr>
+<td><code>ClearAuthToken()</code></td>
+<td>—</td>
+<td>Zeroes and nulls the stored auth token</td>
+</tr>
+<tr>
+<td><code>SendTotpCode()</code></td>
+<td><code>string code</code></td>
+<td>Encrypts and sends a TOTP (6-digit) or recovery code (XXXXX-XXXXX) via <code>TwoFactorVerifyBroadcast</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="validation-rules-from-fishmmosharedauthentication">Validation Rules (from <code>FishMMO.Shared.Authentication</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Constraint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Username length</td>
+<td>3–32 characters</td>
+</tr>
+<tr>
+<td>Username charset</td>
+<td>Alphanumeric + underscores</td>
+</tr>
+<tr>
+<td>Password length</td>
+<td>8–32 characters</td>
+</tr>
+<tr>
+<td>Password charset</td>
+<td>Expanded character set</td>
+</tr>
+</tbody>
+</table>
+<h3 id="srp-parameters">SRP Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Group size</td>
+<td>2048-bit</td>
+</tr>
+<tr>
+<td>Hash algorithm</td>
+<td>SHA-512</td>
+</tr>
+<tr>
+<td>Library</td>
+<td><code>SecureRemotePassword</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="setting-up-the-authenticator">Setting Up the Authenticator</h3>
+<pre><code class="lang-csharp">// During client initialization:
+ClientLoginAuthenticator authenticator = networkManager.GetAuthenticator() as ClientLoginAuthenticator;
+authenticator.SetClient(client);
+authenticator.OnClientAuthenticationResult += OnAuthResult;
+
+private void OnAuthResult(ClientAuthenticationResult result)
+{
+    switch (result)
+    {
+        case ClientAuthenticationResult.AccountCreated:
+            Log.Info(&quot;Auth&quot;, &quot;Account created successfully.&quot;);
+            break;
+        case ClientAuthenticationResult.LoginSuccess:
+            Log.Info(&quot;Auth&quot;, &quot;Login successful.&quot;);
+            break;
+        case ClientAuthenticationResult.TokenExpired:
+            Log.Warning(&quot;Auth&quot;, &quot;Auth token expired, re-login required.&quot;);
+            break;
+        // Handle other results...
+    }
+}
+</code></pre>
+<h3 id="login-flow">Login Flow</h3>
+<pre><code class="lang-csharp">authenticator.SetLoginCredentials(&quot;MyUsername&quot;, &quot;MySecurePassword123&quot;, register: false);
+networkManager.ClientManager.StartConnection(&quot;login.server.com&quot;, 7770);
+// Handshake → SRP Verify → SRP Proof → SRP Success → OnClientAuthenticationResult fires
+</code></pre>
+<h3 id="account-registration-flow">Account Registration Flow</h3>
+<pre><code class="lang-csharp">authenticator.SetLoginCredentials(&quot;NewUser&quot;, &quot;SecurePass456!&quot;, register: true);
+networkManager.ClientManager.StartConnection(&quot;login.server.com&quot;, 7770);
+// Handshake → CreateAccountBroadcast → OnClientAuthenticationResult fires
+</code></pre>
+<h3 id="clearing-auth-token-on-logout">Clearing Auth Token on Logout</h3>
+<pre><code class="lang-csharp">authenticator.ClearAuthToken();
+networkManager.ClientManager.StopConnection();
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Handshake initiates on connect</td>
+<td>Start a client connection with valid <code>ClientLoginAuthenticator</code></td>
+<td><code>ClientHandshake</code> broadcast sent with X25519 public key and version range</td>
+</tr>
+<tr>
+<td>Cookie challenge echoed</td>
+<td>Server sends <code>ServerHandshake</code> with <code>PublicKey == null</code> and a cookie</td>
+<td>Client echoes <code>ClientHandshake</code> with the cookie; <code>cookieEchoed</code> set to <code>true</code></td>
+</tr>
+<tr>
+<td>Key exchange completes</td>
+<td>Server sends full <code>ServerHandshake</code> with public key and agreed version</td>
+<td>Directional AES-256 keys, nonce contexts, and <code>SrpData</code> are initialized</td>
+</tr>
+<tr>
+<td>Version negotiation validated</td>
+<td>Server sends <code>AgreedVersion</code> outside <code>[Min, Max]</code></td>
+<td>Client logs warning, clears key material, and calls <code>ForceDisconnect()</code></td>
+</tr>
+<tr>
+<td>SRP login completes</td>
+<td>Provide valid credentials and connect to LoginServer</td>
+<td><code>OnClientAuthenticationResult</code> fires with success; credentials nulled</td>
+</tr>
+<tr>
+<td>Account creation succeeds</td>
+<td>Set <code>register: true</code> and connect</td>
+<td><code>CreateAccountBroadcast</code> sent with encrypted username, salt, and verifier</td>
+</tr>
+<tr>
+<td>Token-based auth works</td>
+<td>Reconnect to World/Scene server after login</td>
+<td><code>TokenAuthBroadcast</code> sent automatically; full SRP flow skipped</td>
+</tr>
+<tr>
+<td>Token failure clears token</td>
+<td>Server returns <code>TokenExpired</code> / <code>TokenInvalid</code> / <code>TokenRevoked</code></td>
+<td><code>storedAuthToken</code> zeroed and nulled; <code>HasAuthToken</code> returns <code>false</code></td>
+</tr>
+<tr>
+<td>AES failure disconnects</td>
+<td>Corrupt an encrypted payload</td>
+<td><code>CryptographicException</code> caught, warning logged, <code>ForceDisconnect()</code> called</td>
+</tr>
+<tr>
+<td>Malformed UTF-8 disconnects</td>
+<td>Server sends non-UTF-8 bytes in encrypted SRP field</td>
+<td><code>DecoderFallbackException</code> caught, warning logged, <code>ForceDisconnect()</code> called</td>
+</tr>
+<tr>
+<td>Payload size enforced</td>
+<td>Encrypted field exceeds <code>MaxSrpPayloadBytes</code></td>
+<td>Client clears key material and calls <code>ForceDisconnect()</code> before decryption</td>
+</tr>
+<tr>
+<td>Key material zeroed on disconnect</td>
+<td>Disconnect or stop connection</td>
+<td><code>ClearKeyMaterial()</code> zeroes keys, disposes nonce contexts, nulls credentials and SRP data</td>
+</tr>
+<tr>
+<td>Duplicate verify ignored</td>
+<td>Server sends second <code>SrpVerifyBroadcast</code></td>
+<td><code>srpVerifyProcessed</code> guard returns early</td>
+</tr>
+<tr>
+<td>Duplicate success ignored</td>
+<td>Server sends second <code>SrpSuccessBroadcast</code></td>
+<td><code>srpSuccessProcessed</code> guard returns early</td>
+</tr>
+<tr>
+<td>Pre-validation rejects bad username</td>
+<td>Set username shorter than 3 or longer than 32 characters</td>
+<td>Client logs warning and calls <code>ForceDisconnect()</code> before sending any SRP broadcast</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    User[Player] --&gt;|enters credentials| UI[Auth UI]
+    UI --&gt; Client[ClientAuthenticationSystem]
+    Client --&gt;|SRP / Token handshake| LoginSrv[LoginServer]
+    LoginSrv --&gt;|verify| DB[(PostgreSQL Accounts)]
+    LoginSrv --&gt;|session token + world list| Client
+    Client --&gt; UI
+    UI --&gt;|connect to selected world| World[WorldServer]
+</code></pre>
+<h3 id="phase-1-key-exchange-x25519-ecdh">Phase 1: Key Exchange (X25519 ECDH)</h3>
+<pre><code>Client                                         Server
+  │                                               │
+  │  Generate X25519 ephemeral keypair             │
+  │── ClientHandshake { PublicKey, Min, Max } ──► │
+  │                                               │
+  │  (Optional cookie challenge)                   │
+  │◄── ServerHandshake { Cookie, PublicKey=null } │
+  │                                               │
+  │  Echo cookie (once per connection)             │
+  │── ClientHandshake { PublicKey, Cookie } ─────►│
+  │                                               │
+  │◄── ServerHandshake { PublicKey, AgreedVer } ──│  X25519 ECDH + HKDF-SHA256
+  │                                               │
+  │  Validate AgreedVersion in [Min..Max]          │
+  │  SHA-256 transcript hash:                      │
+  │    domain || clientPub || serverPub ||          │
+  │    clientMin(2B) || clientMax(2B) ||            │
+  │    agreed(2B)                                  │
+  │  DeriveSharedSecret(serverPub, transcript)     │
+  │  Zero + dispose X25519 private key             │
+  │  DeriveSessionKeys(sharedSecret, transcript)   │
+  │  → clientToServerKey, serverToClientKey         │
+  │  → sendNonceCtx (dir=0x00), receiveNonceCtx    │
+  │    (dir=0x01)                                  │
+</code></pre>
+<h3 id="phase-2a-srp-verify-login-path">Phase 2a: SRP Verify (Login Path)</h3>
+<pre><code>Client                                         Server
+  │                                               │
+  │  AES-GCM encrypt(username, AAD=SrpVerify)      │
+  │  AES-GCM encrypt(clientEphemeral, AAD=SrpVer)  │
+  │── SrpVerifyBroadcast { S, PublicEphemeral } ─►│
+  │                                               │
+  │◄── SrpVerifyBroadcast { S, PublicEphemeral } ─│  Encrypted salt + server ephemeral
+  │                                               │
+  │  AES-GCM decrypt salt (AAD=SrpVerifyResponse)  │
+  │  AES-GCM decrypt serverEphemeral               │
+  │  ZeroMemory on decrypted byte arrays           │
+  │  StrictUtf8 decode (or disconnect on malform)  │
+  │  SrpData.GetProof(user, pass, salt, eph)       │
+  │  ** Null username + password **                │
+</code></pre>
+<h3 id="phase-2b-account-creation-register-path">Phase 2b: Account Creation (Register Path)</h3>
+<pre><code>Client                                         Server
+  │                                               │
+  │  SrpData.GetSaltAndVerifier(user, pass)        │
+  │  AES-GCM encrypt(username, AAD=SrpVerify)      │
+  │  AES-GCM encrypt(salt, AAD=CreateAccount)      │
+  │  AES-GCM encrypt(verifier, AAD=CreateAccount)  │
+  │── CreateAccountBroadcast ────────────────────►│  → AccountCreationSystem pipeline
+  │      { Username, Salt, Verifier, Seq }         │
+  │                                               │
+  │  Server derives per-field sequences:           │
+  │    username_seq = Seq - 2                      │
+  │    salt_seq     = Seq - 1                      │
+  │    verifier_seq = Seq                          │
+</code></pre>
+<h3 id="phase-3-srp-proof">Phase 3: SRP Proof</h3>
+<pre><code>Client                                         Server
+  │                                               │
+  │  AES-GCM encrypt(clientProof, AAD=SrpProof)    │
+  │── SrpProofBroadcast { Proof, Seq } ──────────►│
+  │                                               │
+  │◄── SrpSuccessBroadcast { Proof, Token, Res } ─│  Encrypted server proof + auth token
+  │                                               │
+  │  AES-GCM decrypt serverProof (AAD=SrpSuccess)  │
+  │  ZeroMemory on decrypted byte array            │
+  │  StrictUtf8 decode (or disconnect on malform)  │
+  │  SrpData.Verify(serverProof) → success         │
+  │  AES-GCM decrypt authToken → storedAuthToken   │
+  │  Invoke OnClientAuthenticationResult           │
+  │  SrpData.Clear() — null all SRP references     │
+</code></pre>
+<h3 id="phase-35-two-factor-authentication-conditional">Phase 3.5: Two-Factor Authentication (Conditional)</h3>
+<p>If the server responds to the SRP proof with <code>TwoFactorRequired</code>, the login flow pauses for TOTP verification. <code>SrpSuccessBroadcast</code> is not sent until 2FA completes.</p>
+<pre><code>Client                                         Server
+  │                                               │
+  │◄── ClientAuthResultBroadcast ─────────────────│  { TwoFactorRequired }
+  │                                               │
+  │  Prompt user for TOTP code or recovery code    │
+  │  AES-GCM encrypt(code, AAD=TwoFactorVerify)   │
+  │── TwoFactorVerifyBroadcast { Code, Seq } ────►│
+  │                                               │
+  │  On success:                                   │
+  │◄── SrpSuccessBroadcast { Proof, Token, Res } ─│  Normal SRP success flow
+  │                                               │
+  │  On failure:                                   │
+  │◄── ClientAuthResultBroadcast ─────────────────│  { TwoFactorInvalid }
+  │  (Retry by calling SendTotpCode again)         │
+</code></pre>
+<h3 id="phase-4-token-based-reconnection">Phase 4: Token-Based Reconnection</h3>
+<pre><code>Client                                         World/Scene Server
+  │                                               │
+  │  (X25519 handshake completes as Phase 1)       │
+  │                                               │
+  │  HasAuthToken == true → skip SRP               │
+  │  AES-GCM encrypt(storedAuthToken, AAD=Token)   │
+  │── TokenAuthBroadcast { Token, Seq } ─────────►│
+  │                                               │
+  │◄── ClientAuthResultBroadcast { Result } ──────│
+  │                                               │
+  │  If TokenInvalid/Expired/Revoked:              │
+  │    ClearAuthToken() → zero + null token        │
+  │  Invoke OnClientAuthenticationResult           │
+</code></pre>
+<h3 id="counter-based-nonce-scheme">Counter-Based Nonce Scheme</h3>
+<pre><code>┌─────────────┬───────────┬────────────┬─────────────┐
+│ Prefix (4B) │ Dir (1B)  │ Pad (3B)   │ Counter (4B)│
+│ HKDF-       │ 0x00=C→S  │ 0x00 0x00  │ big-endian  │
+│ derived     │ 0x01=S→C  │ 0x00       │ uint32      │
+└─────────────┴───────────┴────────────┴─────────────┘
+
+Send nonce:    dir=0x00 (client→server), increments sendCounter
+Receive nonce: dir=0x01 (server→client), increments receiveCounter
+Overflow at uint.MaxValue → CryptographicException (prevents nonce reuse)
+Nonce also passed as AAD to AES-GCM, binding ciphertext to its nonce context
+</code></pre>
+<h3 id="disconnect--cleanup-flow">Disconnect / Cleanup Flow</h3>
+<pre><code>LocalConnectionState.Stopping / Stopped
+    │
+    └── ClearKeyMaterial()
+            │
+            ├── ephemeralKeyPair.Dispose() → zero + null
+            ├── SrpData.Clear() → null SrpClient, ClientEphemeral, Session
+            ├── ZeroMemory(clientToServerKey) → null
+            ├── ZeroMemory(serverToClientKey) → null
+            ├── sendNonceCtx.Dispose() → zero prefix + null
+            ├── receiveNonceCtx.Dispose() → zero prefix + null
+            ├── agreedVersion = 0
+            └── username = null, password = null
+            
+            NOTE: storedAuthToken is NOT cleared — it persists across connections.
+            Call ClearAuthToken() explicitly on user logout.
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Client/Authentication/
+├── ClientLoginAuthenticator.cs   # Thin FishNet adapter — owns inner LoginAuthenticatorCore (ClientAuthenticatorCore subclass)
+└── README.md                     # This file
+</code></pre>
+<h3 id="fishmmo-auth-dll-shared-library">FishMMO-Auth DLL (shared library)</h3>
+<p>Core types and crypto services consumed by the authenticator. Built from the <code>FishMMO-Auth</code> project and auto-copied to <code>Assets/Dependencies/FishMMO-Auth.dll</code>.</p>
+<pre><code>FishMMO-Auth/
+├── Core/
+│   ├── CryptoHelper.cs                # AES-256-GCM, X25519 ECDH, HKDF-SHA256, StrictUtf8, GcmNonceContext, nonce builder
+│   ├── ClientSrpData.cs               # Client SRP state (ephemeral, proof, session verify, salt/verifier generation)
+│   ├── ClientAuthenticationResult.cs  # Enum: auth result codes (LoginSuccess, TokenDecryptFailed, etc.)
+│   └── AccessLevel.cs                 # Enum: Player, Moderator, Admin, etc.
+│
+├── Implementation/Auth/
+│   └── ClientAuthenticatorCore.cs     # Engine-independent client-side state machine (abstract base for LoginAuthenticatorCore)
+│
+└── Implementation/Services/
+    ├── HandshakeService.cs            # X25519 ECDH key agreement (client + server sides)
+    ├── SrpService.cs                  # Client-side SRP encrypt/decrypt (username, ephemeral, proof, registration, TOTP, 2FA)
+    └── TokenService.cs                # Client-side token encryption for World/Scene server auth
+</code></pre>
+<h3 id="related-modules">Related Modules</h3>
+<pre><code>Shared/Implementation/Network/Authentication/
+├── ClientHandshake.cs            # Broadcast: client public key + cookie + version range
+├── ServerHandshake.cs            # Broadcast: server public key + cookie + agreed version
+├── SrpVerifyBroadcast.cs         # Broadcast: encrypted username/ephemeral (request) or salt/ephemeral (response)
+├── SrpProofBroadcast.cs          # Broadcast: encrypted client proof
+├── SrpSuccessBroadcast.cs        # Broadcast: encrypted server proof + auth token + result
+├── CreateAccountBroadcast.cs     # Broadcast: encrypted username, salt, verifier
+├── TokenAuthBroadcast.cs         # Broadcast: encrypted stored auth token
+└── ClientAuthResultBroadcast.cs  # Broadcast: authentication result enum
+
+FishMMO-SharedUtility/
+└── Authentication.cs             # Centralized validation: IsAllowedUsername, IsAllowedPassword
+</code></pre>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<p>Because <code>Authenticator</code> (FishNet) is a MonoBehaviour and C# single-inheritance prevents the Unity class from also extending <code>ClientAuthenticatorCore</code>, the wrapper uses <strong>composition with an inner sealed core class</strong>:</p>
+<pre><code>FishNet.Authenticating.Authenticator (abstract MonoBehaviour)
+└── ClientLoginAuthenticator                       # Unity adapter (this assembly)
+        ├── owns: LoginAuthenticatorCore           # private sealed inner class
+        │         └── : ClientAuthenticatorCore  # FishMMO-Auth abstract base
+        │             └── owns:
+        │                 ├── ClientSrpData              (SRP state)
+        │                 ├── X25519EphemeralKeyPair     (ECDH key pair)
+        │                 ├── GcmNonceContext × 2        (send + receive)
+        │                 └── directional AES-256 keys, stored token, guards
+        └── events: OnClientAuthenticationResult, OnTwoFactorSetupReceived
+</code></pre>
+<p>The inner <code>LoginAuthenticatorCore</code> implements all 11 abstract callbacks of <code>ClientAuthenticatorCore</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Abstract callback</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SendClientHandshake</code></td>
+<td><code>Client.Broadcast(new ClientHandshake { ... }, Channel.Reliable)</code></td>
+</tr>
+<tr>
+<td><code>SendTokenAuth</code></td>
+<td><code>Client.Broadcast(new TokenAuthBroadcast { ... }, Channel.Reliable)</code></td>
+</tr>
+<tr>
+<td><code>SendSrpVerify</code></td>
+<td><code>Client.Broadcast(new SrpVerifyBroadcast { ... }, Channel.Reliable)</code></td>
+</tr>
+<tr>
+<td><code>SendSrpProof</code></td>
+<td><code>Client.Broadcast(new SrpProofBroadcast { ... }, Channel.Reliable)</code></td>
+</tr>
+<tr>
+<td><code>SendCreateAccount</code></td>
+<td><code>Client.Broadcast(new CreateAccountBroadcast { ... }, Channel.Reliable)</code></td>
+</tr>
+<tr>
+<td><code>SendAccountVerify</code></td>
+<td><code>Client.Broadcast(new AccountVerifyBroadcast { ... }, Channel.Reliable)</code></td>
+</tr>
+<tr>
+<td><code>SendTwoFactorVerify</code></td>
+<td><code>Client.Broadcast(new TwoFactorVerifyBroadcast { ... }, Channel.Reliable)</code></td>
+</tr>
+<tr>
+<td><code>Disconnect</code></td>
+<td><code>_outer.Client.ForceDisconnect()</code></td>
+</tr>
+<tr>
+<td><code>OnAuthResultCallback</code></td>
+<td>Invokes <code>_outer.OnClientAuthenticationResult</code> event</td>
+</tr>
+<tr>
+<td><code>OnTwoFactorSetupCallback</code></td>
+<td>Invokes <code>_outer.OnTwoFactorSetupReceived</code> event</td>
+</tr>
+<tr>
+<td><code>IsAllowedUsername</code> / <code>IsAllowedPassword</code> / <code>IsAllowedEmailUsername</code></td>
+<td>Delegate to <code>FishMMO.Shared.Authentication</code></td>
+</tr>
+</tbody>
+</table>
+<pre><code>System.Object (from FishMMO-Auth)
+└── ClientSrpData
+        ├── Wraps: SrpClient (SecureRemotePassword library)
+        ├── Holds: SrpEphemeral (client ephemeral values)
+        └── Holds: SrpSession (proof + session key)
+</code></pre>
+<h3 id="key-types">Key Types</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ClientLoginAuthenticator</code></td>
+<td>Thin FishNet MonoBehaviour adapter. Owns the inner <code>LoginAuthenticatorCore</code>, registers and routes broadcasts, surfaces public events, and disposes the core on <code>OnDestroy()</code>. Holds no auth state of its own.</td>
+</tr>
+<tr>
+<td><code>LoginAuthenticatorCore</code> <em>(private sealed inner class)</em></td>
+<td><code>ClientAuthenticatorCore</code> subclass. Bridges all engine-independent send/disconnect/result callbacks to FishNet broadcasts via <code>Client.Broadcast(...)</code> and to <code>Client.ForceDisconnect()</code>.</td>
+</tr>
+<tr>
+<td><code>ClientAuthenticatorCore</code> <em>(FishMMO-Auth)</em></td>
+<td>Engine-independent base class — owns the X25519 keypair, AES keys, nonce contexts, <code>ClientSrpData</code>, stored auth token, duplicate-message guards, and the entire client-side handshake/SRP/token/2FA state machine.</td>
+</tr>
+<tr>
+<td><code>ClientSrpData</code> <em>(FishMMO-Auth)</em></td>
+<td>Wraps <code>SrpClient</code> — generates ephemeral values, computes client proof, generates salt/verifier for registration, verifies server proof</td>
+</tr>
+<tr>
+<td><code>HandshakeService</code> <em>(FishMMO-Auth)</em></td>
+<td>X25519 ECDH key agreement and transcript-hash computation</td>
+</tr>
+<tr>
+<td><code>SrpService</code> <em>(FishMMO-Auth)</em></td>
+<td>Client-side SRP encrypt/decrypt operations for all auth fields</td>
+</tr>
+<tr>
+<td><code>TokenService</code> <em>(FishMMO-Auth)</em></td>
+<td>Client-side token encryption for World/Scene server auth</td>
+</tr>
+</tbody>
+</table>
+<h3 id="events">Events</h3>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Fired When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnClientAuthenticationResult</code></td>
+<td>Server sends <code>SrpSuccessBroadcast</code> (fires for <strong>all</strong> <code>msg.Result</code> values — LoginSuccess, AlreadyOnline, ServerBusy, etc. — not just success), <code>ClientAuthResultBroadcast</code> (token auth result, <code>TwoFactorRequired</code>, <code>TwoFactorInvalid</code>, or other server-initiated result), or <code>TokenDecryptFailed</code> (non-fatal: SRP login succeeded but token decryption failed; fired after the primary result so subscribers can initialize before seeing the warning)</td>
+</tr>
+<tr>
+<td><code>OnTwoFactorSetupReceived</code></td>
+<td>During account creation, server sends <code>TwoFactorSetupBroadcast</code> with encrypted otpauth URI and recovery codes</td>
+</tr>
+</tbody>
+</table>
+<h3 id="external-dependencies">External Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FishNet.Authenticating.Authenticator</code></td>
+<td>Base class for client/server authentication in FishNet</td>
+</tr>
+<tr>
+<td><code>FishNet.Managing.NetworkManager</code></td>
+<td>Provides <code>ClientManager</code> for broadcast registration and connection state events</td>
+</tr>
+<tr>
+<td><code>SecureRemotePassword</code></td>
+<td>SRP-6a protocol library (2048-bit group, SHA-512): <code>SrpClient</code>, <code>SrpParameters</code>, <code>SrpEphemeral</code>, <code>SrpSession</code></td>
+</tr>
+<tr>
+<td><code>FishMMO-Auth.dll</code></td>
+<td>Shared auth library: <code>CryptoHelper</code> (AES-256-GCM, X25519 ECDH, HKDF-SHA256, <code>GcmNonceContext</code>, nonce builder, <code>StrictUtf8</code>), <code>ClientSrpData</code>, <code>ClientAuthenticationResult</code>, <code>AccessLevel</code>, <code>HandshakeService</code>, <code>SrpService</code>, <code>TokenService</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Shared.Authentication</code></td>
+<td>Centralized validation: <code>IsAllowedUsername</code> (3–32 chars, alphanumeric + underscores), <code>IsAllowedPassword</code> (8–32 chars, expanded charset)</td>
+</tr>
+<tr>
+<td><code>Client</code></td>
+<td>FishNet client wrapper for <code>Broadcast()</code> and <code>ForceDisconnect()</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging</code></td>
+<td>Structured logging via <code>Log.Warning()</code>, <code>Log.Error()</code>, <code>Log.Debug()</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Client/Authentication/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO Patch Server (ASP.NET) | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO Patch Server (ASP.NET) | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../favicon.ico">
+      <link rel="stylesheet" href="../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../toc.html">
+      <meta name="docfx:tocrel" content="../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-WebServers/PatcherASP.NET/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../index.html">
+            <img id="logo" class="svg" src="../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-patch-server-aspnet">FishMMO Patch Server (ASP.NET)</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-WebServers/PatcherASP.NET/README.md">View this file on GitHub</a></p>
+</blockquote>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#directory-structure">Directory Structure</a></li>
+<li><a href="#middleware-pipeline">Middleware Pipeline</a></li>
+<li><a href="#endpoints">Endpoints</a></li>
+<li><a href="#key-components">Key Components</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#security">Security</a></li>
+<li><a href="#external-dependencies">External Dependencies</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>ASP.NET Core patch delivery server for FishMMO clients. Determines the latest available patch version by scanning the patch directory on startup (with FileSystemWatcher hot-reload), then serves versioned <code>.zip</code> patch files to clients that are behind the current version. Access is gated through <code>ClientGate</code> HMAC-signed request validation middleware shared across all FishMMO web services.</p>
+<p>Designed to run behind NGINX as a reverse proxy (via <code>api.fishmmo.com</code>). NGINX terminates SSL and forwards requests over plain HTTP to Kestrel on localhost.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET 8.0 — Linux</td>
+<td>Yes (recommended)</td>
+</tr>
+<tr>
+<td>.NET 8.0 — Windows</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>.NET 8.0 — macOS</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET SDK</td>
+<td>8.0+</td>
+</tr>
+<tr>
+<td><code>Patches/</code> directory</td>
+<td>Required, populated by <code>PatchGenerator</code></td>
+</tr>
+<tr>
+<td>NGINX</td>
+<td>Recommended for production</td>
+</tr>
+</tbody>
+</table>
+<h2 id="architecture">Architecture</h2>
+<pre><code>Unity Client
+    |
+    v HTTPS (api.fishmmo.com/latest_version or api.fishmmo.com/{version})
++---------+
+|  NGINX  |  &lt;- SSL termination, X-Forwarded-For/Proto
++----+----+
+     | HTTP (localhost:8090)
++----v-----------------------------------------+
+|  Kestrel (Patcher)                          |
+|  +-- Exception handler middleware          |
+|  +-- ForwardedHeaders middleware            |
+|  +-- Null-IP rejection middleware           |
+|  +-- FishMMOSecurityHeaders middleware      |
+|  +-- ClientGate (HMAC, key from DB)         |
+|  +-- CORS (Public)                   |
+|  +-- Rate Limiting (two-tier)               |
+|  +-- PatchController                        |
+|       +-- PatchVersionService               |
+|       |    +-- VersionConfig parser         |
+|       |    +-- FileSystemWatcher            |
+|       |    +-- HMAC signing (from gate key) |
+|       +-- Patches/ directory (zips)         |
++----------------------------------------------+
+</code></pre>
+<h2 id="directory-structure">Directory Structure</h2>
+<pre><code>Patcher/
+├── Program.cs                      # Host builder, Kestrel config, middleware pipeline
+├── Controllers/
+│   └── PatchController.cs          # GET /latest_version, GET /{version}
+├── Services/
+│   └── PatchVersionService.cs      # Startup patch directory scanner, SHA-256 indexing, FileSystemWatcher
+├── VersionConfig.cs                # SemVer parser with pre-release support and comparison operators
+├── appsettings.json                # Port, patch directory configuration
+└── (ClientGate is in FishMMO-WebShared/)
+</code></pre>
+<h2 id="middleware-pipeline">Middleware Pipeline</h2>
+<ol>
+<li><strong><code>UseExceptionHandler</code></strong> — catches unhandled exceptions, returns structured error responses.</li>
+<li><strong><code>UseForwardedHeaders</code></strong> — trusts <code>X-Forwarded-For</code> / <code>X-Forwarded-Proto</code> from NGINX.</li>
+<li><strong>Null-IP rejection middleware</strong> — returns 400 if <code>RemoteIpAddress</code> is null after forwarding (proxy misconfiguration guard).</li>
+<li><strong><code>UseFishMMOSecurityHeaders</code></strong> — adds <code>X-Content-Type-Options</code>, <code>X-Frame-Options</code>, <code>Referrer-Policy</code>, etc.</li>
+<li><strong><code>UseFishMMOClientGate</code></strong> — validates <code>X-FishMMO-Client</code> HMAC-signed header (shared <code>ClientGate</code> middleware from FishMMO-WebShared). The shared secret is loaded from the <code>deployment_secrets</code> database table at startup (via <code>IDeploymentSecretService</code> + <code>GateSecretHolder</code>) — no environment variable or configuration file fallback. Loopback paths (<code>/healthz</code>) are exempted for monitoring.</li>
+<li><strong><code>UseCors(&quot;Public&quot;)</code></strong> — allows cross-origin requests from <code>play.fishmmo.com</code>.</li>
+<li><strong><code>UseRateLimiter</code></strong> — two-tier: token bucket (10 req/s, 30 burst) for metadata endpoints; sliding window (6 permits/60s) for patch downloads.</li>
+<li><strong><code>UseRouting</code> + <code>MapControllers</code></strong> — standard ASP.NET routing.</li>
+<li><strong><code>MapHealthChecks</code></strong> — <code>/healthz</code> endpoint with patch version status.</li>
+</ol>
+<h2 id="endpoints">Endpoints</h2>
+<h3 id="get-latest_version"><code>GET /latest_version</code></h3>
+<p>Returns the latest patch version string as JSON:</p>
+<pre><code class="lang-json">{ &quot;latest_version&quot;: &quot;1.2.3&quot; }
+</code></pre>
+<h3 id="get-version"><code>GET /{version}</code></h3>
+<p>Downloads the patch file for upgrading from <code>{version}</code> to the latest version.</p>
+<p><strong>Flow:</strong></p>
+<ol>
+<li>Parse client version via <code>VersionConfig.Parse(version)</code>.</li>
+<li>Parse server latest version via <code>VersionConfig.Parse(latest)</code>.</li>
+<li>If client &gt;= latest: return <code>{ &quot;status&quot;: &quot;AlreadyUpdated&quot; }</code>.</li>
+<li>Look for <code>Patches/{clientVersion}-{latestVersion}.zip</code>.</li>
+<li>If found: stream as <code>application/octet-stream</code>.</li>
+</ol>
+<p><strong>Response Codes:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>200</td>
+<td>Patch file streamed, or already up to date</td>
+</tr>
+<tr>
+<td>400</td>
+<td>Invalid client version format</td>
+</tr>
+<tr>
+<td>401</td>
+<td>Missing or invalid <code>X-FishMMO-Client</code> header (from ClientGate middleware)</td>
+</tr>
+<tr>
+<td>404</td>
+<td>Patch file not found</td>
+</tr>
+<tr>
+<td>429</td>
+<td>Rate limit exceeded (token bucket or sliding window)</td>
+</tr>
+<tr>
+<td>500</td>
+<td>Latest version unavailable or malformed</td>
+</tr>
+</tbody>
+</table>
+<h2 id="key-components">Key Components</h2>
+<h3 id="patchversionservice"><code>PatchVersionService</code></h3>
+<p>Singleton service that scans the <code>Patches/</code> directory on startup:</p>
+<ul>
+<li>Matches files against regex: <code>^(\d+\.\d+\.\d+(?:\.[a-zA-Z0-9]+)?)-(\d+\.\d+\.\d+(?:\.[a-zA-Z0-9]+)?)\.zip$</code></li>
+<li>Parses target versions (second capture group) via <code>VersionConfig.Parse</code>.</li>
+<li>Tracks the highest target version as <code>LatestVersion</code>.</li>
+<li>Falls back to <code>0.0.0</code> if no valid patch files are found.</li>
+<li><strong>HMAC signing key:</strong> Receives the gate secret via its constructor (loaded from the <code>deployment_secrets</code> database table at startup). Derives an HMAC-SHA256 signing key from the first comma-separated key entry to sign version manifest responses via <code>SignContent()</code>. The Unity client verifies this signature to confirm the response originated from an authentic patcher.</li>
+</ul>
+<h3 id="versionconfig"><code>VersionConfig</code></h3>
+<p>SemVer-compatible version model with pre-release support:</p>
+<ul>
+<li><strong>Format:</strong> <code>Major.Minor.Patch[.PreRelease]</code> (e.g., <code>1.2.3</code>, <code>1.2.3.alpha</code>)</li>
+<li><strong>Comparison:</strong> <code>IComparable&lt;VersionConfig&gt;</code> with full operator overloads (<code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>)</li>
+<li><strong>Pre-release rules:</strong> A pre-release version has lower precedence than a normal version (SemVer compliant). Pre-release tags are compared lexicographically.</li>
+</ul>
+<h3 id="patch-file-naming-convention">Patch File Naming Convention</h3>
+<pre><code>&lt;from_version&gt;-&lt;to_version&gt;.zip
+</code></pre>
+<p>Examples:</p>
+<ul>
+<li><code>1.0.0-1.0.1.zip</code></li>
+<li><code>1.0.0.alpha-1.0.0.beta.zip</code></li>
+</ul>
+<h2 id="configuration">Configuration</h2>
+<p><code>appsettings.json</code>:</p>
+<pre><code class="lang-json">{
+  &quot;WebServer&quot;: {
+    &quot;HttpPort&quot;: &quot;8090&quot;
+  },
+  &quot;Patches&quot;: {
+    &quot;DirectoryName&quot;: &quot;Patches&quot;
+  }
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WebServer:HttpPort</code></td>
+<td><code>8090</code></td>
+<td>Kestrel listen port (localhost only)</td>
+</tr>
+<tr>
+<td><code>Patches:DirectoryName</code></td>
+<td><code>Patches</code></td>
+<td>Subdirectory containing <code>.zip</code> patch files</td>
+</tr>
+</tbody>
+</table>
+<h3 id="gate-secret-clientgate">Gate Secret (ClientGate)</h3>
+<p>The HMAC shared secret for <code>ClientGate</code> request signing and <code>PatchVersionService</code> version-manifest signing is loaded <strong>exclusively</strong> from the <code>deployment_secrets</code> database table at startup:</p>
+<ol>
+<li>After building the host, the application opens a DI scope and resolves <code>IDeploymentSecretService</code>.</li>
+<li>The service fetches the record with key <code>&quot;client_gate_secret&quot;</code>.</li>
+<li>The value is stored in a singleton <code>GateSecretHolder</code>.</li>
+<li>The <code>Configure</code> callback reads <code>GateSecretHolder.Secret</code> and passes it to <code>UseFishMMOClientGate(environment, gateSecret, bypassPaths)</code>.</li>
+<li>The <code>PatchVersionService</code> constructor also receives the gate secret and derives its HMAC signing key.</li>
+</ol>
+<p><strong>Sources:</strong> This value is <strong>not</strong> configurable via environment variables, <code>appsettings.json</code>, command-line arguments, or any other configuration source. The database is the sole source.</p>
+<p><strong>Setup:</strong> Operators must run the <code>fishmmo-installer → Database → Configure Server Keys</code> workflow to populate it, or insert a row directly:</p>
+<pre><code class="lang-sql">INSERT INTO deployment_secrets (key, value, created_at, updated_at)
+VALUES ('client_gate_secret', 'your-32+byte-secret', NOW(), NOW());
+</code></pre>
+<p><strong>Behaviour if missing:</strong> In Production the host refuses to start with a clear error; in Development the gate logs a warning and passes all requests through, so local dev works without a configured database.</p>
+<p><strong>Shared secret:</strong> The same secret must be deployed to all servers that validate <code>X-FishMMO-Client</code>:</p>
+<ul>
+<li><strong>IPFetchServer</strong> (via <code>GateSecretHolder</code>)</li>
+<li><strong>Patcher</strong> (via <code>GateSecretHolder</code>; also used by <code>PatchVersionService</code> to HMAC-sign version manifest responses)</li>
+<li><strong>Unity client</strong> (embedded via Unity Editor: <strong>FishMMO &gt; Security &gt; Fetch Client Secrets</strong>, which writes <code>ClientApiSecret.generated.cs</code>)</li>
+</ul>
+<p>The <code>client_gate_secret</code> is a single value (or a comma-separated set for rotation). If a comma-separated keyset is provided, all keys are tried during verification so old clients continue to work during rotation.</p>
+<h2 id="security">Security</h2>
+<ul>
+<li><strong>ClientGate</strong> validates HMAC-SHA256 request signatures with timestamp and nonce replay protection. The shared secret is loaded from the <code>deployment_secrets</code> database table at startup — not from environment variables or configuration files.</li>
+<li><strong>CORS policy</strong> (<code>Public</code>) restricts cross-origin access to <code>play.fishmmo.com</code>.</li>
+<li><strong>ForwardedHeaders</strong> ensures correct client IP logging when behind NGINX.</li>
+<li><strong>Rate limiting</strong> (two-tier: metadata + download) prevents abuse.</li>
+<li>Kestrel binds to <strong>localhost only</strong> — not directly accessible from the internet.</li>
+<li>Patch files are served with <code>FileOptions.SequentialScan</code>, ETag support (conditional GET), and path traversal defense at both index-time and serve-time.</li>
+</ul>
+<h2 id="external-dependencies">External Dependencies</h2>
+<ul>
+<li><strong>FishMMO.Logging</strong> - structured async logging.</li>
+<li><strong>Npgsql</strong> - PostgreSQL connection (for loading gate secret from <code>deployment_secrets</code> table via <code>IDeploymentSecretService</code>).</li>
+</ul>
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>.NET 8.0 SDK or later</li>
+<li><code>Patches/</code> directory with properly named <code>.zip</code> files</li>
+<li>Gate secret populated in <code>deployment_secrets</code> database table (via <code>fishmmo-installer → Database → Configure Server Keys</code>)</li>
+</ul>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart TD
+    Boot[Server start]
+    Boot --&gt; LoadSecret[Load gate secret\nfrom deployment_secrets DB]
+    LoadSecret --&gt; Scan[PatchVersionService scans Patches/]
+    Scan --&gt; Track[Track highest target version as LatestVersion]
+    Track --&gt; Ready[Ready for requests]
+    DB[(&quot;PostgreSQL\ndeployment_secrets&quot;)] -.-&gt; LoadSecret
+
+    Client[Unity Client] --&gt;|GET /latest_version| Ready
+    Ready --&gt;|&quot;{ latest_version }&quot;| Client
+
+    Client --&gt;|GET /clientVersion| Cmp{Client greater or equal to latest?}
+    Cmp -- yes --&gt; AlreadyUpdated[&quot;{ status: AlreadyUpdated }&quot;]
+    Cmp -- no --&gt; Lookup[&quot;Look for Patches/clientVer-latestVer.zip&quot;]
+    Lookup --&gt;|found| Stream[Stream as application/octet-stream]
+    Lookup --&gt;|missing| NotFound[404]
+
+    Stream --&gt; Client
+    AlreadyUpdated --&gt; Client
+    NotFound --&gt; Client
+</code></pre>
+<ul>
+<li>NGINX reverse proxy (recommended for production)</li>
+</ul>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-WebServers/PatcherASP.NET/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

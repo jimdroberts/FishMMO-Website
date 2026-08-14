@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Friend System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Friend System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Friend/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="friend-system">Friend System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Friend/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Server-side friend list management system for scene-server player characters, handling add/remove friend requests with validation, asynchronous database persistence, ingress guarding, and main-thread-marshaled client broadcasts.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Friend system is the SceneServer social subsystem for friend list management. It handles add/remove friend requests from connected players, validates constraints (self-add, max capacity), persists friend relationships asynchronously, and relays successful updates back to the owning client.</p>
+<p>The design separates responsibilities across execution contexts:</p>
+<ul>
+<li><strong>Main thread:</strong> request validation, in-memory controller updates, and network broadcasts.</li>
+<li><strong>Async worker:</strong> database fetch/persist/delete operations dispatched through <code>IAsyncWorkerData</code>.</li>
+<li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe context via <code>FriendSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>All DB writes are queued through <code>TryEnqueueAsyncWork(...)</code> to <code>IAsyncWorkerData</code>. If queueing fails (backpressure/missing dependency), the system logs warnings while keeping gameplay state intact. Broadcasts are only emitted after successful in-memory state changes, ensuring clients never see stale or uncommitted data.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Add and remove friend requests with full validation (self-add prevention, max capacity enforcement, duplicate detection)</li>
+<li>Per-connection ingress guarding with debounce and in-flight protection to prevent duplicate operations</li>
+<li>Asynchronous database persistence for friend relationships via <code>IAsyncWorkerData</code> to avoid blocking gameplay</li>
+<li>Main-thread marshaling of async completion actions for safe controller mutation and network broadcasts</li>
+<li>Online status resolution for newly added friends via <code>ICharacterService.FetchAsync</code></li>
+<li>Time-sliced main-thread queue draining with configurable per-frame action limits to avoid frame spikes</li>
+<li>Periodic ingress guard cleanup sweeps with configurable TTL and max removals per sweep</li>
+<li>Achievement integration for friend-add events via configurable <code>AchievementTemplate</code></li>
+<li>Graceful degradation: logs warnings on persistence queue failures while keeping in-memory gameplay state intact</li>
+<li>Guard release deferred until async operation completes, preventing overlap windows for duplicate operations</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IFriendSystem</code>, controller interfaces, broadcast types, <code>IAsyncWorkerData</code>, and <code>IngressGuard</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>FriendSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>IFriendSystem</code>).</li>
+<li>Verify that <code>FriendSystemMainThreadQueueData</code> and <code>FriendSystemRuntimeData</code> data containers are registered (declared via <code>[RequiresDataContainer]</code> attributes).</li>
+<li>Confirm that <code>AsyncWorkerData</code> (<code>IAsyncWorkerData</code>) is available for non-blocking DB write queuing.</li>
+<li>Confirm that <code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code> is registered in the behaviour registry.</li>
+<li>Verify that database services (<code>ICharacterService</code>, <code>ICharacterFriendService</code>) are available in the DB service registry.</li>
+<li>On initialize, <code>FriendSystem</code> automatically registers broadcast handlers for <code>FriendAddNewBroadcast</code> and <code>FriendRemoveBroadcast</code>; on deinitialize, it unregisters them.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-settings">Inspector Settings</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxFriends</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Maximum number of friends allowed per character</td>
+</tr>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Max friend-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Minimum milliseconds between friend add/remove requests per connection</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td><code>float</code></td>
+<td><code>5.0</code></td>
+<td>Seconds between bounded ingress guard cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td><code>float</code></td>
+<td><code>30.0</code></td>
+<td>Seconds before stale ingress guard entries are removed</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td><code>int</code></td>
+<td><code>128</code></td>
+<td>Maximum stale ingress guard entries removed per sweep</td>
+</tr>
+<tr>
+<td><code>FriendAddAchievementTemplate</code></td>
+<td><code>AchievementTemplate</code></td>
+<td><code>null</code></td>
+<td>Optional achievement template incremented when a friend is added</td>
+</tr>
+</tbody>
+</table>
+<h3 id="required-data-containers">Required Data Containers</h3>
+<table>
+<thead>
+<tr>
+<th>Container</th>
+<th>Interface</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FriendSystemMainThreadQueueData</code></td>
+<td><code>IFriendSystemMainThreadQueueData</code></td>
+<td>Per-system main-thread action queue for marshaling async completions</td>
+</tr>
+<tr>
+<td><code>FriendSystemRuntimeData</code></td>
+<td><code>IFriendSystemRuntimeData</code></td>
+<td>Runtime state container for ingress guard</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code></td>
+<td><code>IAsyncWorkerData</code></td>
+<td>Queued non-blocking async DB work dispatch</td>
+</tr>
+</tbody>
+</table>
+<h3 id="database-service-dependencies">Database Service Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ICharacterService</code></td>
+<td>Resolves target character existence and online status during add-friend</td>
+</tr>
+<tr>
+<td><code>ICharacterFriendService</code></td>
+<td>Persists and deletes friend relationships in the database</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, ingress guarding, in-memory controller updates, network broadcasts, DTO capture</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Database fetch/persist/delete operations via <code>IAsyncWorkerData</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-handlers">Broadcast Handlers</h3>
+<p><code>FriendSystem</code> registers the following server broadcast handlers on initialize:</p>
+<ul>
+<li><code>FriendAddNewBroadcast</code> → <code>OnServerFriendAddNewBroadcastReceived</code></li>
+<li><code>FriendRemoveBroadcast</code> → <code>OnServerFriendRemoveBroadcastReceived</code></li>
+</ul>
+<p>And unregisters them on deinitialize.</p>
+<h3 id="broadcasts-emitted">Broadcasts Emitted</h3>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FriendAddBroadcast</code></td>
+<td>Notify requester of successful friend addition (includes online status)</td>
+</tr>
+<tr>
+<td><code>FriendRemoveBroadcast</code></td>
+<td>Notify requester of successful friend removal</td>
+</tr>
+</tbody>
+</table>
+<h3 id="external-integration-points">External Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Integration</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IFriendController</code></td>
+<td>In-memory friend list state on the character object</td>
+</tr>
+<tr>
+<td><code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code></td>
+<td>Character lookup and validation</td>
+</tr>
+<tr>
+<td><code>IngressGuard</code> (via <code>IFriendSystemRuntimeData</code>)</td>
+<td>Per-connection debounce and in-flight protection</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code> (<code>IAsyncWorkerData</code>)</td>
+<td>Queued non-blocking async persistence</td>
+</tr>
+<tr>
+<td><code>IAchievementController</code></td>
+<td>Optional achievement increment on friend add</td>
+</tr>
+<tr>
+<td>Database services (<code>ICharacterService</code>, <code>ICharacterFriendService</code>)</td>
+<td>Friend relationship persistence and character resolution</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ingress-guarding">Ingress Guarding</h3>
+<p>Friend ingress uses per-connection operation keys with debounce + in-flight protection. Operation codes are scoped per action type (<code>AddFriend</code>, <code>RemoveFriend</code>). For async-backed handlers, guard release is deferred until the queued async operation completes (not at enqueue-time), preventing overlap windows for duplicate operations.</p>
+<h3 id="async-worker-and-backpressure">Async Worker and Backpressure</h3>
+<p><code>TryEnqueueAsyncWork(...)</code> dispatches all async DB work through <code>IAsyncWorkerData</code>.</p>
+<p>Behavior:</p>
+<ul>
+<li>Returns <code>true</code> when accepted.</li>
+<li>Returns <code>false</code> when queue is unavailable or full.</li>
+<li>Logs warnings on rejection/unavailability.</li>
+<li>Uses <code>entityKey = characterID</code> for per-character ordering.</li>
+</ul>
+<p>This prevents unbounded fire-and-forget tasks and preserves operation order per player.</p>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System initialization</td>
+<td>Confirm <code>FriendSystem</code> initializes without errors; broadcast handlers are registered</td>
+</tr>
+<tr>
+<td>Add friend validation</td>
+<td>Send a <code>FriendAddNewBroadcast</code> and verify self-add and max-capacity constraints reject invalid requests</td>
+</tr>
+<tr>
+<td>Add friend success</td>
+<td>Send a valid <code>FriendAddNewBroadcast</code>; verify <code>FriendAddBroadcast</code> reaches the client with correct character ID and online status</td>
+</tr>
+<tr>
+<td>Remove friend success</td>
+<td>Send a <code>FriendRemoveBroadcast</code> for an existing friend; verify <code>FriendRemoveBroadcast</code> acknowledgement reaches the client</td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid duplicate requests; confirm only the first is processed within the debounce window</td>
+</tr>
+<tr>
+<td>Async persistence</td>
+<td>Check logs for successful <code>TryEnqueueAsyncWork</code> calls after add/remove operations</td>
+</tr>
+<tr>
+<td>Main-thread queue draining</td>
+<td>Verify queued actions are executed each frame within <code>maxMainThreadActionsPerFrame</code> limit</td>
+</tr>
+<tr>
+<td>Persistence failure graceful degradation</td>
+<td>Simulate persistence queue failure; confirm warning is logged and in-memory state remains unchanged</td>
+</tr>
+<tr>
+<td>Achievement increment</td>
+<td>Configure <code>FriendAddAchievementTemplate</code>; add a friend and verify achievement counter increments</td>
+</tr>
+<tr>
+<td>Ingress guard cleanup</td>
+<td>Verify stale ingress guard entries are removed during periodic sweeps</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|friend op| Sys[FriendSystem]
+    Sys --&gt;|persist| DB[(PostgreSQL Friends)]
+    Sys --&gt;|online presence| World[WorldServer]
+    World --&gt; Sys
+    Sys --&gt;|status + list| Client
+</code></pre>
+<h3 id="add-friend">Add Friend</h3>
+<pre><code>OnServerFriendAddNewBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection and spawned object
+├─ 2. Acquire ingress guard (debounce + in-flight)
+├─ 3. Validate IFriendController exists
+├─ 4. Check friend count &lt; MaxFriends
+├─ 5. Validate database services available
+├─ 6. Reject self-friending (characterID == msg.CharacterID)
+├─ 7. Enqueue guarded async work → AddFriendAsync(...)
+│      │
+│      ├─ Resolve ICharacterService, ICharacterFriendService
+│      ├─ FetchAsync target character from DB (verify existence + online status)
+│      ├─ PersistAsync friend relationship to DB
+│      └─ Enqueue main-thread completion action:
+│           ├── Re-validate connection/controller state
+│           ├── Recheck max capacity and duplicate status
+│           ├── Add friend to in-memory IFriendController
+│           ├── Broadcast FriendAddBroadcast (CharacterID + Online)
+│           └── Increment FriendAddAchievementTemplate (if configured)
+│
+└─ Guard release: deferred until async operation completes
+</code></pre>
+<h3 id="remove-friend">Remove Friend</h3>
+<pre><code>OnServerFriendRemoveBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection and spawned object
+├─ 2. Acquire ingress guard (debounce + in-flight)
+├─ 3. Validate IFriendController exists
+├─ 4. Confirm friend exists in in-memory set
+├─ 5. Enqueue guarded async work → RemoveFriendAsync(...)
+│      │
+│      ├─ Resolve ICharacterFriendService
+│      ├─ DeleteAsync friend relationship from DB
+│      └─ Enqueue main-thread completion action:
+│           ├── Re-validate connection/controller state
+│           ├── Confirm friend still in in-memory set
+│           ├── Remove friend from IFriendController
+│           └── Broadcast FriendRemoveBroadcast (CharacterID)
+│
+└─ Guard release: deferred until async operation completes
+</code></pre>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<pre><code>Error Handling
+│
+├─ Invalid requests → ignored without state mutation
+├─ DB/service lookup failures → abort async operation safely
+├─ Queue rejection/unavailability → logged, work skipped
+├─ Async exceptions → caught and logged with character context
+└─ Broadcasts → only emitted after successful in-memory state changes
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Friend/
+├── FriendSystem.cs                    # Friend add/remove orchestration and async persistence dispatch
+├── FriendSystemRuntimeData.cs         # Runtime state container for ingress guard
+├── FriendSystemMainThreadQueueData.cs # Per-system main-thread action queue container
+└── README.md                          # System documentation
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/Friend/IFriendSystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Friend/IFriendSystemMainThreadQueueData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Friend/IFriendSystemRuntimeData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── FriendSystem : IFriendSystem
+
+RuntimeDataContainer
+└── FriendSystemRuntimeData : IFriendSystemRuntimeData
+
+SystemMainThreadQueueData
+└── FriendSystemMainThreadQueueData : IFriendSystemMainThreadQueueData
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Friend/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

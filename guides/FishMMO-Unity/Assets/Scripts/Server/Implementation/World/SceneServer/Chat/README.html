@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Chat System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Chat System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="chat-system">Chat System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> SceneServer authority for player messaging across World, Region, Say, Party, Guild, Tell, Trade, System, and Discord channels, with token-bucket anti-spam, lock-free incoming queue, batch DB persistence, and outbound broadcast batching for 50,000-user scalability.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Chat system is the SceneServer authority for player messaging across World, Region, Say, Party, Guild, Tell, Trade, System, and Discord channels. It validates inbound client chat, enforces rate/spam limits, routes channel-specific broadcasts, and persists eligible messages through asynchronous database operations. Every persisted message carries the exact UTC timestamp captured at the network receive boundary for legal audit and subpoena compliance.</p>
+<p>The implementation uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> network callback enqueue, lock-free queue drain, validation, command parsing, channel routing, broadcast dispatch, outbound buffer flush, and main-thread queue drain.</li>
+<li><strong>Async worker:</strong> database fetch/persist work for group membership resolution (Party, Guild), target resolution (Tell), message pump polling, and batch persistence via <code>TryEnqueueAsyncWork</code>.</li>
+<li><strong>Main-thread queue:</strong> marshaling async completion actions (broadcast dispatch, cursor updates) back to Unity/FishNet-safe context via <code>IChatSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>Four architectural features keep the chat pipeline responsive under extreme load:</p>
+<ol>
+<li><strong>Lock-Free Incoming Chat Queue</strong> — Network callbacks enqueue stamped messages into a <code>ConcurrentQueue</code>; the main-thread <code>OnUpdate</code> drains up to <code>maxIncomingChatsPerFrame</code> entries per frame. A hard cap (<code>maxIncomingQueueSize</code>, default 10,000) kicks the sender when the queue is flooded, preventing memory exhaustion from DoS attacks.</li>
+<li><strong>Token Bucket Anti-Spam</strong> — Each player carries a refillable token bucket (<code>ChatTokens</code> (double), <code>ChatTokenLastRefillTicks</code>). Messages consume one token; when the bucket is empty the message is silently dropped. Float-precision tokens ensure fractional refill at sub-1-token/s rates accumulates correctly.</li>
+<li><strong>Batch DB Persistence</strong> — All persist-eligible channels enqueue into a <code>ConcurrentQueue&lt;PendingChatPersist&gt;</code>. A periodic callback drains up to <code>maxPersistBatchSize</code> (default 2,000) entries and writes the batch via <code>PersistBatchAsync</code>, reducing DB round-trips from O(N) to ~O(N/batchSize).</li>
+<li><strong>Outbound Broadcast Batching</strong> — World and Trade channel messages are buffered per-world in <code>OutboundWorldBroadcastBuffer</code>. A periodic callback flushes up to <code>maxOutboundBatchSize</code> messages per recipient per flush. A hard cap (<code>maxBufferedWorldMessages</code>, default 200) per world ID drops oldest messages if the buffer exceeds the limit.</li>
+</ol>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Nine chat channels: World, Region, Say, Party, Guild, Tell, Trade, System, Discord</li>
+<li>Lock-free incoming chat queue (<code>ConcurrentQueue</code>) decoupling network callbacks from main-thread processing with configurable per-frame drain budget</li>
+<li>DoS protection via hard cap on incoming queue size; sender kicked when exceeded</li>
+<li>Token bucket anti-spam with configurable burst capacity (<code>chatTokenBucketCapacity</code>) and refill rate (<code>chatTokenRefillRate</code>)</li>
+<li>Legacy per-message cooldown (<code>messageRateLimit</code>) as a secondary rate-limit gate</li>
+<li>Repeat-message suppression (configurable via <code>allowRepeatMessages</code>)</li>
+<li>Rich text tag sanitization (skipped when message contains no <code>&lt;</code> for zero-allocation fast path)</li>
+<li>Command extraction and routing via <code>ChatHelper</code> command registry</li>
+<li>Post-prepend length enforcement capped at <code>maxMessageLength + MaxChannelIdPrefixLength</code> (22 chars)</li>
+<li>Synchronous immediate channels: Region (scene-scoped broadcast), Say (observer-scoped broadcast)</li>
+<li>Synchronous outbound-batched channels: World and Trade (buffered per-world, flushed periodically)</li>
+<li>Async membership channels: Party and Guild (async DB member fetch, main-thread marshal, async-path persistence)</li>
+<li>Async target resolution channel: Tell (async character lookup, self-tell short-circuit, offline detection, relay confirmation)</li>
+<li>Server-origin channels: System (server-to-client notifications), Discord (world-scoped relay via <code>BroadcastToWorld</code>)</li>
+<li>Batch DB persistence via <code>ConcurrentQueue&lt;PendingChatPersist&gt;</code> with periodic flush and configurable batch size</li>
+<li>Synchronous shutdown flush (<code>FlushPersistQueueSync</code>) ensuring no messages are lost on deinitialize</li>
+<li>Outbound World/Trade broadcast batching with per-world hard cap and oldest-message drop on overflow</li>
+<li>Database message pump (<code>OnPeriodicMessagePump</code>) with atomic in-flight flag, cursor tracking, and shutdown guard</li>
+<li>Pump-sourced messages bypass outbound buffer and broadcast immediately (already persisted, pre-batched)</li>
+<li>Defensive-copy broadcast iteration using reusable scratch buffers (<code>CharacterBroadcastBuffer</code>, <code>ConnectionBroadcastBuffer</code>)</li>
+<li>Audit timestamp threading: <code>ReceivedUtcTicks</code> stamped once at the network boundary, carried through the entire pipeline, converted to <code>DateTime</code> only at the DB boundary</li>
+<li>All rate-limit arithmetic is ticks-only (<code>long</code>); no <code>DateTime</code> allocation in the hot path</li>
+<li>Async worker backpressure via <code>TryEnqueueAsyncWork</code> (rejects when queue unavailable/full, logs warning)</li>
+<li>Per-system main-thread queue isolation with configurable drain cap per frame</li>
+<li>Graceful deinitialize: flushes outbound buffers, signals shutdown, flushes persist queue synchronously, drains incoming queue and main-thread queue, unregisters handlers and periodic callbacks</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IChatSystem</code>, <code>IChatSystemRuntimeData</code>, <code>IChatSystemMainThreadQueueData</code>, <code>IPeriodicUpdateSystem</code>, <code>ISceneServerSystem</code>, <code>ISceneServerRuntimeData</code>, <code>ICharacterMappingData&lt;NetworkConnection&gt;</code>, <code>ChatCommand</code>, <code>ChatCommandDetails</code>, <code>ChatHelper</code>, <code>ChatBroadcast</code>, <code>ChatChannel</code>, <code>PendingChatPersist</code>, <code>AsyncWorkerData</code>, and <code>Authentication</code></li>
+<li><strong>FishMMO Database</strong> — provides <code>IChatService</code>, <code>ICharacterPartyService</code>, <code>ICharacterGuildService</code>, <code>ICharacterService</code>, <code>ChatData</code>, <code>CharacterPartyData</code>, <code>CharacterGuildData</code>, <code>CharacterData</code>, and <code>DatabaseResult&lt;T&gt;</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>ChatSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>IChatSystem</code>). The asset is created via <code>Create &gt; FishMMO &gt; Server &gt; SceneServer &gt; Chat System</code>.</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>ChatSystemRuntimeData</code> → <code>IChatSystemRuntimeData</code></li>
+<li><code>ChatSystemMainThreadQueueData</code> → <code>IChatSystemMainThreadQueueData</code></li>
+<li><code>AsyncWorkerData</code> (shared async work queue)</li>
+</ul>
+</li>
+<li>On initialize, <code>ChatSystem</code> builds the channel → handler command map, initializes <code>ChatHelper</code>, registers the <code>ChatBroadcast</code> network handler, and registers three periodic callbacks (message pump, persist flush, outbound broadcast flush).</li>
+<li>On deinitialize, it flushes remaining outbound buffers, signals shutdown, flushes the persist queue synchronously, drains the incoming chat queue and main-thread queue, unregisters the broadcast handler, and unregisters all periodic callbacks.</li>
+<li>Clients send a <code>ChatBroadcast</code> with text prefixed by a channel command (e.g., <code>/s</code>, <code>/w</code>, <code>/p</code>, <code>/g</code>, <code>/t</code>, <code>/tr</code>). The server validates, rate-limits, parses the command, routes to the channel handler, and broadcasts results.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>int</td>
+<td>100</td>
+<td>Max chat-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>maxIncomingChatsPerFrame</code></td>
+<td>int</td>
+<td>500</td>
+<td>Max incoming chat messages processed from the lock-free queue per frame</td>
+</tr>
+<tr>
+<td><code>maxIncomingQueueSize</code></td>
+<td>int</td>
+<td>10000</td>
+<td>Maximum pending incoming chat messages before the sender is kicked (DoS protection)</td>
+</tr>
+<tr>
+<td><code>messageRateLimit</code></td>
+<td>float</td>
+<td>500.0</td>
+<td>Server chat rate limit in milliseconds (should match client <code>UIChat.messageRateLimit</code>)</td>
+</tr>
+<tr>
+<td><code>chatTokenBucketCapacity</code></td>
+<td>int</td>
+<td>5</td>
+<td>Maximum number of chat tokens a player can accumulate (burst capacity)</td>
+</tr>
+<tr>
+<td><code>chatTokenRefillRate</code></td>
+<td>float</td>
+<td>1.0</td>
+<td>Tokens refilled per second (1.0 = one message permit per second)</td>
+</tr>
+<tr>
+<td><code>persistFlushIntervalSeconds</code></td>
+<td>float</td>
+<td>0.1</td>
+<td>Seconds between batch DB persistence flushes</td>
+</tr>
+<tr>
+<td><code>maxPersistBatchSize</code></td>
+<td>int</td>
+<td>2000</td>
+<td>Maximum messages written to the database per flush (overflow carries to next flush)</td>
+</tr>
+<tr>
+<td><code>outboundBatchIntervalSeconds</code></td>
+<td>float</td>
+<td>0.05</td>
+<td>Seconds between outbound World/Trade broadcast flushes</td>
+</tr>
+<tr>
+<td><code>maxOutboundBatchSize</code></td>
+<td>int</td>
+<td>10</td>
+<td>Maximum buffered World/Trade messages sent per recipient per flush</td>
+</tr>
+<tr>
+<td><code>maxBufferedWorldMessages</code></td>
+<td>int</td>
+<td>200</td>
+<td>Maximum buffered World/Trade messages per world (oldest dropped when exceeded)</td>
+</tr>
+<tr>
+<td><code>maxMessageLength</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum allowed chat message length</td>
+</tr>
+<tr>
+<td><code>allowRepeatMessages</code></td>
+<td>bool</td>
+<td>false</td>
+<td>If true, allows repeat messages without spam filtering</td>
+</tr>
+<tr>
+<td><code>messagePumpRate</code></td>
+<td>float</td>
+<td>2.0</td>
+<td>Server chat message pump rate limit in seconds</td>
+</tr>
+<tr>
+<td><code>messageFetchCount</code></td>
+<td>int</td>
+<td>20</td>
+<td>Number of chat messages to fetch per database poll</td>
+</tr>
+</tbody>
+</table>
+<h3 id="channel-command-map">Channel Command Map</h3>
+<p>On initialization, the following channel-to-handler map is built in <code>IChatSystemRuntimeData.ChannelCommandMap</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Handler</th>
+<th>Routing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ChatChannel.World</code></td>
+<td><code>OnWorldChat</code></td>
+<td>Outbound-batched per-world; pump-sourced immediate</td>
+</tr>
+<tr>
+<td><code>ChatChannel.Region</code></td>
+<td><code>OnRegionChat</code></td>
+<td>Immediate broadcast to all scene connections</td>
+</tr>
+<tr>
+<td><code>ChatChannel.Party</code></td>
+<td><code>OnPartyChat</code></td>
+<td>Async DB member fetch, main-thread broadcast</td>
+</tr>
+<tr>
+<td><code>ChatChannel.Guild</code></td>
+<td><code>OnGuildChat</code></td>
+<td>Async DB member fetch, main-thread broadcast</td>
+</tr>
+<tr>
+<td><code>ChatChannel.Tell</code></td>
+<td><code>OnTellChat</code></td>
+<td>Async target resolve, main-thread relay/status</td>
+</tr>
+<tr>
+<td><code>ChatChannel.Trade</code></td>
+<td><code>OnTradeChat</code></td>
+<td>Outbound-batched per-world; pump-sourced immediate</td>
+</tr>
+<tr>
+<td><code>ChatChannel.Say</code></td>
+<td><code>OnSayChat</code></td>
+<td>Immediate broadcast to sender observers</td>
+</tr>
+<tr>
+<td><code>ChatChannel.System</code></td>
+<td><code>OnSendSystemMessage</code></td>
+<td>Server-to-client only (not in command map)</td>
+</tr>
+<tr>
+<td><code>ChatChannel.Discord</code></td>
+<td><code>OnSendDiscordMessage</code></td>
+<td>World-scoped relay via <code>BroadcastToWorld</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Incoming queue drain, validation, token bucket, rate limit, repeat filter, sanitization, command parse, channel routing, broadcast dispatch, outbound flush, main-thread queue drain</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Party/Guild member fetch (<code>OnPartyChatAsync</code>, <code>OnGuildChatAsync</code>), Tell target resolve (<code>OnTellChatAsync</code>), message pump (<code>FetchAndProcessChatMessagesAsync</code>), batch persistence (<code>FlushPersistQueueAsync</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-handler">Broadcast Handler</h3>
+<p><code>ChatSystem</code> registers a single server-side broadcast handler on initialize:</p>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ChatBroadcast</code></td>
+<td><code>OnServerChatBroadcastReceived</code></td>
+<td>Stamps receive time, enqueues into lock-free incoming queue</td>
+</tr>
+</tbody>
+</table>
+<h3 id="inbound-message-pipeline">Inbound Message Pipeline</h3>
+<p><code>OnServerChatBroadcastReceived(conn, msg, channel)</code> → lock-free queue → <code>DrainIncomingChatQueue</code> → <code>ProcessNewChatMessage</code>:</p>
+<ol>
+<li>Stamps <code>msg.ReceivedUtcTicks = DateTime.UtcNow.Ticks</code> at the network boundary.</li>
+<li>Atomically increments incoming queue size counter (O(1)); kicks sender if over <code>maxIncomingQueueSize</code>.</li>
+<li>Enqueues <code>(conn, msg)</code> into <code>IChatSystemRuntimeData.IncomingChatQueue</code>.</li>
+<li>Main-thread <code>OnUpdate</code> calls <code>DrainIncomingChatQueue</code>, dequeuing up to <code>maxIncomingChatsPerFrame</code> entries.</li>
+<li>Skips stale connections (disconnected between enqueue and dequeue).</li>
+<li>Resolves <code>IPlayerCharacter</code> from connection's first object; kicks if missing.</li>
+</ol>
+<h3 id="processnewchatmessage-validation-stages">ProcessNewChatMessage Validation Stages</h3>
+<ol>
+<li>Null/whitespace and length validation (<code>maxMessageLength</code>); kicks on failure.</li>
+<li>Token bucket refill and consume (drop if bucket &lt; 1.0).</li>
+<li>Legacy per-message cooldown via <code>NextChatMessageTicks</code>.</li>
+<li>Repeat-message suppression (when <code>allowRepeatMessages</code> is false).</li>
+<li>Rich text tag sanitization (skipped when text contains no <code>&lt;</code>).</li>
+<li>Command extraction via <code>ChatHelper.GetCommandAndTrim</code>.</li>
+<li>Non-chat command check via <code>ChatHelper.TryParseCommand</code>.</li>
+<li>Chat command routing via <code>ChatHelper.TryParseChatCommand</code>.</li>
+<li>Channel-specific ID prepend (Guild ID, Party ID, World ID).</li>
+<li>Post-prepend length enforcement via <code>Substring(0, N)</code>.</li>
+<li>Channel handler invocation; if handler returns <code>true</code>, message is enqueued for batch DB persistence.</li>
+</ol>
+<h3 id="world--trade-chat-outbound-batched">World / Trade Chat (Outbound-Batched)</h3>
+<p><code>OnWorldChat(sender, msg)</code> / <code>OnTradeChat(sender, msg)</code>:</p>
+<ul>
+<li>Parses world ID from message text.</li>
+<li><strong>Live player messages:</strong> buffered into <code>OutboundWorldBroadcastBuffer[worldID]</code>; hard cap drops oldest on overflow.</li>
+<li><strong>Pump-sourced messages</strong> (sender == null): broadcast immediately via <code>BroadcastToWorld</code> (already persisted).</li>
+<li>Returns <code>true</code> for live messages (triggers batch persist enqueue).</li>
+</ul>
+<h3 id="region-chat-scene-scoped">Region Chat (Scene-Scoped)</h3>
+<p><code>OnRegionChat(sender, msg)</code>:</p>
+<ul>
+<li>Resolves sender's scene via <code>SceneManager.GetSceneByName</code>.</li>
+<li>Defensive-copies scene connections into <code>ConnectionBroadcastBuffer</code>.</li>
+<li>Broadcasts to all connections in the scene.</li>
+<li>Returns <code>false</code> (not persisted).</li>
+</ul>
+<h3 id="say-chat-observer-scoped">Say Chat (Observer-Scoped)</h3>
+<p><code>OnSayChat(sender, msg)</code>:</p>
+<ul>
+<li>Defensive-copies sender's <code>Observers</code> into <code>ConnectionBroadcastBuffer</code>.</li>
+<li>Broadcasts to all observer connections.</li>
+<li>Returns <code>false</code> (not persisted).</li>
+</ul>
+<h3 id="party--guild-chat-async-membership">Party / Guild Chat (Async Membership)</h3>
+<p><code>OnPartyChat(sender, msg)</code> / <code>OnGuildChat(sender, msg)</code>:</p>
+<ul>
+<li>Parses group ID from message text.</li>
+<li>Captures immutable data (sender ID, channel, character name, account name, world server ID, received ticks).</li>
+<li>Enqueues async work (<code>OnPartyChatAsync</code> / <code>OnGuildChatAsync</code>):
+<ul>
+<li>Fetches members via <code>ICharacterPartyService.FetchManyAsync</code> / <code>ICharacterGuildService.FetchManyAsync</code>.</li>
+<li>Marshals broadcast to main thread: iterates members, resolves online characters, sends <code>ChatBroadcast</code>.</li>
+<li>Enqueues persist with captured receive ticks (live messages only; pump-sourced skipped).</li>
+</ul>
+</li>
+<li>Returns <code>false</code> (persistence handled in async path).</li>
+</ul>
+<h3 id="tell-chat-async-target-resolve">Tell Chat (Async Target Resolve)</h3>
+<p><code>OnTellChat(sender, msg)</code>:</p>
+<ul>
+<li>Parses target name from message text.</li>
+<li>Rejects oversized target names (beyond <code>Authentication.CharacterNameMaxLength</code>).</li>
+<li>Short-circuits self-tell before any async work (sends <code>TELL_ERROR_MESSAGE_SELF</code>).</li>
+<li>Enqueues async work (<code>OnTellChatAsync</code>):
+<ul>
+<li>Resolves target via <code>ICharacterService.FetchAsync(targetName)</code>.</li>
+<li>Marshals to main thread:
+<ul>
+<li>Self-tell re-check → <code>TELL_ERROR_MESSAGE_SELF</code>.</li>
+<li>Offline target → <code>TARGET_OFFLINE</code> status to sender.</li>
+<li>Online target → <code>TELL_RELAYED</code> confirmation to sender, delivers message to target if local.</li>
+</ul>
+</li>
+<li>Enqueues persist with captured receive ticks (live messages only).</li>
+</ul>
+</li>
+<li>Returns <code>false</code> (persistence handled in async path).</li>
+</ul>
+<h3 id="database-message-pump">Database Message Pump</h3>
+<p><code>OnPeriodicMessagePump(deltaTime)</code>:</p>
+<ol>
+<li>Acquires atomic <code>messagePumpInFlight</code> flag via <code>TryBeginMessagePump</code>.</li>
+<li>Enqueues <code>FetchAndProcessChatMessagesAsync</code>:
+<ul>
+<li>Fetches new chat records after <code>LastFetchTime</code> / <code>LastFetchPosition</code> via <code>IChatService.FetchAsync</code>.</li>
+<li>Marshals to main thread: updates cursor state, calls <code>ProcessChatMessages</code> which routes each record through the channel command map (sender = null for pump-sourced).</li>
+<li>Discord channel messages routed to <code>OnSendDiscordMessage</code>.</li>
+</ul>
+</li>
+<li>Pump flag cleared in main-thread <code>finally</code> block (success) or async <code>finally</code> block (failure/early return).</li>
+</ol>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Invalid messages fail closed: kicked or silently dropped with no mutation.</li>
+<li>Rate-limit and spam checks enforced before any channel routing.</li>
+<li>Async failures logged without blocking the main thread.</li>
+<li>Main-thread completion paths revalidate runtime state before broadcasting.</li>
+<li><code>TryEnqueueAsyncWork</code> returns <code>false</code> when the queue is unavailable or full; a warning is logged.</li>
+<li>Shutdown guard at the top of async methods prevents work against disposed services.</li>
+<li>Synchronous persist flush on deinitialize ensures no messages are lost.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>ChatSystem</code> logs &quot;Initialized (MessagePumpRate=2s, FetchCount=20)&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>IChatSystemRuntimeData</code>, <code>IChatSystemMainThreadQueueData</code>, and <code>AsyncWorkerData</code> all resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Channel command map built</td>
+<td>Confirm all seven channel handlers (World, Region, Party, Guild, Tell, Trade, Say) are present in <code>ChannelCommandMap</code></td>
+</tr>
+<tr>
+<td>Broadcast handler registered</td>
+<td>Confirm <code>ChatBroadcast</code> network handler is registered on initialize</td>
+</tr>
+<tr>
+<td>Periodic callbacks registered</td>
+<td>Confirm three periodic callbacks (message pump, persist flush, outbound flush) are registered</td>
+</tr>
+<tr>
+<td>World chat</td>
+<td>Send a <code>/w</code> message; confirm all characters in the same world receive the broadcast after the next outbound flush</td>
+</tr>
+<tr>
+<td>Region chat</td>
+<td>Send a <code>/r</code> message; confirm all connections in the sender's scene receive the broadcast immediately</td>
+</tr>
+<tr>
+<td>Say chat</td>
+<td>Send a <code>/s</code> message; confirm all observers of the sender receive the broadcast immediately</td>
+</tr>
+<tr>
+<td>Party chat</td>
+<td>Send a <code>/p</code> message while in a party; confirm all party members receive the broadcast</td>
+</tr>
+<tr>
+<td>Guild chat</td>
+<td>Send a <code>/g</code> message while in a guild; confirm all guild members receive the broadcast</td>
+</tr>
+<tr>
+<td>Tell chat</td>
+<td>Send <code>/t &lt;name&gt; &lt;message&gt;</code>; confirm sender receives <code>TELL_RELAYED</code> and target receives the message</td>
+</tr>
+<tr>
+<td>Tell self-rejection</td>
+<td>Send <code>/t &lt;own_name&gt;</code>; confirm sender receives <code>TELL_ERROR_MESSAGE_SELF</code></td>
+</tr>
+<tr>
+<td>Tell offline target</td>
+<td>Send <code>/t &lt;offline_name&gt;</code>; confirm sender receives <code>TARGET_OFFLINE</code> status</td>
+</tr>
+<tr>
+<td>Trade chat</td>
+<td>Send a <code>/tr</code> message; confirm all characters in the same world receive the broadcast after the next outbound flush</td>
+</tr>
+<tr>
+<td>System message</td>
+<td>Call <code>OnSendSystemMessage(conn, message)</code>; confirm the connection receives a <code>ChatBroadcast</code> on the System channel</td>
+</tr>
+<tr>
+<td>Discord relay</td>
+<td>Confirm pump-sourced Discord messages are broadcast to all characters in the target world via <code>BroadcastToWorld</code></td>
+</tr>
+<tr>
+<td>Token bucket throttle</td>
+<td>Send messages faster than <code>chatTokenRefillRate</code>; confirm messages are dropped when the bucket is exhausted</td>
+</tr>
+<tr>
+<td>Legacy rate limit</td>
+<td>Send messages faster than <code>messageRateLimit</code>; confirm excess messages are dropped</td>
+</tr>
+<tr>
+<td>Repeat suppression</td>
+<td>Send the same message twice with <code>allowRepeatMessages</code> = false; confirm the duplicate is dropped</td>
+</tr>
+<tr>
+<td>Rich text sanitization</td>
+<td>Send a message containing <code>&lt;b&gt;test&lt;/b&gt;</code>; confirm tags are stripped</td>
+</tr>
+<tr>
+<td>DoS queue cap</td>
+<td>Flood the incoming queue beyond <code>maxIncomingQueueSize</code>; confirm the sender is kicked</td>
+</tr>
+<tr>
+<td>Batch DB persistence</td>
+<td>Send persist-eligible messages; confirm they appear in the database after the next persist flush interval</td>
+</tr>
+<tr>
+<td>Outbound batch flush</td>
+<td>Send multiple World/Trade messages; confirm they are delivered in a batch after <code>outboundBatchIntervalSeconds</code></td>
+</tr>
+<tr>
+<td>Outbound buffer cap</td>
+<td>Buffer more than <code>maxBufferedWorldMessages</code> for a world; confirm oldest messages are dropped</td>
+</tr>
+<tr>
+<td>Message pump</td>
+<td>Wait for <code>messagePumpRate</code>; confirm <code>FetchAndProcessChatMessagesAsync</code> fires and fetched messages are routed</td>
+</tr>
+<tr>
+<td>Pump-sourced bypass</td>
+<td>Confirm pump-sourced World/Trade messages bypass the outbound buffer and broadcast immediately</td>
+</tr>
+<tr>
+<td>Shutdown persist flush</td>
+<td>Trigger deinitialize; confirm <code>FlushPersistQueueSync</code> drains all remaining persist entries</td>
+</tr>
+<tr>
+<td>Async backpressure</td>
+<td>Saturate async worker queue; confirm new work is rejected with a logged warning</td>
+</tr>
+<tr>
+<td>Main-thread queue drain</td>
+<td>Confirm queued async results are dispatched on the main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm outbound buffers flushed, persist queue flushed, incoming queue drained, broadcast handler unregistered, and periodic callbacks unregistered</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|chat message| Sys[ChatSystem]
+    Sys --&gt;|RateLimiter + moderation| Sys
+    Sys --&gt;|persist| DB[(PostgreSQL Chat)]
+    Sys --&gt;|route by channel| Channels{Channel}
+    Channels --&gt;|World/Guild/Party| Targets[Subscribed clients]
+    Sys --&gt;|bridge| Discord[FishMMO-DiscordBot]
+</code></pre>
+<h3 id="inbound-message-pipeline-1">Inbound Message Pipeline</h3>
+<pre><code>OnServerChatBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Stamp msg.ReceivedUtcTicks = DateTime.UtcNow.Ticks
+├─ 2. Atomic increment IncomingQueueSize
+│     └── Over maxIncomingQueueSize → decrement + kick
+└─ 3. Enqueue (conn, msg) into IncomingChatQueue
+
+OnUpdate(deltaTime) → DrainIncomingChatQueue
+│
+├─ Dequeue up to maxIncomingChatsPerFrame entries
+├─ Skip stale connections
+└─ ProcessNewChatMessage(conn, sender, msg)
+       │
+       ├─ 1. Null / length validation → kick
+       ├─ 2. Token bucket refill + consume → drop if empty
+       ├─ 3. Legacy cooldown check → drop if too soon
+       ├─ 4. Repeat-message filter → drop if duplicate
+       ├─ 5. Rich text sanitization (skip if no '&lt;')
+       ├─ 6. Command extraction (GetCommandAndTrim)
+       ├─ 7. Non-chat command check → return if handled
+       ├─ 8. Chat command routing (TryParseChatCommand)
+       ├─ 9. Channel ID prepend (Guild/Party/World ID)
+       ├─ 10. Post-prepend length cap
+       └─ 11. Channel handler.Invoke(sender, msg)
+              └── Returns true → EnqueuePersist(...)
+</code></pre>
+<h3 id="world--trade-chat-outbound-batched-1">World / Trade Chat (Outbound-Batched)</h3>
+<pre><code>OnWorldChat(sender, msg) / OnTradeChat(sender, msg)
+│
+├─ Parse worldID from msg.Text
+├─ Live sender:
+│     ├─ Buffer into OutboundWorldBroadcastBuffer[worldID]
+│     ├─ Hard cap: drop oldest if &gt; maxBufferedWorldMessages
+│     └─ Return true (triggers EnqueuePersist)
+└─ Pump-sourced (sender == null):
+      ├─ BroadcastToWorld(worldID, newMsg) immediately
+      └─ Return false (already persisted)
+
+OnPeriodicOutboundFlush → FlushOutboundBroadcastBuffers
+│
+├─ Collect world IDs into reusable key buffer
+├─ For each world:
+│     ├─ Send up to maxOutboundBatchSize messages per recipient
+│     └─ Remove sent messages; keep overflow
+└─ Clean up empty world entries
+</code></pre>
+<h3 id="party--guild-chat-async-membership-1">Party / Guild Chat (Async Membership)</h3>
+<pre><code>OnPartyChat(sender, msg) / OnGuildChat(sender, msg)
+│
+├─ Parse groupID from msg.Text
+├─ Capture immutable data + receivedTicks
+└─ TryEnqueueAsyncWork → OnPartyChatAsync / OnGuildChatAsync
+       │
+       ├─ FetchManyAsync(groupID) → member list
+       ├─ TryEnqueueMainThread
+       │     └─ Broadcast ChatBroadcast to each online member
+       └─ EnqueuePersist(..., receivedTicks) if live message
+</code></pre>
+<h3 id="tell-chat-async-target-resolve-1">Tell Chat (Async Target Resolve)</h3>
+<pre><code>OnTellChat(sender, msg)
+│
+├─ Parse targetName from msg.Text
+├─ Reject oversized target names
+├─ Short-circuit self-tell → TELL_ERROR_MESSAGE_SELF
+├─ Capture immutable data + receivedTicks
+└─ TryEnqueueAsyncWork → OnTellChatAsync
+       │
+       ├─ ICharacterService.FetchAsync(targetName)
+       │     └── Not found → return
+       ├─ TryEnqueueMainThread
+       │     ├─ Self-tell re-check → TELL_ERROR_MESSAGE_SELF
+       │     ├─ Offline → TARGET_OFFLINE to sender
+       │     ├─ Online → TELL_RELAYED to sender
+       │     └─ Deliver to local target if present
+       └─ EnqueuePersist(..., receivedTicks) if live message
+</code></pre>
+<h3 id="batch-db-persistence">Batch DB Persistence</h3>
+<pre><code>OnPeriodicPersistFlush → FlushPersistQueueAsync
+│
+├─ Drain up to maxPersistBatchSize from PendingPersistQueue
+├─ Convert ReceivedTicks → DateTime at DB boundary
+└─ IChatService.PersistBatchAsync(batch)
+
+OnDeinitialize → FlushPersistQueueSync
+│
+├─ Signal IsShuttingDown = true
+├─ Drain ALL remaining from PendingPersistQueue
+└─ PersistBatchAsync(...).GetAwaiter().GetResult() (blocking)
+</code></pre>
+<h3 id="database-message-pump-1">Database Message Pump</h3>
+<pre><code>OnPeriodicMessagePump(deltaTime)
+│
+├─ 1. Check Initialized + Server started
+├─ 2. TryBeginMessagePump (atomic compare-exchange)
+└─ 3. TryEnqueueAsyncWork → FetchAndProcessChatMessagesAsync
+       │
+       ├─ IChatService.FetchAsync(lastFetchTime, lastFetchPosition, fetchCount, sceneServerID)
+       └─ TryEnqueueMainThread
+              │
+              ├─ Update LastFetchPosition + LastFetchTime
+              ├─ ProcessChatMessages(messages)
+              │     ├─ Discord → OnSendDiscordMessage
+              │     └─ Other → channel handler (sender = null)
+              └─ finally: ClearMessagePumpFlag
+       │
+       └─ finally (safety net): ClearMessagePumpFlag if not handed off
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Chat/
+├── ChatSystem.cs                      # Main chat orchestration, parsing, routing, persistence dispatch, incoming queue drain, batch flush
+├── ChatSystem.GroupChat.cs             # Partial: Party and Guild async channel handlers
+├── ChatSystem.LocalChat.cs             # Partial: Region (scene-scoped) and Say (observer-scoped) broadcast handlers
+├── ChatSystem.TellChat.cs              # Partial: Tell (private whisper) async target resolution handler
+├── ChatSystem.WorldChat.cs             # Partial: World and Trade outbound-batched channel handlers + BroadcastToWorld
+├── ChatSystemRuntimeData.cs           # Polling cursor state, lock-free queues, outbound buffers, broadcast scratch buffers
+├── ChatSystemMainThreadQueueData.cs   # Per-system main-thread action queue container
+└── README.md                          # System documentation
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/Chat/IChatSystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Chat/IChatSystemRuntimeData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Chat/IChatSystemMainThreadQueueData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── ChatSystem : IChatSystem (partial class)
+       ├── ChatSystem.GroupChat.cs      # OnPartyChat, OnGuildChat + async handlers
+       ├── ChatSystem.LocalChat.cs      # OnRegionChat, OnSayChat
+       ├── ChatSystem.TellChat.cs       # OnTellChat + async handler
+       └── ChatSystem.WorldChat.cs      # OnWorldChat, OnTradeChat, BroadcastToWorld
+
+RuntimeDataContainer
+└── ChatSystemRuntimeData : IChatSystemRuntimeData
+
+SystemMainThreadQueueData
+└── ChatSystemMainThreadQueueData : IChatSystemMainThreadQueueData
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

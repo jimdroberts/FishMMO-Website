@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Interactable System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Interactable System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Interactable/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="interactable-system">Interactable System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Interactable/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> SceneServer subsystem for validating and dispatching player interactions with world objects, including merchants, ability crafting, dialogue, dungeon finders, mailboxes, containers, and fifteen pluggable handler types discovered and registered via reflection.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Interactable system is the SceneServer subsystem responsible for validating and processing all player interactions with world interactable objects. It handles generic interaction dispatch, merchant item/ability/event purchases, ability crafting, server-authoritative dialogue sessions, dungeon finder instance assignment, mailbox operations, container item retrieval, and NPC look-at behavior.</p>
+<p>The system is built around a plugin architecture: concrete interaction handlers implement <code>IInteractableHandler</code> and are decorated with <code>[HandlesInteractable(typeof(...))]</code>. At initialization, <code>InteractableHandlerInitializer</code> uses reflection-based auto-discovery to find and register all handlers automatically — adding a new interactable type requires only creating a new handler class with the attribute.</p>
+<p>The implementation uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> request validation, ingress guard checks, handler dispatch, dialogue session management, debounce sweep, and network broadcasts.</li>
+<li><strong>Async worker:</strong> database reads/writes for inventory persistence, ability persistence, mail operations, dungeon finder scene assignment, and known-ability persistence via <code>TryEnqueueAsyncWork</code>.</li>
+<li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe context via <code>IInteractableSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>All interaction entry points share a single per-connection <code>IngressGuard</code> with a configurable global cooldown, ensuring only one interaction can be in-flight per connection at a time. Stale debounce entries are periodically swept with bounded cleanup.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Plugin-based handler architecture with reflection auto-discovery via <code>[HandlesInteractable]</code> attribute — no initializer modifications needed for new handlers</li>
+<li>Generic interaction dispatch resolving interactable runtime type to registered <code>IInteractableHandler</code></li>
+<li>Strict server-side validation for every interaction: connection, character, scene, scene object, range, and interactable type</li>
+<li>Global per-connection interaction cooldown via shared <code>IngressGuard</code> (one interaction at a time per connection)</li>
+<li>Bounded periodic debounce tracker sweep with configurable TTL, interval, and max removals</li>
+<li>Merchant purchases with tab-type dispatch (Item, Ability, AbilityEvent), currency validation, and inventory/ability synchronization</li>
+<li>Ability crafting from base ability plus selected events with duplicate-event rejection, known-event verification, max-learned-ability cap, and currency cost calculation</li>
+<li>Server-authoritative dialogue sessions with ECA condition/action evaluation, choice bitmask tracking, cached per-character choices, and bounded session/cache capacity</li>
+<li>ECA-triggered dialogue sessions (no physical interactable required) via <code>DisplayDialogueAction</code> static event</li>
+<li>Dungeon finder with entrance validation, existing-instance lookup, party-member instance conflict checking, async scene enqueue, and main-thread character state marshaling</li>
+<li>Mailbox operations: fetch (async DB read → broadcast mail list), send (input validation, async DB write), and delete (async soft-delete)</li>
+<li>Container item retrieval with slot validation, inventory transfer, and auto-despawn on empty</li>
+<li>NPC look-at behavior via <code>OnInteractNPC</code> triggering AI controller idle-state transition</li>
+<li>World item pickup with per-object <code>ConcurrentDictionary</code> concurrency guard preventing item duplication exploits</li>
+<li>Gathering node interaction with weighted drop-table rolls, remaining-use tracking, and auto-despawn on depletion</li>
+<li>Capture point interaction with progressive capture state, owner tracking, and state broadcast</li>
+<li>Lore object interaction with idempotent ability/event/item grants</li>
+<li>Shrine interaction with configurable health/mana healing percentages and optional buff application</li>
+<li>Switch interaction with toggle/activate support for doors, chests, traps, and other <code>ISwitchTarget</code> objects</li>
+<li>Bindstone interaction setting character respawn position and scene</li>
+<li>Teleporter interaction supporting direct transform teleport or named destination teleport</li>
+<li>Banker interaction opening bank UI with last-interactable tracking</li>
+<li>Achievement integration on all handler types via optional <code>AchievementTemplate</code> fields</li>
+<li>Async inventory persistence with fallback direct-persistence path when async worker rejects work</li>
+<li>Known-ability and crafted-ability persistence via async worker with fail-closed semantics on enqueue rejection</li>
+<li>Per-system main-thread queue isolation with configurable drain cap per frame</li>
+<li>Graceful failure semantics: invalid requests fail closed with no mutation; validation enforced before persistence; async failures logged without blocking main thread</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IInteractableSystem</code>, <code>IInteractableHandler</code>, <code>IInteractableSystemRuntimeData</code>, <code>IInteractableSystemMainThreadQueueData</code>, <code>IngressGuard</code>, <code>AsyncWorkerData</code>, <code>WorldSceneDetailsCache</code>, broadcast types (<code>InteractableBroadcast</code>, <code>MerchantPurchaseBroadcast</code>, <code>AbilityCraftBroadcast</code>, <code>DungeonFinderBroadcast</code>, <code>DialogueChoiceBroadcast</code>, <code>MailFetchBroadcast</code>, <code>MailSendBroadcast</code>, <code>MailDeleteBroadcast</code>, <code>ContainerTakeItemBroadcast</code>), and data containers</li>
+<li><strong>FishMMO Shared Core</strong> — provides <code>IInteractable</code>, <code>IPlayerCharacter</code>, interactable type interfaces (<code>IMerchant</code>, <code>IAbilityCrafter</code>, <code>IDungeonEntrance</code>, <code>IDialogueInteractable</code>, <code>IMailbox</code>, <code>IContainer</code>, <code>IWorldItem</code>, <code>IGatheringNode</code>, <code>ICapturePoint</code>, <code>ILoreObject</code>, <code>IShrine</code>, <code>ISwitch</code>, <code>ITeleporter</code>, <code>IBindstone</code>, <code>IBanker</code>), <code>AbilityTemplate</code>, <code>AbilityEvent</code>, <code>MerchantTemplate</code>, <code>DialogueTemplate</code>, <code>CharacterAttributeTemplate</code>, <code>SceneObject</code>, and ECA system types</li>
+<li><strong>FishMMO Database</strong> — provides <code>ICharacterInventoryService</code>, <code>ICharacterKnownAbilityService</code>, <code>ICharacterAbilityService</code>, <code>ISceneService</code>, <code>ICharacterPartyService</code>, <code>ICharacterMailService</code>, <code>CharacterInventoryData</code>, <code>CharacterAbilityData</code>, and <code>DatabaseResult&lt;T&gt;</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>InteractableSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>IInteractableSystem</code>). The asset is created via <code>Create &gt; FishMMO &gt; Server &gt; SceneServer &gt; Interactable System</code>.</li>
+<li>Assign the <code>InteractableHandlerInitializer</code> asset in the inspector (created via <code>Create &gt; FishMMO &gt; Interactables &gt; FishMMO Interactable Handler Initializer</code>). This ScriptableObject uses reflection to auto-discover and register all <code>IInteractableHandler</code> implementations decorated with <code>[HandlesInteractable]</code>.</li>
+<li>Assign the <code>WorldSceneDetailsCache</code> asset for scene validation and respawn lookup.</li>
+<li>Assign a <code>CharacterAttributeTemplate</code> for <code>currencyTemplate</code> to enable merchant purchases and ability crafting cost validation.</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>InteractableSystemRuntimeData</code> → <code>IInteractableSystemRuntimeData</code></li>
+<li><code>InteractableSystemMainThreadQueueData</code> → <code>IInteractableSystemMainThreadQueueData</code></li>
+<li><code>AsyncWorkerData</code> (shared async work queue)</li>
+</ul>
+</li>
+<li>On initialize, <code>InteractableSystem</code> registers all interactable handlers via the initializer, registers nine broadcast handlers (<code>InteractableBroadcast</code>, <code>MerchantPurchaseBroadcast</code>, <code>AbilityCraftBroadcast</code>, <code>DungeonFinderBroadcast</code>, <code>DialogueChoiceBroadcast</code>, <code>MailFetchBroadcast</code>, <code>MailSendBroadcast</code>, <code>MailDeleteBroadcast</code>, <code>ContainerTakeItemBroadcast</code>), subscribes to <code>IDialogueInteractable.OnServerDialogueRequested</code>, and clamps inspector parameters.</li>
+<li>On deinitialize, it drains the remaining main-thread queue, clears all handlers and ingress guard state, unregisters all broadcast handlers, unsubscribes dialogue events, and clears dialogue session/choice caches.</li>
+<li>Clients send the appropriate broadcast to trigger interactions; the server validates, processes, optionally persists to database, and replies with result broadcasts.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>int</td>
+<td>100</td>
+<td>Max interactable-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>interactionDebounceMilliseconds</code></td>
+<td>int</td>
+<td>1000</td>
+<td>Global interaction cooldown in milliseconds; players can only interact with one thing at a time</td>
+</tr>
+<tr>
+<td><code>debounceSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>Seconds between bounded debounce tracker cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>debounceEntryTtlSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Seconds before stale debounce entries are removed</td>
+</tr>
+<tr>
+<td><code>debounceSweepMaxRemovals</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum stale debounce entries removed per sweep and tracker</td>
+</tr>
+<tr>
+<td><code>worldSceneDetailsCache</code></td>
+<td>WorldSceneDetailsCache</td>
+<td>—</td>
+<td>Scene detail cache for scene validation and respawn lookup</td>
+</tr>
+<tr>
+<td><code>interactableHandlerInitializer</code></td>
+<td>InteractableHandlerInitializer</td>
+<td>—</td>
+<td>ScriptableObject that discovers and registers interactable handlers via reflection</td>
+</tr>
+<tr>
+<td><code>maxAbilityCount</code></td>
+<td>int</td>
+<td>25</td>
+<td>Maximum number of crafted abilities a character may learn</td>
+</tr>
+<tr>
+<td><code>maxAbilityCraftEvents</code></td>
+<td>int</td>
+<td>32</td>
+<td>Maximum number of ability events allowed per craft request (defense-in-depth payload cap)</td>
+</tr>
+<tr>
+<td><code>currencyTemplate</code></td>
+<td>CharacterAttributeTemplate</td>
+<td>—</td>
+<td>Currency attribute required to buy merchant items and abilities</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dialogue-constants">Dialogue Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MaxActiveDialogueSessions</code></td>
+<td>2048</td>
+<td>Maximum concurrent dialogue sessions before new sessions are rejected</td>
+</tr>
+<tr>
+<td><code>MaxCachedChoiceCharacters</code></td>
+<td>4096</td>
+<td>Maximum characters with cached dialogue choices before eviction</td>
+</tr>
+</tbody>
+</table>
+<h3 id="mailbox-constants">Mailbox Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MaxMailSubjectLength</code></td>
+<td>200</td>
+<td>Maximum subject length for outgoing mail</td>
+</tr>
+<tr>
+<td><code>MaxMailBodyLength</code></td>
+<td>4000</td>
+<td>Maximum body length for outgoing mail</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, ingress guards, handler dispatch, dialogue session management, debounce sweep, main-thread queue drain, broadcast dispatch</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Database reads/writes (<code>PersistInventoryItemsAsync</code>, <code>PersistAbilityAsync</code>, <code>PersistKnownAbilityAsync</code>, <code>ProcessDungeonFinderAsync</code>, <code>CheckCharacterPartyInstanceAsync</code>, <code>FetchMailAsync</code>, <code>SendMailAsync</code>, <code>DeleteMailAsync</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-handlers">Broadcast Handlers</h3>
+<p><code>InteractableSystem</code> registers the following server-side broadcast handlers on initialize:</p>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Partial Class</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InteractableBroadcast</code></td>
+<td><code>OnServerInteractableBroadcastReceived</code></td>
+<td><code>InteractableSystem.cs</code></td>
+<td>Generic interaction dispatch to registered handler</td>
+</tr>
+<tr>
+<td><code>MerchantPurchaseBroadcast</code></td>
+<td><code>OnServerMerchantPurchaseBroadcastReceived</code></td>
+<td><code>InteractableSystem.Merchant.cs</code></td>
+<td>Merchant item/ability/event purchase</td>
+</tr>
+<tr>
+<td><code>AbilityCraftBroadcast</code></td>
+<td><code>OnServerAbilityCraftBroadcastReceived</code></td>
+<td><code>InteractableSystem.AbilityCraft.cs</code></td>
+<td>Ability crafting from base + events</td>
+</tr>
+<tr>
+<td><code>DungeonFinderBroadcast</code></td>
+<td><code>OnServerDungeonFinderBroadcastReceived</code></td>
+<td><code>InteractableSystem.DungeonFinder.cs</code></td>
+<td>Dungeon instance assignment</td>
+</tr>
+<tr>
+<td><code>DialogueChoiceBroadcast</code></td>
+<td><code>OnServerDialogueChoiceBroadcastReceived</code></td>
+<td><code>InteractableSystem.Dialogue.cs</code></td>
+<td>Dialogue choice progression</td>
+</tr>
+<tr>
+<td><code>MailFetchBroadcast</code></td>
+<td><code>OnServerMailFetchBroadcastReceived</code></td>
+<td><code>InteractableSystem.Mailbox.cs</code></td>
+<td>Fetch mail list from database</td>
+</tr>
+<tr>
+<td><code>MailSendBroadcast</code></td>
+<td><code>OnServerMailSendBroadcastReceived</code></td>
+<td><code>InteractableSystem.Mailbox.cs</code></td>
+<td>Send mail to another character</td>
+</tr>
+<tr>
+<td><code>MailDeleteBroadcast</code></td>
+<td><code>OnServerMailDeleteBroadcastReceived</code></td>
+<td><code>InteractableSystem.Mailbox.cs</code></td>
+<td>Soft-delete a mail entry</td>
+</tr>
+<tr>
+<td><code>ContainerTakeItemBroadcast</code></td>
+<td><code>OnServerContainerTakeItemBroadcastReceived</code></td>
+<td><code>InteractableSystem.Container.cs</code></td>
+<td>Take item from container</td>
+</tr>
+</tbody>
+</table>
+<h3 id="generic-interaction-dispatch">Generic Interaction Dispatch</h3>
+<p><code>OnServerInteractableBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, spawned object, and character.</li>
+<li>Acquires ingress guard.</li>
+<li>Validates scene via <code>WorldSceneDetailsCache</code>.</li>
+<li>Validates scene object via <code>ValidateSceneObject</code> (existence + same-scene check).</li>
+<li>Gets <code>IInteractable</code> component and calls <code>CanInteract(character)</code>.</li>
+<li>Resolves runtime type and looks up registered <code>IInteractableHandler</code>.</li>
+<li>Calls <code>handler.HandleInteraction(interactable, character, sceneObject, this)</code>.</li>
+</ol>
+<h3 id="merchant-purchase">Merchant Purchase</h3>
+<p><code>OnServerMerchantPurchaseBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, character, inventory controller, and ingress guard.</li>
+<li>Validates <code>MerchantTemplate</code> exists and scene/object/range checks pass.</li>
+<li>Confirms interactable is <code>IMerchant</code> with matching template ID.</li>
+<li>Dispatches by <code>MerchantTabType</code>:
+<ul>
+<li><strong>Item:</strong> validates index bounds, checks currency, creates <code>Item</code>, calls <code>SendNewItemBroadcast</code>, deducts cost.</li>
+<li><strong>Ability:</strong> validates index bounds, calls <code>LearnAbilityTemplate</code> (validates not already known, checks currency, enqueues async persist, learns ability, broadcasts <code>KnownAbilityAddBroadcast</code>).</li>
+<li><strong>AbilityEvent:</strong> validates index bounds, calls <code>LearnAbilityEvent</code> (same flow as ability but for events, broadcasts <code>KnownAbilityEventAddBroadcast</code>).</li>
+</ul>
+</li>
+<li>Increments merchant achievement if configured.</li>
+</ol>
+<h3 id="ability-crafting">Ability Crafting</h3>
+<p><code>OnServerAbilityCraftBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, character, ability controller, and ingress guard.</li>
+<li>Validates base <code>AbilityTemplate</code> exists.</li>
+<li>Validates scene and interactable (ability crafter) in range.</li>
+<li>Confirms character knows the base ability, doesn't already have a crafted version, and hasn't reached <code>maxAbilityCount</code>.</li>
+<li>Validates event list: rejects duplicates, unknown events, unowned events, and oversized payloads (<code>maxAbilityCraftEvents</code>).</li>
+<li>Sums total price (base + events), checks currency.</li>
+<li>Calls <code>LearnAbility</code> → creates <code>Ability</code>, enqueues <code>PersistAbilityAsync</code>, learns on controller.</li>
+<li>Deducts cost, broadcasts <code>AbilityAddBroadcast</code>, increments achievement.</li>
+</ol>
+<h3 id="dialogue-session">Dialogue Session</h3>
+<p><strong>Start</strong> (<code>StartDialogueSession</code> / <code>StartECADialogueSession</code>):</p>
+<ol>
+<li>Ends any existing session for the character.</li>
+<li>Checks bounded session capacity (<code>MaxActiveDialogueSessions</code>).</li>
+<li>Evaluates start node conditions via ECA.</li>
+<li>Executes start node on-enter actions.</li>
+<li>Loads cached choices for the character + template.</li>
+<li>Creates <code>DialogueSession</code> and broadcasts <code>DialogueStartBroadcast</code>.</li>
+</ol>
+<p><strong>Choice</strong> (<code>OnServerDialogueChoiceBroadcastReceived</code>):</p>
+<ol>
+<li>Validates session exists and node matches.</li>
+<li>Validates template, scene, and range (skipped for ECA sessions).</li>
+<li>Validates choice index bounds.</li>
+<li>Evaluates choice conditions via ECA.</li>
+<li>Executes current node on-exit actions and choice on-select actions.</li>
+<li>Updates choice bitmask.</li>
+<li>If <code>NextNodeId &lt; 0</code>: persists cached choices if enabled, broadcasts <code>DialogueEndBroadcast</code>.</li>
+<li>Otherwise: evaluates next node conditions, executes on-enter actions, advances session, broadcasts <code>DialogueChoiceResultBroadcast</code>.</li>
+</ol>
+<h3 id="dungeon-finder">Dungeon Finder</h3>
+<p><code>OnServerDungeonFinderBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, character, and ingress guard.</li>
+<li>Validates scene object is <code>IDungeonEntrance</code> in range.</li>
+<li>Validates dungeon scene exists in <code>WorldSceneDetailsCache</code> with respawn positions.</li>
+<li>Captures main-thread state (character ID, world server ID, party ID, dungeon name, respawn details).</li>
+<li>Increments dungeon entrance achievement.</li>
+<li>Enqueues <code>ProcessDungeonFinderAsync</code> (async owns guard):
+<ul>
+<li>Checks existing character instance via <code>ISceneService.FetchCharacterInstanceAsync</code>.</li>
+<li>If no instance: checks party member instances via <code>CheckCharacterPartyInstanceAsync</code>, enqueues new scene via <code>ISceneService.EnqueueAsync</code>.</li>
+<li>Marshals to main thread: sets <code>InstanceID</code>, <code>InstancePosition</code>, <code>InstanceRotation</code>, enables <code>CharacterFlags.IsInInstance</code>, disconnects connection.</li>
+</ul>
+</li>
+</ol>
+<h3 id="mailbox-operations">Mailbox Operations</h3>
+<p><strong>Fetch</strong> (<code>OnServerMailFetchBroadcastReceived</code>):</p>
+<ol>
+<li>Validates connection, character, ingress guard, scene, and mailbox in range.</li>
+<li>Enqueues <code>FetchMailAsync</code>: fetches via <code>ICharacterMailService.FetchAsync</code>, marshals <code>MailListBroadcast</code> to main thread.</li>
+</ol>
+<p><strong>Send</strong> (<code>OnServerMailSendBroadcastReceived</code>):</p>
+<ol>
+<li>Validates connection, character, ingress guard, input (non-empty, length limits), scene, and mailbox in range.</li>
+<li>Enqueues <code>SendMailAsync</code>: calls <code>ICharacterMailService.SendAsync</code>.</li>
+</ol>
+<p><strong>Delete</strong> (<code>OnServerMailDeleteBroadcastReceived</code>):</p>
+<ol>
+<li>Validates connection, character, ingress guard, scene, and mailbox in range.</li>
+<li>Enqueues <code>DeleteMailAsync</code>: calls <code>ICharacterMailService.DeleteAsync</code>.</li>
+</ol>
+<h3 id="container-take-item">Container Take Item</h3>
+<p><code>OnServerContainerTakeItemBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, character, inventory controller, and ingress guard.</li>
+<li>Validates scene object and interactable in range.</li>
+<li>Confirms interactable is <code>IContainer</code> + <code>IItemContainer</code> with a template.</li>
+<li>Removes item from container slot.</li>
+<li>Calls <code>SendNewItemBroadcast</code> to add to inventory; on failure, puts item back.</li>
+<li>If container is empty and <code>DespawnWhenEmpty</code> is enabled, despawns.</li>
+</ol>
+<h3 id="inventory-persistence">Inventory Persistence</h3>
+<p><code>SendNewItemBroadcast(conn, character, inventoryController, newItem)</code>:</p>
+<ol>
+<li>Calls <code>TryAddItem</code> on inventory controller.</li>
+<li>Collects modified item data for DB persistence and broadcast.</li>
+<li>Broadcasts <code>InventorySetMultipleItemsBroadcast</code> to client.</li>
+<li>Enqueues <code>PersistInventoryItemsAsync</code> via async worker; falls back to direct async persistence with warning if worker rejects.</li>
+</ol>
+<h3 id="registered-handlers">Registered Handlers</h3>
+<p>The following handlers are auto-discovered and registered via reflection:</p>
+<table>
+<thead>
+<tr>
+<th>Handler</th>
+<th>Interactable Type</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AbilityCrafterHandler</code></td>
+<td><code>AbilityCrafter</code></td>
+<td>Broadcasts <code>AbilityCrafterBroadcast</code>, triggers NPC look-at</td>
+</tr>
+<tr>
+<td><code>BankerHandler</code></td>
+<td><code>Banker</code></td>
+<td>Sets <code>LastInteractableID</code>, broadcasts <code>BankerBroadcast</code>, triggers NPC look-at, increments achievement</td>
+</tr>
+<tr>
+<td><code>BindstoneHandler</code></td>
+<td><code>Bindstone</code></td>
+<td>Sets character <code>BindPosition</code> and <code>BindScene</code>, increments achievement</td>
+</tr>
+<tr>
+<td><code>CapturePointHandler</code></td>
+<td><code>CapturePoint</code></td>
+<td>Applies capture progress, broadcasts <code>CapturePointUpdateBroadcast</code>, increments achievement on capture</td>
+</tr>
+<tr>
+<td><code>ContainerHandler</code></td>
+<td><code>Container</code></td>
+<td>Builds slot data, broadcasts <code>ContainerOpenBroadcast</code>, increments achievement</td>
+</tr>
+<tr>
+<td><code>DialogueInteractableHandler</code></td>
+<td><code>DialogueInteractable</code></td>
+<td>Starts dialogue session via <code>StartDialogueSession</code>, triggers NPC look-at</td>
+</tr>
+<tr>
+<td><code>DungeonEntranceHandler</code></td>
+<td><code>DungeonEntrance</code></td>
+<td>Broadcasts <code>DungeonFinderBroadcast</code> to open finder UI</td>
+</tr>
+<tr>
+<td><code>GatheringNodeHandler</code></td>
+<td><code>GatheringNode</code></td>
+<td>Broadcasts <code>GatheringNodeBroadcast</code>, rolls weighted drop table, grants items, decrements uses, auto-despawns</td>
+</tr>
+<tr>
+<td><code>LoreObjectHandler</code></td>
+<td><code>LoreObject</code></td>
+<td>Broadcasts <code>LoreObjectBroadcast</code>, idempotently grants abilities/events/items</td>
+</tr>
+<tr>
+<td><code>MailboxHandler</code></td>
+<td><code>Mailbox</code></td>
+<td>Broadcasts <code>MailboxBroadcast</code> to open mail UI, increments achievement</td>
+</tr>
+<tr>
+<td><code>MerchantHandler</code></td>
+<td><code>Merchant</code></td>
+<td>Broadcasts <code>MerchantBroadcast</code> with template ID, triggers NPC look-at</td>
+</tr>
+<tr>
+<td><code>ShrineHandler</code></td>
+<td><code>Shrine</code></td>
+<td>Heals health/mana by percentage, applies buff stacks, broadcasts <code>ShrineBroadcast</code>, increments achievement</td>
+</tr>
+<tr>
+<td><code>SwitchHandler</code></td>
+<td><code>Switch</code></td>
+<td>Toggles <code>ISwitchTarget</code> activate/deactivate, broadcasts <code>SwitchStateBroadcast</code>, increments achievement</td>
+</tr>
+<tr>
+<td><code>TeleporterHandler</code></td>
+<td><code>Teleporter</code></td>
+<td>Teleports via direct transform or named destination, increments achievement</td>
+</tr>
+<tr>
+<td><code>WorldItemHandler</code></td>
+<td><code>WorldItem</code></td>
+<td>Picks up world item with concurrency guard, adjusts stack or despawns, increments achievement</td>
+</tr>
+</tbody>
+</table>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Invalid requests fail closed with no mutation.</li>
+<li>Scene/object/range checks prevent cross-scene and spoofed interaction attempts.</li>
+<li>Merchant tab accesses use explicit index bounds checks.</li>
+<li>Ability craft event selection rejects duplicates and unknown/unowned events.</li>
+<li>Dialogue sessions are bounded; excess sessions are rejected with a warning.</li>
+<li>Mailbox input length is capped to prevent oversized payloads.</li>
+<li>World item pickup uses <code>ConcurrentDictionary</code> to prevent item duplication.</li>
+<li>Async enqueue failures are handled explicitly: inventory persistence falls back to direct async path; ability/known-ability persistence fails closed (no learn mutation on rejection).</li>
+<li>Main-thread completion paths revalidate runtime state before mutating or broadcasting.</li>
+<li>Ingress guards are always released in <code>finally</code> blocks (synchronous or async-owned).</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>InteractableSystem</code> logs &quot;Initialized&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Handler registration</td>
+<td>Confirm log entries &quot;Registered handler for [type]&quot; for all 15 handler types</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>IInteractableSystemRuntimeData</code> and <code>IInteractableSystemMainThreadQueueData</code> resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Generic interaction</td>
+<td>Send <code>InteractableBroadcast</code> for a merchant; confirm <code>MerchantBroadcast</code> reply with template ID</td>
+</tr>
+<tr>
+<td>Merchant item purchase</td>
+<td>Send <code>MerchantPurchaseBroadcast</code> with <code>MerchantTabType.Item</code>; confirm <code>InventorySetMultipleItemsBroadcast</code> reply and currency deduction</td>
+</tr>
+<tr>
+<td>Merchant ability purchase</td>
+<td>Send <code>MerchantPurchaseBroadcast</code> with <code>MerchantTabType.Ability</code>; confirm <code>KnownAbilityAddBroadcast</code> reply</td>
+</tr>
+<tr>
+<td>Merchant event purchase</td>
+<td>Send <code>MerchantPurchaseBroadcast</code> with <code>MerchantTabType.AbilityEvent</code>; confirm <code>KnownAbilityEventAddBroadcast</code> reply</td>
+</tr>
+<tr>
+<td>Merchant invalid tab index</td>
+<td>Send purchase with out-of-bounds index; confirm request is silently rejected</td>
+</tr>
+<tr>
+<td>Insufficient currency</td>
+<td>Send purchase with insufficient currency; confirm request is silently rejected</td>
+</tr>
+<tr>
+<td>Ability craft</td>
+<td>Send <code>AbilityCraftBroadcast</code> with valid base + events; confirm <code>AbilityAddBroadcast</code> reply</td>
+</tr>
+<tr>
+<td>Duplicate craft events</td>
+<td>Send <code>AbilityCraftBroadcast</code> with duplicate event IDs; confirm request is rejected</td>
+</tr>
+<tr>
+<td>Unknown craft event</td>
+<td>Send <code>AbilityCraftBroadcast</code> with an event the character doesn't know; confirm rejection</td>
+</tr>
+<tr>
+<td>Max ability cap</td>
+<td>Craft abilities up to <code>maxAbilityCount</code>; confirm next craft is rejected</td>
+</tr>
+<tr>
+<td>Oversized event payload</td>
+<td>Send <code>AbilityCraftBroadcast</code> with more than <code>maxAbilityCraftEvents</code> events; confirm rejection</td>
+</tr>
+<tr>
+<td>Dialogue start</td>
+<td>Interact with <code>DialogueInteractable</code>; confirm <code>DialogueStartBroadcast</code> with template ID and start node</td>
+</tr>
+<tr>
+<td>Dialogue choice</td>
+<td>Send <code>DialogueChoiceBroadcast</code> with valid node/choice; confirm <code>DialogueChoiceResultBroadcast</code> or <code>DialogueEndBroadcast</code></td>
+</tr>
+<tr>
+<td>Dialogue range check</td>
+<td>Move out of range during dialogue; confirm session ends with <code>DialogueEndBroadcast</code></td>
+</tr>
+<tr>
+<td>ECA dialogue</td>
+<td>Trigger <code>DisplayDialogueAction</code>; confirm dialogue session starts without physical interactable</td>
+</tr>
+<tr>
+<td>Dialogue session cap</td>
+<td>Fill <code>MaxActiveDialogueSessions</code>; confirm new sessions are rejected with warning</td>
+</tr>
+<tr>
+<td>Dungeon finder</td>
+<td>Send <code>DungeonFinderBroadcast</code> at dungeon entrance; confirm character is assigned instance and disconnected</td>
+</tr>
+<tr>
+<td>Dungeon party conflict</td>
+<td>Have a party member in an instance; confirm dungeon finder detects the conflict</td>
+</tr>
+<tr>
+<td>Mail fetch</td>
+<td>Send <code>MailFetchBroadcast</code> near mailbox; confirm <code>MailListBroadcast</code> reply</td>
+</tr>
+<tr>
+<td>Mail send</td>
+<td>Send <code>MailSendBroadcast</code> with valid data; confirm async persistence completes</td>
+</tr>
+<tr>
+<td>Mail send invalid input</td>
+<td>Send <code>MailSendBroadcast</code> with empty subject; confirm rejection</td>
+</tr>
+<tr>
+<td>Mail send oversized</td>
+<td>Send mail exceeding <code>MaxMailSubjectLength</code> or <code>MaxMailBodyLength</code>; confirm rejection</td>
+</tr>
+<tr>
+<td>Mail delete</td>
+<td>Send <code>MailDeleteBroadcast</code> near mailbox; confirm async soft-delete completes</td>
+</tr>
+<tr>
+<td>Container take item</td>
+<td>Send <code>ContainerTakeItemBroadcast</code>; confirm item appears in inventory via <code>InventorySetMultipleItemsBroadcast</code></td>
+</tr>
+<tr>
+<td>Container auto-despawn</td>
+<td>Take last item from <code>DespawnWhenEmpty</code> container; confirm container despawns</td>
+</tr>
+<tr>
+<td>Container failed pickup</td>
+<td>Take item with full inventory; confirm item is returned to container slot</td>
+</tr>
+<tr>
+<td>World item pickup</td>
+<td>Interact with <code>WorldItem</code>; confirm item added to inventory and world item despawned</td>
+</tr>
+<tr>
+<td>World item duplication guard</td>
+<td>Interact with same <code>WorldItem</code> from two connections simultaneously; confirm only one succeeds</td>
+</tr>
+<tr>
+<td>Gathering node</td>
+<td>Interact with <code>GatheringNode</code>; confirm <code>GatheringNodeBroadcast</code> and item grant</td>
+</tr>
+<tr>
+<td>Gathering node depletion</td>
+<td>Deplete all uses; confirm node despawns</td>
+</tr>
+<tr>
+<td>Capture point</td>
+<td>Interact with <code>CapturePoint</code>; confirm <code>CapturePointUpdateBroadcast</code> with progress</td>
+</tr>
+<tr>
+<td>Shrine healing</td>
+<td>Interact with <code>Shrine</code>; confirm health/mana restored and <code>ShrineBroadcast</code> sent</td>
+</tr>
+<tr>
+<td>Switch toggle</td>
+<td>Interact with <code>Switch</code>; confirm <code>SwitchStateBroadcast</code> with toggled state</td>
+</tr>
+<tr>
+<td>Bindstone</td>
+<td>Interact with <code>Bindstone</code>; confirm <code>BindPosition</code> and <code>BindScene</code> updated</td>
+</tr>
+<tr>
+<td>Teleporter</td>
+<td>Interact with <code>Teleporter</code>; confirm character repositioned or teleported</td>
+</tr>
+<tr>
+<td>Lore object</td>
+<td>Interact with <code>LoreObject</code>; confirm <code>LoreObjectBroadcast</code> and idempotent ability grants</td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid consecutive interactions; confirm excess requests are dropped</td>
+</tr>
+<tr>
+<td>Debounce sweep</td>
+<td>Wait for <code>debounceSweepIntervalSeconds</code>; confirm stale entries are cleaned up</td>
+</tr>
+<tr>
+<td>NPC look-at</td>
+<td>Interact with NPC merchant; confirm NPC faces character and transitions to idle</td>
+</tr>
+<tr>
+<td>Out-of-range interaction</td>
+<td>Send interaction from beyond range; confirm request is rejected</td>
+</tr>
+<tr>
+<td>Cross-scene interaction</td>
+<td>Send interaction for object in different scene; confirm request is rejected</td>
+</tr>
+<tr>
+<td>Main-thread queue drain</td>
+<td>Confirm queued async results are dispatched on the main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Async backpressure</td>
+<td>Saturate async worker queue; confirm new work is rejected with a logged warning and fallback paths execute</td>
+</tr>
+<tr>
+<td>Inventory persistence fallback</td>
+<td>Reject async inventory persist; confirm fallback direct-persistence executes with warning</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm broadcast handlers unregistered, handlers cleared, dialogue sessions cleared, and main-thread queue drained</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|interact request| Sys[InteractableSystem]
+    Sys --&gt;|range + cooldown check| Sys
+    Sys --&gt;|invoke handler| Handler[Interactable handler]
+    Handler --&gt;|loot / dialogue / portal| Effects
+    Effects --&gt;|persist| DB[(PostgreSQL)]
+    Effects --&gt;|broadcast| Client
+</code></pre>
+<h3 id="generic-interaction-dispatch-1">Generic Interaction Dispatch</h3>
+<pre><code>OnServerInteractableBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned character
+├─ 2. Acquire ingress guard (global key 0)
+├─ 3. Validate scene via WorldSceneDetailsCache
+├─ 4. ValidateSceneObject(msg.InteractableID, characterSceneHandle)
+│      ├── Existence check in SceneObject.Objects
+│      └── Same-scene handle check
+├─ 5. GetComponent&lt;IInteractable&gt;() + CanInteract(character)
+├─ 6. Resolve interactable.GetType() → lookup in InteractableHandlers
+└─ 7. handler.HandleInteraction(interactable, character, sceneObject, this)
+       │
+       └── (Handler-specific logic: broadcast, state change, achievement, etc.)
+</code></pre>
+<h3 id="merchant-purchase-1">Merchant Purchase</h3>
+<pre><code>OnServerMerchantPurchaseBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + character + inventory controller
+├─ 2. Acquire ingress guard
+├─ 3. Validate MerchantTemplate + scene + object + range + IMerchant match
+└─ 4. Switch on msg.Type:
+       │
+       ├─ Item:
+       │    ├── Validate index bounds + currency
+       │    ├── Create Item → SendNewItemBroadcast
+       │    └── Deduct currency
+       │
+       ├─ Ability:
+       │    └── LearnAbilityTemplate → validate not known + currency
+       │         ├── TryEnqueueAsyncWork → PersistKnownAbilityAsync
+       │         ├── LearnBaseAbilities on controller
+       │         └── Broadcast KnownAbilityAddBroadcast
+       │
+       └─ AbilityEvent:
+            └── LearnAbilityEvent → validate not known + currency
+                 ├── TryEnqueueAsyncWork → PersistKnownAbilityAsync
+                 ├── LearnAbilityEvents on controller
+                 └── Broadcast KnownAbilityEventAddBroadcast
+</code></pre>
+<h3 id="ability-crafting-1">Ability Crafting</h3>
+<pre><code>OnServerAbilityCraftBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + character + ability controller
+├─ 2. Acquire ingress guard
+├─ 3. Validate AbilityTemplate + scene + object + range
+├─ 4. Validate: knows base, doesn't have crafted, under maxAbilityCount
+├─ 5. Validate events: cap check, no duplicates, all known
+├─ 6. Sum price (base + events), check currency
+└─ 7. LearnAbility(abilityController, template, events)
+       │
+       ├── Create Ability(template, events)
+       ├── TryEnqueueAsyncWork → PersistAbilityAsync
+       ├── abilityController.LearnAbility(newAbility)
+       ├── Deduct currency
+       ├── Broadcast AbilityAddBroadcast
+       └── Increment achievement
+</code></pre>
+<h3 id="dialogue-flow">Dialogue Flow</h3>
+<pre><code>StartDialogueSession(character, sceneObject, dialogue)
+│
+├─ EndDialogueSession (close any existing)
+├─ Bounded capacity check
+├─ Evaluate start node conditions (ECA)
+├─ Execute start node on-enter actions
+├─ Load cached choices
+├─ Create DialogueSession
+└─ Broadcast DialogueStartBroadcast
+
+OnServerDialogueChoiceBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + character + ingress guard
+├─ 2. Validate session exists + node matches
+├─ 3. Validate template + scene + range
+├─ 4. Validate choice index bounds
+├─ 5. Evaluate choice conditions (ECA)
+├─ 6. Execute current node on-exit actions
+├─ 7. Execute choice on-select actions
+├─ 8. Update choice bitmask
+└─ 9. If NextNodeId &lt; 0:
+       │    ├── Cache choices if enabled
+       │    └── EndDialogueSessionWithBroadcast
+       └── Else:
+            ├── Evaluate next node conditions
+            ├── Execute next node on-enter actions
+            ├── Advance session (CurrentNodeId = NextNodeId)
+            └── Broadcast DialogueChoiceResultBroadcast
+</code></pre>
+<h3 id="dungeon-finder-1">Dungeon Finder</h3>
+<pre><code>OnServerDungeonFinderBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + character + ingress guard
+├─ 2. Validate scene object + IDungeonEntrance + range
+├─ 3. Validate dungeon scene + respawn positions
+├─ 4. Capture main-thread state (charID, worldServerID, partyID, dungeonName, respawn)
+├─ 5. Increment achievement
+└─ 6. TryEnqueueAsyncWork → ProcessDungeonFinderAsync (async owns guard)
+       │
+       ├── ISceneService.FetchCharacterInstanceAsync(characterID)
+       ├── If no existing instance:
+       │    ├── CheckCharacterPartyInstanceAsync(partyID)
+       │    │    └── ICharacterPartyService.FetchManyAsync → check each member instance
+       │    └── ISceneService.EnqueueAsync → new sceneID
+       │         └── TryEnqueueMainThread:
+       │              ├── Set InstanceID, InstancePosition, InstanceRotation
+       │              ├── EnableFlags(CharacterFlags.IsInInstance)
+       │              └── conn.Disconnect(false)
+       └── If existing instance:
+            └── TryEnqueueMainThread:
+                 ├── Set InstanceID, InstancePosition, InstanceRotation
+                 ├── EnableFlags(CharacterFlags.IsInInstance)
+                 └── conn.Disconnect(false)
+</code></pre>
+<h3 id="mailbox-operations-1">Mailbox Operations</h3>
+<pre><code>OnServerMailFetchBroadcastReceived(conn, msg, channel)
+│
+├─ Validate connection + character + ingress guard + scene + mailbox in range
+└─ TryEnqueueAsyncWork → FetchMailAsync (async owns guard)
+       ├── ICharacterMailService.FetchAsync(characterID)
+       └── TryEnqueueMainThread → Broadcast MailListBroadcast
+
+OnServerMailSendBroadcastReceived(conn, msg, channel)
+│
+├─ Validate connection + character + ingress guard + input + scene + mailbox in range
+└─ TryEnqueueAsyncWork → SendMailAsync (async owns guard)
+       └── ICharacterMailService.SendAsync(senderID, ...)
+
+OnServerMailDeleteBroadcastReceived(conn, msg, channel)
+│
+├─ Validate connection + character + ingress guard + scene + mailbox in range
+└─ TryEnqueueAsyncWork → DeleteMailAsync (async owns guard)
+       └── ICharacterMailService.DeleteAsync(mailID, characterID)
+</code></pre>
+<h3 id="onupdate-loop">OnUpdate Loop</h3>
+<pre><code>OnUpdate(deltaTime)
+│
+├─ 1. DrainMainThreadQueue (up to maxMainThreadActionsPerFrame)
+└─ 2. SweepDebounceTrackers()
+       └── IngressGuard.Sweep(interval, ttl, maxRemovals)
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Interactable/
+├── README.md                                  # This document
+├── HandlesInteractableAttribute.cs            # Attribute for handler-to-interactable type mapping
+├── IInteractableHandlerInitializer.cs         # Handler registration contract
+├── InteractableHandlerInitializer.cs          # Default handler registration ScriptableObject (reflection auto-discovery)
+├── InteractableSystem.cs                      # Main SceneServer interactable subsystem (dispatch, handler registry, NPC look-at)
+├── InteractableSystem.AbilityCraft.cs         # Partial: ability craft broadcast handling and async persistence
+├── InteractableSystem.Container.cs            # Partial: container take-item broadcast handling
+├── InteractableSystem.Dialogue.cs             # Partial: server-authoritative dialogue sessions, ECA evaluation, choice tracking
+├── InteractableSystem.DungeonFinder.cs        # Partial: dungeon finder broadcast handling and async instance assignment
+├── InteractableSystem.Mailbox.cs              # Partial: mail fetch/send/delete broadcast handling and async persistence
+├── InteractableSystem.Merchant.cs             # Partial: merchant purchase broadcast handling (items, abilities, events)
+├── InteractableSystemMainThreadQueueData.cs   # Main-thread action queue container
+├── InteractableSystemRuntimeData.cs           # Runtime state (IngressGuard, handler registry dictionary)
+└── Handlers/                                  # Concrete IInteractableHandler implementations
+    ├── AbilityCrafterHandler.cs               # Opens ability crafting UI, triggers NPC look-at
+    ├── BankerHandler.cs                       # Opens bank UI, sets LastInteractableID, triggers NPC look-at
+    ├── BindstoneHandler.cs                    # Sets character BindPosition and BindScene
+    ├── DialogueInteractableHandler.cs         # Starts server-authoritative dialogue session
+    ├── DungeonEntranceHandler.cs              # Opens dungeon finder UI
+    ├── MerchantHandler.cs                     # Opens merchant UI with template ID, triggers NPC look-at
+    ├── TeleporterHandler.cs                   # Teleports via direct transform or named destination
+    ├── WorldItemHandler.cs                    # Picks up world item with concurrency guard
+    ├── CapturePoint/
+    │   └── CapturePointHandler.cs             # Applies capture progress, broadcasts state
+    ├── Container/
+    │   └── ContainerHandler.cs                # Opens container UI with slot data
+    ├── GatheringNode/
+    │   └── GatheringNodeHandler.cs            # Rolls drop table, grants items, depletes node
+    ├── LoreObject/
+    │   └── LoreObjectHandler.cs               # Displays lore text, idempotent ability/event/item grants
+    ├── Mailbox/
+    │   └── MailboxHandler.cs                  # Opens mail UI
+    ├── Shrine/
+    │   └── ShrineHandler.cs                   # Heals health/mana, applies buffs
+    └── Switch/
+        └── SwitchHandler.cs                   # Toggles ISwitchTarget, broadcasts state
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/Interactable/IInteractableSystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Interactable/IInteractableHandler.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Interactable/IInteractableSystemRuntimeData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Interactable/IInteractableSystemMainThreadQueueData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── InteractableSystem : IInteractableSystem (partial class)
+        ├── InteractableSystem.cs              # Core: init, deinit, dispatch, handler registry, update loop
+        ├── InteractableSystem.AbilityCraft.cs  # Ability crafting broadcast + persistence
+        ├── InteractableSystem.Container.cs     # Container take-item broadcast
+        ├── InteractableSystem.Dialogue.cs      # Dialogue session management + ECA
+        ├── InteractableSystem.DungeonFinder.cs # Dungeon finder async flow
+        ├── InteractableSystem.Mailbox.cs       # Mail fetch/send/delete async flows
+        └── InteractableSystem.Merchant.cs      # Merchant purchase + ability learning
+
+RuntimeDataContainer
+└── InteractableSystemRuntimeData : IInteractableSystemRuntimeData
+
+SystemMainThreadQueueData
+└── InteractableSystemMainThreadQueueData : IInteractableSystemMainThreadQueueData
+
+ScriptableObject
+└── InteractableHandlerInitializer : IInteractableHandlerInitializer
+
+Attribute
+└── HandlesInteractableAttribute
+
+IInteractableHandler (implemented by all 15 handlers)
+├── AbilityCrafterHandler       [HandlesInteractable(typeof(AbilityCrafter))]
+├── BankerHandler               [HandlesInteractable(typeof(Banker))]
+├── BindstoneHandler            [HandlesInteractable(typeof(Bindstone))]
+├── CapturePointHandler         [HandlesInteractable(typeof(CapturePoint))]
+├── ContainerHandler            [HandlesInteractable(typeof(Container))]
+├── DialogueInteractableHandler [HandlesInteractable(typeof(DialogueInteractable))]
+├── DungeonEntranceHandler      [HandlesInteractable(typeof(DungeonEntrance))]
+├── GatheringNodeHandler        [HandlesInteractable(typeof(GatheringNode))]
+├── LoreObjectHandler           [HandlesInteractable(typeof(LoreObject))]
+├── MailboxHandler              [HandlesInteractable(typeof(Mailbox))]
+├── MerchantHandler             [HandlesInteractable(typeof(Merchant))]
+├── ShrineHandler               [HandlesInteractable(typeof(Shrine))]
+├── SwitchHandler               [HandlesInteractable(typeof(Switch))]
+├── TeleporterHandler           [HandlesInteractable(typeof(Teleporter))]
+└── WorldItemHandler            [HandlesInteractable(typeof(WorldItem))]
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Interactable/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

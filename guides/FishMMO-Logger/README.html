@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO-Logger | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO-Logger | FishMMO ">
+      
+      
+      <link rel="icon" href="../../favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="../toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Logger/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-logger">FishMMO-Logger</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Logger/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><code>FishMMO-Logger</code> is a small, configurable, <strong>JSON-driven logging library</strong> used by
+every headless FishMMO server (LoginServer, WorldServer, SceneServer, WebServers,
+DiscordBot, AppHealthMonitor) and by the Unity client builds. It exposes a
+static <code>Log</code> facade, a typed <code>LogLevel</code> enum, a structured <code>LogEntry</code>, and a
+plug-in model for sinks (<code>ILogger</code> + <code>ILoggerConfig</code>). Two built-in sinks are
+shipped — <code>File</code> (with rotation) and <code>Email</code> (via SMTP) — and you can register
+additional sinks at runtime.</p>
+<p>The library is <strong>netstandard2.1</strong>, has no dependency on Unity or EF Core, and
+is safe to reference from any FishMMO project.</p>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#description">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#key-components">Key Components</a></li>
+<li><a href="#configuration">Configuration</a>
+<ul>
+<li><a href="#loggingjson-shape"><code>logging.json</code> shape</a></li>
+<li><a href="#file-logger-options">File logger options</a></li>
+<li><a href="#email-logger-options">Email logger options</a></li>
+</ul>
+</li>
+<li><a href="#initialization-example">Initialization Example</a></li>
+<li><a href="#extending--adding-a-custom-sink">Extending — Adding a Custom Sink</a></li>
+<li><a href="#build">Build</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+</ul>
+<hr>
+<h2 id="description">Description</h2>
+<p>The logger is intentionally small and synchronous-friendly. Application code
+calls <code>Log.Info(&quot;Category&quot;, &quot;message&quot;)</code> (or <code>Warn</code>, <code>Error</code>, <code>Critical</code>,
+<code>Debug</code>, <code>Trace</code>); the call is dispatched to every configured sink that
+satisfies the configured minimum level. <code>Log.Initialize(...)</code> reads a JSON
+configuration file, parses it via a polymorphic <code>ILoggerConfigConverter</code>, and
+instantiates each registered sink type.</p>
+<p>The same library is used to centralize <strong>email alerts on Error / Critical</strong>
+log lines from production servers, and to write rotating per-server log files
+that the patcher service exposes to the operator dashboard.</p>
+<hr>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET Standard 2.1</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>.NET 8.0 servers</td>
+<td>Yes (via netstandard2.1 multi-target)</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes (referenced as a managed DLL in <code>Assets/Dependencies/</code>)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>System.Text.Json</code></td>
+<td>Configuration parsing</td>
+</tr>
+<tr>
+<td><code>System.Net.Mail</code> (BCL)</td>
+<td>Email sink</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="architecture">Architecture</h2>
+<pre><code>FishMMO-Logger/
+├── Log.cs                       # Static facade — Initialize, Info/Warn/Error/...
+├── LogEntry.cs                  # Immutable struct: timestamp, level, category, message, exception
+├── LogLevel.cs                  # Trace &lt; Debug &lt; Info &lt; Warning &lt; Error &lt; Critical
+├── LoggingConfig.cs             # Root config object loaded from logging.json
+├── LoggingManagerConfig.cs      # Per-logger envelope (Type + Config)
+├── ConsoleFormatter/            # ANSI / plain-text console formatting helpers
+└── Logger/
+    ├── ILogger.cs               # Sink contract:  Task LogAsync(LogEntry entry)
+    ├── ILoggerConfig.cs         # Config contract per sink type
+    ├── ILoggerConfigConverter.cs# System.Text.Json polymorphic converter
+    └── Types/
+        ├── File/                # FileLogger + FileLoggerConfig (rotation, append)
+        └── Email/               # EmailLogger + EmailLoggerConfig (SMTP)
+</code></pre>
+<p>Application code only depends on <code>Log</code> and <code>LogLevel</code>. Everything else is
+internal plumbing that lets the JSON configuration round-trip into concrete
+sink instances at startup.</p>
+<hr>
+<h2 id="key-components">Key Components</h2>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Log</code></td>
+<td>Static facade. <code>Initialize(path)</code>, <code>RegisterLoggerFactory(name, factory)</code>, <code>Info/Warn/Error/Debug/Trace/Critical(category, message [, exception])</code>, <code>Shutdown()</code>.</td>
+</tr>
+<tr>
+<td><code>LogEntry</code></td>
+<td>Structured payload passed to each sink — timestamp, level, category, message, optional <code>Exception</code>.</td>
+</tr>
+<tr>
+<td><code>LogLevel</code></td>
+<td>Ordered enum used for filter comparisons.</td>
+</tr>
+<tr>
+<td><code>LoggingConfig</code></td>
+<td>Root config object (<code>LogLevel</code> + <code>Loggers[]</code>).</td>
+</tr>
+<tr>
+<td><code>LoggingManagerConfig</code></td>
+<td>Polymorphic envelope <code>{ &quot;Type&quot;: &quot;File&quot;, &quot;Config&quot;: { ... } }</code> parsed by <code>ILoggerConfigConverter</code>.</td>
+</tr>
+<tr>
+<td><code>ILogger</code></td>
+<td>Sink contract — <code>Task LogAsync(LogEntry entry)</code>.</td>
+</tr>
+<tr>
+<td><code>ILoggerConfig</code></td>
+<td>Sink-config contract — discovered by reflection / explicit registration.</td>
+</tr>
+<tr>
+<td><code>ConsoleFormatter</code></td>
+<td>Optional helper that formats <code>LogEntry</code> with ANSI colors for terminal output.</td>
+</tr>
+<tr>
+<td><code>Logger/Types/File/FileLogger</code></td>
+<td>Append-or-truncate file sink with byte-size based rotation.</td>
+</tr>
+<tr>
+<td><code>Logger/Types/Email/EmailLogger</code></td>
+<td>SMTP sink (typically filtered to <code>Error</code> / <code>Critical</code>).</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="configuration">Configuration</h2>
+<p>The logger is driven by a single JSON file (canonically <code>logging.json</code>) loaded
+via <code>Log.Initialize(&quot;logging.json&quot;)</code> at process start. The file binds to
+<code>LoggingConfig</code>.</p>
+<h3 id="loggingjson-shape"><code>logging.json</code> shape</h3>
+<pre><code class="lang-json">{
+  &quot;LogLevel&quot;: &quot;Info&quot;,
+  &quot;Loggers&quot;: [
+    {
+      &quot;Type&quot;: &quot;File&quot;,
+      &quot;Config&quot;: {
+        &quot;FilePath&quot;: &quot;logs/app.log&quot;,
+        &quot;Append&quot;: true,
+        &quot;MaxFileSizeMB&quot;: 10
+      }
+    },
+    {
+      &quot;Type&quot;: &quot;Email&quot;,
+      &quot;Config&quot;: {
+        &quot;MinimumLevel&quot;: &quot;Error&quot;,
+        &quot;SmtpServer&quot;: &quot;smtp.example.com&quot;,
+        &quot;Port&quot;: 587,
+        &quot;EnableSsl&quot;: true,
+        &quot;Username&quot;: &quot;alerts@example.com&quot;,
+        &quot;Password&quot;: &quot;********&quot;,
+        &quot;From&quot;: &quot;alerts@example.com&quot;,
+        &quot;To&quot;: &quot;ops@example.com&quot;,
+        &quot;Subject&quot;: &quot;FishMMO Log Alert&quot;
+      }
+    }
+  ]
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LogLevel</code></td>
+<td>Global minimum level. Sinks may raise it further.</td>
+</tr>
+<tr>
+<td><code>Loggers</code></td>
+<td>Array of <code>{ Type, Config }</code> pairs. <code>Type</code> must match a registered factory (built-in: <code>File</code>, <code>Email</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="file-logger-options">File logger options</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FilePath</code></td>
+<td>Path to the log file (created if missing). Relative to working directory.</td>
+</tr>
+<tr>
+<td><code>Append</code></td>
+<td><code>true</code> to append; <code>false</code> to truncate on startup.</td>
+</tr>
+<tr>
+<td><code>MaxFileSizeMB</code></td>
+<td>Optional rotation threshold. Rolled file is renamed with a timestamp suffix.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="email-logger-options">Email logger options</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MinimumLevel</code></td>
+<td>Per-sink override of the global level (recommended: <code>Error</code> or <code>Critical</code>).</td>
+</tr>
+<tr>
+<td><code>SmtpServer</code></td>
+<td>SMTP host.</td>
+</tr>
+<tr>
+<td><code>Port</code></td>
+<td>SMTP port.</td>
+</tr>
+<tr>
+<td><code>EnableSsl</code></td>
+<td><code>true</code> for TLS.</td>
+</tr>
+<tr>
+<td><code>Username</code> / <code>Password</code></td>
+<td>SMTP credentials. <strong>Treat as secret.</strong></td>
+</tr>
+<tr>
+<td><code>From</code> / <code>To</code></td>
+<td>Envelope addresses.</td>
+</tr>
+<tr>
+<td><code>Subject</code></td>
+<td>Subject prefix used for every alert.</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Security note:</strong> keep <code>logging.json</code> out of source control if it contains
+SMTP credentials, or load credentials from environment variables in a custom
+sink wrapper.</p>
+</blockquote>
+<hr>
+<h2 id="initialization-example">Initialization Example</h2>
+<pre><code class="lang-csharp">using FishMMO.Logging;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task Main()
+    {
+        // Optional: register a custom sink type before initialization.
+        Log.RegisterLoggerFactory(
+            &quot;MyCustomLoggerConfig&quot;,
+            (cfg, logCallback) =&gt; new MyCustomLogger((MyCustomLoggerConfig)cfg, logCallback));
+
+        await Log.Initialize(&quot;logging.json&quot;);
+
+        await Log.Info(&quot;Bootstrap&quot;, &quot;Application started.&quot;);
+        try
+        {
+            // ... your code ...
+        }
+        catch (System.Exception ex)
+        {
+            await Log.Critical(&quot;Bootstrap&quot;, &quot;Unhandled exception&quot;, ex);
+            throw;
+        }
+        finally
+        {
+            await Log.Shutdown();
+        }
+    }
+}
+</code></pre>
+<hr>
+<h2 id="extending--adding-a-custom-sink">Extending — Adding a Custom Sink</h2>
+<ol>
+<li>Implement <code>ILoggerConfig</code> with the fields you need.</li>
+<li>Implement <code>ILogger</code> and accept your config in its constructor:
+<pre><code class="lang-csharp">public sealed class MyCustomLogger : ILogger
+{
+    public MyCustomLogger(MyCustomLoggerConfig cfg, Action&lt;string&gt; logCallback) { ... }
+    public Task LogAsync(LogEntry entry) { ... }
+}
+</code></pre>
+</li>
+<li>Register a factory <strong>before</strong> <code>Log.Initialize</code>:
+<pre><code class="lang-csharp">Log.RegisterLoggerFactory(&quot;MyCustomLoggerConfig&quot;,
+    (cfg, cb) =&gt; new MyCustomLogger((MyCustomLoggerConfig)cfg, cb));
+</code></pre>
+</li>
+<li>Reference it from <code>logging.json</code>:
+<pre><code class="lang-json">{ &quot;Type&quot;: &quot;MyCustom&quot;, &quot;Config&quot;: { ... } }
+</code></pre>
+</li>
+</ol>
+<hr>
+<h2 id="build">Build</h2>
+<pre><code class="lang-bash">dotnet build FishMMO-Logger.sln -c Release
+</code></pre>
+<p>The output <code>FishMMO-Logger.dll</code> is consumed by the other server projects via
+<code>ProjectReference</code>, and copied into the Unity dependencies folder for use by
+the Unity client and headless server builds.</p>
+<hr>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart LR
+    App[&quot;App code&lt;br/&gt;Log.Info / Warn / Error&quot;] --&gt; Facade[Log static facade]
+    Facade --&gt;|&quot;filter by LogLevel&quot;| Dispatcher{Dispatch}
+    Dispatcher --&gt; FileSink[FileLogger&lt;br/&gt;rotating file]
+    Dispatcher --&gt; EmailSink[&quot;EmailLogger&lt;br/&gt;SMTP (Error+)&quot;]
+    Dispatcher --&gt; Custom[&quot;Custom sink(s)&lt;br/&gt;registered via factory&quot;]
+
+    Config[logging.json] --&gt;|Log.Initialize| Facade
+    Config -. parsed via .-&gt; Converter[ILoggerConfigConverter]
+    Converter --&gt; Dispatcher
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Logger/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Cooldown System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Cooldown System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="cooldown-system">Cooldown System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Deterministic, tick-based per-ability cooldown manager using immutable <code>CooldownInstance</code> structs with <code>IPredictableController</code> (Order=90) integration for FishNet Prediction V2.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features--capabilities--security-features">Features / Capabilities / Security Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Cooldown system manages per-ability cooldowns for FishMMO characters using immutable, tick-based <code>CooldownInstance</code> structs. Cooldowns are recorded as <code>(StartTick, DurationTicks)</code> pairs and expire via integer comparison: <code>(currentTick - StartTick) &gt;= DurationTicks</code>. This design is perfectly deterministic across client and server — no per-tick mutation is needed, eliminating float drift and double-subtract risks during reconcile replay.</p>
+<blockquote>
+<p>Note: See the Detailed File-Level Topology in the parent <code>Prediction/README.md</code> (<code>../../README.md#detailed-file-level-topology</code>) for a file-level call/serialization topology and per-file interactions.</p>
+</blockquote>
+<p><code>CooldownController</code> implements <code>IPredictableController</code> (Order=90), running after <code>BuffController</code> (80) and before <code>CharacterAttributeController</code> (95) in the unified prediction pipeline driven by <code>CharacterPredictionController</code>. On each tick, it calls <code>ExpireElapsed()</code> to remove finished cooldowns. Reconcile snapshots use <code>CooldownReconcileEntry[]</code> arrays with index-delta compression for bandwidth-efficient network synchronization.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>✅ Supported</td>
+<td>Primary development platform</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>✅ Supported</td>
+<td>Server and client builds</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>✅ Supported</td>
+<td>Via Unity WebGL export</td>
+</tr>
+</tbody>
+</table>
+<p>Built with <strong>Unity 6.3 LTS</strong> using <strong>IL2CPP</strong> scripting backend.</p>
+<h2 id="features--capabilities--security-features">Features / Capabilities / Security Features</h2>
+<h3 id="features">Features</h3>
+<ul>
+<li><strong>Immutable cooldown instances</strong> — <code>CooldownInstance</code> is a <code>readonly struct</code> with <code>StartTick</code> and <code>DurationTicks</code>; no per-tick mutation needed</li>
+<li><strong>Deterministic tick-based expiry</strong> — Integer comparison <code>(currentTick - StartTick) &gt;= DurationTicks</code> produces identical results on client and server</li>
+<li><strong>Zero float drift</strong> — All timing uses <code>uint</code> network ticks; seconds are only computed for UI display via <code>RemainingTime(currentTick)</code></li>
+<li><strong>Prediction V2 integration</strong> — <code>IPredictableController</code> (Order=90) with <code>PopulateInput</code>, <code>OnReplicate</code>, <code>OnCreateReconcile</code>, <code>OnReconcile</code></li>
+<li><strong>Cached reconcile snapshots</strong> — <code>CreateReconcileSnapshot()</code> returns the cached array when cooldowns haven't changed (<code>snapshotDirty</code> flag), enabling reference-equality shortcutting in the delta serializer</li>
+<li><strong>Index-delta array compression</strong> — <code>CooldownReconcileEntry.WriteArrayDelta</code> transmits only changed entries; reference-equal arrays produce zero network bytes</li>
+<li><strong>Payload bounds checking</strong> — <code>Read()</code> and delta serializer cap entries at 4096 to guard against malformed packets</li>
+<li><strong>Static events</strong> — <code>OnAddCooldown</code>, <code>OnUpdateCooldown</code>, <code>OnRemoveCooldown</code> for UI integration (owner-only)</li>
+</ul>
+<h3 id="security-features">Security Features</h3>
+<ul>
+<li>Cooldown state is server-authoritative — reconcile overwrites client state on mismatch</li>
+<li>Payload deserialization caps array sizes at <code>MaxEntries</code> (4096) to prevent allocation attacks</li>
+<li><code>Read()</code> discards expired entries based on <code>currentTick</code>, preventing stale cooldown injection</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong> (or compatible version)</li>
+<li><strong>FishNetworking</strong> with Prediction V2 support</li>
+<li><strong>FishMMO Shared Core</strong> — <code>CharacterBehaviour</code>, <code>IPredictableController</code>, <code>ICooldownController</code>, <code>IntBitExtensions</code></li>
+<li><strong>CharacterPredictionController</strong> — drives the unified prediction pipeline</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>The Cooldown system is an integral part of the <strong>FishMMO Unity project</strong>. There is no separate installation step.</p>
+<ol>
+<li>Clone or update the FishMMO repository.</li>
+<li>Open the project in Unity 6.3 LTS.</li>
+<li>The Cooldown system is located at <code>Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/</code>.</li>
+<li>Ensure all FishMMO dependencies (FishNetworking, Shared Core) are present.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="checking-and-adding-cooldowns">Checking and Adding Cooldowns</h3>
+<pre><code class="lang-csharp">// Check if an ability is on cooldown
+uint currentTick = TimeManager.LocalTick;
+bool onCooldown = cooldownController.IsOnCooldown(abilityID, currentTick);
+
+// Get remaining cooldown time in seconds (for UI)
+if (cooldownController.TryGetCooldown(abilityID, currentTick, out float remaining))
+{
+    UpdateCooldownBar(remaining);
+}
+
+// Add a cooldown from ability activation (seconds → ticks)
+float tickDelta = (float)TimeManager.TickDelta;
+CooldownInstance cd = new CooldownInstance(currentTick, durationSeconds, tickDelta);
+cooldownController.AddCooldown(abilityID, cd);
+
+// Remove a specific cooldown
+cooldownController.RemoveCooldown(abilityID);
+
+// Clear all cooldowns
+cooldownController.Clear();
+</code></pre>
+<h3 id="restoring-cooldowns-from-database">Restoring Cooldowns from Database</h3>
+<pre><code class="lang-csharp">// When loading from DB, cooldowns are stored as total/remaining seconds
+CooldownInstance cd = CooldownInstance.FromRemainingSeconds(
+    currentTick, totalDurationSeconds, remainingDurationSeconds, tickDelta);
+cooldownController.AddCooldown(abilityID, cd);
+</code></pre>
+<h2 id="configuration">Configuration</h2>
+<h3 id="cooldowncontroller">CooldownController</h3>
+<p><code>CooldownController</code> extends <code>CharacterBehaviour</code> and implements <code>ICooldownController</code> and <code>IPredictableController</code>. It has no inspector-exposed fields — all configuration is implicit.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Order</code></td>
+<td><code>int</code></td>
+<td><code>90</code> — runs before <code>AbilityController</code> (100) so expired cooldowns are removed before ability start checks</td>
+</tr>
+<tr>
+<td><code>TickDelta</code></td>
+<td><code>float</code></td>
+<td>Cached <code>TimeManager.TickDelta</code> for seconds↔ticks conversion. Falls back to <code>Time.fixedDeltaTime</code> if unavailable</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cooldowninstance">CooldownInstance</h3>
+<p>An immutable <code>readonly struct</code> — never mutated after construction.</p>
+<table>
+<thead>
+<tr>
+<th>Field/Property</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StartTick</code></td>
+<td><code>uint</code></td>
+<td>Network tick at which the cooldown started</td>
+</tr>
+<tr>
+<td><code>DurationTicks</code></td>
+<td><code>uint</code></td>
+<td>Duration in network ticks (immutable)</td>
+</tr>
+<tr>
+<td><code>TotalTime</code></td>
+<td><code>float</code></td>
+<td>Duration in seconds (<code>DurationTicks * tickDelta</code>), for UI</td>
+</tr>
+<tr>
+<td><code>RemainingTime(uint)</code></td>
+<td><code>float</code></td>
+<td>Remaining seconds at given tick, clamped to zero</td>
+</tr>
+<tr>
+<td><code>RemainingTicks(uint)</code></td>
+<td><code>uint</code></td>
+<td>Remaining ticks at given tick, clamped to zero</td>
+</tr>
+<tr>
+<td><code>IsOnCooldown(uint)</code></td>
+<td><code>bool</code></td>
+<td><code>true</code> when <code>(currentTick - StartTick) &lt; DurationTicks</code></td>
+</tr>
+</tbody>
+</table>
+<h4 id="constructors">Constructors</h4>
+<table>
+<thead>
+<tr>
+<th>Constructor</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CooldownInstance(uint startTick, float durationSeconds, float tickDelta)</code></td>
+<td>Gameplay activation — converts seconds to ticks via <code>ceil(duration / tickDelta)</code></td>
+</tr>
+<tr>
+<td><code>CooldownInstance(uint startTick, uint durationTicks, float tickDelta)</code></td>
+<td>Deserialization / reconcile — pre-computed tick values</td>
+</tr>
+<tr>
+<td><code>CooldownInstance.FromRemainingSeconds(uint currentTick, float totalSeconds, float remainingSeconds, float tickDelta)</code></td>
+<td>DB restore — derives <code>StartTick</code> backwards so <code>RemainingTicks(currentTick)</code> is correct</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cooldownreconcileentry">CooldownReconcileEntry</h3>
+<p>Lightweight struct for reconcile snapshot serialization.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AbilityID</code></td>
+<td><code>long</code></td>
+<td>The ability this cooldown is for</td>
+</tr>
+<tr>
+<td><code>StartTick</code></td>
+<td><code>uint</code></td>
+<td>Absolute network tick at cooldown start</td>
+</tr>
+<tr>
+<td><code>DurationTicks</code></td>
+<td><code>uint</code></td>
+<td>Duration in ticks</td>
+</tr>
+</tbody>
+</table>
+<h3 id="static-events-on-icooldowncontroller">Static Events (on <code>ICooldownController</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Signature</th>
+<th>When Fired</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnAddCooldown</code></td>
+<td><code>Action&lt;long, CooldownInstance&gt;</code></td>
+<td>Cooldown added (owner-only)</td>
+</tr>
+<tr>
+<td><code>OnUpdateCooldown</code></td>
+<td><code>Action&lt;long, CooldownInstance&gt;</code></td>
+<td>Cooldown replaced/updated (owner-only)</td>
+</tr>
+<tr>
+<td><code>OnRemoveCooldown</code></td>
+<td><code>Action&lt;long&gt;</code></td>
+<td>Cooldown expired or removed (owner-only)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="prediction-pipeline-integration">Prediction Pipeline Integration</h3>
+<p><code>CooldownController</code> participates in the unified prediction pipeline:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PopulateInput</code></td>
+<td>No-op — cooldowns have no owner input</td>
+</tr>
+<tr>
+<td><code>OnReplicate</code></td>
+<td>Calls <code>ExpireElapsed(input.GetTick())</code> — deterministic expiry per tick</td>
+</tr>
+<tr>
+<td><code>OnCreateReconcile</code></td>
+<td>Writes <code>CreateReconcileSnapshot()</code> → <code>CooldownReconcileEntry[]</code></td>
+</tr>
+<tr>
+<td><code>OnReconcile</code></td>
+<td>Calls <code>RestoreFromReconcile(entries)</code> to replace all cooldowns with server state</td>
+</tr>
+</tbody>
+</table>
+<h3 id="network-serialization">Network Serialization</h3>
+<h4 id="payload-full-state">Payload (Full State)</h4>
+<p>Used by <code>ReadPayload</code>/<code>WritePayload</code> for initial character spawn:</p>
+<ul>
+<li><strong>Write</strong>: <code>int count</code>, then per cooldown: <code>long abilityID</code>, <code>uint startTick</code>, <code>uint durationTicks</code></li>
+<li><strong>Read</strong>: Reads entries and discards any already expired relative to <code>currentTick</code></li>
+</ul>
+<h4 id="delta-serialization-reconcile">Delta Serialization (Reconcile)</h4>
+<p><code>CooldownReconcileEntry.WriteArrayDelta</code> / <code>ReadArrayDelta</code>:</p>
+<ul>
+<li><strong>Reference-equality shortcut</strong>: If <code>ReferenceEquals(prev, next)</code>, returns <code>false</code> (zero bytes)</li>
+<li><strong>Same-length mode</strong>: Writes negative count, then only indices + entries that differ</li>
+<li><strong>Different-length / forced</strong>: Writes positive count + full array</li>
+<li><strong>Null handling</strong>: <code>null</code> prev or next encoded as empty array with count 0</li>
+</ul>
+<h3 id="reconcile-snapshot-caching">Reconcile Snapshot Caching</h3>
+<p><code>CreateReconcileSnapshot()</code> uses a dirty flag to avoid unnecessary allocations:</p>
+<pre><code>AddCooldown / RemoveCooldown / Clear / RestoreFromReconcile
+    → snapshotDirty = true
+
+CreateReconcileSnapshot():
+    if (cooldowns.Count == 0) → return null
+    if (!snapshotDirty &amp;&amp; cachedSnapshot != null) → return cachedSnapshot  // same reference
+    else → rebuild cachedSnapshot from cooldowns dictionary
+</code></pre>
+<p>The delta serializer's <code>ReferenceEquals(prev, next)</code> check then skips the per-element comparison entirely when the cached array is reused.</p>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cooldown starts</td>
+<td>Call <code>AddCooldown(id, instance)</code></td>
+<td><code>IsOnCooldown(id, currentTick)</code> returns <code>true</code>; <code>OnAddCooldown</code> fires</td>
+</tr>
+<tr>
+<td>Cooldown queries</td>
+<td>Call <code>TryGetCooldown(id, currentTick, out float)</code></td>
+<td>Returns <code>true</code> with remaining seconds &gt; 0</td>
+</tr>
+<tr>
+<td>Cooldown expiry</td>
+<td>Advance ticks past <code>StartTick + DurationTicks</code></td>
+<td><code>ExpireElapsed</code> removes the entry; <code>OnRemoveCooldown</code> fires</td>
+</tr>
+<tr>
+<td>Deterministic replay</td>
+<td>Cause a reconcile with active cooldowns</td>
+<td>Same cooldowns expire at the same ticks during replay</td>
+</tr>
+<tr>
+<td>Reconcile restore</td>
+<td>Force a mismatch</td>
+<td><code>RestoreFromReconcile</code> replaces all cooldowns with server state</td>
+</tr>
+<tr>
+<td>Snapshot caching</td>
+<td>Call <code>CreateReconcileSnapshot()</code> twice without changes</td>
+<td>Returns same array reference (<code>snapshotDirty == false</code>)</td>
+</tr>
+<tr>
+<td>Delta compression</td>
+<td>Monitor network bytes for unchanged cooldowns</td>
+<td>Zero bytes when array reference hasn't changed</td>
+</tr>
+<tr>
+<td>Payload bounds</td>
+<td>Send payload with count &gt; 4096</td>
+<td><code>Read()</code> discards the entire payload</td>
+</tr>
+<tr>
+<td>DB restore</td>
+<td>Use <code>FromRemainingSeconds</code> to create a cooldown</td>
+<td><code>RemainingTicks(currentTick)</code> matches expected remaining ticks</td>
+</tr>
+<tr>
+<td>Tick conversion</td>
+<td>Compare <code>RemainingTime(tick)</code> to expected seconds</td>
+<td>Matches <code>RemainingTicks(tick) * tickDelta</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Cast[Ability cast] --&gt; CD[CooldownSystem]
+    CD --&gt;|start timer| Buffer[Predicted cooldowns]
+    Tick[Network tick] --&gt; CD
+    CD --&gt;|reconcile server tick| Sync[Server snapshot]
+    Sync --&gt; CD
+    CD --&gt;|expired| Ready[Ability ready]
+</code></pre>
+<h3 id="cooldown-lifecycle">Cooldown Lifecycle</h3>
+<pre><code>Ability Activation
+        │
+        ▼
+AbilityController.AddCooldown(ability, currentTick)
+        │
+        ▼
+CooldownController.AddCooldown(abilityID, CooldownInstance)
+  ├── Store in SortedDictionary&lt;long, CooldownInstance&gt;
+  ├── snapshotDirty = true
+  └── Fire OnAddCooldown (owner-only)
+        │
+        ▼
+  ┌─────────────────────────────────────────────┐
+  │  Each Prediction Tick (OnReplicate)          │
+  │  ExpireElapsed(currentTick):                 │
+  │    foreach cooldown:                         │
+  │      if (currentTick - StartTick) &gt;= Duration│
+  │        → queue for removal                   │
+  │    remove expired entries                    │
+  │    Fire OnRemoveCooldown for each (owner)    │
+  └──────────────────────────┬──────────────────┘
+                             │
+                             ▼
+  ┌─────────────────────────────────────────────┐
+  │  Server: OnCreateReconcile                   │
+  │  CreateReconcileSnapshot()                   │
+  │    → CooldownReconcileEntry[] (cached if     │
+  │      snapshotDirty == false)                 │
+  │    → Written to CharacterReconcileData       │
+  └──────────────────────────┬──────────────────┘
+                             │
+                             ▼ (on mismatch)
+  ┌─────────────────────────────────────────────┐
+  │  Client: OnReconcile                         │
+  │  RestoreFromReconcile(entries)               │
+  │    → Clear all cooldowns                     │
+  │    → Rebuild from server entries             │
+  │    → Replay ticks from reconcile point       │
+  └─────────────────────────────────────────────┘
+</code></pre>
+<h3 id="immutable-expiry-model">Immutable Expiry Model</h3>
+<pre><code>                    StartTick                    StartTick + DurationTicks
+                        │                                │
+  ──────────────────────┼────────────────────────────────┼──────────────
+                        │◄─────── DurationTicks ────────►│
+                        │                                │
+  IsOnCooldown = true   │  (currentTick - StartTick)     │  IsOnCooldown = false
+                        │    &lt; DurationTicks             │
+                        │                                │
+  No mutation needed — expiry is a pure function of currentTick
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Cooldown/
+├── CooldownController.cs       # Per-entity cooldown manager (CharacterBehaviour, ICooldownController, IPredictableController Order=90)
+├── CooldownInstance.cs          # Immutable readonly struct: StartTick, DurationTicks, tick↔seconds conversion
+└── CooldownReconcileEntry.cs    # Reconcile snapshot entry + index-delta array serialization (WriteArrayDelta/ReadArrayDelta)
+</code></pre>
+<h3 id="related-files">Related Files</h3>
+<pre><code>Shared/Core/Entity/Prediction/Ability/Cooldown/ICooldownController.cs  # Interface + static events
+Shared/Implementation/Entity/Prediction/CharacterPredictionController.cs  # Drives OnReplicate/OnReconcile
+Shared/Implementation/Entity/Prediction/CharacterReconcileData.cs  # Contains Cooldowns field
+Shared/Implementation/Entity/Prediction/CharacterReconcileDataDeltaSerializer.cs  # Calls WriteArrayDelta/ReadArrayDelta
+Shared/Implementation/Entity/Prediction/Ability/AbilityController.cs  # Calls AddCooldown on ability activation
+</code></pre>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>CharacterBehaviour
+└── CooldownController : ICooldownController, IPredictableController (Order=90)
+
+readonly struct CooldownInstance                # Immutable cooldown data
+struct CooldownReconcileEntry : IEquatable&lt;&gt;    # Serialization entry
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

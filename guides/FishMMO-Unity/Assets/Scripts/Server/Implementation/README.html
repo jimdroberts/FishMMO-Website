@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Server Implementation | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Server Implementation | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="server-implementation">Server Implementation</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Concrete server-side runtime layer that composes core services, FishNet networking, database access, authentication, and modular server behaviours into running Login, World, and Scene server processes.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The <code>Server</code> class (<code>Server.cs</code>) is the composition root for every FishMMO server process. It inherits <code>MonoBehaviour</code> and implements <code>IServer&lt;INetworkManagerWrapper, NetworkConnection, IServerBehaviour&gt;</code>, <code>IServer&lt;INetworkManagerWrapper, NetworkConnection, IRuntimeDataContainer&gt;</code>, and <code>IPeriodicUpdateSystem</code>.</p>
+<p>At startup the composition root:</p>
+<ol>
+<li>Resolves a <code>NetworkManager</code> from the scene.</li>
+<li>Builds <code>IServerConfiguration</code>, <code>IServerEvents</code>, <code>ICoreServer</code>, and <code>INetworkManagerWrapper</code>.</li>
+<li>Fetches the external IP address asynchronously.</li>
+<li>Once the IP is available, initialises the core server, database orchestrator, address provider, authenticator, account manager, runtime data containers (auto-discovered via <code>RequiresDataContainerAttribute</code>), and server behaviours.</li>
+<li>Disables KCC auto-simulation and starts the FishNet server.</li>
+</ol>
+<p>During runtime, <code>LateUpdate</code> drives two loops: the behaviour update loop (snapshot-safe against registration mutations) and the periodic callback system (enumeration-complete-before-invoke pattern). Shutdown is idempotent and tears down subsystems in reverse order.</p>
+<p>The Implementation layer sits between the abstract <code>Server.Core</code> interfaces and the concrete FishNet/Unity runtime. Each server type (Login, World, Scene) is loaded as an Addressable scene; <code>ServerLauncher</code> selects which scene(s) to load based on command-line arguments or a configurable boot list.</p>
+<h3 id="sub-system-organisation">Sub-System Organisation</h3>
+<table>
+<thead>
+<tr>
+<th>Sub-System</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Account</strong></td>
+<td>Account management strategies — SRP-based (login) and token-based (world/scene).</td>
+</tr>
+<tr>
+<td><strong>Authentication</strong></td>
+<td>Server authenticator hierarchy — base, SRP (<code>ServerAuthenticator</code>), and token (<code>TokenServerAuthenticator</code>).</td>
+</tr>
+<tr>
+<td><strong>RuntimeData</strong></td>
+<td>Shared runtime data containers, factory, and registry for mutable per-system state.</td>
+</tr>
+<tr>
+<td><strong>LoginServer</strong></td>
+<td>Login-server-specific systems: account creation, character create/select, server select, and the login server lifecycle.</td>
+</tr>
+<tr>
+<td><strong>World</strong></td>
+<td>World and scene server systems organised into <code>WorldServer/</code>, <code>SceneServer/</code>, and <code>KickRequest/</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Full support including console title via <code>SetConsoleTitle</code> (kernel32)</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Process name set via <code>prctl</code> (libc.so.6)</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td>Yes</td>
+<td>Process title set via <code>setproctitle</code> (libc.dylib)</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only — not applicable</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unity</td>
+<td>6.3 LTS</td>
+</tr>
+<tr>
+<td>Scripting Backend</td>
+<td>IL2CPP</td>
+</tr>
+<tr>
+<td>FishNet</td>
+<td>Runtime dependency</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Composition-root architecture</strong> — <code>Server</code> wires core services, networking, database, authentication, behaviours, and data containers in a single orchestrated startup.</li>
+<li><strong>Modular server behaviours</strong> — <code>ServerBehaviour</code> (ScriptableObject-based) provides a plug-in lifecycle: <code>InitializeOnce</code>, <code>OnUpdate</code>, <code>OnDeinitialize</code>.</li>
+<li><strong>Auto-discovered runtime data containers</strong> — behaviours declare <code>[RequiresDataContainer(typeof(T))]</code>; the server discovers, deduplicates, priority-sorts, and creates containers automatically.</li>
+<li><strong>Generic component registries</strong> — <code>ServerComponentRegistry&lt;TNet, TConn, TComponent&gt;</code> registers components under concrete type and all <code>IServerComponent</code>-derived interfaces for dependency lookup.</li>
+<li><strong>Network abstraction</strong> — <code>INetworkManagerWrapper</code> / <code>FishNetNetworkWrapper</code> decouple the server from FishNet internals, exposing start/stop, transport config, broadcast registration, and authenticator attachment.</li>
+<li><strong>Periodic callback system</strong> — <code>IPeriodicUpdateSystem</code> with register/unregister/update-interval; enumeration-safe dispatch; callbacks receive their registered interval, not frame delta.</li>
+<li><strong>Main-thread queue helper</strong> — generic <code>MainThreadQueueHelper.Drain&lt;T&gt;</code> / <code>TryEnqueue&lt;T&gt;</code> for marshalling async work back to Unity's main thread.</li>
+<li><strong>Address resolution</strong> — <code>ServerAddressProvider</code> resolves IPv4/IPv6 bind addresses from the transport layer with optional overrides.</li>
+<li><strong>Physics ticker</strong> — <code>PhysicsTicker</code> hooks FishNet's <code>OnPrePhysicsSimulation</code> to manually advance a scene's <code>PhysicsScene</code>.</li>
+<li><strong>Server launcher</strong> — <code>ServerLauncher</code> loads Addressable scenes by command-line argument (<code>LOGIN</code>, <code>WORLD</code>, <code>SCENE</code>) or a configurable boot list.</li>
+<li><strong>Window title updater</strong> — <code>ServerWindowTitleUpdater</code> periodically sets the OS process/console title with transport type, connection state, and client count (Windows, Linux, macOS).</li>
+<li><strong>Dual account manager strategy</strong> — <code>SrpAccountManager</code> for SRP-authenticated login servers; <code>TokenAccountManager</code> for token-authenticated world/scene servers.</li>
+<li><strong>Dual authenticator strategy</strong> — <code>ServerAuthenticator</code> (SRP) and <code>TokenServerAuthenticator</code> selected at startup based on scene type.</li>
+<li><strong>Idempotent shutdown</strong> — <code>PerformShutdown</code> runs once via <code>hasShutdown</code> flag, cleaning up behaviours, containers, authenticator workers, network, database, and core server in reverse order.</li>
+<li><strong>KCC integration</strong> — <code>KinematicCharacterSystem.AutoSimulation</code> set to <code>false</code> for deterministic server-driven simulation.</li>
+<li><strong>Snapshot-safe behaviour dispatch</strong> — behaviour list is snapshotted before <code>OnLateUpdate</code> dispatch to prevent <code>InvalidOperationException</code> if behaviours register or unregister during update.</li>
+<li><strong>Cached delegate names</strong> — <code>PeriodicCallbackData.CallbackName</code> caches the reflection-derived display name at construction time; no runtime reflection in any log path.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS with IL2CPP scripting backend.</li>
+<li>FishNet networking framework (imported via Plugins).</li>
+<li>KinematicCharacterController package.</li>
+<li>PostgreSQL database (configured via <code>appsettings.json</code>).</li>
+<li>ZString for zero-allocation string formatting.</li>
+<li>Addressable Assets for scene and template loading.</li>
+<li><code>FishMMO.Server.Core</code> and <code>FishMMO.Shared</code> assemblies.</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO Unity project. No separate installation is required.</p>
+<ol>
+<li>Open the FishMMO-Unity project in Unity 6.3 LTS.</li>
+<li>Ensure all dependencies (FishNet, KCC, ZString, Addressables) are imported.</li>
+<li>Configure <code>appsettings.json</code> for database connection strings.</li>
+<li>Build server executables via Unity Build Settings with the desired server scenes.</li>
+<li>Alternatively, enter Play Mode with the <code>ServerLauncher</code> bootstrap scene to run locally.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="running-in-the-editor">Running in the Editor</h3>
+<ol>
+<li>Open the bootstrap scene containing <code>ServerLauncher</code>.</li>
+<li>Ensure the <code>BootList</code> field on <code>ServerLauncher</code> includes the desired server scenes (default: <code>LoginServer</code>, <code>WorldServer</code>, <code>SceneServer</code>).</li>
+<li>Enter Play Mode. The launcher loads scenes as Addressables and each <code>Server</code> MonoBehaviour self-initialises.</li>
+</ol>
+<h3 id="running-a-standalone-build">Running a Standalone Build</h3>
+<pre><code class="lang-bash"># Launch all servers (default boot list)
+./FishMMO-Server
+
+# Launch a specific server type
+./FishMMO-Server LOGIN
+./FishMMO-Server WORLD
+./FishMMO-Server SCENE
+</code></pre>
+<p>The second command-line argument selects the server type. If no argument is provided, all scenes in the boot list are loaded.</p>
+<h3 id="adding-a-new-server-behaviour">Adding a New Server Behaviour</h3>
+<ol>
+<li>Create a class extending <code>ServerBehaviour</code>.</li>
+<li>Implement <code>InitializeOnce()</code>, <code>OnDeinitialize()</code>, and optionally <code>OnUpdate(float deltaTime)</code>.</li>
+<li>If the behaviour needs mutable runtime state, create a <code>RuntimeDataContainer</code> subclass and annotate the behaviour with <code>[RequiresDataContainer(typeof(YourData))]</code>.</li>
+<li>Create a ScriptableObject asset for the behaviour and add it to the <code>Server</code> component's <code>serverBehaviours</code> list.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Source</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AddressOverride</code></td>
+<td><code>Server</code> inspector field</td>
+<td>Optional bind address override</td>
+</tr>
+<tr>
+<td><code>PortOverride</code></td>
+<td><code>Server</code> inspector field</td>
+<td>Optional bind port override</td>
+</tr>
+<tr>
+<td><code>BootList</code></td>
+<td><code>ServerLauncher</code> inspector field</td>
+<td>Array of scene names to load at startup</td>
+</tr>
+<tr>
+<td><code>updateRate</code></td>
+<td><code>ServerWindowTitleUpdater</code> inspector field</td>
+<td>Window title refresh interval (seconds, default 15)</td>
+</tr>
+<tr>
+<td>Database connection</td>
+<td><code>appsettings.json</code></td>
+<td>PostgreSQL connection string</td>
+</tr>
+<tr>
+<td>Environment</td>
+<td><code>ASPNETCORE_ENVIRONMENT</code> or <code>DOTNET_ENVIRONMENT</code></td>
+<td>Selects <code>appsettings.{env}.json</code> overlay</td>
+</tr>
+<tr>
+<td>Transport settings</td>
+<td><code>IServerConfiguration</code> / <code>appsettings.json</code></td>
+<td>Bind address, port, max clients applied via <code>ApplyTransportConfiguration</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="registering-a-periodic-callback">Registering a Periodic Callback</h3>
+<pre><code class="lang-csharp">// Inside a ServerBehaviour's InitializeOnce:
+Server.RegisterPeriodicCallback(5.0f, OnHeartbeat);
+
+private void OnHeartbeat(float interval)
+{
+    // interval == 5.0f (the registered period, not frame deltaTime)
+    Database.SendHeartbeat();
+}
+
+// In OnDeinitialize:
+Server.UnregisterPeriodicCallback(OnHeartbeat);
+</code></pre>
+<h3 id="enqueuing-main-thread-work-from-an-async-worker">Enqueuing Main-Thread Work from an Async Worker</h3>
+<pre><code class="lang-csharp">MainThreadQueueHelper.TryEnqueue&lt;MySystemMainThreadQueueData&gt;(
+    Server,
+    () =&gt; ProcessResult(result));
+</code></pre>
+<h3 id="draining-a-main-thread-queue-in-onupdate">Draining a Main-Thread Queue in OnUpdate</h3>
+<pre><code class="lang-csharp">public override void OnUpdate(float deltaTime)
+{
+    MainThreadQueueHelper.Drain&lt;MySystemMainThreadQueueData&gt;(Server, maxActions: 10, drainAll: false);
+}
+</code></pre>
+<h3 id="looking-up-a-behaviour-or-data-container">Looking Up a Behaviour or Data Container</h3>
+<pre><code class="lang-csharp">if (Server.BehaviourRegistry.TryGet&lt;IMyBehaviour&gt;(out var behaviour))
+{
+    behaviour.DoWork();
+}
+
+if (Server.DataContainerRegistry.TryGet&lt;MyRuntimeData&gt;(out var data))
+{
+    data.Counter++;
+}
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Method</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server starts</td>
+<td>Enter Play Mode with <code>ServerLauncher</code></td>
+<td>Log: <code>&quot;Server is starting...&quot;</code> followed by <code>&quot;Initialization Complete&quot;</code></td>
+</tr>
+<tr>
+<td>External IP resolved</td>
+<td>Startup sequence</td>
+<td>No exception at <code>OnFinalizeSetup</code></td>
+</tr>
+<tr>
+<td>Database connected</td>
+<td>Startup sequence</td>
+<td>Log: <code>&quot;Initializing Database with Environment: ...&quot;</code></td>
+</tr>
+<tr>
+<td>Login server initialised</td>
+<td><code>ServerEvents.OnLoginServerInitialized</code> fires</td>
+<td>Log: <code>&quot;LoginServer initialized.&quot;</code></td>
+</tr>
+<tr>
+<td>World server initialised</td>
+<td><code>ServerEvents.OnWorldServerInitialized</code> fires</td>
+<td>Log: <code>&quot;WorldServer initialized.&quot;</code></td>
+</tr>
+<tr>
+<td>Scene server initialised</td>
+<td><code>ServerEvents.OnSceneServerInitialized</code> fires</td>
+<td>Log: <code>&quot;SceneServer initialized.&quot;</code></td>
+</tr>
+<tr>
+<td>Behaviours initialised</td>
+<td><code>BehaviourRegistry.InitializeAll</code></td>
+<td>No <code>&quot;failed to initialize&quot;</code> warnings</td>
+</tr>
+<tr>
+<td>Data containers created</td>
+<td><code>DiscoverAndCreateDataContainers</code></td>
+<td>Log: <code>&quot;Auto-created RuntimeDataContainer: ...&quot;</code> for each type</td>
+</tr>
+<tr>
+<td>Network listening</td>
+<td><code>ServerManager_OnServerConnectionState</code></td>
+<td>Log: <code>&quot;Local: ... Remote: ... - Started&quot;</code></td>
+</tr>
+<tr>
+<td>Window title updated</td>
+<td>15-second cycle (default)</td>
+<td>OS process/console title reflects server status</td>
+</tr>
+<tr>
+<td>Graceful shutdown</td>
+<td>Stop Play Mode or <code>Ctrl+C</code></td>
+<td>All subsystems deinitialised in reverse order, no errors</td>
+</tr>
+<tr>
+<td>Periodic callbacks fire</td>
+<td>Register a callback with known interval</td>
+<td>Callback invoked on schedule with correct interval argument</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart TD
+    Main[Server entry] --&gt; Boot[Bootstrap]
+    Boot --&gt; Auth[Authentication]
+    Boot --&gt; Acct[Account]
+    Boot --&gt; RT[RuntimeData]
+    Boot --&gt; Kick[KickRequest]
+    Boot --&gt; Login[LoginServer subsystems]
+    Boot --&gt; World[WorldServer subsystems]
+    Boot --&gt; Scene[SceneServer subsystems]
+    Auth --&gt; DB[(PostgreSQL)]
+    Acct --&gt; DB
+    RT --&gt; Cache[Runtime registries]
+</code></pre>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                        ServerLauncher                               │
+│  (Bootstrap: parse CLI args → load Addressable server scenes)       │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ loads scene(s)
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Server (MonoBehaviour)                           │
+│                     Composition Root                                │
+│                                                                     │
+│  Start()                                                            │
+│   ├─ Resolve NetworkManager                                         │
+│   ├─ Create Configuration, ServerEvents, CoreServer                 │
+│   ├─ Create FishNetNetworkWrapper                                   │
+│   └─ FetchExternalIPAddress → OnFinalizeSetup(remoteAddress)        │
+│                                                                     │
+│  OnFinalizeSetup()                                                  │
+│   ├─ CoreServer.Initialize(remoteAddress, sceneName)                │
+│   ├─ Build Database (Npgsql from appsettings.json)                 │
+│   ├─ Create ServerAddressProvider                                   │
+│   ├─ Apply transport config + attach authenticator                  │
+│   ├─ Create AccountManager (SRP or Token based on authenticator)    │
+│   ├─ Discover + create RuntimeDataContainers (priority-sorted)      │
+│   ├─ Register + initialise data containers                          │
+│   ├─ Register + initialise ServerBehaviours                         │
+│   ├─ KCC AutoSimulation = false                                     │
+│   └─ NetworkWrapper.StartServer()                                   │
+│                                                                     │
+│  LateUpdate()                                                       │
+│   ├─ UpdateServerBehaviours(deltaTime)   ← snapshot-safe dispatch   │
+│   └─ UpdatePeriodicCallbacks(deltaTime)  ← enum-then-invoke         │
+│                                                                     │
+│  PerformShutdown() [idempotent]                                     │
+│   ├─ Clear periodic callbacks                                       │
+│   ├─ Deinitialise + unregister behaviours (reverse order)           │
+│   ├─ Deinitialise + unregister data containers (reverse order)      │
+│   ├─ Shutdown authenticator workers                                 │
+│   ├─ Stop network server                                            │
+│   ├─ Shutdown database                                              │
+│   ├─ Deinitialise core server + clear account manager               │
+│   └─ Unsubscribe event handlers                                     │
+└─────────────────────────────────────────────────────────────────────┘
+          │                    │                     │
+          ▼                    ▼                     ▼
+   ┌─────────────┐   ┌────────────────┐   ┌────────────────┐
+   │ LoginServer  │   │  WorldServer   │   │  SceneServer   │
+   │  Scene       │   │   Scene        │   │   Scene        │
+   │              │   │                │   │                │
+   │ Systems:     │   │ Systems:       │   │ Systems:       │
+   │ · Login      │   │ · WorldServer  │   │ · SceneServer  │
+   │ · AcctCreate │   │ · WorldScene   │   │ · Achievement  │
+   │ · CharCreate │   │ · Auth         │   │ · Character    │
+   │ · CharSelect │   │ · KickRequest  │   │ · Inventory    │
+   │ · ServerSel  │   │                │   │ · Chat/Guild   │
+   └─────────────┘   └────────────────┘   │ · Party/Friend │
+                                           │ · Pet/Hotkey   │
+                                           │ · Interactable │
+                                           │ · Naming       │
+                                           │ · SceneChannel │
+                                           └────────────────┘
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>Implementation/
+├── README.md                                    # This document
+├── Server.cs                                    # Composition root and lifecycle coordinator
+├── ServerBehaviour.cs                           # Base class for server-side behaviours (ScriptableObject)
+├── ServerBehaviourRegistry.cs                   # Behaviour registration/initialisation orchestration
+├── ServerComponentRegistry.cs                   # Generic component registry base class
+├── FishNetNetworkWrapper.cs                     # FishNet adapter implementing INetworkManagerWrapper
+├── INetworkManagerWrapper.cs                    # Network abstraction interface
+├── MainThreadQueueHelper.cs                     # Static helper for main-thread queue drain/enqueue
+├── ServerAddressProvider.cs                     # Local/public server address resolution
+├── PeriodicCallbackData.cs                      # Periodic callback timing state with cached name
+├── PhysicsTicker.cs                             # Physics tick integration via FishNet TimeManager
+├── ServerLauncher.cs                            # Bootstrap: CLI args → Addressable scene loading
+├── ServerWindowTitleUpdater.cs                  # OS-native window/process title updater
+├── ServerWindowTitleUpdaterRuntimeData.cs       # Runtime state for window title updater
+│
+├── Account/                                     # Account management strategies
+│   ├── AccountManager.cs                        #   Base/interface for account managers
+│   ├── SrpAccountManager.cs                     #   SRP-based account manager (login server)
+│   └── TokenAccountManager.cs                   #   Token-based account manager (world/scene)
+│
+├── Authentication/                              # Server authenticator hierarchy
+│   ├── IServerAuthenticator.cs                  #   Authenticator interface
+│   ├── BaseServerAuthenticator.cs               #   Shared authenticator base class
+│   ├── ServerAuthenticator.cs                   #   SRP authenticator (login server)
+│   └── TokenServerAuthenticator.cs              #   Token authenticator (world/scene)
+│
+├── RuntimeData/                                 # Shared runtime data container framework
+│   ├── RuntimeDataContainer.cs                  #   Base class for runtime data containers
+│   ├── RuntimeDataContainerFactory.cs           #   Factory for creating containers by type
+│   ├── RuntimeDataContainerRegistry.cs          #   Registry for container lifecycle management
+│   ├── AsyncWorkerData.cs                       #   Base for async worker thread data
+│   ├── MainThreadQueueData.cs                   #   Base for main-thread queue data containers
+│   └── SystemMainThreadQueueData.cs             #   System-level main-thread queue data
+│
+├── LoginServer/                                 # Login-server-specific systems
+│   ├── AccountCreation/                         #   Account creation workflow
+│   │   ├── AccountCreationSystem.cs
+│   │   ├── AccountCreationSystemMainThreadQueueData.cs
+│   │   ├── AccountCreationSystemMappingData.cs
+│   │   └── AccountCreationSystemRuntimeData.cs
+│   ├── CharacterCreate/                         #   Character creation workflow
+│   │   ├── CharacterCreateSystem.cs
+│   │   ├── CharacterCreateSystemMainThreadQueueData.cs
+│   │   └── CharacterCreateSystemRuntimeData.cs
+│   ├── CharacterSelect/                         #   Character selection workflow
+│   │   ├── CharacterSelectSystem.cs
+│   │   ├── CharacterSelectSystemMainThreadQueueData.cs
+│   │   └── CharacterSelectSystemRuntimeData.cs
+│   ├── LoginServer/                             #   Login server lifecycle
+│   │   ├── LoginServerSystem.cs
+│   │   └── LoginServerRuntimeData.cs
+│   └── ServerSelect/                            #   Server selection workflow
+│       ├── ServerSelectSystem.cs
+│       ├── ServerSelectSystemMainThreadQueueData.cs
+│       └── ServerSelectSystemRuntimeData.cs
+│
+└── World/                                       # World and scene server systems
+    ├── KickRequest/                             #   Player kick request handling
+    │   ├── KickRequestSystem.cs
+    │   ├── KickRequestSystemMainThreadQueueData.cs
+    │   └── KickRequestSystemQueueData.cs
+    ├── LoginServer/                             #   Login-server-facing world systems
+    │   └── ServerSelect/
+    ├── SceneServer/                             #   Scene-server-specific systems
+    │   ├── Achievement/                         #     Achievement tracking
+    │   ├── Authentication/                      #     Scene-server authentication
+    │   ├── Character/                           #     Character state management
+    │   ├── CharacterInventory/                  #     Inventory operations
+    │   ├── Chat/                                #     Chat messaging
+    │   ├── Friend/                              #     Friend list management
+    │   ├── Guild/                               #     Guild systems
+    │   ├── Hotkey/                              #     Hotkey configuration
+    │   ├── Interactable/                        #     Interactable objects
+    │   ├── Naming/                              #     Entity naming
+    │   ├── Party/                               #     Party systems
+    │   ├── Pet/                                 #     Pet systems
+    │   ├── SceneChannel/                        #     Scene channel management
+    │   └── SceneServer/                         #     Scene server lifecycle
+    │       ├── SceneServerSystem.cs
+    │       ├── SceneServerRuntimeData.cs
+    │       ├── SceneServerSystemMainThreadQueueData.cs
+    │       ├── SceneInstanceDetails.cs
+    │       └── SceneInstanceMappingData.cs
+    └── WorldServer/                             #   World-server-specific systems
+        ├── Authentication/                      #     World-server authentication
+        │   └── WorldServerAuthenticator.cs
+        ├── WorldScene/                          #     World scene management
+        │   ├── WorldSceneSystem.cs
+        │   ├── WorldSceneSystemRuntimeData.cs
+        │   ├── WorldSceneSystemMainThreadQueueData.cs
+        │   └── WorldSceneMappingData.cs
+        └── WorldServer/                         #     World server lifecycle
+            ├── WorldServerSystem.cs
+            └── WorldServerSystemRuntimeData.cs
+</code></pre>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>MonoBehaviour
+└── Server : IServer&lt;...IServerBehaviour&gt;, IServer&lt;...IRuntimeDataContainer&gt;, IPeriodicUpdateSystem
+
+ScriptableObject
+└── ServerBehaviour : IServerBehaviour&lt;INetworkManagerWrapper, ServerManager, NetworkConnection, IServerBehaviour&gt;
+    ├── LoginServerSystem
+    ├── AccountCreationSystem
+    ├── CharacterCreateSystem
+    ├── CharacterSelectSystem
+    ├── ServerSelectSystem
+    ├── WorldServerSystem
+    ├── WorldSceneSystem
+    ├── SceneServerSystem
+    ├── KickRequestSystem
+    ├── ServerWindowTitleUpdater
+    └── (scene-server systems: Achievement, Character, Chat, Guild, etc.)
+
+RuntimeDataContainer : IRuntimeDataContainer
+├── LoginServerRuntimeData
+├── AccountCreationSystemRuntimeData
+├── CharacterCreateSystemRuntimeData
+├── CharacterSelectSystemRuntimeData
+├── ServerSelectSystemRuntimeData
+├── WorldServerSystemRuntimeData
+├── WorldSceneSystemRuntimeData
+├── SceneServerRuntimeData
+├── ServerWindowTitleUpdaterRuntimeData
+├── KickRequestSystemQueueData
+└── *SystemMainThreadQueueData variants
+
+INetworkManagerWrapper
+└── FishNetNetworkWrapper
+
+IAccountManager&lt;NetworkConnection&gt;
+├── SrpAccountManager
+└── TokenAccountManager
+
+IServerAuthenticator
+└── BaseServerAuthenticator
+    ├── ServerAuthenticator        (SRP — login server)
+    └── TokenServerAuthenticator   (token — world/scene servers)
+
+ServerComponentRegistry&lt;TNet, TConn, TComponent&gt;
+├── ServerBehaviourRegistry  : IServerBehaviourRegistry&lt;...&gt;
+└── RuntimeDataContainerRegistry
+</code></pre>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is distributed under the FishMMO project license. See the repository root for full license terms.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>UnitOfWorkService flow + execution examples | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="UnitOfWorkService flow + execution examples | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Database/FishMMO-DB/Npgsql/Services/UNIT_OF_WORK_FLOW.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="unitofworkservice-flow--execution-examples">UnitOfWorkService flow + execution examples</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Database/FishMMO-DB/Npgsql/Services/UNIT_OF_WORK_FLOW.md">View this file on GitHub</a></p>
+</blockquote>
+<p>This document explains how <code>UnitOfWorkService</code> and the <code>BaseService</code> execution wrappers behave:</p>
+<ul>
+<li>when you call a service normally (no ambient scope)</li>
+<li>when you call services inside a unit of work (ambient DbContext + transaction)</li>
+</ul>
+<p>It reflects the current behavior of:</p>
+<ul>
+<li><code>FishMMO-DB/Npgsql/Services/UnitOfWorkService.cs</code></li>
+<li><code>FishMMO-DB/Npgsql/Services/BaseService.cs</code></li>
+</ul>
+<hr>
+<h2 id="key-terms">Key terms</h2>
+<ul>
+<li><strong>Ambient scope</strong>: a <code>DbContext</code> stored in <code>AsyncLocal</code> via <code>DatabaseExecutionScope</code>. Any <code>BaseService</code> wrapper called inside this scope will reuse the same context.</li>
+<li><strong>Unit of work</strong>: <code>UnitOfWorkService.BeginAsync()</code> creates an ambient <code>DbContext</code> + begins a transaction. The transaction is finalized by <code>CommitAsync()</code> or <code>RollbackAsync()</code>.</li>
+<li><strong><code>saveChanges</code> flag</strong>: in the execution wrappers, controls whether <code>DbContext.SaveChangesAsync()</code> is called after the delegate completes.</li>
+<li><strong>Savepoint</strong>: a nested rollback point inside an existing transaction. Used to keep the outer transaction usable after a nested failure.</li>
+</ul>
+<hr>
+<h2 id="flow-chart-normal-service-call-no-unit-of-work">Flow chart: normal service call (no unit of work)</h2>
+<pre><code class="lang-mermaid">flowchart TD
+  A[Caller invokes Service method] --&gt; B{Service uses BaseService wrapper?}
+  B --&gt;|ExecuteReadAsync| R[Create new DbContext]
+  R --&gt; R1[Run delegate]
+  R1 --&gt;|success| R2[Return Success]
+  R1 --&gt;|exception| R3[Classify + map to DatabaseResult]
+
+  B --&gt;|ExecuteWriteAsync| W[Attempt loop up to MaxRetries]
+  W --&gt; W1[Create new DbContext]
+  W1 --&gt; W2[Run delegate]
+  W2 --&gt; W3{saveChanges?}
+  W3 --&gt;|true| W4[SaveChangesAsync]
+  W3 --&gt;|false| W5[Skip SaveChanges]
+  W4 --&gt; W6[Return Success]
+  W5 --&gt; W6
+  W2 --&gt;|exception| W7[Map logical vs transient]
+  W7 --&gt;|transient and attempts remain| W8[Delay + retry]
+  W7 --&gt;|non-transient or exhausted| W9[Return Failure]
+
+  B --&gt;|ExecuteTransactionAsync| T[Attempt loop up to MaxRetries]
+  T --&gt; T1[Create new DbContext]
+  T1 --&gt; T2[BeginTransaction]
+  T2 --&gt; T3[Run delegate]
+  T3 --&gt; T4{saveChanges?}
+  T4 --&gt;|true| T5[SaveChangesAsync]
+  T4 --&gt;|false| T6[Skip SaveChanges]
+  T5 --&gt; T7[Commit]
+  T6 --&gt; T7
+  T7 --&gt; T8[Return Success]
+  T3 --&gt;|exception| T9[Rollback]
+  T9 --&gt; T10[Map logical vs transient]
+  T10 --&gt;|transient and attempts remain| T11[Delay + retry]
+  T10 --&gt;|non-transient or exhausted| T12[Return Failure]
+</code></pre>
+<h3 id="normal-call-example-single-statement-write">Normal-call example: single statement write</h3>
+<pre><code class="lang-csharp">// No unit-of-work: wrapper creates a fresh DbContext per attempt.
+var result = await characterService.DeleteAsync(characterId, incomingVersion, ct);
+if (!result.IsSuccess)
+{
+    // result.ErrorCode, result.ErrorMessage
+}
+</code></pre>
+<p>What happens (high level):</p>
+<ol>
+<li><code>DeleteAsync(...)</code> calls a BaseService write wrapper.</li>
+<li>Wrapper creates a new DbContext.</li>
+<li>Delegate runs.</li>
+<li>If <code>saveChanges: false</code> (raw SQL), wrapper does not call <code>SaveChangesAsync()</code>.</li>
+<li>Wrapper maps exceptions (stale state, transient Npgsql failures, etc.) into <code>DatabaseResult</code>.</li>
+</ol>
+<hr>
+<h2 id="flow-chart-unitofworkservice--ambient-scope">Flow chart: UnitOfWorkService + ambient scope</h2>
+<pre><code class="lang-mermaid">flowchart TD
+  A[Caller] --&gt; B[BeginAsync]
+  B --&gt; B1[Create DbContext]
+  B1 --&gt; B2[Enter DatabaseExecutionScope]
+  B2 --&gt; B3[BeginTransaction on ambient DbContext]
+  B3 --&gt; C[Caller invokes multiple Service methods]
+
+  C --&gt; D{BaseService wrapper sees ambient DbContext?}
+  D --&gt;|Yes| E[Reuse ambient DbContext]
+
+  E --&gt; F{Which wrapper?}
+
+  F --&gt;|ExecuteReadAsync| R[Run delegate]
+  R --&gt; R2[Return result]
+
+  F --&gt;|ExecuteWriteAsync| W[Optional: create Savepoint if transaction supports it]
+  W --&gt; W1[Run delegate]
+  W1 --&gt; W2{saveChanges?}
+  W2 --&gt;|true| W3[SaveChangesAsync]
+  W2 --&gt;|false| W4[Skip SaveChanges]
+  W3 --&gt; W5[Release savepoint]
+  W4 --&gt; W5
+  W1 --&gt;|exception| W6[Rollback to savepoint]
+
+  F --&gt;|ExecuteTransactionAsync| T{Ambient tx exists?}
+  T --&gt;|Yes| S[Create savepoint + run delegate]
+  S --&gt; S1{saveChanges?}
+  S1 --&gt;|true| S2[SaveChangesAsync]
+  S1 --&gt;|false| S3[Skip SaveChanges]
+  S2 --&gt; S4[Release savepoint]
+  S3 --&gt; S4
+  S --&gt;|exception| S5[Rollback to savepoint]
+
+  T --&gt;|No| N[BeginTransaction inside ambient]
+  N --&gt; N1[Run delegate]
+  N1 --&gt; N2{saveChanges?}
+  N2 --&gt;|true| N3[SaveChangesAsync]
+  N2 --&gt;|false| N4[Skip SaveChanges]
+  N3 --&gt; N5[Commit]
+  N4 --&gt; N5
+  N1 --&gt;|exception| N6[Rollback]
+
+  C --&gt; Z{Caller ends unit of work}
+  Z --&gt;|CommitAsync| K[SaveChangesAsync + Commit]
+  Z --&gt;|RollbackAsync| L[Rollback]
+  K --&gt; M[Dispose ambient scope + DbContext]
+  L --&gt; M
+</code></pre>
+<h3 id="unit-of-work-example-multiple-related-writes">Unit-of-work example: multiple related writes</h3>
+<pre><code class="lang-csharp">await using var unitOfWork = await unitOfWorkService.BeginAsync(ct);
+
+// All service calls below reuse the same ambient DbContext and transaction.
+var r1 = await characterService.SaveAsync(characterData, ct);
+if (!r1.IsSuccess)
+{
+    await unitOfWork.RollbackAsync(ct);
+    return;
+}
+
+var r2 = await characterInventoryService.PersistAsync(items, ct);
+if (!r2.IsSuccess)
+{
+    await unitOfWork.RollbackAsync(ct);
+    return;
+}
+
+await unitOfWork.CommitAsync(ct);
+</code></pre>
+<p>What happens (high level):</p>
+<ol>
+<li><code>BeginAsync</code> creates a <code>DbContext</code>, enters the ambient execution scope, and begins a DB transaction.</li>
+<li><code>SaveAsync</code> / <code>PersistAsync</code> wrappers detect ambient DbContext and reuse it.</li>
+<li>Nested wrappers use <strong>savepoints</strong> to keep the outer transaction usable if one call fails.</li>
+<li><code>CommitAsync</code> performs a final <code>SaveChangesAsync</code> (for any remaining tracked changes) and commits the transaction.</li>
+</ol>
+<hr>
+<h2 id="important-execution-rules-practical-guidance">Important execution rules (practical guidance)</h2>
+<h3 id="1-transaction-wrapper-truly-means-transaction">1) “Transaction wrapper truly means transaction”</h3>
+<ul>
+<li>Outside a unit-of-work, <code>ExecuteTransactionAsync</code> always begins/commits/rolls back a transaction.</li>
+<li>Inside a unit-of-work (ambient transaction exists), <code>ExecuteTransactionAsync</code> provides nested atomicity via <strong>savepoints</strong>.</li>
+</ul>
+<h3 id="2-savechanges-inside-a-unit-of-work">2) <code>saveChanges</code> inside a unit of work</h3>
+<ul>
+<li>If a service calls <code>ExecuteWriteAsync(..., saveChanges: true)</code> inside a unit-of-work, it will flush tracked changes earlier.</li>
+<li>This does <strong>not</strong> commit the transaction early; it only issues SQL within the still-open transaction.</li>
+</ul>
+<h3 id="3-raw-sql-vs-ef-tracked-changes">3) Raw SQL vs EF tracked changes</h3>
+<ul>
+<li>Raw SQL (<code>ExecuteSqlRawAsync</code>, <code>FromSqlRaw</code>) executes immediately against the connection, but is only durable after commit.</li>
+<li>EF tracked changes only become SQL when <code>SaveChangesAsync</code> is called (either by a wrapper with <code>saveChanges: true</code>, or by <code>CommitAsync</code>).</li>
+</ul>
+<h3 id="4-retry-behavior">4) Retry behavior</h3>
+<ul>
+<li>No-unit-of-work wrappers may retry transient failures (up to <code>MaxRetries</code>).</li>
+<li>Inside a unit-of-work, retries are generally not performed by nested wrappers, because the surrounding logical operation often needs explicit control. (The outer code can decide whether to restart the whole unit-of-work.)</li>
+</ul>
+<hr>
+<h2 id="minimal-examples-of-common-patterns">Minimal examples of common patterns</h2>
+<h3 id="pattern-a-read-only-query-no-unit-of-work">Pattern A: read-only query (no unit-of-work)</h3>
+<pre><code class="lang-csharp">var fetchResult = await characterService.FetchAsync(characterId, ct);
+if (fetchResult.IsSuccess)
+{
+    var data = fetchResult.Data;
+}
+</code></pre>
+<h3 id="pattern-b-single-statement-idempotent-write-no-unit-of-work">Pattern B: single-statement idempotent write (no unit-of-work)</h3>
+<pre><code class="lang-csharp">var kick = await kickRequestService.EnqueueAsync(accountName, ct);
+</code></pre>
+<h3 id="pattern-c-multi-step-operation-requiring-atomicity-unit-of-work">Pattern C: multi-step operation requiring atomicity (unit-of-work)</h3>
+<pre><code class="lang-csharp">await using var uow = await unitOfWorkService.BeginAsync(ct);
+
+var a = await characterService.DeleteAsync(characterId, incomingVersion, ct);
+if (!a.IsSuccess) { await uow.RollbackAsync(ct); return; }
+
+var b = await characterGuildService.DeleteAsync(characterId, incomingVersion, ct);
+if (!b.IsSuccess) { await uow.RollbackAsync(ct); return; }
+
+await uow.CommitAsync(ct);
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Database/FishMMO-DB/Npgsql/Services/UNIT_OF_WORK_FLOW.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

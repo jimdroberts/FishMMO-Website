@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO-AppHealthMonitor | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO-AppHealthMonitor | FishMMO ">
+      
+      
+      <link rel="icon" href="../../favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="../toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-AppHealthMonitor/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-apphealthmonitor">FishMMO-AppHealthMonitor</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-AppHealthMonitor/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p>A small, focused <strong>process supervisor</strong> that launches, monitors, and restarts
+one or more FishMMO server executables. It is intended to be the &quot;service
+manager&quot; for headless Unity server builds (LoginServer, WorldServer,
+SceneServer) and any auxiliary processes (IPFetch, Patcher API, etc.) when a
+full systemd/Docker setup isn't desired.</p>
+<p>The supervisor performs <strong>process liveness, TCP/UDP/WebSocket port probes, CPU
+and memory thresholds, exponential-backoff restarts, and a circuit breaker</strong> to
+stop hammering a permanently broken process.</p>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#description">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#key-components">Key Components</a></li>
+<li><a href="#configuration">Configuration</a>
+<ul>
+<li><a href="#appsettingsjson-shape"><code>appsettings.json</code> shape</a></li>
+<li><a href="#per-application-options">Per-application options</a></li>
+</ul>
+</li>
+<li><a href="#console-commands">Console Commands</a></li>
+<li><a href="#build--run">Build &amp; Run</a></li>
+<li><a href="#headless-mode">Headless Mode</a></li>
+<li><a href="#known-limitations">Known Limitations</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+</ul>
+<hr>
+<h2 id="description">Description</h2>
+<p>The daemon reads <code>appsettings.json</code>, validates every per-application config
+(applying sensible defaults), and starts one <code>HealthMonitor</code> task per
+application. Each <code>HealthMonitor</code> launches its process, waits for the configured
+initial-health-check delay, then enters a polling loop that:</p>
+<ol>
+<li>Verifies the process is still alive.</li>
+<li>Probes the configured port(s) using <code>TcpHealthChecker</code>, <code>UdpHealthChecker</code>,
+or <code>WebSocketHealthChecker</code> (selected by <code>PortType</code>).</li>
+<li>Optionally samples CPU and memory usage and compares to configured
+thresholds (with a tolerance counter to ignore transient spikes).</li>
+<li>On consecutive failures, kills the process gracefully (with a force-kill
+fallback) and restarts it with exponential backoff capped at
+<code>MaxRestartDelaySeconds</code> and limited to <code>MaxRestartAttempts</code>.</li>
+<li>After <code>CircuitBreakerFailureThreshold</code> consecutive failures across launches,
+the circuit breaker trips and that application is parked until a manual
+<code>start</code> / <code>force-restart</code> command.</li>
+</ol>
+<p>A <code>CommandHandler</code> exposes interactive console commands so an operator can
+inspect status and intervene without restarting the supervisor itself.</p>
+<hr>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET 8.0 — Linux</td>
+<td>Yes</td>
+<td>Recommended (uses <code>/proc</code> for CPU sampling)</td>
+</tr>
+<tr>
+<td>.NET 8.0 — Windows</td>
+<td>Yes</td>
+<td>Uses Win32 performance counters</td>
+</tr>
+<tr>
+<td>.NET 8.0 — macOS</td>
+<td>Best-effort</td>
+<td>Process monitoring works; CPU sampling may be coarser</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET SDK</td>
+<td>8.0+</td>
+</tr>
+<tr>
+<td>File-system access to monitored executables</td>
+<td>Required</td>
+</tr>
+<tr>
+<td>Permission to bind probe sockets to <code>HealthCheckHost</code></td>
+<td>Required</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="architecture">Architecture</h2>
+<pre><code>FishMMO-AppHealthMonitor/AppHealthMonitor/
+├── Program.cs                # Entry point; builds DaemonOrchestrator + CommandHandler
+├── DaemonOrchestrator.cs     # Manages monitor lifecycle, start/stop signalling, shutdown
+├── CommandHandler.cs         # Interactive console command loop
+├── ConsoleCommand.cs         # record: Name, Description, Func&lt;Task&gt; Action
+├── HealthMonitor.cs          # One per app — launch / probe / restart loop
+├── HealthMonitorStatus.cs    # Snapshot DTO used by 'status' command
+├── HealthCheckerFactory.cs   # Selects TCP/UDP/WebSocket probe per PortType
+├── IHealthChecker.cs         # Probe contract: Task&lt;bool&gt; CheckAsync(...)
+├── TcpHealthChecker.cs       # TCP connect probe
+├── UdpHealthChecker.cs       # UDP send/receive probe
+├── WebSocketHealthChecker.cs # WebSocket upgrade probe
+├── PortType.cs               # enum: TCP, UDP, WebSocket
+├── AppConfig.cs              # Per-application config + validation
+└── appsettings.json          # Headless flag + Applications[] array
+</code></pre>
+<hr>
+<h2 id="key-components">Key Components</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DaemonOrchestrator</code></td>
+<td>Top-level lifecycle. Builds the per-app <code>HealthMonitor</code> set, exposes <code>TrySignalStart()</code>, <code>CancelCurrentMonitoring()</code>, <code>GetActiveMonitorStatuses()</code>, and <code>Shutdown()</code>.</td>
+</tr>
+<tr>
+<td><code>HealthMonitor</code></td>
+<td>Owns one child process. Implements launch, settle-delay, probe loop, threshold breach detection, graceful + forced kill, and exponential-backoff restart with a circuit breaker.</td>
+</tr>
+<tr>
+<td><code>HealthMonitorStatus</code></td>
+<td>Read-only snapshot for the <code>status</code> console command (name, PID, state, restart counters, failure counters).</td>
+</tr>
+<tr>
+<td><code>HealthCheckerFactory</code></td>
+<td>Returns the right <code>IHealthChecker</code> for each <code>PortType</code> declared in the app config.</td>
+</tr>
+<tr>
+<td><code>IHealthChecker</code> / <code>Tcp</code>/<code>Udp</code>/<code>WebSocket</code> checkers</td>
+<td>Stateless probes invoked per cycle.</td>
+</tr>
+<tr>
+<td><code>AppConfig</code></td>
+<td>Strongly-typed app entry. <code>TryApplyDefaultsAndValidate(out error)</code> enforces sane minimums (e.g., <code>CheckIntervalSeconds &gt;= 5</code>), resolves the exe path, and normalizes <code>HealthCheckHost</code>.</td>
+</tr>
+<tr>
+<td><code>CommandHandler</code></td>
+<td>Cancellable <code>ReadLineAsync</code> loop; dispatches <code>start</code>, <code>stop</code>, <code>status</code>, <code>force-kill</code>, <code>force-restart</code>, <code>shutdown</code>, <code>exit</code>, <code>help</code>.</td>
+</tr>
+<tr>
+<td><code>ConsoleCommand</code></td>
+<td><code>record</code> of <code>(Name, Description, Func&lt;Task&gt; Action)</code> registered at construction.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="configuration">Configuration</h2>
+<p>The canonical <code>appsettings.json</code> lives in <a href="../FishMMO-Setup/Development/appsettings.AppHealthMonitor.json"><code>FishMMO-Setup/Development/appsettings.AppHealthMonitor.json</code></a>. At build time, it is copied to the output directory as <code>appsettings.json</code>. At runtime, the daemon checks the <strong>working directory first</strong> (operator override), then falls back to the bundled copy in the application directory.</p>
+<p>The file has two top-level fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Headless</code></td>
+<td><code>false</code> (default) keeps the interactive console open. <code>true</code> disables stdin reads — appropriate for systemd / Docker.</td>
+</tr>
+<tr>
+<td><code>Applications</code></td>
+<td>Array of per-application configs (see below).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="appsettingsjson-shape"><code>appsettings.json</code> shape</h3>
+<pre><code class="lang-json">{
+  &quot;Headless&quot;: false,
+  &quot;Applications&quot;: [
+    {
+      &quot;Name&quot;: &quot;LoginServer&quot;,
+      &quot;ApplicationExePath&quot;: &quot;/path/to/GameServer&quot;,
+      &quot;LaunchArguments&quot;: &quot;LOGIN&quot;,
+      &quot;MonitoredPort&quot;: 7770,
+      &quot;PortTypes&quot;: [ &quot;TCP&quot;, &quot;UDP&quot; ],
+
+      &quot;CheckIntervalSeconds&quot;: 30,
+      &quot;LaunchDelaySeconds&quot;: 2,
+      &quot;InitialHealthCheckDelaySeconds&quot;: 30,
+      &quot;PostLaunchSettleDelaySeconds&quot;: 5,
+
+      &quot;CpuThresholdPercent&quot;: 0,
+      &quot;MemoryThresholdMB&quot;: 0,
+      &quot;ResourceCheckFailureThreshold&quot;: 2,
+
+      &quot;GracefulShutdownTimeoutSeconds&quot;: 10,
+      &quot;ForceKillTimeoutSeconds&quot;: 5,
+
+      &quot;InitialRestartDelaySeconds&quot;: 5,
+      &quot;MaxRestartDelaySeconds&quot;: 60,
+      &quot;MaxRestartAttempts&quot;: 5,
+      &quot;CircuitBreakerFailureThreshold&quot;: 3,
+
+      &quot;PortCheckTimeoutMs&quot;: 2000,
+      &quot;WebSocketCheckTimeoutMs&quot;: 5000,
+      &quot;HealthCheckHost&quot;: &quot;127.0.0.1&quot;
+    }
+  ]
+}
+</code></pre>
+<h3 id="per-application-options">Per-application options</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default / Min</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Name</code></td>
+<td>required</td>
+<td>Friendly name used in logs and <code>status</code>.</td>
+</tr>
+<tr>
+<td><code>ApplicationExePath</code></td>
+<td>required</td>
+<td>Absolute or relative path to the executable; resolved via <code>Path.GetFullPath</code> and verified to exist.</td>
+</tr>
+<tr>
+<td><code>LaunchArguments</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Optional command-line arguments.</td>
+</tr>
+<tr>
+<td><code>MonitoredPort</code></td>
+<td><code>0</code></td>
+<td><code>0</code> means <strong>process-only</strong> monitoring (no port probe).</td>
+</tr>
+<tr>
+<td><code>PortTypes</code></td>
+<td><code>[]</code></td>
+<td>Subset of <code>TCP</code>, <code>UDP</code>, <code>WebSocket</code>. Empty = process-only.</td>
+</tr>
+<tr>
+<td><code>CheckIntervalSeconds</code></td>
+<td>min <code>5</code></td>
+<td>Probe interval.</td>
+</tr>
+<tr>
+<td><code>LaunchDelaySeconds</code></td>
+<td><code>0</code></td>
+<td>Wait this long <strong>after</strong> launching <em>this</em> app before launching the <em>next</em> one in the list (lets the previous app initialize). Not applied to the last app.</td>
+</tr>
+<tr>
+<td><code>InitialHealthCheckDelaySeconds</code></td>
+<td>min <code>1</code></td>
+<td>Delay before the first probe after launch — lets the process fully boot.</td>
+</tr>
+<tr>
+<td><code>PostLaunchSettleDelaySeconds</code></td>
+<td>min <code>1</code></td>
+<td>Pause after launch / restart before resuming probes.</td>
+</tr>
+<tr>
+<td><code>CpuThresholdPercent</code></td>
+<td><code>0</code></td>
+<td><code>0</code> disables CPU monitoring. CPU% is computed against <code>Environment.ProcessorCount</code> (logical cores).</td>
+</tr>
+<tr>
+<td><code>MemoryThresholdMB</code></td>
+<td><code>0</code></td>
+<td><code>0</code> disables memory monitoring.</td>
+</tr>
+<tr>
+<td><code>ResourceCheckFailureThreshold</code></td>
+<td>min <code>1</code></td>
+<td>Consecutive CPU/mem breaches required before triggering a restart. Filters out transient <code>/proc</code> errors.</td>
+</tr>
+<tr>
+<td><code>GracefulShutdownTimeoutSeconds</code></td>
+<td>min <code>1</code></td>
+<td>Time allowed for graceful close before force-kill.</td>
+</tr>
+<tr>
+<td><code>ForceKillTimeoutSeconds</code></td>
+<td>min <code>1</code></td>
+<td>How long to wait for a force-killed process to fully exit.</td>
+</tr>
+<tr>
+<td><code>InitialRestartDelaySeconds</code></td>
+<td>min <code>1</code></td>
+<td>Base delay for exponential backoff.</td>
+</tr>
+<tr>
+<td><code>MaxRestartDelaySeconds</code></td>
+<td>min <code>1</code></td>
+<td>Cap for exponential backoff.</td>
+</tr>
+<tr>
+<td><code>MaxRestartAttempts</code></td>
+<td>min <code>1</code></td>
+<td>After this many restarts, the circuit breaker may trip.</td>
+</tr>
+<tr>
+<td><code>CircuitBreakerFailureThreshold</code></td>
+<td>min <code>1</code></td>
+<td>Consecutive failures across launches that trip the breaker.</td>
+</tr>
+<tr>
+<td><code>PortCheckTimeoutMs</code></td>
+<td>min <code>1</code></td>
+<td>TCP / UDP probe timeout.</td>
+</tr>
+<tr>
+<td><code>WebSocketCheckTimeoutMs</code></td>
+<td>min <code>1</code></td>
+<td>WebSocket probe timeout (the upgrade handshake needs more time than a raw TCP connect).</td>
+</tr>
+<tr>
+<td><code>HealthCheckHost</code></td>
+<td><code>&quot;127.0.0.1&quot;</code></td>
+<td>Probe target host; must match the interface the app actually binds to.</td>
+</tr>
+</tbody>
+</table>
+<p><code>AppConfig.TryApplyDefaultsAndValidate(out string error)</code> runs at startup and
+rejects the configuration with a precise error message if any constraint is
+violated.</p>
+<hr>
+<h2 id="console-commands">Console Commands</h2>
+<p>When <code>Headless = false</code>, the supervisor reads commands from stdin. All commands
+are case-sensitive.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>help</code></td>
+<td>Lists all available commands.</td>
+</tr>
+<tr>
+<td><code>start</code></td>
+<td>Starts monitoring all configured applications. No-op if already active.</td>
+</tr>
+<tr>
+<td><code>stop</code></td>
+<td>Gracefully terminates monitored applications and returns to the waiting state.</td>
+</tr>
+<tr>
+<td><code>force-kill</code></td>
+<td>Immediately terminates all monitored applications, bypassing graceful shutdown.</td>
+</tr>
+<tr>
+<td><code>force-restart</code></td>
+<td>Immediately terminates and then restarts all applications.</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>Prints per-application: PID, state, restart count / max, consecutive port and resource failures.</td>
+</tr>
+<tr>
+<td><code>shutdown</code></td>
+<td>Gracefully stops the daemon and every monitored application.</td>
+</tr>
+<tr>
+<td><code>exit</code></td>
+<td>Alias for <code>shutdown</code>.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="build--run">Build &amp; Run</h2>
+<pre><code class="lang-bash">dotnet build FishMMO-AppHealthMonitor.sln -c Release
+dotnet run   --project AppHealthMonitor/AppHealthMonitor.csproj
+</code></pre>
+<p>At build time, <code>appsettings.json</code> and <code>logging.json</code> are copied from
+<a href="../FishMMO-Setup/"><code>FishMMO-Setup/</code></a> into the build output. Place a modified
+copy in the working directory to override the bundled defaults at runtime.</p>
+<hr>
+<h2 id="headless-mode">Headless Mode</h2>
+<p>Set <code>&quot;Headless&quot;: true</code> to disable the stdin command reader. In this mode:</p>
+<ul>
+<li>The supervisor starts monitoring immediately on launch.</li>
+<li>It can only be stopped by sending the process a termination signal
+(<code>SIGTERM</code> on Linux / <code>Ctrl+C</code>) — which triggers the same graceful shutdown
+path as the <code>shutdown</code> command.</li>
+</ul>
+<p>This mode is appropriate for <code>systemd</code>, Windows Services, and Docker.</p>
+<h3 id="running-as-a-systemd-service-linux">Running as a systemd service (Linux)</h3>
+<p>The <a href="../FishMMO-Installer/README.html">FishMMO-Installer</a> can install the daemon as a systemd service:</p>
+<pre><code class="lang-bash"># Publish the project first:
+dotnet publish AppHealthMonitor/AppHealthMonitor.csproj -c Release -o publish
+# Install the service:
+FishMMO-Installer --component apphealthmonitor-service
+</code></pre>
+<p>This creates <code>fishmmo-apphealthmonitor.service</code> with:</p>
+<ul>
+<li><code>Restart=always</code>, <code>RestartSec=10</code></li>
+<li><code>Environment=FISHMMO_ENVIRONMENT=Production</code> (configurable via <code>FISHMMO_SERVICE_ENVIRONMENT</code>)</li>
+<li>Optional <code>EnvironmentFile=</code> for secrets</li>
+</ul>
+<p>Manual installation without the Installer:</p>
+<pre><code class="lang-bash">sudo cat &gt; /etc/systemd/system/fishmmo-apphealthmonitor.service &lt;&lt; 'EOF'
+[Unit]
+Description=FishMMO Application Health Monitor Daemon
+After=network.target postgresql.service
+
+[Service]
+WorkingDirectory=/opt/fishmmo/FishMMO-AppHealthMonitor/AppHealthMonitor/bin/Release/net8.0/publish
+ExecStart=/usr/bin/dotnet &quot;AppHealthMonitor.dll&quot;
+Restart=always
+RestartSec=10
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=FISHMMO_ENVIRONMENT=Production
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now fishmmo-apphealthmonitor
+</code></pre>
+<hr>
+<h2 id="known-limitations">Known Limitations</h2>
+<ul>
+<li><strong>Single config file.</strong> Hot-reload of <code>appsettings.json</code> is not supported —
+restart the supervisor after edits.</li>
+<li><strong>No structured metrics export.</strong> Restart counters and probe results are
+logged via <code>FishMMO-Logger</code> but not exposed as Prometheus metrics.</li>
+<li><strong>CPU sampling assumes logical cores.</strong> On systems where you want to gate
+against physical cores only, treat <code>CpuThresholdPercent</code> as a relative
+threshold and tune it accordingly.</li>
+<li><strong>Process discovery is by spawned-PID only.</strong> The supervisor does not adopt
+a pre-existing process; if you kill the supervisor, you must also stop the
+child processes manually before restarting it (or it will spawn duplicates
+on next launch).</li>
+</ul>
+<hr>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart TD
+    Start([Daemon start]) --&gt; Load[Load appsettings.json]
+    Load --&gt; Validate[Per-app TryApplyDefaultsAndValidate]
+    Validate --&gt; Build[Build HealthMonitor per app]
+    Build --&gt; Wait{Headless?}
+    Wait -- yes --&gt; Signal[Auto-signal start]
+    Wait -- no --&gt; Cmd[Console command loop]
+    Cmd --&gt;|start / force-restart| Signal
+    Cmd --&gt;|status| Status[Print HealthMonitorStatus]
+    Cmd --&gt;|stop| CancelCycle
+    Cmd --&gt;|force-kill| ForceKill
+    Cmd --&gt;|shutdown / exit| Shutdown
+
+    Signal --&gt; Launch[Launch process + LaunchDelaySeconds gap]
+    Launch --&gt; Settle[PostLaunchSettleDelaySeconds]
+    Settle --&gt; InitDelay[InitialHealthCheckDelaySeconds]
+    InitDelay --&gt; Probe[Probe loop every CheckIntervalSeconds]
+
+    Probe --&gt; Alive{Process alive?}
+    Alive -- no --&gt; Restart
+    Alive -- yes --&gt; Port[TCP / UDP / WS probe]
+    Port --&gt; Res[CPU / memory sample]
+    Res --&gt; OK{All within thresholds?}
+    OK -- yes --&gt; Probe
+    OK -- no --&gt; Counters[Increment failure counters]
+    Counters --&gt; Trip{Threshold or&lt;br/&gt;circuit breaker?}
+    Trip -- restart --&gt; Kill[&quot;Graceful kill&lt;br/&gt;(GracefulShutdownTimeoutSeconds)&quot;]
+    Kill -.-&gt;|timeout| ForceKill[Force kill + wait ForceKillTimeoutSeconds]
+    Kill --&gt; Restart[Exponential backoff:&lt;br/&gt;Initial → Max,&lt;br/&gt;up to MaxRestartAttempts]
+    ForceKill --&gt; Restart
+    Restart --&gt; Breaker{Circuit breaker tripped?}
+    Breaker -- no --&gt; Launch
+    Breaker -- yes --&gt; Parked[Parked until manual start / force-restart]
+
+    CancelCycle --&gt; Wait
+    Shutdown --&gt; Stop([Daemon exits])
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-AppHealthMonitor/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

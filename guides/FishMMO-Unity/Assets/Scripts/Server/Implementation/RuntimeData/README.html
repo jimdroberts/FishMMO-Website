@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Runtime Data | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Runtime Data | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="runtime-data">Runtime Data</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Provides a container-based separation of mutable runtime state from server behaviour logic, with automatic attribute-driven discovery, deduplication, priority-ordered initialization, and shared cross-system containers for async work queues and main-thread action marshalling.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Runtime Data system enforces a clean separation between server business logic (<code>ServerBehaviour</code> ScriptableObjects) and mutable runtime state (<code>RuntimeDataContainer</code> classes). ServerBehaviours handle configuration, event subscriptions, validation, and algorithms — they are stateless. RuntimeDataContainers hold all dictionaries, trackers, timestamps, and queues — they contain no business logic.</p>
+<p>Containers are automatically discovered via <code>[RequiresDataContainer]</code> attributes placed on ServerBehaviour classes. The server scans all behaviours at startup, creates container instances through <code>RuntimeDataContainerFactory</code> (reflection-based, parameterless-constructor validation), deduplicates by concrete type so multiple systems requiring the same container share one instance, orders them by <code>InitializationPriority</code>, and registers them in a global <code>RuntimeDataContainerRegistry</code> for type-safe lookup.</p>
+<p>The Core layer (<code>Server/Core/RuntimeData/</code>) defines engine-agnostic interfaces: <code>IRuntimeDataContainer</code> (marker extending <code>IServerComponent</code>), the generic <code>IRuntimeDataContainer&lt;TNetworkManager, TServerManager, TConnection, TDataContainer&gt;</code> (with <code>Initialize</code>, <code>Clear</code>), <code>IRuntimeDataContainerFactory</code>, <code>IRuntimeDataContainerRegistry&lt;...&gt;</code>, <code>IAsyncWorkerData</code>, and <code>IMainThreadQueueData</code>. The Implementation layer (<code>Server/Implementation/RuntimeData/</code>) provides the abstract <code>RuntimeDataContainer</code> base class, the concrete <code>RuntimeDataContainerFactory</code> and <code>RuntimeDataContainerRegistry</code>, and shared cross-system containers: <code>AsyncWorkerData</code> (bounded async work queue with backpressure and entity-keyed ordering), <code>MainThreadQueueData</code> (thread-safe main-thread action marshalling with copy-then-invoke drain), and <code>SystemMainThreadQueueData</code> (thin abstract subclass for per-system queue isolation).</p>
+<p>Concrete per-system containers (e.g., <code>PartyRuntimeData</code>, <code>GuildRuntimeData</code>, <code>CharacterMappingData</code>) live alongside their respective system implementations under <code>Server/Implementation/World/</code> and <code>Server/Implementation/LoginServer/</code>, while shared cross-system containers are centralized here.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Fully supported as a server host</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Fully supported as a server host</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only component; not applicable to browser builds</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Engine:</strong> Unity 6.3 LTS
+<strong>Scripting backend:</strong> IL2CPP</p>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Logic / data separation</strong> — <code>ServerBehaviour</code> ScriptableObjects own immutable configuration and business logic; <code>RuntimeDataContainer</code> classes own all mutable runtime state. Neither crosses into the other's responsibility.</li>
+<li><strong>Automatic attribute-driven discovery</strong> — <code>[RequiresDataContainer(typeof(T))]</code> on any <code>ServerBehaviour</code> causes the server to instantiate container <code>T</code> at startup without manual wiring.</li>
+<li><strong>Deduplication</strong> — Multiple behaviours can declare the same container type; only one instance is created and shared across all consumers.</li>
+<li><strong>Priority-ordered initialization</strong> — <code>RequiresDataContainerAttribute.InitializationPriority</code> (int, lower = earlier) controls container initialization order when containers depend on each other.</li>
+<li><strong>Reflection-based factory with validation</strong> — <code>RuntimeDataContainerFactory.CreateContainer(Type)</code> validates that the type is non-null, non-abstract, not an interface, assignable to <code>IRuntimeDataContainer</code>, and has a public parameterless constructor before calling <code>Activator.CreateInstance</code>.</li>
+<li><strong>Type-safe registry</strong> — <code>RuntimeDataContainerRegistry</code> extends <code>ServerComponentRegistry</code> and provides <code>Register&lt;T&gt;()</code>, <code>Unregister&lt;T&gt;()</code>, <code>TryGet&lt;T&gt;(out T)</code>, <code>Get&lt;T&gt;()</code>, <code>InitializeAll(IServer)</code>, and <code>DeinitializeAll()</code>. Behaviours access containers via <code>Server.DataContainerRegistry.TryGet&lt;IMyData&gt;(out var data)</code>.</li>
+<li><strong>Lifecycle management</strong> — <code>InitializeAll</code> iterates registered containers, calling <code>container.Initialize(server, serverManager)</code> which sets references and calls the abstract <code>InitializeOnce()</code>. <code>DeinitializeAll</code> calls <code>Clear()</code> then <code>Deinitialize()</code> on each unique instance (deduplicated via <code>HashSet</code>), then empties the registry.</li>
+<li><strong>Bounded async work queue (AsyncWorkerData)</strong> — Replaces fire-and-forget <code>_ = SomeAsync(...)</code> with backpressure-aware scheduling. Uses multiple <code>System.Threading.Channels.Channel&lt;AsyncWorkItem&gt;</code> (one per worker, <code>BoundedChannelFullMode.DropWrite</code>, capacity 1024). Supports round-robin enqueue and entity-keyed consistent-hashing enqueue for FIFO ordering per entity. Exposes <code>PendingCount</code> and <code>CompletedCount</code> for monitoring. Performs graceful shutdown: cancels workers, completes writers, drains remaining items, waits up to 10 seconds for worker tasks.</li>
+<li><strong>Main-thread action marshalling (MainThreadQueueData)</strong> — Abstract base container with a <code>Queue&lt;Action&gt;</code> guarded by <code>lock</code>. Background threads call <code>TryEnqueue(Action)</code> (bounded at 10 000 pending actions). Main thread calls <code>Drain()</code> or <code>Drain(int maxActions)</code> each frame, which copies actions under lock then invokes outside the lock to minimize lock hold time. Uses a reusable <code>drainBuffer</code> list to avoid per-call allocation.</li>
+<li><strong>Per-system queue isolation (SystemMainThreadQueueData)</strong> — Abstract subclass of <code>MainThreadQueueData</code> that concrete per-system queue containers inherit, ensuring each system gets its own isolated queue instance via the <code>DataContainerRegistry</code>.</li>
+<li><strong>Diagnostic counters</strong> — <code>AsyncWorkerData</code> tracks <code>CompletedCount</code> (atomic <code>Interlocked.Read</code>) and <code>PendingCount</code> (sum of all channel reader counts). Work items carry an optional <code>CallerName</code> for error logging attribution.</li>
+<li><strong>Structured logging</strong> — All lifecycle events (<code>Initialize</code>, <code>Deinitialize</code>, worker startup/shutdown, errors) are logged via <code>FishMMO.Logging.Log</code> with category tags (<code>&quot;AsyncWorkerData&quot;</code>, <code>&quot;RuntimeDataContainerRegistry&quot;</code>).</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS (IL2CPP scripting backend)</li>
+<li>FishNet networking framework (<code>FishNet.Connection.NetworkConnection</code>, <code>FishNet.Managing.Server.ServerManager</code>)</li>
+<li>FishMMO server core assemblies (<code>FishMMO.Server.Core</code> — <code>IRuntimeDataContainer</code>, <code>IRuntimeDataContainerFactory</code>, <code>IRuntimeDataContainerRegistry</code>, <code>IServerComponent</code>, <code>IServerComponentRegistry</code>, <code>ServerComponentRegistry</code>, <code>RequiresDataContainerAttribute</code>, <code>IAsyncWorkerData</code>, <code>IMainThreadQueueData</code>)</li>
+<li>FishMMO logging (<code>FishMMO.Logging.Log</code>)</li>
+<li><code>System.Threading.Channels</code> (for <code>AsyncWorkerData</code> bounded channel work queues)</li>
+<li><code>System.Threading</code> (<code>Interlocked</code>, <code>CancellationTokenSource</code>, <code>Task</code>) for async worker lifecycle</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO Unity project. No separate installation is required.</p>
+<ol>
+<li>Ensure the FishMMO Unity project is open in the Unity Editor.</li>
+<li>The <code>RuntimeDataContainerRegistry</code>, <code>RuntimeDataContainerFactory</code>, and all container instances are created automatically by the server during <code>OnFinalizeSetup</code>. No manual ScriptableObject or asset creation is needed.</li>
+<li>ServerBehaviours declare container dependencies via <code>[RequiresDataContainer(typeof(T))]</code> — the server handles discovery, creation, deduplication, and initialization.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="creating-a-new-runtime-data-container">Creating a New Runtime Data Container</h3>
+<ol>
+<li>Define a Core interface extending <code>IRuntimeDataContainer</code>:</li>
+</ol>
+<pre><code class="lang-csharp">public interface IMySystemData : IRuntimeDataContainer
+{
+    Dictionary&lt;long, string&gt; Tracker { get; }
+    DateTime LastSyncTime { get; set; }
+}
+</code></pre>
+<ol start="2">
+<li>Implement the container extending <code>RuntimeDataContainer</code>:</li>
+</ol>
+<pre><code class="lang-csharp">public class MySystemData : RuntimeDataContainer, IMySystemData
+{
+    private readonly Dictionary&lt;long, string&gt; tracker = new();
+
+    public Dictionary&lt;long, string&gt; Tracker =&gt; tracker;
+    public DateTime LastSyncTime { get; set; }
+
+    public override ServerComponentInitializationStatus InitializeOnce()
+    {
+        LastSyncTime = DateTime.UtcNow;
+        return ServerComponentInitializationStatus.Initialized;
+    }
+
+    public override void Clear()
+    {
+        tracker.Clear();
+        LastSyncTime = DateTime.UtcNow;
+    }
+
+    protected override void OnDeinitialize() =&gt; Clear();
+}
+</code></pre>
+<ol start="3">
+<li>Declare the dependency on your ServerBehaviour:</li>
+</ol>
+<pre><code class="lang-csharp">[RequiresDataContainer(typeof(MySystemData))]
+public class MySystem : ServerBehaviour
+{
+    public override ServerComponentInitializationStatus InitializeOnce()
+    {
+        if (!Server.DataContainerRegistry.TryGet&lt;IMySystemData&gt;(out var data))
+            return ServerComponentInitializationStatus.FailedToGetDataContainer;
+
+        // Container is ready — subscribe to events, store local ref, etc.
+        return ServerComponentInitializationStatus.Initialized;
+    }
+}
+</code></pre>
+<h3 id="using-asyncworkerdata-for-background-work">Using AsyncWorkerData for Background Work</h3>
+<ol>
+<li>Declare the dependency:</li>
+</ol>
+<pre><code class="lang-csharp">[RequiresDataContainer(typeof(AsyncWorkerData))]
+public class PersistenceSystem : ServerBehaviour { ... }
+</code></pre>
+<ol start="2">
+<li>Enqueue work (round-robin):</li>
+</ol>
+<pre><code class="lang-csharp">if (Server.DataContainerRegistry.TryGet&lt;IAsyncWorkerData&gt;(out var asyncWorker))
+{
+    asyncWorker.Enqueue(() =&gt; PersistInventoryAsync(dto));
+}
+</code></pre>
+<ol start="3">
+<li>Enqueue ordered work (entity-keyed):</li>
+</ol>
+<pre><code class="lang-csharp">asyncWorker.Enqueue(() =&gt; SaveCharacterAsync(charData), characterID);
+// Same characterID always routes to the same worker — FIFO ordering guaranteed
+</code></pre>
+<h3 id="using-mainthreadqueuedata-for-thread-marshalling">Using MainThreadQueueData for Thread Marshalling</h3>
+<ol>
+<li>Create a concrete queue container inheriting <code>SystemMainThreadQueueData</code>:</li>
+</ol>
+<pre><code class="lang-csharp">public class MySystemMainThreadQueue : SystemMainThreadQueueData { }
+</code></pre>
+<ol start="2">
+<li>Declare it on your behaviour and drain each frame:</li>
+</ol>
+<pre><code class="lang-csharp">[RequiresDataContainer(typeof(MySystemMainThreadQueue))]
+public class MyNetworkSystem : ServerBehaviour
+{
+    private IMainThreadQueueData mainThreadQueue;
+
+    public override ServerComponentInitializationStatus InitializeOnce()
+    {
+        if (!Server.DataContainerRegistry.TryGet&lt;IMainThreadQueueData&gt;(out mainThreadQueue))
+            return ServerComponentInitializationStatus.FailedToGetDataContainer;
+        return ServerComponentInitializationStatus.Initialized;
+    }
+
+    // Called from async worker thread
+    private void OnAsyncResult(NetworkConnection conn, byte[] payload)
+    {
+        mainThreadQueue.TryEnqueue(() =&gt; conn.Broadcast(new ResultMsg { Data = payload }));
+    }
+
+    // Called each frame on main thread
+    public void OnLateUpdate() =&gt; mainThreadQueue.Drain();
+}
+</code></pre>
+<h2 id="configuration">Configuration</h2>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Location</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Worker count</td>
+<td><code>AsyncWorkerData.DEFAULT_WORKER_COUNT</code></td>
+<td><code>4</code></td>
+<td>Number of async worker loops spawned at initialization</td>
+</tr>
+<tr>
+<td>Channel capacity</td>
+<td><code>AsyncWorkerData.DEFAULT_CHANNEL_CAPACITY</code></td>
+<td><code>1024</code></td>
+<td>Bounded capacity per worker channel; <code>DropWrite</code> when full (backpressure)</td>
+</tr>
+<tr>
+<td>Max queue capacity</td>
+<td><code>MainThreadQueueData.MaxQueueCapacity</code></td>
+<td><code>10000</code></td>
+<td>Maximum pending actions before <code>TryEnqueue</code> returns <code>false</code></td>
+</tr>
+<tr>
+<td>Channel full mode</td>
+<td><code>AsyncWorkerData</code></td>
+<td><code>BoundedChannelFullMode.DropWrite</code></td>
+<td>Items are silently dropped when channel is full</td>
+</tr>
+<tr>
+<td>Channel single reader</td>
+<td><code>AsyncWorkerData</code></td>
+<td><code>true</code></td>
+<td>Each channel has exactly one reader (its worker loop)</td>
+</tr>
+<tr>
+<td>Shutdown timeout</td>
+<td><code>AsyncWorkerData.OnDeinitialize</code></td>
+<td><code>10 seconds</code></td>
+<td>Maximum wait time for worker tasks to complete during shutdown</td>
+</tr>
+<tr>
+<td><code>InitializationPriority</code></td>
+<td><code>[RequiresDataContainer]</code> attribute</td>
+<td><code>0</code></td>
+<td>Lower values initialize first; set per-attribute on each ServerBehaviour</td>
+</tr>
+</tbody>
+</table>
+<p>All values are compile-time constants. To adjust, modify the source constants and rebuild.</p>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="shared-container-across-multiple-systems">Shared Container Across Multiple Systems</h3>
+<pre><code class="lang-csharp">[RequiresDataContainer(typeof(CharacterMappingData))]
+public class CharacterSystem : ServerBehaviour { }
+
+[RequiresDataContainer(typeof(CharacterMappingData))]  // Same container
+public class PartySystem : ServerBehaviour { }
+
+[RequiresDataContainer(typeof(CharacterMappingData))]  // Same container
+public class FriendSystem : ServerBehaviour { }
+
+// Result: Only ONE CharacterMappingData instance is created and shared
+</code></pre>
+<h3 id="priority-ordered-initialization">Priority-Ordered Initialization</h3>
+<pre><code class="lang-csharp">[RequiresDataContainer(typeof(CharacterMappingData), InitializationPriority = 0)]
+[RequiresDataContainer(typeof(CharacterInventoryData), InitializationPriority = 10)]
+public class CharacterInventorySystem : ServerBehaviour { }
+
+// CharacterMappingData initialized first (priority 0)
+// CharacterInventoryData initialized second (priority 10)
+</code></pre>
+<h3 id="monitoring-async-worker-health">Monitoring Async Worker Health</h3>
+<pre><code class="lang-csharp">if (Server.DataContainerRegistry.TryGet&lt;IAsyncWorkerData&gt;(out var asyncWorker))
+{
+    int pending = asyncWorker.PendingCount;
+    long completed = asyncWorker.CompletedCount;
+    Log.Info(&quot;Health&quot;, $&quot;AsyncWorker: pending={pending}, completed={completed}&quot;);
+}
+</code></pre>
+<h3 id="party-system--full-container-pattern">Party System — Full Container Pattern</h3>
+<p><strong>Core interface:</strong></p>
+<pre><code class="lang-csharp">public interface IPartyRuntimeData : IRuntimeDataContainer
+{
+    Dictionary&lt;long, HashSet&lt;long&gt;&gt; PartyMemberTracker { get; }
+    Dictionary&lt;long, HashSet&lt;long&gt;&gt; PartyCharacterTracker { get; }
+    Dictionary&lt;long, long&gt; PendingInvitations { get; }
+    DateTime LastFetchTime { get; set; }
+}
+</code></pre>
+<p><strong>Implementation:</strong></p>
+<pre><code class="lang-csharp">public class PartyRuntimeData : RuntimeDataContainer, IPartyRuntimeData
+{
+    private readonly Dictionary&lt;long, HashSet&lt;long&gt;&gt; partyMemberTracker = new();
+    private readonly Dictionary&lt;long, HashSet&lt;long&gt;&gt; partyCharacterTracker = new();
+    private readonly Dictionary&lt;long, long&gt; pendingInvitations = new();
+
+    public Dictionary&lt;long, HashSet&lt;long&gt;&gt; PartyMemberTracker =&gt; partyMemberTracker;
+    public Dictionary&lt;long, HashSet&lt;long&gt;&gt; PartyCharacterTracker =&gt; partyCharacterTracker;
+    public Dictionary&lt;long, long&gt; PendingInvitations =&gt; pendingInvitations;
+    public DateTime LastFetchTime { get; set; }
+
+    public override ServerComponentInitializationStatus InitializeOnce()
+    {
+        LastFetchTime = DateTime.UtcNow;
+        return ServerComponentInitializationStatus.Initialized;
+    }
+
+    public override void Clear()
+    {
+        partyMemberTracker.Clear();
+        partyCharacterTracker.Clear();
+        pendingInvitations.Clear();
+        LastFetchTime = DateTime.UtcNow;
+    }
+
+    protected override void OnDeinitialize() =&gt; Clear();
+}
+</code></pre>
+<p><strong>Behaviour:</strong></p>
+<pre><code class="lang-csharp">[CreateAssetMenu(fileName = &quot;PartySystem&quot;, menuName = &quot;FishMMO/Server/SceneServer/Party System&quot;)]
+[RequiresDataContainer(typeof(PartyRuntimeData))]
+public class PartySystem : ServerBehaviour, IPartySystem&lt;NetworkConnection&gt;
+{
+    public int MaxPartySize = 6;
+    public float UpdatePumpRate = 1.0f;
+
+    public override ServerComponentInitializationStatus InitializeOnce()
+    {
+        if (!Server.DataContainerRegistry.TryGet&lt;IPartyRuntimeData&gt;(out var runtimeData))
+            return ServerComponentInitializationStatus.FailedToGetDataContainer;
+
+        Server.NetworkWrapper.RegisterBroadcast&lt;PartyCreateBroadcast&gt;(
+            OnServerPartyCreateBroadcastReceived, true);
+
+        return ServerComponentInitializationStatus.Initialized;
+    }
+}
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Container discovery</td>
+<td>Check server startup logs for <code>&quot;RuntimeDataContainerRegistry&quot;</code> → <code>&quot;Initializing all data containers&quot;</code></td>
+<td>All declared containers appear in log output</td>
+</tr>
+<tr>
+<td>Container initialization</td>
+<td>Check per-container log <code>&quot;[TypeName] Initialization Status: Initialized&quot;</code></td>
+<td>Every container reports <code>Initialized</code></td>
+</tr>
+<tr>
+<td>Deduplication</td>
+<td>Declare same container type on multiple behaviours</td>
+<td>Only one instance created; all behaviours share it</td>
+</tr>
+<tr>
+<td>Priority ordering</td>
+<td>Assign different <code>InitializationPriority</code> values</td>
+<td>Lower-priority containers initialize first</td>
+</tr>
+<tr>
+<td>Factory validation</td>
+<td>Pass an abstract type or interface to <code>RuntimeDataContainerFactory.CreateContainer</code></td>
+<td><code>InvalidOperationException</code> with descriptive message</td>
+</tr>
+<tr>
+<td>Async worker startup</td>
+<td>Check log <code>&quot;AsyncWorkerData&quot;</code> → <code>&quot;Initialized (4 workers, 1024 capacity per channel)&quot;</code></td>
+<td>Worker count and capacity match constants</td>
+</tr>
+<tr>
+<td>Async worker backpressure</td>
+<td>Enqueue more than 1024 items to a single worker channel</td>
+<td><code>Enqueue</code> returns <code>false</code>; item is dropped</td>
+</tr>
+<tr>
+<td>Async worker entity ordering</td>
+<td>Enqueue multiple items with the same <code>entityKey</code></td>
+<td>All items route to the same worker and execute in FIFO order</td>
+</tr>
+<tr>
+<td>Async worker shutdown</td>
+<td>Stop the server</td>
+<td>Log <code>&quot;Worker N shutdown complete.&quot;</code> for each worker; <code>&quot;Deinitialized (Completed=X, Remaining=Y)&quot;</code></td>
+</tr>
+<tr>
+<td>Main-thread queue capacity</td>
+<td>Enqueue more than 10 000 actions without draining</td>
+<td><code>TryEnqueue</code> returns <code>false</code></td>
+</tr>
+<tr>
+<td>Main-thread drain</td>
+<td>Call <code>Drain()</code> on main thread after enqueueing actions</td>
+<td>All queued actions execute; drain returns count</td>
+</tr>
+<tr>
+<td>Registry DeinitializeAll</td>
+<td>Stop server</td>
+<td>Each unique container instance has <code>Clear()</code> and <code>Deinitialize()</code> called exactly once (deduplicated via <code>HashSet</code>)</td>
+</tr>
+<tr>
+<td>Full lifecycle</td>
+<td>Start → operate → stop server</td>
+<td>Containers created → initialized → used → cleared → deinitialized; no leaked state</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Boot[Server bootstrap] --&gt; Load[Load runtime data]
+    Load --&gt; ScriptableObjs[ScriptableObject registries]
+    Load --&gt; DBData[(DB seed data)]
+    ScriptableObjs --&gt; RD[RuntimeData container]
+    DBData --&gt; RD
+    RD --&gt; Sys1[Systems]
+    RD --&gt; Sys2[Lookups by id/name]
+</code></pre>
+<pre><code>Server.Start()
+    │
+    └── OnFinalizeSetup(remoteAddress)
+            │
+            ├── DataContainerRegistry = new RuntimeDataContainerRegistry()
+            │
+            ├── DiscoverAndCreateDataContainers()
+            │   ├── Scan all ServerBehaviours for [RequiresDataContainer] attributes
+            │   ├── Create container instances via RuntimeDataContainerFactory
+            │   │   └── Activator.CreateInstance(containerType)
+            │   ├── Deduplicate by concrete Type (multiple decls → one instance)
+            │   └── Order by InitializationPriority (lower = first)
+            │
+            ├── RegisterAllDataContainers()
+            │   └── Register each container in DataContainerRegistry
+            │       └── Stored by interface type for TryGet&lt;T&gt;() lookup
+            │
+            ├── DataContainerRegistry.InitializeAll(this)
+            │   └── For each container:
+            │       ├── Cast server to IServer&lt;INetworkManagerWrapper, NetworkConnection, IRuntimeDataContainer&gt;
+            │       ├── container.Initialize(server, serverManager)
+            │       │   ├── Set Server + ServerManager references
+            │       │   ├── Call InitializeOnce()
+            │       │   │   ├── AsyncWorkerData: create channels, spawn worker loops
+            │       │   │   ├── MainThreadQueueData: queue ready at construction
+            │       │   │   └── Custom containers: init trackers, set timestamps
+            │       │   └── Set Initialized = true
+            │       └── Log initialization status
+            │
+            ├── BehaviourRegistry.InitializeAll(this)
+            │   └── For each behaviour:
+            │       └── behaviour.InitializeOnce()
+            │           └── TryGet&lt;IMyData&gt;() → container guaranteed initialized
+            │
+            └── NetworkWrapper.StartServer()
+                └── Server Running ✓
+
+  ┌─────────────────────── Runtime Operation ───────────────────────┐
+  │                                                                 │
+  │  ServerBehaviour (main thread)                                  │
+  │    ├── Receives broadcast → reads/writes container data         │
+  │    ├── asyncWorkerData.Enqueue(() =&gt; PersistAsync(data))        │
+  │    │       └── Round-robin or entity-keyed → worker channel     │
+  │    └── mainThreadQueue.Drain() (each frame in OnLateUpdate)     │
+  │             └── Copy-under-lock → invoke outside lock           │
+  │                                                                 │
+  │  AsyncWorkerData (background threads)                           │
+  │    ├── Worker loops: await channel.Reader.ReadAllAsync(ct)      │
+  │    ├── Execute work item → Interlocked.Increment(completedCount)│
+  │    └── On error: log with CallerName attribution                │
+  │                                                                 │
+  │  Background thread → MainThreadQueueData                        │
+  │    └── TryEnqueue(Action) → main thread executes via Drain()    │
+  └─────────────────────────────────────────────────────────────────┘
+
+Server.Stop()
+    │
+    └── DataContainerRegistry.DeinitializeAll()
+            ├── Deduplicate instances via HashSet&lt;IRuntimeDataContainer&gt;
+            ├── For each unique instance:
+            │   ├── container.Clear()
+            │   │   ├── AsyncWorkerData: drain all channels without executing
+            │   │   ├── MainThreadQueueData: clear queue under lock
+            │   │   └── Custom containers: clear dictionaries, reset timestamps
+            │   └── container.Deinitialize()
+            │       ├── Call OnDeinitialize()
+            │       │   ├── AsyncWorkerData: cancel CTS → complete writers →
+            │       │   │   wait workers (10s timeout) → log stats → dispose CTS
+            │       │   ├── MainThreadQueueData: drain remaining actions
+            │       │   └── Custom containers: cleanup resources
+            │       └── Reset Initialized, Server, ServerManager to null
+            └── components.Clear() → registry empty
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>Server/
+├── Core/RuntimeData/
+│   ├── IRuntimeDataContainer.cs              # Marker + generic data container interface (extends IServerComponent)
+│   ├── IRuntimeDataContainerFactory.cs       # Factory interface: CreateContainer(Type), IsValidContainerType(Type)
+│   ├── IRuntimeDataContainerRegistry.cs      # Registry interface (extends IServerComponentRegistry)
+│   ├── IAsyncWorkerData.cs                   # Interface: Enqueue (round-robin + entity-keyed), PendingCount, CompletedCount
+│   ├── IMainThreadQueueData.cs               # Interface: TryEnqueue(Action), Drain(), Drain(int maxActions)
+│   └── RequiresDataContainerAttribute.cs     # [RequiresDataContainer(typeof(T), InitializationPriority = N)]
+│
+└── Implementation/RuntimeData/
+    ├── RuntimeDataContainer.cs               # Abstract base: Initialized, Server, ServerManager, Initialize → InitializeOnce, Deinitialize → OnDeinitialize, Clear
+    ├── RuntimeDataContainerFactory.cs        # Reflection factory: Activator.CreateInstance with type validation
+    ├── RuntimeDataContainerRegistry.cs       # Concrete registry: InitializeAll (cast + iterate), DeinitializeAll (HashSet dedup)
+    ├── AsyncWorkerData.cs                    # Bounded channel work queue: 4 workers, 1024 capacity, DropWrite, entity-keyed hashing
+    ├── MainThreadQueueData.cs                # Abstract main-thread queue: lock + Queue&lt;Action&gt;, copy-then-invoke Drain, 10K cap
+    └── SystemMainThreadQueueData.cs          # Abstract subclass of MainThreadQueueData for per-system queue isolation
+</code></pre>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>IServerComponent
+└── IRuntimeDataContainer (marker)
+    ├── IAsyncWorkerData
+    │       • Enqueue(Func&lt;Task&gt;, callerName?) → bool
+    │       • Enqueue(Func&lt;Task&gt;, entityKey, callerName?) → bool
+    │       • PendingCount → int
+    │       • CompletedCount → long
+    ├── IMainThreadQueueData
+    │       • TryEnqueue(Action) → bool
+    │       • Drain() → void
+    │       • Drain(int maxActions) → int
+    └── IRuntimeDataContainer&lt;TNetworkManager, TServerManager, TConnection, TDataContainer&gt;
+            • Initialize(server, serverManager) → ServerComponentInitializationStatus
+            • Clear() → void
+
+RuntimeDataContainer (abstract)
+    : IRuntimeDataContainer&lt;INetworkManagerWrapper, ServerManager, NetworkConnection, IRuntimeDataContainer&gt;
+    │   • Initialized : bool
+    │   • Server : IServer&lt;...&gt;
+    │   • ServerManager : ServerManager
+    │   • Initialize() → sets refs → calls InitializeOnce()
+    │   • Deinitialize() → calls OnDeinitialize() → resets refs
+    │   • InitializeOnce() [abstract]
+    │   • OnDeinitialize() [abstract]
+    │   • Clear() [abstract]
+    │
+    ├── AsyncWorkerData : IAsyncWorkerData
+    │       4 worker loops, BoundedChannel&lt;AsyncWorkItem&gt;, round-robin + entity-keyed enqueue
+    │
+    ├── MainThreadQueueData (abstract) : IMainThreadQueueData
+    │   │   Queue&lt;Action&gt; + lock, TryEnqueue (10K cap), copy-then-invoke Drain
+    │   │
+    │   └── SystemMainThreadQueueData (abstract)
+    │           Per-system concrete subclasses inherit this
+    │
+    ├── PartyRuntimeData, GuildRuntimeData, ChatRuntimeData, ...
+    └── (per-system containers alongside their ServerBehaviour implementations)
+
+IServerComponentRegistry&lt;...&gt;
+└── ServerComponentRegistry&lt;INetworkManagerWrapper, NetworkConnection, IRuntimeDataContainer&gt;
+    └── RuntimeDataContainerRegistry
+            • InitializeAll: cast server, iterate containers, call Initialize
+            • DeinitializeAll: HashSet dedup, Clear + Deinitialize each, empty registry
+
+IRuntimeDataContainerFactory
+└── RuntimeDataContainerFactory
+        • CreateContainer(Type): validate → Activator.CreateInstance
+        • IsValidContainerType(Type): non-null, non-abstract, non-interface, assignable, has parameterless ctor
+</code></pre>
+<h3 id="design-rules">Design Rules</h3>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>ServerBehaviour (Logic)</th>
+<th>RuntimeDataContainer (Data)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Unity type</strong></td>
+<td>ScriptableObject</td>
+<td>Plain C# class</td>
+</tr>
+<tr>
+<td><strong>State</strong></td>
+<td>Stateless — immutable config only</td>
+<td>All mutable runtime state</td>
+</tr>
+<tr>
+<td><strong>Logic</strong></td>
+<td>Business logic, validation, events</td>
+<td>No business logic</td>
+</tr>
+<tr>
+<td><strong>Collections</strong></td>
+<td>None (no Dictionary, List, etc.)</td>
+<td>Owns all collections</td>
+</tr>
+<tr>
+<td><strong>Creation</strong></td>
+<td>Added via Unity Inspector</td>
+<td>Created via reflection factory</td>
+</tr>
+<tr>
+<td><strong>Serialization</strong></td>
+<td>Serializable (ScriptableObject)</td>
+<td>Non-serializable runtime only</td>
+</tr>
+<tr>
+<td><strong>Hot Reload</strong></td>
+<td>Unity can reload without state loss</td>
+<td>State survives SO reload</td>
+</tr>
+<tr>
+<td><strong>Testability</strong></td>
+<td>Mock containers, not entire systems</td>
+<td>Mock via interface</td>
+</tr>
+<tr>
+<td><strong>Thread Safety</strong></td>
+<td>Accesses containers through registry</td>
+<td>Containers lock independently</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

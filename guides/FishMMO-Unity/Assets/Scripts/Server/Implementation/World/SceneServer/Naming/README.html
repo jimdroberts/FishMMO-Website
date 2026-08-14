@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Naming System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Naming System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Naming/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="naming-system">Naming System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Naming/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> SceneServer lookup service for resolving entity IDs to names and names back to IDs, handling character and guild naming requests with local cache checks, per-connection debounce, and asynchronous database fallback.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Naming system is the SceneServer lookup service for resolving IDs to names and names back to IDs. It handles client requests for character/guild naming, checks local runtime mappings and TTL caches first, and falls back to asynchronous database lookups when data is not locally available.</p>
+<p>The subsystem uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> request validation, debounce checks, cache lookups, and network broadcasts.</li>
+<li><strong>Async worker:</strong> database lookup operations via <code>TryEnqueueAsyncWork</code>.</li>
+<li><strong>Main-thread queue:</strong> marshaling async lookup results back to safe broadcast context via <code>INamingSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>All database lookups are deduplicated with concurrent in-flight tracking dictionaries (<code>CharacterNameByIdInFlight</code>, <code>GuildNameByIdInFlight</code>, <code>CharacterByNameInFlight</code>) capped at <code>MaxInFlightLookups</code> (5 000). TTL-based caches for resolved names, IDs, and negative (missing) results are swept periodically to bound memory. Per-connection request debounce prevents rapid-fire abuse.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Forward naming resolution (ID → Name) for characters and guilds via <code>NamingBroadcast</code></li>
+<li>Reverse naming resolution (Name → ID) for characters via <code>ReverseNamingBroadcast</code></li>
+<li>Local scene-server <code>ICharacterMappingData&lt;NetworkConnection&gt;</code> checked before any database call</li>
+<li>TTL-based caches (<code>CharacterNameByIdCache</code>, <code>GuildNameByIdCache</code>, <code>CharacterIdByNameCache</code>, <code>CharacterNameByNameCache</code>) with configurable expiry and bounded sweep</li>
+<li>Negative-result cache (<code>CharacterMissingByNameCache</code>) prevents repeated DB lookups for nonexistent names</li>
+<li>Per-connection request debounce via configurable <code>requestDebounceMilliseconds</code></li>
+<li>Concurrent in-flight deduplication per lookup key with <code>MaxInFlightLookups</code> cap (5 000)</li>
+<li>Async database lookups queued via <code>TryEnqueueAsyncWork</code> with backpressure (rejects when queue is unavailable/full, logs warning)</li>
+<li>Per-system main-thread queue isolation via <code>NamingSystemMainThreadQueueData</code> with configurable drain cap per frame</li>
+<li>Explicit not-found response (<code>id = 0</code>, empty name) for failed reverse character lookups</li>
+<li>Oversized name rejection (names exceeding <code>Authentication.CharacterNameMaxLength</code> are dropped before any cache or DB work)</li>
+<li>Graceful failure semantics: null/invalid requests return early; missing services abort safely; broadcasts skipped when connection no longer active</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>INamingSystem</code>, <code>INamingSystemMainThreadQueueData</code>, <code>INamingSystemRuntimeData</code>, <code>INamingSystemMappingData</code>, broadcast types, and <code>AsyncWorkerData</code></li>
+<li><strong>FishMMO Database</strong> — provides <code>ICharacterService</code>, <code>IGuildService</code>, and <code>DatabaseResult&lt;T&gt;</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>NamingSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>INamingSystem&lt;NetworkConnection&gt;</code>).</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>NamingSystemRuntimeData</code> → <code>INamingSystemRuntimeData</code></li>
+<li><code>NamingSystemMappingData</code> → <code>INamingSystemMappingData</code></li>
+<li><code>NamingSystemMainThreadQueueData</code> → <code>INamingSystemMainThreadQueueData</code></li>
+<li><code>AsyncWorkerData</code> (shared async work queue)</li>
+</ul>
+</li>
+<li>On initialize, <code>NamingSystem</code> validates all data containers and registers broadcast handlers for <code>NamingBroadcast</code> and <code>ReverseNamingBroadcast</code>.</li>
+<li>On deinitialize, it drains the remaining main-thread queue and unregisters the broadcast handlers.</li>
+<li>Clients send <code>NamingBroadcast</code> for forward lookups (ID → Name) or <code>ReverseNamingBroadcast</code> for reverse lookups (Name → ID); the server resolves from cache or database and replies on the same broadcast type.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>int</td>
+<td>100</td>
+<td>Max naming-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>requestDebounceMilliseconds</code></td>
+<td>int</td>
+<td>75</td>
+<td>Minimum milliseconds between naming requests per connection</td>
+</tr>
+<tr>
+<td><code>cacheTtlSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Cache TTL in seconds for naming lookup caches</td>
+</tr>
+<tr>
+<td><code>cacheSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>1.0</td>
+<td>Seconds between bounded naming cache sweeps</td>
+</tr>
+<tr>
+<td><code>cacheSweepMaxScan</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum cache entries scanned per sweep pass</td>
+</tr>
+<tr>
+<td><code>cacheSweepMaxRemove</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum cache entries removed per sweep pass</td>
+</tr>
+</tbody>
+</table>
+<h3 id="internal-constants">Internal Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MaxInFlightLookups</code></td>
+<td>5000</td>
+<td>Maximum concurrent in-flight naming lookups per dictionary before new requests are dropped</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, debounce checks, cache lookups, broadcast dispatch, queue drain, cache sweep</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Database lookups (<code>FetchCharacterNameAsync</code>, <code>FetchGuildNameAsync</code>, <code>FetchCharacterByNameAsync</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-handlers">Broadcast Handlers</h3>
+<p><code>NamingSystem</code> registers the following server-side broadcast handlers on initialize:</p>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NamingBroadcast</code></td>
+<td><code>OnServerNamingBroadcastReceived</code></td>
+<td>Forward lookup: resolve ID → Name</td>
+</tr>
+<tr>
+<td><code>ReverseNamingBroadcast</code></td>
+<td><code>OnServerReverseNamingBroadcastReceived</code></td>
+<td>Reverse lookup: resolve Name → ID</td>
+</tr>
+</tbody>
+</table>
+<h3 id="forward-naming-path-id--name">Forward Naming Path (ID → Name)</h3>
+<p><code>OnServerNamingBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection and spawned player object.</li>
+<li>Checks per-connection request debounce.</li>
+<li>Resolves <code>INamingSystemRuntimeData</code> and <code>INamingSystemMappingData</code>.</li>
+<li><strong>Character name:</strong>
+<ul>
+<li>Check local <code>ICharacterMappingData&lt;NetworkConnection&gt;.CharactersByID</code>; if found, upsert cache and reply immediately.</li>
+<li>Else check <code>CharacterNameByIdCache</code>; if hit, reply immediately.</li>
+<li>Else enqueue async DB lookup (<code>FetchCharacterNameAsync</code>) with in-flight deduplication.</li>
+</ul>
+</li>
+<li><strong>Guild name:</strong>
+<ul>
+<li>Check <code>GuildNameByIdCache</code>; if hit, reply immediately.</li>
+<li>Else enqueue async DB lookup (<code>FetchGuildNameAsync</code>) with in-flight deduplication.</li>
+</ul>
+</li>
+</ol>
+<h3 id="reverse-naming-path-name--id">Reverse Naming Path (Name → ID)</h3>
+<p><code>OnServerReverseNamingBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection and spawned player object.</li>
+<li>Checks per-connection request debounce.</li>
+<li>Rejects null/empty names with immediate not-found response.</li>
+<li>Rejects oversized names (exceeding <code>Authentication.CharacterNameMaxLength</code>).</li>
+<li>Normalizes input to lowercase invariant.</li>
+<li><strong>Character name:</strong>
+<ul>
+<li>Check local <code>CharactersByLowerCaseName</code> mapping; if found, upsert caches, clear missing cache, reply immediately.</li>
+<li>Else check <code>CharacterMissingByNameCache</code>; if hit, reply with not-found.</li>
+<li>Else check <code>CharacterIdByNameCache</code> + <code>CharacterNameByNameCache</code>; if both hit, reply immediately.</li>
+<li>Else enqueue async DB lookup (<code>FetchCharacterByNameAsync</code>) with in-flight deduplication.</li>
+<li>If database unavailable, send not-found response immediately.</li>
+</ul>
+</li>
+<li><strong>Guild name:</strong> Not currently implemented in reverse path.</li>
+</ol>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Null/invalid requests return early (silent no-op).</li>
+<li>Missing services abort lookup safely without crashing.</li>
+<li>Failed reverse character lookups produce explicit not-found response (<code>id = 0</code>, empty name).</li>
+<li>Successful DB lookups for nonexistent names populate <code>CharacterMissingByNameCache</code> to avoid repeated queries.</li>
+<li>Broadcasts are skipped when the connection is no longer active.</li>
+<li><code>TryEnqueueAsyncWork</code> returns <code>false</code> when the queue is unavailable or full; a warning is logged and the in-flight slot is released.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>NamingSystem</code> logs &quot;Initialized&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>INamingSystemRuntimeData</code>, <code>INamingSystemMappingData</code>, and <code>INamingSystemMainThreadQueueData</code> all resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Forward character lookup (cached)</td>
+<td>Send <code>NamingBroadcast</code> with <code>CharacterName</code> type for a locally present character; confirm immediate reply with correct name</td>
+</tr>
+<tr>
+<td>Forward character lookup (DB)</td>
+<td>Send <code>NamingBroadcast</code> for a character not on the local scene; confirm async DB fetch and delayed reply</td>
+</tr>
+<tr>
+<td>Forward guild lookup</td>
+<td>Send <code>NamingBroadcast</code> with <code>GuildName</code> type; confirm cache check then async DB fetch and reply</td>
+</tr>
+<tr>
+<td>Reverse character lookup (cached)</td>
+<td>Send <code>ReverseNamingBroadcast</code> for a locally present character name; confirm immediate reply with correct ID</td>
+</tr>
+<tr>
+<td>Reverse character lookup (DB)</td>
+<td>Send <code>ReverseNamingBroadcast</code> for a name not locally present; confirm async DB fetch and reply</td>
+</tr>
+<tr>
+<td>Reverse not-found response</td>
+<td>Send <code>ReverseNamingBroadcast</code> for a nonexistent character name; confirm reply with <code>id = 0</code> and empty name</td>
+</tr>
+<tr>
+<td>Negative cache hit</td>
+<td>Repeat the not-found lookup; confirm no second DB query and immediate not-found reply</td>
+</tr>
+<tr>
+<td>Oversized name rejection</td>
+<td>Send <code>ReverseNamingBroadcast</code> with a name exceeding <code>CharacterNameMaxLength</code>; confirm no processing occurs</td>
+</tr>
+<tr>
+<td>Request debounce</td>
+<td>Send rapid consecutive naming requests from the same connection; confirm excess requests are dropped</td>
+</tr>
+<tr>
+<td>In-flight deduplication</td>
+<td>Send duplicate forward lookups for the same ID concurrently; confirm only one DB query is issued</td>
+</tr>
+<tr>
+<td>In-flight cap enforcement</td>
+<td>Saturate <code>MaxInFlightLookups</code> (5 000); confirm additional lookups are rejected and warning is logged</td>
+</tr>
+<tr>
+<td>Cache sweep</td>
+<td>Wait for sweep interval; confirm stale cache entries are removed without errors</td>
+</tr>
+<tr>
+<td>Main-thread queue drain</td>
+<td>Confirm queued async results are dispatched on the main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm broadcast handlers are unregistered and main-thread queue is drained</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Caller[Character/Guild/Pet create] --&gt; Sys[NamingSystem]
+    Sys --&gt;|profanity + length + chars| Rules[Validation rules]
+    Sys --&gt;|uniqueness query| DB[(PostgreSQL)]
+    Rules --&gt; Sys
+    Sys --&gt;|approve / reject| Caller
+</code></pre>
+<h3 id="forward-naming-id--name">Forward Naming (ID → Name)</h3>
+<pre><code>OnServerNamingBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Check per-connection request debounce
+├─ 3. Resolve INamingSystemRuntimeData + INamingSystemMappingData
+│
+├─ CharacterName:
+│  ├─ 4a. Check local CharactersByID mapping
+│  │      └── Hit → upsert cache, SendNamingBroadcast (immediate)
+│  ├─ 4b. Check CharacterNameByIdCache
+│  │      └── Hit → SendNamingBroadcast (immediate)
+│  └─ 4c. Check in-flight cap → TryEnqueueAsyncWork(FetchCharacterNameAsync)
+│         └── Async: DB fetch → upsert cache → TryEnqueueMainThread
+│                    └── Main thread: SendNamingBroadcast
+│
+└─ GuildName:
+   ├─ 5a. Check GuildNameByIdCache
+   │      └── Hit → SendNamingBroadcast (immediate)
+   └─ 5b. Check in-flight cap → TryEnqueueAsyncWork(FetchGuildNameAsync)
+          └── Async: DB fetch → upsert cache → TryEnqueueMainThread
+                     └── Main thread: SendNamingBroadcast
+</code></pre>
+<h3 id="reverse-naming-name--id">Reverse Naming (Name → ID)</h3>
+<pre><code>OnServerReverseNamingBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Check per-connection request debounce
+├─ 3. Reject null/empty name → SendReverseNamingBroadcast(id=0, empty)
+├─ 4. Reject oversized name (&gt; CharacterNameMaxLength)
+├─ 5. Normalize name to lowercase invariant
+│
+├─ CharacterName:
+│  ├─ 6a. Check local CharactersByLowerCaseName mapping
+│  │      └── Hit → upsert caches, clear missing cache, SendReverseNamingBroadcast
+│  ├─ 6b. Check CharacterMissingByNameCache
+│  │      └── Hit → SendReverseNamingBroadcast(id=0, empty)
+│  ├─ 6c. Check CharacterIdByNameCache + CharacterNameByNameCache
+│  │      └── Both hit → SendReverseNamingBroadcast
+│  └─ 6d. Check in-flight cap → TryEnqueueAsyncWork(FetchCharacterByNameAsync)
+│         ├── Async: DB fetch found → upsert caches, clear missing cache
+│         │          → TryEnqueueMainThread → SendReverseNamingBroadcast
+│         └── Async: DB fetch not found → upsert missing cache
+│                    → TryEnqueueMainThread → SendReverseNamingBroadcast(id=0, empty)
+│
+└─ GuildName:
+   └── Not currently implemented in reverse path
+</code></pre>
+<h3 id="cache-sweep-onupdate">Cache Sweep (OnUpdate)</h3>
+<pre><code>OnUpdate(deltaTime)
+│
+├─ 1. DrainMainThreadQueue (up to maxMainThreadActionsPerFrame)
+└─ 2. SweepCaches()
+       ├── Check if sweep interval has elapsed
+       ├── Sweep ConnectionRequestTracker (debounce entries)
+       └── Sweep all naming mapping caches (TTL-based, bounded scan/remove)
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Naming/
+├── NamingSystem.cs                    # Naming/reverse-naming handlers, debounce, cache checks, async DB lookup orchestration
+├── NamingSystemMappingData.cs         # Character/guild name ↔ ID TTL cache data container
+├── NamingSystemRuntimeData.cs         # Runtime state: in-flight tracking, debounce tracker, sweep timer
+├── NamingSystemMainThreadQueueData.cs # Per-system main-thread action queue container
+└── README.md
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/Naming/INamingSystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Naming/INamingSystemRuntimeData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Naming/INamingSystemMappingData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Naming/INamingSystemMainThreadQueueData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── NamingSystem : INamingSystem&lt;NetworkConnection&gt;
+
+RuntimeDataContainer
+├── NamingSystemRuntimeData : INamingSystemRuntimeData
+└── NamingSystemMappingData : INamingSystemMappingData
+
+SystemMainThreadQueueData
+└── NamingSystemMainThreadQueueData : INamingSystemMainThreadQueueData
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Naming/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

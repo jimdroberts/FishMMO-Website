@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Scene Server System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Scene Server System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="scene-server-system">Scene Server System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Manages scene server node lifecycle, scene instance loading/unloading, heartbeat pulses to the database, character count tracking, and connection–scene routing for the FishMMO scene server.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The SceneServer system is the SceneServer node orchestration layer responsible for scene instance lifecycle, scene-server heartbeat updates, scene readiness tracking, and connection-scene routing. It coordinates Unity/FishNet scene loading with database scene metadata so world services can discover and route players to active scene instances.</p>
+<p>The subsystem uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> scene manager event handling, mapping updates, routing, broadcast-safe state changes, and per-frame main-thread queue draining.</li>
+<li><strong>Async worker:</strong> database pulse/update/delete operations dispatched via <code>TryEnqueueAsyncWork</code> with entity-keyed ordering.</li>
+<li><strong>Main-thread queue:</strong> marshalling async completion actions that must mutate Unity/FishNet state back onto the main thread through <code>ISceneServerSystemMainThreadQueueData</code>.</li>
+</ul>
+<p><code>SceneServerSystem</code> is a <code>ServerBehaviour</code> ScriptableObject created via the Unity asset menu (<code>FishMMO/Server/SceneServer/Scene Server System</code>). It implements <code>ISceneServerSystem&lt;NetworkConnection&gt;</code> and declares data-container dependencies through <code>[RequiresDataContainer]</code> attributes for <code>SceneInstanceMappingData</code>, <code>SceneServerRuntimeData</code>, <code>SceneServerSystemMainThreadQueueData</code>, and <code>AsyncWorkerData</code>.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Dedicated server builds</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Dedicated server builds</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only system; not applicable to client builds</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Engine:</strong> Unity 6.3 LTS
+<strong>Scripting backend:</strong> IL2CPP</p>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Scene instance lifecycle management</strong> — loads and unloads scene instances on demand from database-queued requests using FishNet's <code>SceneManager</code></li>
+<li><strong>Periodic heartbeat pulses</strong> — sends server and per-scene heartbeat data to the database at a configurable interval, using an atomic <code>Interlocked.CompareExchange</code> gate to prevent overlapping pulses</li>
+<li><strong>Zero-allocation pulse collection</strong> — reusable runtime buffers with manual <code>foreach</code> loops (no <code>AddRange</code> enumerator boxing) eliminate per-pulse GC pressure; pulse data is snapshotted before async dispatch</li>
+<li><strong>Simplified pulse payload</strong> — only <code>(Handle, CharacterCount)</code> tuples are sent to the async worker; stale-pulse detection (<code>StalePulse</code>, <code>TimeSinceLastExit</code>) stays local on the main thread</li>
+<li><strong>Scene load rate limiting</strong> — <code>maxScenesLoadedPerPulse</code> bounds the dequeue loop per pulse cycle to prevent DB flood from overwhelming the scene server</li>
+<li><strong>Duplicate load guard</strong> — <code>TryAdd</code> atomically rejects duplicate scene IDs in <code>PendingScenes</code>, preventing races when two queued callbacks target the same scene</li>
+<li><strong>Pending scene TTL</strong> — bounded sweep with configurable timeout, interval, and max removals per pass; expired requests are failed in the database and cleaned up locally</li>
+<li><strong>Flat O(1) handle lookup</strong> — <code>SceneInstanceByHandle</code> provides constant-time lookup for unload, routing, and character count adjustment, replacing O(worlds × scenes) nested iteration</li>
+<li><strong>Empty container cleanup</strong> — unload handler prunes empty scene-name and world-server dictionaries to prevent memory leak from scene churn</li>
+<li><strong>Async enqueue with fallback</strong> — every <code>TryEnqueueAsyncWork</code> return value is checked; failures fire the async method directly so the database is never left with stale state</li>
+<li><strong>Character count integration</strong> — connect/load increments and disconnect decrements tracked per scene instance via <code>SceneInstanceDetails.AddCharacterCount</code>; <code>LastExit</code> updated when a scene becomes empty for stale detection</li>
+<li><strong>Connection routing helpers</strong> — <code>TryLoadSceneForConnection</code> and <code>UnloadSceneForConnection</code> manage per-connection scene visibility through FishNet</li>
+<li><strong>PhysicsTicker setup</strong> — each loaded scene gets a <code>PhysicsTicker</code> GameObject with <code>HideFlags.DontSave</code> for explicit cleanup safety and local physics support</li>
+<li><strong>Scene handle reuse safety</strong> — all handle→details mappings are removed on unload; documented at both Add and Remove sites to prevent stale resolution after handle reuse</li>
+<li><strong>PendingSceneInfo struct</strong> — merges <code>SceneData</code> + <code>EnqueuedUtc</code> into a single map entry, eliminating dual-map sync risk</li>
+<li><strong>Enumerate-then-remove safety</strong> — <code>SweepExpiredPendingScenes</code> collects IDs into a buffer before removal; pattern documented inline</li>
+<li><strong>Database registration and cleanup</strong> — registers this scene server node in the database during initialization and deletes stale scene rows from previous runs; performs blocking cleanup on deinitialization</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>FishMMO server framework with <code>ServerBehaviour</code>, <code>RuntimeDataContainer</code>, <code>IPeriodicUpdateSystem</code>, and <code>AsyncWorkerData</code> infrastructure</li>
+<li>FishNet networking library with <code>SceneManager</code> (stacked scene loading, <code>LocalPhysics</code>, server params)</li>
+<li>Database layer implementing <code>ISceneServerService</code> and <code>ISceneService</code> (Npgsql-backed)</li>
+<li><code>WorldSceneDetailsCache</code> ScriptableObject populated with valid scene names</li>
+<li><code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code> and <code>ICharacterMappingData&lt;NetworkConnection&gt;</code> registered in the server behaviour/data registries</li>
+<li><code>IAddressProvider</code> returning a valid <code>ServerAddress</code> for this node</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO Unity project. No separate installation is required.</p>
+<ol>
+<li>Ensure all FishMMO server assemblies are present and compiling.</li>
+<li>Create a <code>SceneServerSystem</code> asset via the Unity menu: <strong>Assets → Create → FishMMO → Server → SceneServer → Scene Server System</strong>.</li>
+<li>Assign the <code>WorldSceneDetailsCache</code> reference on the asset.</li>
+<li>Register the required data containers (<code>SceneInstanceMappingData</code>, <code>SceneServerRuntimeData</code>, <code>SceneServerSystemMainThreadQueueData</code>, <code>AsyncWorkerData</code>) in the server's <code>DataContainerRegistry</code>.</li>
+<li>Build the server with IL2CPP for the target platform.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="running-a-scene-server-node">Running a Scene Server Node</h3>
+<ol>
+<li>Build or launch the FishMMO server with the Scene Server configuration.</li>
+<li>Ensure the database is running and accessible (Npgsql connection).</li>
+<li>The <code>SceneServerSystem.InitializeOnce()</code> method automatically:
+<ul>
+<li>Validates all dependencies (server services, data containers, scene manager, character system, database services).</li>
+<li>Registers the scene server node in the database via <code>ISceneServerService.PersistAsync</code>.</li>
+<li>Deletes stale scene rows from previous runs via <code>ISceneService.DeleteBySceneServerAsync</code>.</li>
+<li>Subscribes to FishNet <code>OnLoadEnd</code> / <code>OnUnloadEnd</code> and character connect/disconnect/load events.</li>
+<li>Registers the periodic pulse callback at the configured <code>PulseRate</code>.</li>
+<li>Clamps all configuration values to safe minimums.</li>
+</ul>
+</li>
+<li>The world server queues scene load requests in the database; the scene server dequeues and loads them each pulse.</li>
+</ol>
+<h3 id="adding-a-new-scene-type">Adding a New Scene Type</h3>
+<ol>
+<li>Add the scene to the <code>WorldSceneDetailsCache</code> ScriptableObject.</li>
+<li>Queue a load request in the database with the appropriate <code>SceneType</code>, <code>WorldServerID</code>, and <code>SceneName</code>.</li>
+<li>The scene server will pick it up during the next periodic pulse and load it via FishNet with stacked loading and local 3D physics.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-fields">Inspector Fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Max queued scene-server actions drained from the main-thread queue per frame (clamped ≥ 1)</td>
+</tr>
+<tr>
+<td><code>pendingSceneTimeoutSeconds</code></td>
+<td><code>float</code></td>
+<td><code>60.0</code></td>
+<td>Max age in seconds before a pending scene load request is failed and removed (clamped ≥ 5.0)</td>
+</tr>
+<tr>
+<td><code>pendingSceneSweepIntervalSeconds</code></td>
+<td><code>float</code></td>
+<td><code>2.0</code></td>
+<td>Interval in seconds between bounded pending-scene cleanup sweeps (clamped ≥ 0.25)</td>
+</tr>
+<tr>
+<td><code>pendingSceneSweepMaxRemovals</code></td>
+<td><code>int</code></td>
+<td><code>64</code></td>
+<td>Max expired pending scenes removed per sweep pass (clamped ≥ 1)</td>
+</tr>
+<tr>
+<td><code>maxScenesLoadedPerPulse</code></td>
+<td><code>int</code></td>
+<td><code>3</code></td>
+<td>Max scene load requests dequeued from the database per pulse cycle (clamped ≥ 1)</td>
+</tr>
+<tr>
+<td><code>pulseRate</code></td>
+<td><code>float</code></td>
+<td><code>5.0</code></td>
+<td>Interval in seconds between heartbeat pulses to the database</td>
+</tr>
+<tr>
+<td><code>worldSceneDetailsCache</code></td>
+<td><code>WorldSceneDetailsCache</code></td>
+<td>—</td>
+<td>Cache of world scene details including valid scene names and max clients per scene</td>
+</tr>
+</tbody>
+</table>
+<h3 id="server-configuration-keys">Server Configuration Keys</h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StaleSceneTimeout</code></td>
+<td><code>int</code></td>
+<td>Minutes before a stale (empty) scene is unloaded; checked via <code>Server.Configuration.TryGetInt</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="querying-scene-instance-details">Querying Scene Instance Details</h3>
+<pre><code class="lang-csharp">// O(1) lookup by handle with world/scene validation
+if (sceneServerSystem.TryGetSceneInstanceDetails(worldServerID, sceneName, sceneHandle, out ISceneInstanceDetails details))
+{
+    Log.Debug(&quot;Example&quot;, $&quot;Scene {details.Name} has {details.CharacterCount} characters&quot;);
+}
+</code></pre>
+<h3 id="loading-a-scene-for-a-connection">Loading a Scene for a Connection</h3>
+<pre><code class="lang-csharp">if (sceneServerSystem.TryGetSceneInstanceDetails(worldServerID, sceneName, sceneHandle, out var instance))
+{
+    if (sceneServerSystem.TryLoadSceneForConnection(connection, instance))
+    {
+        Log.Debug(&quot;Example&quot;, &quot;Scene loaded for connection successfully&quot;);
+    }
+}
+</code></pre>
+<h3 id="unloading-a-scene-for-a-connection">Unloading a Scene for a Connection</h3>
+<pre><code class="lang-csharp">sceneServerSystem.UnloadSceneForConnection(connection, &quot;MySceneName&quot;);
+</code></pre>
+<h3 id="unloading-a-scene-by-handle">Unloading a Scene by Handle</h3>
+<pre><code class="lang-csharp">// Queues DB delete and FishNet unload
+sceneServerSystem.UnloadScene(sceneHandle);
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scene server registered</td>
+<td>Query <code>SceneServer</code> table in database after startup</td>
+<td>Row with matching address, port, and server ID</td>
+</tr>
+<tr>
+<td>Heartbeat pulses active</td>
+<td>Monitor database <code>SceneServer</code> pulse timestamp</td>
+<td>Updates every <code>pulseRate</code> seconds</td>
+</tr>
+<tr>
+<td>Scene loaded successfully</td>
+<td>Check logs for <code>&quot;Saved {sceneType} scene&quot;</code> message</td>
+<td>Scene appears in <code>WorldScenes</code> and <code>SceneInstanceByHandle</code> mappings</td>
+</tr>
+<tr>
+<td>Stale scene unloaded</td>
+<td>Empty scene exceeds <code>StaleSceneTimeout</code> minutes</td>
+<td>Scene unloaded and removed from database and local mappings</td>
+</tr>
+<tr>
+<td>Pending scene timeout</td>
+<td>Load request exceeds <code>pendingSceneTimeoutSeconds</code></td>
+<td>Scene status set to Failed in database; entry removed from <code>PendingScenes</code></td>
+</tr>
+<tr>
+<td>Duplicate load rejected</td>
+<td>Same scene ID queued twice before first load completes</td>
+<td>Second request logged as warning and ignored; <code>TryAdd</code> returns false</td>
+</tr>
+<tr>
+<td>Character count tracking</td>
+<td>Connect/disconnect characters to a scene</td>
+<td><code>SceneInstanceDetails.CharacterCount</code> matches expected count</td>
+</tr>
+<tr>
+<td>Main-thread queue draining</td>
+<td>Enqueue actions via async workers</td>
+<td>Actions execute on main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Pulse overlap prevention</td>
+<td>Trigger rapid pulses</td>
+<td><code>TryBeginPulse</code> rejects concurrent pulse; <code>Interlocked.CompareExchange</code> gate active</td>
+</tr>
+<tr>
+<td>Graceful shutdown</td>
+<td>Stop scene server</td>
+<td>Stale scene rows deleted; events unsubscribed; main-thread queue fully drained</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|hand-off from WorldServer| SS[SceneServerSystem]
+    SS --&gt; CharSys[Character]
+    SS --&gt; Inv[CharacterInventory]
+    SS --&gt; Chat[Chat]
+    SS --&gt; Guild[Guild]
+    SS --&gt; Party[Party]
+    SS --&gt; Interact[Interactable]
+    SS --&gt; Achv[Achievement]
+    SS --&gt;|persist| DB[(PostgreSQL)]
+    SS --&gt;|tick / broadcast| Client
+</code></pre>
+<pre><code>┌──────────────────────────────────────────────────────────────┐
+│                    InitializeOnce()                          │
+│  1. Validate dependencies (Server, DataContainers,           │
+│     SceneManager, CharacterSystem, Database services)        │
+│  2. Subscribe to OnLoadEnd, OnUnloadEnd, OnDisconnect,       │
+│     OnAfterLoadCharacter                                     │
+│  3. PersistAsync → register server in DB                     │
+│  4. DeleteBySceneServerAsync → clean stale rows              │
+│  5. Register periodic pulse callback                         │
+│  6. Clamp config values                                      │
+└──────────────────────┬───────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────┐
+│              OnPeriodicPulse (every pulseRate s)              │
+│                                                              │
+│  ┌─ Main Thread ──────────────────────────────────────────┐  │
+│  │ 1. SweepExpiredPendingScenes (bounded TTL cleanup)     │  │
+│  │ 2. TryBeginPulse (atomic gate)                         │  │
+│  │ 3. Collect pulse data into reusable buffers            │  │
+│  │    - ScenePulseDataBuffer: (Handle, CharacterCount)    │  │
+│  │    - ScenesToUnloadBuffer: stale scene handles         │  │
+│  │ 4. Unload stale scenes immediately                     │  │
+│  │ 5. Snapshot pulse data for async                       │  │
+│  └────────────────────────┬───────────────────────────────┘  │
+│                           │ TryEnqueueAsyncWork              │
+│                           ▼                                  │
+│  ┌─ Async Worker ─────────────────────────────────────────┐  │
+│  │ 1. PulseAsync → server heartbeat                       │  │
+│  │ 2. PulseBatchAsync → per-scene heartbeats              │  │
+│  │ 3. DequeueAsync (×maxScenesLoadedPerPulse)             │  │
+│  │    └─ TryEnqueueMainThread → ProcessSceneLoadRequest   │  │
+│  │ 4. EndPulse (finally)                                  │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│              Scene Load Flow                                 │
+│                                                              │
+│  ProcessSceneLoadRequest(SceneData)                          │
+│    │ 1. Validate scene in WorldSceneDetailsCache             │
+│    │ 2. TryAdd to PendingScenes (atomic duplicate guard)     │
+│    │ 3. FishNet LoadConnectionScenes (stacked, local 3D      │
+│    │    physics, ServerParams = [sceneData.ID])              │
+│    ▼                                                         │
+│  SceneManager_OnLoadEnd(args)                                │
+│    │ 1. Extract sceneDataKey from ServerParams[0]            │
+│    │ 2. Resolve PendingSceneInfo, remove from PendingScenes  │
+│    │ 3a. Failure → UpdateSceneStatusAsync(Failed)            │
+│    │ 3b. Success → ProcessScene + SetSceneReadyAsync         │
+│    ▼                                                         │
+│  ProcessScene(scene, sceneType, worldServerID)               │
+│    1. Add to nested WorldScenes hierarchy                    │
+│    2. Add to flat SceneInstanceByHandle + SceneNameByHandle  │
+│    3. Create PhysicsTicker (HideFlags.DontSave)              │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│              Scene Unload Flow                               │
+│                                                              │
+│  UnloadScene(handle) [explicit]                              │
+│    │ 1. TryEnqueueAsyncWork → DeleteSceneByHandleAsync       │
+│    │ 2. FishNet UnloadConnectionScenes                       │
+│    ▼                                                         │
+│  SceneManager_OnUnloadEnd(args)                              │
+│    For each unloaded handle:                                 │
+│    1. O(1) lookup in SceneInstanceByHandle                   │
+│    2. Remove from nested WorldScenes hierarchy               │
+│    3. Clean up empty containers (scene-name, world-server)   │
+│    4. Remove from SceneInstanceByHandle + SceneNameByHandle  │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│              Character Count Flow                            │
+│                                                              │
+│  OnAfterLoadCharacter / OnDisconnect                         │
+│    └─ AdjustSceneCharacterCount(worldServerID, sceneName,    │
+│       sceneHandle, ±1)                                       │
+│       └─ TryGetSceneInstanceDetails (O(1) flat lookup)       │
+│          └─ instance.AddCharacterCount(amount)               │
+│             └─ If CharacterCount &lt; 1 → LastExit = UtcNow     │
+└──────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>SceneServer/
+├── SceneServerSystem.cs                    # Core scene server orchestration: initialization, pulses,
+│                                           #   load/unload processing, character count, connection routing
+├── SceneServerRuntimeData.cs              # Scene server identity (ID, IsLocked), atomic pulse gate,
+│                                           #   reusable zero-allocation buffers, pending scene sweep timer
+├── SceneServerSystemMainThreadQueueData.cs # Concrete main-thread queue container for marshalling
+│                                           #   async DB results back to the Unity main thread
+├── SceneInstanceMappingData.cs            # WorldScenes nested hierarchy, flat SceneInstanceByHandle
+│                                           #   and SceneNameByHandle maps, PendingScenes tracking
+├── SceneInstanceDetails.cs                # Per-instance metadata: WorldServerID, SceneServerID, Name,
+│                                           #   Handle, SceneType, CharacterCount, StalePulse, LastExit
+└── README.md                              # This documentation
+</code></pre>
+<h3 id="inheritance-and-interface-hierarchy">Inheritance and Interface Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── SceneServerSystem : ISceneServerSystem&lt;NetworkConnection&gt;
+
+RuntimeDataContainer
+├── SceneInstanceMappingData : ISceneInstanceMappingData
+├── SceneServerRuntimeData : ISceneServerRuntimeData
+└── SystemMainThreadQueueData
+    └── SceneServerSystemMainThreadQueueData : ISceneServerSystemMainThreadQueueData
+
+ISceneInstanceDetails
+└── SceneInstanceDetails
+</code></pre>
+<h3 id="core-contracts">Core Contracts</h3>
+<table>
+<thead>
+<tr>
+<th>Interface / Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ISceneServerSystem&lt;NetworkConnection&gt;</code></td>
+<td>Primary system contract for scene server orchestration</td>
+</tr>
+<tr>
+<td><code>ISceneServerRuntimeData</code></td>
+<td>Scene server identity, lock state, pulse gate, and reusable buffers</td>
+</tr>
+<tr>
+<td><code>ISceneServerSystemMainThreadQueueData</code></td>
+<td>Main-thread queue for marshalling async results</td>
+</tr>
+<tr>
+<td><code>ISceneInstanceMappingData</code></td>
+<td>World/scene/handle mapping hierarchy, flat lookups, and pending tracking</td>
+</tr>
+<tr>
+<td><code>ISceneInstanceDetails</code></td>
+<td>Per-instance runtime metadata and character count with stale detection</td>
+</tr>
+<tr>
+<td><code>PendingSceneInfo</code></td>
+<td>Readonly struct combining <code>SceneData</code> + <code>EnqueuedUtc</code> in a single map entry</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Bootstrap Logging | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Bootstrap Logging | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/Logging/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="bootstrap-logging">Bootstrap Logging</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/Logging/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Unity-specific logging integration that bridges Unity's <code>Debug.Log</code> pipeline with the central <code>FishMMO.Logging</code> framework, providing rich-text formatted console output, configurable log levels and color theming, and re-entrant loop protection to ensure all log output flows through a single consistent pipeline.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Bootstrap Logging system provides Unity-specific integration with the <code>FishMMO.Logging</code> framework. It bridges Unity's built-in <code>Debug.Log</code> pipeline with the central <code>Log</code> manager, provides rich-text formatted console output, and supports configurable log levels and color theming. The system ensures all log output — whether originating from Unity or FishMMO — flows through a single, consistent pipeline with re-entrant loop protection.</p>
+<p>The logging system is initialized early in the bootstrap sequence by <code>MainBootstrapSystem</code>:</p>
+<ol>
+<li><code>UnityLoggerBridge.Initialize(callback)</code> is called to intercept Unity's log pipeline.</li>
+<li>Logger instances (including <code>UnityConsoleLogger</code>) are registered with the central <code>Log</code> manager.</li>
+<li>On shutdown, <code>UnityLoggerBridge.Shutdown()</code> restores Unity's default handler.</li>
+</ol>
+<h3 id="re-entrant-loop-prevention">Re-Entrant Loop Prevention</h3>
+<p>The system must prevent an infinite loop: <code>UnityConsoleLogger</code> writes to <code>Debug.Log</code>, which triggers <code>UnityLoggerBridge</code>, which routes back to <code>Log.Write</code>, which triggers <code>UnityConsoleLogger</code> again.</p>
+<p>This is solved by the <code>UnityLoggerBridge.IsLoggingInternally</code> flag:</p>
+<ol>
+<li>Before calling <code>Debug.Log</code>, the logger/formatter sets <code>IsLoggingInternally = true</code>.</li>
+<li><code>UnityLoggerBridge.LogFormat</code> checks this flag — if <code>true</code>, it passes the message directly to Unity's default handler without re-routing.</li>
+<li>After the <code>Debug.Log</code> call completes, the flag is reset to <code>false</code> in a <code>finally</code> block.</li>
+</ol>
+<h3 id="column-layout">Column Layout</h3>
+<p>Both <code>UnityConsoleLogger</code> and <code>UnityConsoleFormatter</code> use shared column widths from <code>ConsoleFormatterHelpers</code>:</p>
+<pre><code>[Timestamp]              [LEVEL]    [Source]              Message text...
+|&lt;-- TimestampColumnWidth --&gt;|&lt;-- LogLevelColumnWidth --&gt;|&lt;-- SourceColumnWidth --&gt;|
+</code></pre>
+<ul>
+<li>Timestamps are optional (controlled by <code>_includeTimestamps</code> in the formatter, omitted entirely in the logger).</li>
+<li>Exception details and additional data are indented to align under the message column.</li>
+</ul>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Full Unity Editor and standalone support</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Full Unity Editor and standalone support</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>Yes</td>
+<td>Rich-text tags stripped by browser console; log routing still functions</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version / Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unity</td>
+<td>6.3 LTS</td>
+</tr>
+<tr>
+<td>Scripting Backend</td>
+<td>IL2CPP</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Unified log pipeline</strong> — All <code>Debug.Log</code>, <code>Debug.LogWarning</code>, <code>Debug.LogError</code>, and <code>Debug.LogException</code> calls are intercepted by <code>UnityLoggerBridge</code> and routed through the central <code>FishMMO.Logging.Log</code> manager.</li>
+<li><strong>Rich-text console output</strong> — <code>UnityConsoleFormatter</code> produces columnar, color-coded output using Unity rich-text tags (<code>&lt;color=...&gt;</code>).</li>
+<li><strong>Configurable log levels</strong> — <code>UnityConsoleLoggerConfig.AllowedLevels</code> controls which <code>LogLevel</code> values are processed (Critical, Error, Warning, Info, Debug, Verbose).</li>
+<li><strong>Configurable color theming</strong> — Per-level color mapping via <code>UnityConsoleLoggerConfig.LogLevelColors</code> (named colors or hex codes).</li>
+<li><strong>Re-entrant loop protection</strong> — <code>IsLoggingInternally</code> static flag prevents infinite recursion between <code>UnityConsoleLogger → Debug.Log → UnityLoggerBridge → Log.Write → UnityConsoleLogger</code>.</li>
+<li><strong>Structured log entries</strong> — <code>LogEntry</code> objects carry Level, Source, Message, Timestamp, ExceptionDetails, and additional Data dictionary.</li>
+<li><strong>Exception detail rendering</strong> — Exception details are indented and colored red beneath the main log line.</li>
+<li><strong>Additional data rendering</strong> — Key/value data pairs are indented and colored cyan beneath the main log line.</li>
+<li><strong>Two formatter output modes</strong> — <code>WriteStructuredLog(LogEntry)</code> for full columnar logs and <code>WriteColoredParts(level, source, columnWidth, parts)</code> for multi-segment colored messages.</li>
+<li><strong>Optional timestamps</strong> — Timestamps can be included or excluded via the <code>includeTimestamps</code> constructor parameter on <code>UnityConsoleFormatter</code>.</li>
+<li><strong>Singleton bridge with clean lifecycle</strong> — <code>Initialize(callback)</code> installs the bridge; <code>Shutdown()</code> restores Unity's original handler.</li>
+<li><strong>LogType-to-LogLevel conversion</strong> — <code>UnityLoggerBridge</code> maps Unity <code>LogType.Error</code> → <code>LogLevel.Error</code>, <code>LogType.Assert</code> → <code>LogLevel.Critical</code>, <code>LogType.Warning</code> → <code>LogLevel.Warning</code>, <code>LogType.Log</code> → <code>LogLevel.Info</code>, <code>LogType.Exception</code> → <code>LogLevel.Critical</code>.</li>
+<li><strong>Internal log callback</strong> — <code>UnityConsoleLogger</code> accepts an optional <code>Action&lt;string&gt;</code> callback for messages about the logger itself (defaults to <code>Console.WriteLine</code>).</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS with IL2CPP scripting backend.</li>
+<li>The <code>FishMMO.Logging</code> framework must be present in the project (provides <code>Log</code>, <code>ILogger</code>, <code>IConsoleFormatter</code>, <code>ILoggerConfig</code>, <code>LogEntry</code>, <code>LogLevel</code>, and <code>ConsoleFormatterHelpers</code>).</li>
+<li><code>UnityEngine</code> assemblies (provides <code>Debug</code>, <code>ILogHandler</code>, <code>LogType</code>).</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO Unity project. No separate installation or build steps are required. The source files reside under <code>Assets/Scripts/Shared/Implementation/Bootstrap/Logging/</code> and are compiled as part of the standard Unity build pipeline.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="initializing-the-logging-bridge">Initializing the Logging Bridge</h3>
+<p>The logging system is typically initialized by the bootstrap sequence. To initialize manually:</p>
+<pre><code class="lang-csharp">// 1. Initialize the Unity logger bridge (intercepts all Debug.Log calls)
+UnityLoggerBridge.Initialize(msg =&gt; Debug.Log(msg));
+
+// 2. Create the logger config
+var config = new UnityConsoleLoggerConfig();
+
+// 3. Create and register the Unity console logger
+var logger = new UnityConsoleLogger(config);
+// Register logger with the central Log manager per your project's registration API
+</code></pre>
+<h3 id="shutting-down">Shutting Down</h3>
+<pre><code class="lang-csharp">// Restore Unity's original log handler
+UnityLoggerBridge.Shutdown();
+</code></pre>
+<h3 id="using-the-formatter-directly">Using the Formatter Directly</h3>
+<pre><code class="lang-csharp">// Create a formatter with timestamps enabled
+var colors = new Dictionary&lt;LogLevel, string&gt;
+{
+    { LogLevel.Critical, &quot;red&quot; },
+    { LogLevel.Error, &quot;red&quot; },
+    { LogLevel.Warning, &quot;yellow&quot; },
+    { LogLevel.Info, &quot;white&quot; },
+    { LogLevel.Debug, &quot;lime&quot; },
+    { LogLevel.Verbose, &quot;grey&quot; }
+};
+var formatter = new UnityConsoleFormatter(colors, includeTimestamps: true);
+
+// Write a structured log entry
+formatter.WriteStructuredLog(new LogEntry
+{
+    Level = LogLevel.Info,
+    Source = &quot;MySystem&quot;,
+    Message = &quot;Initialization complete.&quot;,
+    Timestamp = DateTime.UtcNow
+});
+
+// Write colored parts
+formatter.WriteColoredParts(
+    LogLevel.Info,
+    &quot;MySystem&quot;,
+    columnWidth: 20,
+    (&quot;lime&quot;, &quot;Status:&quot;), (&quot;white&quot;, &quot;Online&quot;)
+);
+</code></pre>
+<h2 id="configuration">Configuration</h2>
+<h3 id="unityconsoleloggerconfig-properties">UnityConsoleLoggerConfig Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Type</code></td>
+<td><code>string</code></td>
+<td><code>&quot;UnityConsoleLoggerConfig&quot;</code></td>
+<td>Config type identifier for serialization</td>
+</tr>
+<tr>
+<td><code>LoggerType</code></td>
+<td><code>string</code></td>
+<td><code>&quot;UnityConsoleLogger&quot;</code></td>
+<td>Logger type identifier for factory lookup</td>
+</tr>
+<tr>
+<td><code>Enabled</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Whether the logger is active</td>
+</tr>
+<tr>
+<td><code>AllowedLevels</code></td>
+<td><code>HashSet&lt;LogLevel&gt;</code></td>
+<td>All levels (Critical, Error, Warning, Info, Debug, Verbose)</td>
+<td>Which log levels to process</td>
+</tr>
+<tr>
+<td><code>LogLevelColors</code></td>
+<td><code>Dictionary&lt;LogLevel, string&gt;</code></td>
+<td>See table below</td>
+<td>Unity rich-text color per log level</td>
+</tr>
+</tbody>
+</table>
+<h3 id="default-color-mapping">Default Color Mapping</h3>
+<table>
+<thead>
+<tr>
+<th>LogLevel</th>
+<th>Color</th>
+<th>Hex Equivalent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Critical</td>
+<td><code>red</code></td>
+<td><code>#FF0000</code></td>
+</tr>
+<tr>
+<td>Error</td>
+<td><code>red</code></td>
+<td><code>#FF0000</code></td>
+</tr>
+<tr>
+<td>Warning</td>
+<td><code>yellow</code></td>
+<td><code>#FFFF00</code></td>
+</tr>
+<tr>
+<td>Info</td>
+<td><code>white</code></td>
+<td><code>#FFFFFF</code></td>
+</tr>
+<tr>
+<td>Debug</td>
+<td><code>lime</code></td>
+<td><code>#00FF00</code></td>
+</tr>
+<tr>
+<td>Verbose</td>
+<td><code>grey</code></td>
+<td><code>#808080</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="customizing-allowed-levels-at-runtime">Customizing Allowed Levels at Runtime</h3>
+<pre><code class="lang-csharp">// Only allow warnings and above
+logger.SetAllowedLevels(new HashSet&lt;LogLevel&gt;
+{
+    LogLevel.Critical,
+    LogLevel.Error,
+    LogLevel.Warning
+});
+</code></pre>
+<h3 id="enabling--disabling-the-logger-at-runtime">Enabling / Disabling the Logger at Runtime</h3>
+<pre><code class="lang-csharp">logger.SetEnabled(false); // Disables all output
+logger.SetEnabled(true);  // Re-enables output
+</code></pre>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="standard-log-flow-automatic">Standard Log Flow (Automatic)</h3>
+<p>When the bridge is initialized, any call to <code>Debug.Log(&quot;Hello&quot;)</code> anywhere in Unity code is automatically intercepted:</p>
+<pre><code>Unity Debug.Log(&quot;Hello&quot;)
+  → UnityLoggerBridge.LogFormat(LogType.Log, ..., &quot;Hello&quot;)
+    → IsLoggingInternally == false → converts to LogLevel.Info
+      → Log.Write(LogLevel.Info, &quot;UNITY&quot;, &quot;Hello&quot;)
+        → UnityConsoleLogger.Log(entry)
+          → IsLoggingInternally = true → Debug.Log(rich-text formatted output)
+            → UnityLoggerBridge.LogFormat → IsLoggingInternally == true → pass-through to default handler
+</code></pre>
+<h3 id="structured-log-entry-with-exception-and-data">Structured Log Entry with Exception and Data</h3>
+<pre><code class="lang-csharp">var entry = new LogEntry
+{
+    Level = LogLevel.Error,
+    Source = &quot;NetworkManager&quot;,
+    Message = &quot;Connection failed.&quot;,
+    Timestamp = DateTime.UtcNow,
+    ExceptionDetails = &quot;System.Net.Sockets.SocketException: Connection refused&quot;,
+    Data = new Dictionary&lt;string, object&gt;
+    {
+        { &quot;Host&quot;, &quot;192.168.1.100&quot; },
+        { &quot;Port&quot;, 7770 }
+    }
+};
+
+// Output via logger (respects AllowedLevels and IsEnabled)
+await logger.Log(entry);
+
+// Or output via formatter directly
+formatter.WriteStructuredLog(entry);
+</code></pre>
+<h3 id="multi-segment-colored-output">Multi-Segment Colored Output</h3>
+<pre><code class="lang-csharp">formatter.WriteColoredParts(
+    LogLevel.Info,
+    &quot;Inventory&quot;,
+    columnWidth: 15,
+    (&quot;lime&quot;, &quot;Gold:&quot;), (&quot;yellow&quot;, &quot;1500&quot;),
+    (&quot;lime&quot;, &quot;Items:&quot;), (&quot;white&quot;, &quot;42&quot;)
+);
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bridge initialization</td>
+<td>Call <code>UnityLoggerBridge.Initialize(callback)</code> at startup</td>
+<td>Internal callback logs <code>&quot;Bridge initialized and set as ILogHandler.&quot;</code></td>
+</tr>
+<tr>
+<td>Bridge already initialized</td>
+<td>Call <code>Initialize</code> a second time</td>
+<td>Internal callback logs <code>&quot;Bridge already initialized. Skipping re-initialization.&quot;</code></td>
+</tr>
+<tr>
+<td>Unity log interception</td>
+<td>Call <code>Debug.Log(&quot;test&quot;)</code> after initialization</td>
+<td>Message routed through <code>Log.Write</code> with source <code>&quot;UNITY&quot;</code> and level <code>Info</code></td>
+</tr>
+<tr>
+<td>Unity exception interception</td>
+<td>Call <code>Debug.LogException(ex, null)</code> after initialization</td>
+<td>Message routed through <code>Log.Write</code> with source <code>&quot;UNITY&quot;</code>, level <code>Critical</code>, and exception details</td>
+</tr>
+<tr>
+<td>Log level filtering</td>
+<td>Set <code>AllowedLevels</code> to <code>{Error, Critical}</code> only</td>
+<td><code>Info</code>, <code>Debug</code>, <code>Warning</code>, <code>Verbose</code> messages are silently dropped</td>
+</tr>
+<tr>
+<td>Logger disabled</td>
+<td>Call <code>logger.SetEnabled(false)</code></td>
+<td>No messages appear in the Unity console from this logger</td>
+</tr>
+<tr>
+<td>Re-entrant loop prevention</td>
+<td><code>UnityConsoleLogger</code> calls <code>Debug.Log</code></td>
+<td><code>IsLoggingInternally</code> flag ensures no infinite loop; message appears once</td>
+</tr>
+<tr>
+<td>Bridge shutdown</td>
+<td>Call <code>UnityLoggerBridge.Shutdown()</code></td>
+<td>Unity's original <code>ILogHandler</code> is restored; <code>Debug.Log</code> calls no longer routed through FishMMO</td>
+</tr>
+<tr>
+<td>Rich-text colors</td>
+<td>Trigger logs at each level</td>
+<td>Each level renders with its configured color in the Unity Editor console</td>
+</tr>
+<tr>
+<td>Timestamp toggle</td>
+<td>Create formatter with <code>includeTimestamps: true</code> vs <code>false</code></td>
+<td>Timestamps appear or are replaced with whitespace padding</td>
+</tr>
+<tr>
+<td>LogType conversion</td>
+<td><code>Debug.LogError</code> / <code>Debug.LogWarning</code> / <code>Debug.Log</code> / <code>Debug.LogException</code></td>
+<td>Maps to <code>Error</code> / <code>Warning</code> / <code>Info</code> / <code>Critical</code> respectively</td>
+</tr>
+<tr>
+<td>Logger disposal</td>
+<td>Call <code>logger.Dispose()</code></td>
+<td>Internal callback logs <code>&quot;Disposed.&quot;</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    App[Game / server code] --&gt;|Log.X| Facade[FishMMO-Logger]
+    Facade --&gt; File[File sink]
+    Facade --&gt; Email[Email sink]
+    Facade --&gt; Unity[Unity console adapter]
+    Cfg[logging.json] --&gt;|configures| Facade
+</code></pre>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                        Application Code                             │
+│                                                                     │
+│   Unity Debug.Log(&quot;...&quot;)          FishMMO Log.Write(level, src, msg)│
+│         │                                    │                      │
+│         ▼                                    ▼                      │
+│   ┌─────────────────┐              ┌────────────────┐               │
+│   │ UnityLoggerBridge│              │  Log (static)  │               │
+│   │  (ILogHandler)   │──────────►  │  FishMMO.Logging│               │
+│   └─────────────────┘              └───────┬────────┘               │
+│                                            │                        │
+│                              ┌─────────────┼─────────────┐          │
+│                              ▼             ▼             ▼          │
+│                    ┌──────────────┐ ┌────────────┐ ┌──────────┐     │
+│                    │UnityConsole  │ │ File       │ │ Other    │     │
+│                    │Logger        │ │ Logger     │ │ Loggers  │     │
+│                    └──────┬───────┘ └────────────┘ └──────────┘     │
+│                           │                                         │
+│                           ▼                                         │
+│                    Unity Debug.Log (with IsLoggingInternally=true)   │
+│                           │                                         │
+│                           ▼                                         │
+│                    UnityLoggerBridge passes through to default       │
+│                    handler (no re-capture loop)                      │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="class-interaction-detail">Class Interaction Detail</h3>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Action</th>
+<th>Target</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Application Code</td>
+<td><code>Debug.Log(...)</code></td>
+<td><code>UnityLoggerBridge.LogFormat</code></td>
+<td>Always (bridge is installed as <code>ILogHandler</code>)</td>
+</tr>
+<tr>
+<td><code>UnityLoggerBridge</code></td>
+<td>Pass-through to default handler</td>
+<td>Unity Console</td>
+<td><code>IsLoggingInternally == true</code></td>
+</tr>
+<tr>
+<td><code>UnityLoggerBridge</code></td>
+<td>Convert <code>LogType</code> → <code>LogLevel</code>, call <code>Log.Write()</code></td>
+<td><code>FishMMO.Logging.Log</code></td>
+<td><code>IsLoggingInternally == false</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.Log</code></td>
+<td>Dispatch <code>LogEntry</code></td>
+<td><code>UnityConsoleLogger.Log(entry)</code></td>
+<td>Logger registered and enabled</td>
+</tr>
+<tr>
+<td><code>UnityConsoleLogger</code></td>
+<td>Set <code>IsLoggingInternally = true</code>, call <code>Debug.Log(rich-text)</code></td>
+<td>Unity Console (via bridge pass-through)</td>
+<td>Level is in <code>AllowedLevels</code></td>
+</tr>
+<tr>
+<td>Application Code</td>
+<td><code>Debug.LogException(ex)</code></td>
+<td><code>UnityLoggerBridge.LogException</code></td>
+<td>Always</td>
+</tr>
+<tr>
+<td><code>UnityLoggerBridge</code></td>
+<td><code>Log.Write(Critical, &quot;UNITY&quot;, ...)</code></td>
+<td><code>FishMMO.Logging.Log</code></td>
+<td><code>IsLoggingInternally == false</code></td>
+</tr>
+<tr>
+<td><code>UnityConsoleFormatter</code></td>
+<td><code>WriteStructuredLog(entry)</code> / <code>WriteColoredParts(...)</code></td>
+<td>Unity Console (via <code>Debug.Log</code> / <code>Debug.LogError</code> / <code>Debug.LogWarning</code>)</td>
+<td>Called directly by application code</td>
+</tr>
+</tbody>
+</table>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Assets/Scripts/Shared/Implementation/Bootstrap/Logging/
+├── README.md                       # This documentation file
+├── UnityLoggerBridge.cs            # ILogHandler that intercepts Unity Debug.Log and routes to FishMMO.Logging
+├── UnityConsoleLogger.cs           # ILogger that writes structured LogEntry objects to the Unity console
+├── UnityConsoleFormatter.cs        # IConsoleFormatter for rich-text columnar output with colored parts
+└── UnityConsoleLoggerConfig.cs     # ILoggerConfig with log level filtering and color definitions
+</code></pre>
+<h3 id="class-responsibilities-and-interfaces">Class Responsibilities and Interfaces</h3>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Implements</th>
+<th>Namespace</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>UnityLoggerBridge</code></td>
+<td><code>UnityEngine.ILogHandler</code></td>
+<td><code>FishMMO.Shared</code></td>
+<td>Singleton bridge; intercepts all Unity <code>Debug.Log</code> calls and forwards to <code>FishMMO.Logging.Log</code>; prevents re-entrant loops via <code>IsLoggingInternally</code> flag</td>
+</tr>
+<tr>
+<td><code>UnityConsoleLogger</code></td>
+<td><code>FishMMO.Logging.ILogger</code></td>
+<td><code>FishMMO.Shared</code></td>
+<td>Receives <code>LogEntry</code> from the central <code>Log</code> manager; renders rich-text formatted output to Unity console; filters by <code>AllowedLevels</code> and <code>IsEnabled</code>; <code>HandlesConsoleParts</code> returns <code>false</code></td>
+</tr>
+<tr>
+<td><code>UnityConsoleFormatter</code></td>
+<td><code>FishMMO.Logging.IConsoleFormatter</code></td>
+<td><code>FishMMO.Shared</code></td>
+<td>Two output modes: <code>WriteStructuredLog(LogEntry)</code> for full columnar format, <code>WriteColoredParts(...)</code> for multi-segment colored messages; routes errors/warnings through <code>Debug.LogError</code>/<code>Debug.LogWarning</code></td>
+</tr>
+<tr>
+<td><code>UnityConsoleLoggerConfig</code></td>
+<td><code>FishMMO.Logging.ILoggerConfig</code></td>
+<td><code>FishMMO.Shared</code></td>
+<td>Serializable config holding <code>Enabled</code>, <code>AllowedLevels</code>, and <code>LogLevelColors</code>; default type identifiers set via <code>nameof</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="external-dependencies">External Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FishMMO.Logging.Log</code></td>
+<td>Central static log manager that routes entries to registered loggers</td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.ILogger</code></td>
+<td>Interface implemented by <code>UnityConsoleLogger</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.IConsoleFormatter</code></td>
+<td>Interface implemented by <code>UnityConsoleFormatter</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.ILoggerConfig</code></td>
+<td>Interface implemented by <code>UnityConsoleLoggerConfig</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.LogEntry</code></td>
+<td>Structured log entry (Level, Source, Message, Timestamp, ExceptionDetails, Data)</td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.LogLevel</code></td>
+<td>Enum: Critical, Error, Warning, Info, Debug, Verbose</td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.ConsoleFormatterHelpers</code></td>
+<td>Shared column widths, padding, and Unity rich-text escaping</td>
+</tr>
+<tr>
+<td><code>UnityEngine.Debug</code></td>
+<td>Unity's built-in logging API</td>
+</tr>
+<tr>
+<td><code>UnityEngine.ILogHandler</code></td>
+<td>Unity interface for custom log handlers</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is distributed under the FishMMO project license. See the repository root for full license terms.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/Logging/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Monitoring Infrastructure | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Monitoring Infrastructure | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Database/FishMMO-DB/Npgsql/Monitoring/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="monitoring-infrastructure">Monitoring Infrastructure</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Database/FishMMO-DB/Npgsql/Monitoring/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p>Unified monitoring namespace for database observability, health checks, and performance metrics.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#description">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#directory-structure">Directory Structure</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#namespaces">Namespaces</a></li>
+<li><a href="#key-components">Key Components</a></li>
+<li><a href="#usage">Usage</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#future-expansions">Future Expansions</a></li>
+<li><a href="#design-principles">Design Principles</a></li>
+<li><a href="#integration-points">Integration Points</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+</ul>
+<h2 id="description">Description</h2>
+<p>The <code>Monitoring/</code> namespace provides the observability layer for <code>FishMMO.Database.Npgsql</code>. It is split into three single-responsibility sub-namespaces — <strong>Health</strong> (is the database reachable?), <strong>Metrics</strong> (how fast and how often?), and <strong>Diagnostics</strong> (which queries are slow?) — that are composed together by <code>NpgsqlDbContextFactory</code> and surfaced to Unity by <code>FishMMO.Database.Unity.DatabaseHealthService</code>. All trackers are thread-safe and toggleable so they can be enabled selectively per environment via <code>appsettings.json</code>.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET Standard 2.1 (FishMMO-DB.csproj)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>.NET 8.0 host (servers, tools)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes (via <code>Unity/DatabaseHealthService</code>)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EF Core</td>
+<td>Connection interceptors used to drive <code>ConnectionPoolMetrics</code></td>
+</tr>
+<tr>
+<td>Npgsql</td>
+<td>Underlying PostgreSQL provider</td>
+</tr>
+</tbody>
+</table>
+<h2 id="architecture">Architecture</h2>
+<pre><code>NpgsqlDbContextFactory
+├── ConnectionPoolMetrics       (Metrics/) — driven by EF Core interceptors
+├── DatabaseMetricsTracker      (Metrics/) — success / failure / latency aggregates
+├── QueryPerformanceTracker     (Diagnostics/) — per-operation percentiles, slow query events
+└── DatabaseHealthMonitor       (Health/) — SELECT 1 probe + status classification
+</code></pre>
+<h2 id="directory-structure">Directory Structure</h2>
+<pre><code>Monitoring/
+├── Health/                      # Database availability and connectivity monitoring
+│   ├── DatabaseHealthMonitor.cs    # Performs health checks and connection validation
+│   ├── HealthCheckResult.cs        # Health check result data structure
+│   └── HealthStatus.cs             # Health status enumeration (Healthy, Degraded, Unhealthy)
+│
+├── Metrics/                     # Performance metrics and statistics tracking
+│   ├── ConnectionPoolMetrics.cs    # Runtime connection open/close + pool signals (via EF Core interceptors)
+│   ├── DatabaseMetricsTracker.cs   # Aggregate database operation metrics
+│   └── MetricsSummary.cs           # Metrics summary data structure
+│
+└── Diagnostics/                 # Query-level performance diagnostics
+    ├── QueryPerformanceTracker.cs  # Tracks per-operation query performance
+    ├── QueryMetrics.cs             # Per-operation metrics (avg, min, max, percentiles)
+    ├── QueryPerformanceConfiguration.cs  # Configuration for tracking levels and sampling
+    ├── TrackingLevel.cs            # Enum for tracking overhead levels
+    ├── SlowQueryEventArgs.cs       # Event args for slow query detection
+    └── INTEGRATION_EXAMPLE.cs      # Comprehensive integration examples
+</code></pre>
+<h2 id="namespaces">Namespaces</h2>
+<h3 id="health-monitoring">Health Monitoring</h3>
+<p><strong>Namespace:</strong> <code>FishMMO.Database.Npgsql.Monitoring.Health</code></p>
+<p>Focuses on <strong>availability</strong> and <strong>connectivity</strong>:</p>
+<ul>
+<li>Database connection health</li>
+<li>Response time monitoring</li>
+<li>Connection pool status</li>
+<li>Health status reporting</li>
+</ul>
+<h3 id="metrics-tracking">Metrics Tracking</h3>
+<p><strong>Namespace:</strong> <code>FishMMO.Database.Npgsql.Monitoring.Metrics</code></p>
+<p>Focuses on <strong>performance</strong> and <strong>statistics</strong>:</p>
+<ul>
+<li>Query success/failure rates</li>
+<li>Response time aggregation</li>
+<li>Connection open/close + pool runtime metrics</li>
+<li>Performance summaries</li>
+</ul>
+<h3 id="diagnostics">Diagnostics</h3>
+<p><strong>Namespace:</strong> <code>FishMMO.Database.Npgsql.Monitoring.Diagnostics</code></p>
+<p>Focuses on <strong>query-level performance</strong> and <strong>troubleshooting</strong>:</p>
+<ul>
+<li>Per-operation query performance tracking</li>
+<li>Slow query detection and alerting</li>
+<li>Percentile metrics (P95, P99)</li>
+<li>Configurable tracking levels for overhead control</li>
+<li>Sample-based tracking for production</li>
+</ul>
+<h2 id="usage">Usage</h2>
+<h3 id="health-monitoring-1">Health Monitoring</h3>
+<pre><code class="lang-csharp">using FishMMO.Database.Npgsql.Monitoring.Health;
+
+var healthMonitor = new DatabaseHealthMonitor(dbContextFactory);
+var healthResult = await healthMonitor.CheckHealthAsync();
+
+if (healthResult.Status == HealthStatus.Healthy)
+{
+    Console.WriteLine($&quot;Database healthy: {healthResult.ResponseTimeMs}ms&quot;);
+}
+</code></pre>
+<h3 id="metrics-tracking-1">Metrics Tracking</h3>
+<pre><code class="lang-csharp">using FishMMO.Database.Npgsql.Monitoring.Metrics;
+
+var metricsTracker = new DatabaseMetricsTracker();
+
+// Record operation
+metricsTracker.RecordSuccess(TimeSpan.FromMilliseconds(45));
+
+// Get summary
+var summary = metricsTracker.GetSummary();
+Console.WriteLine($&quot;Success Rate: {summary.SuccessRate}%&quot;);
+Console.WriteLine($&quot;Avg Response: {summary.AverageResponseTimeMs}ms&quot;);
+</code></pre>
+<h3 id="connection-pool-metrics">Connection Pool Metrics</h3>
+<p><code>ConnectionPoolMetrics</code> is updated from EF Core connection interceptors (DbConnection open/close events). This means:</p>
+<ul>
+<li><code>ActiveConnections</code> reflects currently-open DbConnections (checked out from the pool).</li>
+<li>It does <em>not</em> reflect DbContext creation/disposal counts.</li>
+</ul>
+<h3 id="query-performance-diagnostics">Query Performance Diagnostics</h3>
+<pre><code class="lang-csharp">using System.Diagnostics;
+using FishMMO.Database.Npgsql.Monitoring.Diagnostics;
+
+// Access through NpgsqlDbContextFactory (automatically configured from appsettings.json)
+var factory = new NpgsqlDbContextFactory(configPath);
+var performanceTracker = factory.PerformanceTracker;
+
+// In your service methods:
+public async Task&lt;DatabaseResult&lt;Player&gt;&gt; FetchPlayerAsync(long playerId, CancellationToken ct = default)
+{
+    const string operationName = &quot;FetchPlayer&quot;;
+    var stopwatch = Stopwatch.StartNew();
+	var success = false;
+
+	try
+	{
+		using var dbContext = factory.CreateDbContext();
+		var player = await dbContext.Players.FindAsync(new object[] { playerId }, ct);
+		success = true;
+		return DatabaseResult&lt;Player&gt;.Success(player);
+	}
+	finally
+	{
+		stopwatch.Stop();
+		performanceTracker?.RecordQuery(operationName, stopwatch.Elapsed, success);
+	}
+}
+
+// Subscribe to slow query events
+performanceTracker.SlowQueryDetected += (sender, e) =&gt; 
+{
+    Console.WriteLine($&quot;Slow query: {e.OperationName} took {e.DurationMs}ms&quot;);
+};
+
+// Get performance report
+var slowestOps = performanceTracker.GetSlowestOperations(10);
+foreach (var (opName, metrics) in slowestOps)
+{
+    Console.WriteLine($&quot;{opName}: Avg={metrics.AverageMs}ms, P95={metrics.P95Ms}ms, P99={metrics.P99Ms}ms&quot;);
+}
+</code></pre>
+<h4 id="query-diagnostics-enhancements-future">Query Diagnostics Enhancements (Future)</h4>
+<ul>
+<li>SQL query plan analysis</li>
+<li>Query execution plan caching</li>
+<li>Index usage recommendations</li>
+<li>Automated performance regression detection</li>
+</ul>
+<h4 id="configuration-appsettingsjson">Configuration (appsettings.json)</h4>
+<pre><code class="lang-json">{
+  &quot;QueryPerformanceTracking&quot;: {
+    &quot;Enabled&quot;: false,
+    &quot;Level&quot;: &quot;None&quot;,
+    &quot;SlowQueryThresholdMs&quot;: 1000,
+    &quot;SampleRate&quot;: 0.1,
+    &quot;MaxTrackedOperations&quot;: 1000
+  }
+}
+</code></pre>
+<p><strong>Tracking Levels:</strong></p>
+<ul>
+<li><code>None</code>: No tracking (zero overhead)</li>
+<li><code>Basic</code>: Track execution count and success rate only</li>
+<li><code>Standard</code>: + Track average execution time</li>
+<li><code>Detailed</code>: + Track min/max times</li>
+<li><code>Full</code>: + Track P95/P99 percentiles and slow query detection</li>
+</ul>
+<p><strong>Recommended Settings:</strong></p>
+<ul>
+<li><strong>Production (Normal)</strong>: <code>Enabled: false</code> for zero overhead</li>
+<li><strong>Production (Investigation)</strong>: <code>Enabled: true, Level: Basic/Standard, SampleRate: 0.01-0.1</code></li>
+<li><strong>Staging</strong>: <code>Enabled: true, Level: Standard, SampleRate: 0.1</code></li>
+<li><strong>Development</strong>: <code>Enabled: true, Level: Full, SampleRate: 1.0</code></li>
+</ul>
+<p><strong>See <a href="Diagnostics/INTEGRATION_EXAMPLE.cs">INTEGRATION_EXAMPLE.cs</a> for comprehensive usage patterns.</strong></p>
+<pre><code class="lang-csharp">using FishMMO.Database.Npgsql.Monitoring.Metrics;
+
+// Access through NpgsqlDbContextFactory
+var factory = new NpgsqlDbContextFactory(configPath);
+var poolMetrics = factory.PoolMetrics;
+
+Console.WriteLine($&quot;Active Connections: {poolMetrics.ActiveConnections}&quot;);
+Console.WriteLine($&quot;Pool Utilization: {poolMetrics.GetUtilizationPercentage(factory.MaxPoolSize)}%&quot;);
+</code></pre>
+<h2 id="future-expansions">Future Expansions</h2>
+<p>The Monitoring namespace is designed to accommodate:</p>
+<h3 id="diagnostics-future">Diagnostics (Future)</h3>
+<ul>
+<li>Query performance tracking per operation</li>
+<li>Slow query detection and logging</li>
+<li>Query plan analysis</li>
+<li>Performance profiling</li>
+</ul>
+<h3 id="telemetry-future">Telemetry (Future)</h3>
+<ul>
+<li>OpenTelemetry integration</li>
+<li>Distributed tracing</li>
+<li>Custom metrics export</li>
+<li>APM (Application Performance Monitoring) integration</li>
+</ul>
+<h3 id="alerting-future">Alerting (Future)</h3>
+<ul>
+<li>Threshold-based alerts</li>
+<li>Anomaly detection</li>
+<li>Health degradation notifications</li>
+<li>Performance regression alerts</li>
+</ul>
+<h2 id="design-principles">Design Principles</h2>
+<ol>
+<li><strong>Separation of Concerns</strong>: Health vs Metrics vs Diagnostics</li>
+<li><strong>Single Responsibility</strong>: Each class has one focused purpose</li>
+<li><strong>Thread Safety</strong>: All classes designed for concurrent access</li>
+<li><strong>Low Overhead</strong>: Minimal performance impact when enabled</li>
+<li><strong>Toggleable</strong>: Can be enabled/disabled via configuration</li>
+<li><strong>Observable</strong>: Designed for integration with monitoring tools</li>
+</ol>
+<h2 id="integration-points">Integration Points</h2>
+<ul>
+<li><strong>NpgsqlDbContextFactory</strong>: Integrates ConnectionPoolMetrics and QueryPerformanceTracker</li>
+<li><strong>DatabaseHealthMonitor</strong>: Combines health checks with pool metrics</li>
+<li><strong>Services</strong>: Integrate QueryPerformanceTracker for operation-level monitoring</li>
+<li><strong>Unity</strong>: DatabaseHealthService for game server monitoring</li>
+<li><strong>Configuration</strong>: All monitoring components configurable via appsettings.json</li>
+</ul>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart LR
+    App[Service call&lt;br/&gt;e.g. IAccountService] --&gt;|tracked op| QPT[QueryPerformanceTracker]
+    App --&gt; Factory[NpgsqlDbContextFactory]
+    Factory --&gt;|CreateDbContext| Ctx[NpgsqlDbContext]
+    Ctx --&gt;|connection open/close interceptor| CPM[ConnectionPoolMetrics]
+    Ctx --&gt; DB[(PostgreSQL)]
+
+    QPT --&gt;|slow query| SlowEvt[OnSlowQueryDetected]
+    QPT --&gt; Summary[QueryMetrics&lt;br/&gt;avg / P95 / P99]
+
+    Probe[DatabaseHealthMonitor] --&gt;|SELECT 1| DB
+    Probe --&gt; HResult[HealthCheckResult&lt;br/&gt;Healthy/Degraded/Unhealthy]
+
+    DMT[DatabaseMetricsTracker] --&gt;|aggregates| MSum[MetricsSummary]
+    App --&gt;|RecordSuccess/Failure| DMT
+
+    HResult --&gt; Unity[Unity DatabaseHealthService]
+    CPM --&gt; Unity
+    Summary --&gt; Unity
+    SlowEvt --&gt; Unity
+    Unity --&gt; Ext[External alerting]
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Database/FishMMO-DB/Npgsql/Monitoring/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

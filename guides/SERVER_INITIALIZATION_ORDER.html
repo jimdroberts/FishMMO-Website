@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Server Initialization Order | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Server Initialization Order | FishMMO ">
+      
+      
+      <link rel="icon" href="../favicon.ico">
+      <link rel="stylesheet" href="../public/docfx.min.css">
+      <link rel="stylesheet" href="../public/main.css">
+      <meta name="docfx:navrel" content="../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/SERVER_INITIALIZATION_ORDER.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../index.html">
+            <img id="logo" class="svg" src="../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="server-initialization-order">Server Initialization Order</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/SERVER_INITIALIZATION_ORDER.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>SERVER INITIALIZATION ORDER - COMPLETE FLOW</strong></p>
+<p><strong>Overview</strong>
+This document traces the complete server initialization flow from the MainBootstrap scene through ServerLauncher, individual server scenes (LoginServer/WorldServer/SceneServer), and finally to the Server component initialization including RuntimeDataContainer discovery.</p>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>PHASE 1: MAINBOOTSTRAP SCENE LOAD</strong></p>
+<p><strong>Scene:</strong> MainBootstrap.unity
+<strong>Components:</strong> MainBootstrapSystem</p>
+<p><strong>1.1 Unity Engine Loads MainBootstrap Scene</strong>
+• First scene loaded by Unity
+• Contains MainBootstrapSystem GameObject
+• DontDestroyOnLoad ensures persistence</p>
+<p><strong>1.2 MainBootstrapSystem.Awake()</strong></p>
+<pre><code>→ StartBootstrap()
+</code></pre>
+<p><strong>1.3 MainBootstrapSystem.OnPreload()</strong></p>
+<pre><code>→ Load version.txt (standalone builds only)
+→ Set GameVersion from VersionConfig
+→ Register editor PlayModeStateChanged handler
+→ Register Application.wantsToQuit handler
+→ Initialize Logging System
+    • Register UnityConsoleLogger factory
+    • Create UnityConsoleFormatter (editor only)
+    • Load logging.json config
+    • Initialize Log manager with config
+→ Determine next scene based on build type:
+    #if UNITY_SERVER
+        → Enqueue &quot;ServerLauncher&quot; scene
+    #else
+        → Enqueue &quot;ClientPreboot&quot; scene
+    #endif
+→ AddressableLoadProcessor.EnqueueLoad(initialScenes)
+</code></pre>
+<p><strong>1.4 BootstrapSystem.InitializePreload()</strong></p>
+<pre><code>→ OnPreload() (MainBootstrapSystem override called)
+→ Subscribe to AddressableLoadProcessor.OnProgressUpdate
+→ AddressableLoadProcessor.BeginProcessQueue()
+    • Starts loading ServerLauncher scene additively
+</code></pre>
+<p><strong>1.5 Scene Load Progress</strong></p>
+<pre><code>→ AddressableLoadProcessor_OnPreloadProgressUpdate(progress)
+→ When progress == 1.0:
+    • Unsubscribe from OnProgressUpdate
+    • OnCompletePreload()
+        → InitializePostload()
+</code></pre>
+<p><strong>1.6 BootstrapSystem.InitializePostload()</strong></p>
+<pre><code>→ OnPostLoad() (no-op in MainBootstrapSystem)
+→ Subscribe to AddressableLoadProcessor.OnProgressUpdate
+→ AddressableLoadProcessor.BeginProcessQueue()
+→ When postload progress == 1.0:
+    • OnCompleteProcessing()
+        → Find BootstrapSystem components in loaded scenes
+        → Call StartBootstrap() on each found system
+</code></pre>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>PHASE 2: SERVERLAUNCHER SCENE LOAD</strong></p>
+<p><strong>Scene:</strong> ServerLauncher.unity
+<strong>Components:</strong> ServerLauncher (BootstrapSystem)</p>
+<p><strong>2.1 ServerLauncher Scene Loaded</strong>
+• Loaded additively by MainBootstrapSystem
+• MainBootstrapSystem finds ServerLauncher component</p>
+<p><strong>2.2 ServerLauncher.StartBootstrap()</strong> (called by MainBootstrapSystem)</p>
+<pre><code>→ BootstrapSystem.StartBootstrap()
+    → InitializePreload()
+</code></pre>
+<p><strong>2.3 ServerLauncher.OnPreload()</strong></p>
+<pre><code>→ Subscribe to AddressableLoadProcessor events:
+    • OnAddressableLoaded += AddressableLoadProcessor_OnAddressableLoaded
+    • OnAddressableUnloaded += AddressableLoadProcessor_OnAddressableUnloaded
+→ Enqueue TemplateTypeCache asset load
+→ Determine which server scenes to load:
+    
+    #if UNITY_EDITOR
+        → Load ALL servers from BootList:
+            • LoginServer
+            • WorldServer
+            • SceneServer
+    #else
+        → Parse command-line arguments:
+            args[1] == &quot;LOGIN&quot;  → Load LoginServer only
+            args[1] == &quot;WORLD&quot;  → Load WorldServer only
+            args[1] == &quot;SCENE&quot;  → Load SceneServer only
+            No args or unknown  → Load ALL from BootList
+    #endif
+
+→ Create List&lt;AddressableSceneLoadData&gt; with selected scenes
+→ AddressableLoadProcessor.EnqueueLoad(initialScenes)
+</code></pre>
+<p><strong>2.4 Server Scene Loading</strong></p>
+<pre><code>→ BootstrapSystem.InitializePreload()
+    • Enqueues server scenes for loading
+    • BeginProcessQueue() starts async scene loading
+→ Progress updates via AddressableLoadProcessor_OnPreloadProgressUpdate
+→ When complete:
+    • OnCompletePreload()
+    • InitializePostload()
+→ When postload complete:
+    • OnCompleteProcessing()
+        → Find BootstrapSystem components in loaded server scenes
+        → DO NOT call StartBootstrap() yet (server scenes don't have BootstrapSystem)
+</code></pre>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>PHASE 3: SERVER SCENE(S) LOAD</strong></p>
+<p><strong>Scenes:</strong> LoginServer.unity, WorldServer.unity, and/or SceneServer.unity
+<strong>Components:</strong> Server (MonoBehaviour)</p>
+<p>Each server scene contains:
+• NetworkManager GameObject (FishNet)
+• Server GameObject with Server component
+• ServerBehaviours (ScriptableObject assets) attached to Server</p>
+<p><strong>3.1 Server Scene Loaded</strong>
+• Loaded additively by ServerLauncher
+• Multiple scenes may load simultaneously (editor) or single scene (standalone)</p>
+<p><strong>3.2 Server.Start()</strong></p>
+<pre><code>→ Log.Debug(&quot;Server&quot;, &quot;Server is starting...&quot;)
+→ Find NetworkManager in scene
+    • Throw UnityException if not found
+→ Create FileServerConfiguration
+→ Create ServerEvents
+→ Create CoreServer(Configuration, ServerEvents)
+→ Create FishNetNetworkWrapper(networkManager, Configuration, this)
+→ Subscribe to ServerEvents:
+    • OnLoginServerInitialized
+    • OnWorldServerInitialized
+    • OnSceneServerInitialized
+→ StartCoroutine(NetHelper.FetchExternalIPAddress(OnFinalizeSetup))
+</code></pre>
+<p><strong>3.3 Fetch External IP Address</strong></p>
+<pre><code>→ NetHelper.FetchExternalIPAddress() (async web request)
+→ When complete:
+    • Calls OnFinalizeSetup(remoteAddress)
+</code></pre>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>PHASE 4: SERVER FINALIZE SETUP</strong></p>
+<p><strong>4.1 Server.OnFinalizeSetup(remoteAddress)</strong></p>
+<pre><code>→ Validate remoteAddress is not null/empty
+→ CoreServer.Initialize(remoteAddress, sceneName)
+→ Create ServerAddressProvider
+    • Wraps Transport, AddressOverride, PortOverride
+    • Stores local and remote addresses
+</code></pre>
+<p><strong>4.2 Network Configuration</strong></p>
+<pre><code>→ NetworkWrapper.ApplyTransportConfiguration()
+    • Configures FishNet transport with addresses/ports
+→ NetworkWrapper.AttachLoginAuthenticator(this)
+    • Sets up authenticator based on server type
+→ NetworkWrapper.AttachServerConnectionStateEventHandler(ServerManager_OnServerConnectionState)
+    • Subscribe to server connection state changes
+</code></pre>
+<p><strong>4.3 Account Management</strong></p>
+<pre><code>→ AccountManager = new AccountManager()
+</code></pre>
+<p><strong>4.4 RUNTIME DATA CONTAINER INITIALIZATION</strong></p>
+<pre><code>→ DataContainerRegistry = new RuntimeDataContainerRegistry()
+→ DiscoverAndCreateDataContainers()
+    
+    ┌─ Step 1: Scan ServerBehaviours ─┐
+    │ foreach (behaviour in ServerBehaviours)
+    │ {
+    │     Get [RequiresDataContainer] attributes
+    │     foreach (attribute)
+    │     {
+    │         Check if container type already discovered (HashSet&lt;Type&gt;)
+    │         If new:
+    │             Validate container type (RuntimeDataContainerFactory)
+    │             Group by InitializationPriority
+    │     }
+    │ }
+    └──────────────────────────────────┘
+    
+    ┌─ Step 2: Create Containers ─────┐
+    │ foreach (priorityGroup in sorted order)
+    │ {
+    │     foreach (containerType)
+    │     {
+    │         container = factory.CreateContainer(containerType)
+    │         DataContainers.Add(container)
+    │         Log: &quot;Auto-created RuntimeDataContainer: {type}&quot;
+    │     }
+    │ }
+    └──────────────────────────────────┘
+    
+→ RegisterAllDataContainers()
+    • foreach container in DataContainers:
+        • DataContainerRegistry.Register(container)
+            → Registers by concrete type
+            → Registers by all implemented interfaces
+    
+→ DataContainerRegistry.InitializeAll(this)
+    • foreach container:
+        • container.InternalInitializeOnce(server, serverManager)
+            → Set Server reference
+            → Set ServerManager reference
+            → Call container.InitializeOnce()
+            → Mark Initialized = true
+            → Log initialization status
+</code></pre>
+<p><strong>Container Discovery Example:</strong></p>
+<pre><code class="lang-csharp">// PartySystem.cs declares dependency
+[RequiresDataContainer(typeof(PartyRuntimeData))]
+public class PartySystem : ServerBehaviour { }
+
+// ChatSystem.cs also declares same dependency
+[RequiresDataContainer(typeof(PartyRuntimeData))]
+public class ChatSystem : ServerBehaviour { }
+
+// Result: Only ONE PartyRuntimeData instance created
+// Both systems access it via:
+Server.DataContainerRegistry.TryGet&lt;IPartyRuntimeData&gt;(out var data)
+</code></pre>
+<p><strong>4.5 SERVER BEHAVIOUR INITIALIZATION</strong></p>
+<pre><code>→ BehaviourRegistry = new ServerBehaviourRegistry()
+→ RegisterAllBehaviours()
+    • foreach behaviour in ServerBehaviours:
+        • BehaviourRegistry.Register(behaviour)
+            → Registers by concrete type
+            → Registers by all implemented interfaces
+    
+→ BehaviourRegistry.InitializeAll(this)
+    • foreach behaviour:
+        • behaviour.InternalInitializeOnce(server, serverManager)
+            → Set Server reference
+            → Set ServerManager reference
+            → Call behaviour.InitializeOnce()
+                → Behaviours can now access initialized containers!
+                → Subscribe to network broadcasts
+                → Register event handlers
+                → Set up periodic callbacks
+            → Mark Initialized = true
+            → Log initialization status
+</code></pre>
+<p><strong>Behaviour Initialization Example:</strong></p>
+<pre><code class="lang-csharp">public override ServerComponentInitializationStatus InitializeOnce()
+{
+    // Get the auto-created container
+    if (!Server.DataContainerRegistry.TryGet&lt;IPartyRuntimeData&gt;(out var runtimeData))
+        return ServerComponentInitializationStatus.FailedToGetDataContainer;
+    
+    // Register network broadcasts
+    Server.NetworkWrapper.RegisterBroadcast&lt;PartyCreateBroadcast&gt;(
+        OnServerPartyCreateBroadcastReceived, true);
+    
+    // Register periodic callbacks
+    if (Server is IPeriodicUpdateSystem periodicSystem)
+    {
+        periodicSystem.RegisterPeriodicCallback(UpdatePumpRate, OnPeriodicUpdate);
+    }
+    
+    return ServerComponentInitializationStatus.Initialized;
+}
+</code></pre>
+<p><strong>4.6 Physics and Network Start</strong></p>
+<pre><code>→ KinematicCharacterSystem.EnsureCreation()
+→ KinematicCharacterSystem.Settings.AutoSimulation = false
+→ NetworkWrapper.StartServer()
+    • FishNet ServerManager.StartConnection()
+    • Server begins listening for client connections
+→ Log.Debug(&quot;Server&quot;, &quot;Initialization Complete&quot;)
+</code></pre>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>PHASE 5: RUNTIME OPERATION</strong></p>
+<p><strong>5.1 Server.LateUpdate() (Every Frame)</strong></p>
+<pre><code>→ Calculate deltaTime
+→ Update all ServerBehaviours:
+    • foreach behaviour in ServerBehaviours:
+        if (behaviour.Initialized)
+            behaviour.OnLateUpdate(deltaTime)
+→ Process periodic callbacks:
+    • foreach callback in periodicCallbacks:
+        callback.TimeRemaining -= deltaTime
+        if (TimeRemaining &lt;= 0)
+            callback.Action.Invoke(deltaTime)
+            callback.TimeRemaining = callback.Interval
+</code></pre>
+<p><strong>5.2 Client Connections</strong></p>
+<pre><code>→ Client connects to server
+→ ServerManager_OnRemoteConnectionState(conn, RemoteConnectionStateArgs)
+→ Authenticator validates client
+→ Character spawning/loading begins
+→ ServerBehaviours handle client requests via broadcasts
+→ RuntimeDataContainers store mutable state
+</code></pre>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>COMPLETE INITIALIZATION TREE</strong></p>
+<pre><code>Unity Engine Start
+│
+╰─▶ Load MainBootstrap.unity
+    │
+    ├─▶ MainBootstrapSystem.Awake()
+    │   │
+    │   ╰─▶ StartBootstrap()
+    │       │
+    │       ├─▶ OnPreload()
+    │       │   ├─ Load version.txt (standalone)
+    │       │   ├─ Set GameVersion from VersionConfig
+    │       │   ├─ Register PlayModeStateChanged (editor)
+    │       │   ├─ Register Application.wantsToQuit
+    │       │   ├─ Initialize Logging System
+    │       │   │   ├─ Register UnityConsoleLogger factory
+    │       │   │   ├─ Create UnityConsoleFormatter (editor)
+    │       │   │   ├─ Load logging.json config
+    │       │   │   ╰─ Initialize Log manager
+    │       │   ╰─ Enqueue Scene Load
+    │       │       ├─ #if UNITY_SERVER → &quot;ServerLauncher&quot;
+    │       │       ╰─ #else → &quot;ClientPreboot&quot;
+    │       │
+    │       ├─▶ InitializePreload()
+    │       │   ╰─ AddressableLoadProcessor.BeginProcessQueue()
+    │       │       │
+    │       │       ╰─▶ [ASYNC LOAD]
+    │       │           │
+    │       │           ╰─▶ ServerLauncher.unity loaded (additive)
+    │       │
+    │       ╰─▶ OnCompleteProcessing()
+    │           ╰─ Find BootstrapSystem in loaded scenes
+    │               │
+    │               ╰─▶ ServerLauncher.StartBootstrap()
+    │                   │
+    │                   ├─▶ OnPreload()
+    │                   │   ├─ Subscribe to AddressableLoadProcessor events
+    │                   │   ├─ Enqueue TemplateTypeCache asset
+    │                   │   ├─ Determine server scenes to load:
+    │                   │   │   │
+    │                   │   │   ├─ #if UNITY_EDITOR
+    │                   │   │   │   ╰─ Load ALL from BootList:
+    │                   │   │   │       ├─ LoginServer
+    │                   │   │   │       ├─ WorldServer
+    │                   │   │   │       ╰─ SceneServer
+    │                   │   │   │
+    │                   │   │   ╰─ #else (Standalone)
+    │                   │   │       ├─ args[1] == &quot;LOGIN&quot;  → LoginServer only
+    │                   │   │       ├─ args[1] == &quot;WORLD&quot;  → WorldServer only
+    │                   │   │       ├─ args[1] == &quot;SCENE&quot;  → SceneServer only
+    │                   │   │       ╰─ No args/unknown     → ALL from BootList
+    │                   │   │
+    │                   │   ╰─ AddressableLoadProcessor.EnqueueLoad(selectedScenes)
+    │                   │
+    │                   ├─▶ InitializePreload()
+    │                   │   ╰─ AddressableLoadProcessor.BeginProcessQueue()
+    │                   │       │
+    │                   │       ╰─▶ [ASYNC LOAD - Server Scenes]
+    │                   │           │
+    │                   │           ├─▶ LoginServer.unity loaded (additive)
+    │                   │           │   │
+    │                   │           │   ╰─▶ Server.Start()
+    │                   │           │       ├─ Find NetworkManager in scene
+    │                   │           │       ├─ Create FileServerConfiguration
+    │                   │           │       ├─ Create ServerEvents
+    │                   │           │       ├─ Create CoreServer(config, events)
+    │                   │           │       ├─ Create FishNetNetworkWrapper
+    │                   │           │       ├─ Subscribe to ServerEvents
+    │                   │           │       ╰─ StartCoroutine(FetchExternalIPAddress)
+    │                   │           │           │
+    │                   │           │           ╰─▶ [ASYNC WEB REQUEST]
+    │                   │           │               │
+    │                   │           │               ╰─▶ OnFinalizeSetup(remoteAddress)
+    │                   │           │                   ├─ CoreServer.Initialize(remoteAddress, sceneName)
+    │                   │           │                   ├─ Create ServerAddressProvider
+    │                   │           │                   ├─ NetworkWrapper.ApplyTransportConfiguration()
+    │                   │           │                   ├─ NetworkWrapper.AttachLoginAuthenticator()
+    │                   │           │                   ├─ NetworkWrapper.AttachServerConnectionStateEventHandler()
+    │                   │           │                   ├─ AccountManager = new AccountManager()
+    │                   │           │                   │
+    │                   │           │                   ├─▶ DATA CONTAINER INITIALIZATION
+    │                   │           │                   │   ├─ DataContainerRegistry = new()
+    │                   │           │                   │   │
+    │                   │           │                   │   ├─▶ DiscoverAndCreateDataContainers()
+    │                   │           │                   │   │   ├─ foreach ServerBehaviour:
+    │                   │           │                   │   │   │   ├─ Get [RequiresDataContainer] attributes
+    │                   │           │                   │   │   │   ├─ Check HashSet&lt;Type&gt; for duplicates
+    │                   │           │                   │   │   │   ├─ Validate container type (factory)
+    │                   │           │                   │   │   │   ╰─ Group by InitializationPriority
+    │                   │           │                   │   │   ├─ foreach priority group (sorted):
+    │                   │           │                   │   │   │   ├─ factory.CreateContainer(type)
+    │                   │           │                   │   │   │   ├─ DataContainers.Add(container)
+    │                   │           │                   │   │   │   ╰─ Log: &quot;Auto-created: {type}&quot;
+    │                   │           │                   │   │   ╰─ Result: Deduplicated container list
+    │                   │           │                   │   │
+    │                   │           │                   │   ├─▶ RegisterAllDataContainers()
+    │                   │           │                   │   │   ╰─ foreach container:
+    │                   │           │                   │   │       ├─ Register by concrete type
+    │                   │           │                   │   │       ╰─ Register by all interfaces
+    │                   │           │                   │   │
+    │                   │           │                   │   ╰─▶ DataContainerRegistry.InitializeAll(this)
+    │                   │           │                   │       ╰─ foreach container:
+    │                   │           │                   │           ├─ Set Server reference
+    │                   │           │                   │           ├─ Set ServerManager reference
+    │                   │           │                   │           ├─ Call container.InitializeOnce()
+    │                   │           │                   │           ├─ Initialized = true
+    │                   │           │                   │           ╰─ Log initialization status
+    │                   │           │                   │
+    │                   │           │                   ├─▶ BEHAVIOUR INITIALIZATION
+    │                   │           │                   │   ├─ BehaviourRegistry = new()
+    │                   │           │                   │   │
+    │                   │           │                   │   ├─▶ RegisterAllBehaviours()
+    │                   │           │                   │   │   ╰─ foreach behaviour:
+    │                   │           │                   │   │       ├─ Register by concrete type
+    │                   │           │                   │   │       ╰─ Register by all interfaces
+    │                   │           │                   │   │
+    │                   │           │                   │   ╰─▶ BehaviourRegistry.InitializeAll(this)
+    │                   │           │                   │       ╰─ foreach behaviour:
+    │                   │           │                   │           ├─ Set Server reference
+    │                   │           │                   │           ├─ Set ServerManager reference
+    │                   │           │                   │           ├─ Call behaviour.InitializeOnce()
+    │                   │           │                   │           │   ├─ Access DataContainerRegistry
+    │                   │           │                   │           │   ├─ Register network broadcasts
+    │                   │           │                   │           │   ├─ Subscribe to events
+    │                   │           │                   │           │   ╰─ Register periodic callbacks
+    │                   │           │                   │           ├─ Initialized = true
+    │                   │           │                   │           ╰─ Log initialization status
+    │                   │           │                   │
+    │                   │           │                   ├─ KinematicCharacterSystem.EnsureCreation()
+    │                   │           │                   ├─ KinematicCharacterSystem.Settings.AutoSimulation = false
+    │                   │           │                   ├─ NetworkWrapper.StartServer()
+    │                   │           │                   │   ╰─ FishNet ServerManager.StartConnection()
+    │                   │           │                   │
+    │                   │           │                   ╰─ Log: &quot;Initialization Complete&quot;
+    │                   │           │
+    │                   │           ├─▶ WorldServer.unity loaded (additive)
+    │                   │           │   ╰─ [Same initialization as LoginServer]
+    │                   │           │
+    │                   │           ╰─▶ SceneServer.unity loaded (additive)
+    │                   │               ╰─ [Same initialization as LoginServer]
+    │                   │
+    │                   ╰─▶ OnCompleteProcessing()
+    │                       ╰─ (Server scenes don't have BootstrapSystem)
+    │
+    ╰─▶ SERVER(S) FULLY INITIALIZED ✓
+        │
+        ╰─▶ RUNTIME OPERATION (every frame)
+            │
+            ├─▶ Server.LateUpdate()
+            │   ├─ Calculate deltaTime
+            │   ├─ Update all ServerBehaviours:
+            │   │   ╰─ behaviour.OnLateUpdate(deltaTime)
+            │   ╰─ Process periodic callbacks:
+            │       ├─ Decrement TimeRemaining
+            │       ╰─ Invoke callback when TimeRemaining &lt;= 0
+            │
+            ╰─▶ READY FOR CLIENT CONNECTIONS
+                ├─ Client connects
+                ├─ Authenticator validates
+                ├─ Character spawning/loading
+                ├─ ServerBehaviours handle broadcasts
+                ╰─ RuntimeDataContainers store state
+</code></pre>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>KEY INITIALIZATION GUARANTEES</strong></p>
+<p><strong>1. Containers Before Behaviours</strong>
+✅ RuntimeDataContainers are ALWAYS initialized before ServerBehaviours
+✅ Behaviours can safely access containers in InitializeOnce()
+✅ No race conditions between logic and data</p>
+<p><strong>2. Attribute-Based Discovery</strong>
+✅ Zero manual configuration required
+✅ Declare dependencies with [RequiresDataContainer(typeof(...))]
+✅ Automatic deduplication (multiple systems, one instance)
+✅ Priority ordering for container dependencies</p>
+<p><strong>3. Hierarchical Bootstrap</strong>
+✅ MainBootstrap → ServerLauncher → Server Scene(s)
+✅ Each BootstrapSystem can load additional scenes
+✅ Parent systems trigger child system initialization
+✅ Graceful handling of additive scene loading</p>
+<p><strong>4. Build-Specific Behavior</strong>
+✅ Editor: Loads all servers simultaneously (BootList)
+✅ Standalone: Uses command-line args to select server type
+✅ WebGL: Separate asset/scene lists (WebGLPreloadScenes, etc.)</p>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>SCENE HIERARCHY</strong></p>
+<pre><code>MainBootstrap (persistent, DontDestroyOnLoad)
+    ├─ MainBootstrapSystem
+    │   └─ Logging, Version, Config
+    │
+    └─ Loads → ServerLauncher (additive)
+        ├─ ServerLauncher (BootstrapSystem)
+        │   ├─ Asset loading (TemplateTypeCache)
+        │   └─ Command-line arg parsing
+        │
+        └─ Loads → Server Scene(s) (additive)
+            ├─ LoginServer.unity
+            │   ├─ NetworkManager
+            │   ├─ Server (MonoBehaviour)
+            │   └─ ServerBehaviours (LoginServerSystem, etc.)
+            │
+            ├─ WorldServer.unity
+            │   ├─ NetworkManager
+            │   ├─ Server (MonoBehaviour)
+            │   └─ ServerBehaviours (WorldServerSystem, WorldSceneSystem, etc.)
+            │
+            └─ SceneServer.unity
+                ├─ NetworkManager
+                ├─ Server (MonoBehaviour)
+                └─ ServerBehaviours (CharacterSystem, PartySystem, etc.)
+</code></pre>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>SHUTDOWN SEQUENCE</strong></p>
+<pre><code>Application wants to quit (or Editor exits Play Mode)
+    ↓
+MainBootstrapSystem.OnApplicationWantsToQuit()
+    • Returns false (defer quitting)
+    ↓
+InitiateShutdown()
+    • Graphics cleanup (release addressables)
+    • UnityLoggerBridge.Shutdown()
+    ↓
+PerformAsyncShutdown() (standalone only)
+    • Save logging.json config
+    • Log.Shutdown() (flush logs)
+    • Set canQuitApplication = true
+    ↓
+Server.OnDestroy()
+    ↓
+Server.OnApplicationQuit()
+    • DeinitializeAllBehaviours()
+        → foreach behaviour (reverse order):
+            behaviour.Deinitialize()
+    • UnregisterAllBehaviours()
+    • DeinitializeAllDataContainers()
+        → foreach container (reverse order):
+            container.Clear()
+            container.Deinitialize()
+    • UnregisterAllDataContainers()
+    • periodicCallbacks.Clear()
+    ↓
+Application.Quit()
+</code></pre>
+<p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+<p><strong>SUMMARY</strong></p>
+<p>The FishMMO server initialization follows a robust multi-phase approach:</p>
+<p><strong>Phase 1:</strong> MainBootstrap establishes logging, versioning, and core systems
+<strong>Phase 2:</strong> ServerLauncher determines which server(s) to load based on build type
+<strong>Phase 3:</strong> Individual Server scenes load with NetworkManager and Server components
+<strong>Phase 4:</strong> Server.OnFinalizeSetup() performs the critical initialization:
+• Discovers and creates RuntimeDataContainers (data first)
+• Initializes ServerBehaviours (logic second, with data available)
+<strong>Phase 5:</strong> Runtime operation with frame-based updates and periodic callbacks</p>
+<p>This architecture ensures:
+✅ Proper initialization order (logging → network → data → logic)
+✅ Separation of concerns (BootstrapSystem → Server → Behaviour/Container)
+✅ Flexible deployment (editor multi-server vs standalone single-server)
+✅ Graceful shutdown with async cleanup
+✅ Type-safe dependency injection via attributes</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/SERVER_INITIALIZATION_ORDER.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

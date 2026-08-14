@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Kick Request System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Kick Request System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/KickRequest/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="kick-request-system">Kick Request System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/KickRequest/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Periodically polls the database for account kick requests, filters stale entries via last-login timestamps, and disconnects matching connections on the main thread through a dedicated queue container.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Kick Request system enforces account disconnect requests issued through the database. It runs on any FishMMO server (Login, Scene, or World) as a <code>ServerBehaviour</code> and periodically polls for new kick requests using cursor-based pagination. Each request is validated against account last-login timestamps to filter stale entries (accounts that have already reconnected). Valid kick actions are marshalled to the Unity main thread through a dedicated <code>MainThreadQueueData</code> container, since FishNet's <code>NetworkConnection.Kick(...)</code> is not thread-safe.</p>
+<p>The system is split into a Core interface layer and an Implementation layer:</p>
+<ul>
+<li><strong>Core layer</strong> (<code>Server/Core/World/KickRequest/</code>) — Defines <code>IKickRequestSystem</code>, <code>IKickRequestSystemQueueData</code>, and <code>IKickRequestSystemMainThreadQueueData</code> as engine-agnostic contracts. Other systems can query or modify runtime pump parameters (<code>UpdatePumpRate</code>, <code>UpdateFetchCount</code>) without referencing the implementation.</li>
+<li><strong>Implementation layer</strong> (<code>Server/Implementation/KickRequest/</code>) — Provides three concrete classes:
+<ul>
+<li><strong><code>KickRequestSystem</code></strong> — Orchestrates polling, validation, and kick execution. Extends <code>ServerBehaviour</code> and implements <code>IKickRequestSystem</code>.</li>
+<li><strong><code>KickRequestSystemQueueData</code></strong> — Tracks polling cursor state (<code>LastFetchTime</code>, <code>LastPosition</code>) and an overlap gate (<code>IsProcessing</code>). Extends <code>RuntimeDataContainer</code>.</li>
+<li><strong><code>KickRequestSystemMainThreadQueueData</code></strong> — Per-system main-thread action queue container. Extends <code>SystemMainThreadQueueData</code>.</li>
+</ul>
+</li>
+</ul>
+<p>Database and polling work run asynchronously via <code>AsyncWorkerData</code>, while all FishNet connection operations are dispatched through the main-thread queue to guarantee thread safety.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Fully supported as a server host</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Fully supported as a server host</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only component; not applicable to browser builds</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Engine:</strong> Unity 6.3 LTS
+<strong>Scripting backend:</strong> IL2CPP</p>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Cursor-based database polling</strong> — Fetches kick requests using <code>LastFetchTime</code> and <code>LastPosition</code> for efficient pagination. After each non-empty fetch the cursor advances to the latest row in the batch, ensuring no requests are missed or re-processed.</li>
+<li><strong>Stale request filtering</strong> — For each kick request, the system fetches the account's last-login timestamp. If the last login occurred after the kick request was created, the request is considered stale (account already reconnected) and is skipped.</li>
+<li><strong>Batched last-login checks</strong> — Login timestamp queries are batched in groups of 10 using <code>Task.WhenAll</code> to avoid saturating the database connection pool while still running concurrently within each batch.</li>
+<li><strong>Overlap protection</strong> — <code>IKickRequestSystemQueueData.IsProcessing</code> is checked under a lock before each poll to prevent concurrent overlapping database fetches.</li>
+<li><strong>Main-thread kick dispatch</strong> — All <code>conn.Kick(KickReason.UnexpectedProblem)</code> calls are enqueued via <code>TryEnqueueMainThread&lt;IKickRequestSystemMainThreadQueueData&gt;</code> and drained on the main thread each frame, respecting <code>maxMainThreadActionsPerFrame</code> to avoid frame spikes.</li>
+<li><strong>Disconnect cleanup</strong> — When a remote connection stops, the system asynchronously deletes any pending kick request for that account from the database, preventing stale requests from re-triggering after legitimate disconnect/reconnect cycles.</li>
+<li><strong>Configurable pump rate</strong> — Poll interval (<code>updatePumpRate</code>) and fetch count (<code>updateFetchCount</code>) are exposed as serialized fields and runtime properties, tunable via the Unity Inspector or code.</li>
+<li><strong>Periodic update integration</strong> — Registers with <code>IPeriodicUpdateSystem</code> for fixed-rate polling cadence rather than relying on per-frame checks.</li>
+<li><strong>Graceful shutdown drain</strong> — On deinitialization, the system drains all remaining main-thread actions so clients receive their final disconnect messages.</li>
+<li><strong>Async worker backpressure</strong> — All database operations are submitted via <code>TryEnqueueAsyncWork</code>, which returns <code>false</code> when the worker pool is full. Warnings are logged on enqueue failure.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS (IL2CPP scripting backend)</li>
+<li>FishNet networking framework (<code>FishNet.Connection.NetworkConnection</code>)</li>
+<li>FishMMO Database layer with <code>IKickRequestService</code> and <code>IAccountService</code> implementations</li>
+<li>FishMMO Server Core (<code>ServerBehaviour</code>, <code>RuntimeDataContainer</code>, <code>AsyncWorkerData</code>, <code>SystemMainThreadQueueData</code>)</li>
+<li>A running PostgreSQL (or compatible) database with kick request and account tables</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>The Kick Request system is an integrated module within the FishMMO server architecture. It is included automatically when building any server (Login, Scene, or World) and requires no separate installation steps.</p>
+<ol>
+<li>Ensure the FishMMO Unity project is set up with all dependencies resolved.</li>
+<li>Create a <code>KickRequestSystem</code> ScriptableObject asset via <strong>Assets → Create → FishMMO → Server → WorldServer → Kick Request System</strong>.</li>
+<li>Assign the asset to the target server's system list.</li>
+<li>Create <code>KickRequestSystemQueueData</code> and <code>KickRequestSystemMainThreadQueueData</code> data container assets and register them in the <code>DataContainerRegistry</code>.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="inspector-setup">Inspector Setup</h3>
+<ol>
+<li>Select the <code>KickRequestSystem</code> ScriptableObject asset.</li>
+<li>Configure <strong>Update Pump Rate</strong> (default <code>5.0</code> seconds) — how often the system polls the database.</li>
+<li>Configure <strong>Update Fetch Count</strong> (default <code>100</code>) — maximum kick requests fetched per poll.</li>
+<li>Configure <strong>Max Main Thread Actions Per Frame</strong> (default <code>100</code>) — limits frame spikes from large kick batches.</li>
+</ol>
+<h3 id="runtime-tuning">Runtime Tuning</h3>
+<pre><code class="lang-csharp">// Adjust poll interval at runtime
+if (server.TryGetSystem&lt;IKickRequestSystem&gt;(out var kickSystem))
+{
+    kickSystem.UpdatePumpRate = 2.0f;   // poll every 2 seconds
+    kickSystem.UpdateFetchCount = 50;   // fetch up to 50 per poll
+}
+</code></pre>
+<h3 id="issuing-a-kick-request">Issuing a Kick Request</h3>
+<p>Kick requests are inserted into the database by external systems (e.g., admin tools, login server). The <code>KickRequestSystem</code> will pick them up on the next poll cycle and disconnect the matching connection if the account is still online.</p>
+<h2 id="configuration">Configuration</h2>
+<table>
+<thead>
+<tr>
+<th>Field / Property</th>
+<th>Type</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Maximum kick actions drained from the main-thread queue per frame. Clamped to a minimum of 1.</td>
+</tr>
+<tr>
+<td><code>updatePumpRate</code> / <code>UpdatePumpRate</code></td>
+<td><code>float</code></td>
+<td><code>5.0f</code></td>
+<td>Database poll interval in seconds. Controls how frequently the system checks for new kick requests.</td>
+</tr>
+<tr>
+<td><code>updateFetchCount</code> / <code>UpdateFetchCount</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Maximum number of kick requests fetched per database poll.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runtime-data-state">Runtime Data State</h3>
+<table>
+<thead>
+<tr>
+<th>Container</th>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KickRequestSystemQueueData</code></td>
+<td><code>IsProcessing</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Overlap gate preventing concurrent polls</td>
+</tr>
+<tr>
+<td><code>KickRequestSystemQueueData</code></td>
+<td><code>LastFetchTime</code></td>
+<td><code>DateTime</code></td>
+<td><code>DateTime.UtcNow</code></td>
+<td>Cursor timestamp for pagination</td>
+</tr>
+<tr>
+<td><code>KickRequestSystemQueueData</code></td>
+<td><code>LastPosition</code></td>
+<td><code>long</code></td>
+<td><code>0</code></td>
+<td>Cursor row ID for pagination</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="querying-kick-system-state">Querying Kick System State</h3>
+<pre><code class="lang-csharp">if (server.TryGetSystem&lt;IKickRequestSystem&gt;(out var kickSystem))
+{
+    Debug.Log($&quot;Poll rate: {kickSystem.UpdatePumpRate}s, Fetch count: {kickSystem.UpdateFetchCount}&quot;);
+}
+</code></pre>
+<h3 id="inserting-a-kick-request-database-side">Inserting a Kick Request (Database Side)</h3>
+<pre><code class="lang-csharp">// From an admin tool or another server system
+if (database.ServiceRegistry.TryGet&lt;IKickRequestService&gt;(out var kickService))
+{
+    await kickService.InsertAsync(new KickRequestData
+    {
+        AccountName = &quot;targetAccount&quot;,
+        TimeCreated = DateTime.UtcNow
+    });
+}
+</code></pre>
+<h3 id="connection-disconnect-lifecycle">Connection Disconnect Lifecycle</h3>
+<pre><code class="lang-csharp">// Automatically handled by KickRequestSystem:
+// 1. Poll detects kick request for &quot;targetAccount&quot;
+// 2. Last-login check confirms account hasn't reconnected
+// 3. Main-thread queue receives kick action
+// 4. On next frame drain: conn.Kick(KickReason.UnexpectedProblem)
+// 5. OnRemoteConnectionStopped fires → kick request deleted from DB
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to verify</th>
+<th>Expected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System initialized</td>
+<td>Log output: <code>&quot;Initialized (UpdatePumpRate=5s, FetchCount=100)&quot;</code></td>
+<td>Appears once at server start</td>
+</tr>
+<tr>
+<td>Polling active</td>
+<td>Monitor database query logs for periodic <code>FetchAsync</code> calls</td>
+<td>Queries every <code>updatePumpRate</code> seconds</td>
+</tr>
+<tr>
+<td>Kick executed</td>
+<td>Watch for client disconnects after inserting a kick request</td>
+<td>Client disconnected within one poll cycle</td>
+</tr>
+<tr>
+<td>Stale filtering</td>
+<td>Insert kick request, then log the account in again before next poll</td>
+<td>Account stays connected; request skipped</td>
+</tr>
+<tr>
+<td>Disconnect cleanup</td>
+<td>Disconnect an account with a pending kick request</td>
+<td>Kick request deleted from database</td>
+</tr>
+<tr>
+<td>Overlap protection</td>
+<td>Set <code>updatePumpRate</code> very low with slow DB</td>
+<td>Only one <code>ProcessKickRequestsAsync</code> runs at a time</td>
+</tr>
+<tr>
+<td>Main-thread drain</td>
+<td>Insert many kick requests at once</td>
+<td>Kicks processed at <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Enqueue backpressure</td>
+<td>Saturate async worker pool</td>
+<td>Warning logged: <code>&quot;Failed to enqueue...&quot;</code></td>
+</tr>
+<tr>
+<td>Graceful shutdown</td>
+<td>Stop the server with pending kick actions</td>
+<td>All queued actions drain before shutdown completes</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Trigger[Auth fail / admin / dup login] --&gt; Sys[KickRequestSystem]
+    Sys --&gt;|reason code| Conn[Connection]
+    Conn --&gt;|broadcast disconnect| Client[Unity Client]
+    Sys --&gt;|audit| Log[Logger]
+</code></pre>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                    KickRequestSystem                        │
+│                                                             │
+│  ┌───────────────────┐    ┌──────────────────────────────┐  │
+│  │  InitializeOnce   │    │       OnDeinitialize         │  │
+│  │  ─ Validate deps  │    │  ─ DrainMainThreadQueue(all) │  │
+│  │  ─ Subscribe conn │    │  ─ Unsubscribe events        │  │
+│  │  ─ Register pump  │    │  ─ Unregister periodic       │  │
+│  └───────────────────┘    └──────────────────────────────┘  │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │              Periodic Poll (every N seconds)         │   │
+│  │                                                      │   │
+│  │  OnPeriodicUpdate(deltaTime)                         │   │
+│  │    │                                                 │   │
+│  │    ▼                                                 │   │
+│  │  TryEnqueueAsyncWork(ProcessKickRequestsAsync)       │   │
+│  │    │                                                 │   │
+│  │    ▼  [Async Worker Thread]                          │   │
+│  │  ProcessKickRequestsAsync()                          │   │
+│  │    │                                                 │   │
+│  │    ├─ lock(data) → check IsProcessing                │   │
+│  │    │                                                 │   │
+│  │    ├─ kickRequestService.FetchAsync(                  │   │
+│  │    │    LastFetchTime, LastPosition, FetchCount)      │   │
+│  │    │                                                 │   │
+│  │    ├─ Update cursor (LastFetchTime, LastPosition)     │   │
+│  │    │                                                 │   │
+│  │    ├─ Batch last-login checks (10 per batch)         │   │
+│  │    │    accountService.FetchLastLoginAsync(...)       │   │
+│  │    │                                                 │   │
+│  │    ├─ For each valid request:                         │   │
+│  │    │    lastLogin &lt; kickRequest.TimeCreated?          │   │
+│  │    │      ├─ Yes → TryEnqueueMainThread(kick action) │   │
+│  │    │      └─ No  → Skip (stale)                      │   │
+│  │    │                                                 │   │
+│  │    └─ finally: lock(data) → IsProcessing = false     │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │           Main-Thread Drain (every frame)            │   │
+│  │                                                      │   │
+│  │  OnUpdate(deltaTime)                                 │   │
+│  │    │                                                 │   │
+│  │    ▼                                                 │   │
+│  │  DrainMainThreadQueue(drainAll: false)               │   │
+│  │    │                                                 │   │
+│  │    ▼  Up to maxMainThreadActionsPerFrame:            │   │
+│  │  AccountManager.GetConnectionByAccountName(name)     │   │
+│  │    │                                                 │   │
+│  │    ▼                                                 │   │
+│  │  conn.Kick(KickReason.UnexpectedProblem)             │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │           Disconnect Cleanup                         │   │
+│  │                                                      │   │
+│  │  OnRemoteConnectionStopped(conn)                     │   │
+│  │    │                                                 │   │
+│  │    ├─ AccountManager.GetAccountNameByConnection(conn) │   │
+│  │    │                                                 │   │
+│  │    ▼  [Async Worker Thread]                          │   │
+│  │  TryEnqueueAsyncWork(DeleteKickRequestAsync)         │   │
+│  │    │  keyed by accountName.GetHashCode()             │   │
+│  │    │                                                 │   │
+│  │    ▼                                                 │   │
+│  │  kickRequestService.DeleteAsync(accountName)         │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Server/
+├── Core/
+│   └── KickRequest/
+│       ├── IKickRequestSystem.cs                    # Engine-agnostic public API (UpdatePumpRate, UpdateFetchCount)
+│       ├── IKickRequestSystemQueueData.cs           # Polling state contract (IsProcessing, LastFetchTime, LastPosition)
+│       └── IKickRequestSystemMainThreadQueueData.cs # Main-thread queue marker interface
+└── Implementation/
+    └── KickRequest/
+        ├── KickRequestSystem.cs                     # Polling, validation, and kick execution orchestration
+        ├── KickRequestSystemQueueData.cs            # Polling cursor + processing gate runtime state
+        ├── KickRequestSystemMainThreadQueueData.cs  # Per-system main-thread action queue container
+        └── README.md
+</code></pre>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<h4 id="behaviour">Behaviour</h4>
+<pre><code>ServerBehaviour
+└── KickRequestSystem : IKickRequestSystem
+</code></pre>
+<h4 id="runtime-data-containers">Runtime Data Containers</h4>
+<pre><code>RuntimeDataContainer
+├── KickRequestSystemQueueData : IKickRequestSystemQueueData
+└── SystemMainThreadQueueData (abstract)
+    └── KickRequestSystemMainThreadQueueData : IKickRequestSystemMainThreadQueueData
+</code></pre>
+<h3 id="external-integration-points">External Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Interface</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kick Request Service</td>
+<td><code>IKickRequestService</code></td>
+<td>Fetch and delete kick requests from the database</td>
+</tr>
+<tr>
+<td>Account Service</td>
+<td><code>IAccountService</code></td>
+<td>Last-login timestamp checks for stale request filtering</td>
+</tr>
+<tr>
+<td>Account Manager</td>
+<td><code>AccountManager</code></td>
+<td>Account-to-connection lookup and reverse cleanup mapping</td>
+</tr>
+<tr>
+<td>Periodic Update System</td>
+<td><code>IPeriodicUpdateSystem</code></td>
+<td>Fixed-rate polling cadence registration</td>
+</tr>
+<tr>
+<td>Async Worker Data</td>
+<td><code>AsyncWorkerData</code></td>
+<td>Bounded async execution with enqueue backpressure</td>
+</tr>
+<tr>
+<td>Main Thread Queue Data</td>
+<td><code>IKickRequestSystemMainThreadQueueData</code></td>
+<td>Thread-safe dispatch of network kick operations</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main / periodic callback thread</td>
+<td>Schedule polling, drain main-thread queue</td>
+</tr>
+<tr>
+<td>Async worker threads</td>
+<td>DB fetch, cursor updates, stale-filter checks, kick request deletion</td>
+</tr>
+<tr>
+<td>Main thread (via queue)</td>
+<td>FishNet <code>Kick(...)</code> operations</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is distributed under the FishMMO project license. See the repository root for full license terms.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/KickRequest/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

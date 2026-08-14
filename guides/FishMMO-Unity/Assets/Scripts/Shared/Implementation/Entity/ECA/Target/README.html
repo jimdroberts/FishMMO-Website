@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>ECA Target Selector System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="ECA Target Selector System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="eca-target-selector-system">ECA Target Selector System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p>The Target Selector system is the <strong>targeting layer</strong> of FishMMO's ECA (Event-Condition-Action) framework. Selectors decide <em>which</em> <code>GameObject</code>s a <code>Trigger</code>, <code>BaseCondition</code>, or <code>BaseAction</code> operates on. They are serialized inline on assets via <code>[SerializeReference] [SubclassSelector]</code>, so designers pick a concrete type from a dropdown in the Inspector.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#eca-target-selector-system">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#key-components">Key Components</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#1-where-selectors-live">1. Where selectors live</a></li>
+<li><a href="#2-the-execution-model">2. The execution model</a></li>
+<li><a href="#3-anatomy-of-targetselector">3. Anatomy of <code>TargetSelector</code></a></li>
+<li><a href="#4-selector-catalogue">4. Selector catalogue</a></li>
+<li><a href="#5-designer-cookbook">5. Designer cookbook</a></li>
+<li><a href="#6-resolution-in-actions-and-conditions">6. Resolution in actions and conditions</a></li>
+<li><a href="#7-determinism-notes">7. Determinism notes</a></li>
+<li><a href="#8-writing-a-new-selector">8. Writing a new selector</a></li>
+<li><a href="#9-quick-reference-lifecycle-invariants">9. Quick reference: lifecycle invariants</a></li>
+<li><a href="#10-condition--action-framework-hooks">10. Condition &amp; action framework hooks</a></li>
+</ul>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows / Linux / macOS (Editor)</td>
+<td>Supported</td>
+<td>Primary authoring environment.</td>
+</tr>
+<tr>
+<td>Standalone Players (Win / Linux / macOS)</td>
+<td>Supported</td>
+<td>Selectors execute in client and server builds.</td>
+</tr>
+<tr>
+<td>Headless Linux Server</td>
+<td>Supported</td>
+<td>Selectors run on the SceneServer for authoritative target resolution.</td>
+</tr>
+<tr>
+<td>Android / iOS / WebGL</td>
+<td>Supported</td>
+<td>Only the client-side selector evaluations run on these platforms.</td>
+</tr>
+</tbody>
+</table>
+<p>Requirements: Unity 6.3 LTS with FishNet. Selectors depend only on the shared FishMMO entity layer; no platform-specific APIs.</p>
+<h2 id="architecture">Architecture</h2>
+<p>Selectors are pure data: a <code>BaseTargetSelector</code> subclass holds parameters in <code>[SerializeField]</code> fields and exposes a <code>Resolve(...)</code> method. Triggers / conditions / actions invoke <code>Resolve</code> to obtain an <code>IReadOnlyList&lt;GameObject&gt;</code> and then operate on that list. There is no runtime registration step — types are discovered by Unity's <code>SerializeReference</code> system.</p>
+<pre><code>Entity/ECA/Target/
+├── BaseTargetSelector.cs          # Abstract base (Resolve + helpers)
+├── SelfTargetSelector.cs          # The invoking entity
+├── OwnerTargetSelector.cs         # The owner / source character
+├── NearestTargetSelector.cs       # Closest matching candidate
+├── RadiusTargetSelector.cs        # All entities within radius
+├── ConeTargetSelector.cs          # Cone-shaped AoE
+├── TaggedTargetSelector.cs        # Filter by tag
+├── FactionTargetSelector.cs       # Filter by faction relationship
+└── ChainTargetSelector.cs         # Chain / composite selectors
+</code></pre>
+<h2 id="key-components">Key Components</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BaseTargetSelector</code></td>
+<td>Abstract base; defines <code>Resolve(context, candidates)</code> and helper filters.</td>
+</tr>
+<tr>
+<td><code>SelfTargetSelector</code></td>
+<td>Returns the invoking <code>GameObject</code>.</td>
+</tr>
+<tr>
+<td><code>NearestTargetSelector</code></td>
+<td>Returns the single closest valid target from a candidate set.</td>
+</tr>
+<tr>
+<td><code>RadiusTargetSelector</code></td>
+<td>Returns all valid entities within a configured radius.</td>
+</tr>
+<tr>
+<td><code>ConeTargetSelector</code></td>
+<td>Returns entities inside a forward-facing cone.</td>
+</tr>
+<tr>
+<td><code>TaggedTargetSelector</code> / <code>FactionTargetSelector</code></td>
+<td>Filtering selectors layered on top of source selectors.</td>
+</tr>
+<tr>
+<td><code>ChainTargetSelector</code></td>
+<td>Pipes one selector's output into the next.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration">Configuration</h2>
+<p>Selectors are configured in-place on <code>ScriptableObject</code> assets that reference triggers / conditions / actions. The configurable surface is per-selector and exposed via Unity's Inspector. There is no separate <code>appsettings</code> file — designers tune values directly on the assets.</p>
+<hr>
+<h2 id="1-where-selectors-live">1. Where selectors live</h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Core base class</td>
+<td><a href="TargetSelector.cs">TargetSelector.cs</a></td>
+<td>Abstract base; per-target conditions + fork helpers</td>
+</tr>
+<tr>
+<td>Core interface</td>
+<td><a href="IConditionalTargetSelector.cs">IConditionalTargetSelector.cs</a></td>
+<td>Marker interface exposing <code>Conditions</code></td>
+</tr>
+<tr>
+<td>Identity / event</td>
+<td><a href="InitiatorTargetSelector.cs">InitiatorTargetSelector.cs</a>, <a href="EventTargetSelector.cs">EventTargetSelector.cs</a></td>
+<td>Use the event's own Initiator / Target</td>
+</tr>
+<tr>
+<td>Spatial</td>
+<td><a href="AreaTargetSelector.cs">AreaTargetSelector.cs</a>, <a href="ConeTargetSelector.cs">ConeTargetSelector.cs</a>, <a href="LineTargetSelector.cs">LineTargetSelector.cs</a>, <a href="ChainTargetSelector.cs">ChainTargetSelector.cs</a></td>
+<td>Geometric queries around a context point</td>
+</tr>
+<tr>
+<td>Distance</td>
+<td><a href="NearestTargetSelector.cs">NearestTargetSelector.cs</a>, <a href="FurthestTargetSelector.cs">FurthestTargetSelector.cs</a></td>
+<td>Closest / furthest within a radius</td>
+</tr>
+<tr>
+<td>Random</td>
+<td><a href="RandomTargetSelector.cs">RandomTargetSelector.cs</a></td>
+<td>Random pick within a radius (uses <code>EventData.RNG</code> for determinism)</td>
+</tr>
+<tr>
+<td>Scene-wide</td>
+<td><a href="AllCharactersTargetSelector.cs">AllCharactersTargetSelector.cs</a></td>
+<td>Every <code>ICharacter</code> in the active scene</td>
+</tr>
+<tr>
+<td>Hierarchy</td>
+<td><a href="ChildrenTargetSelector.cs">ChildrenTargetSelector.cs</a></td>
+<td>Direct children of the context object</td>
+</tr>
+<tr>
+<td>Scene lookup</td>
+<td><a href="NamedSceneObjectTargetSelector.cs">NamedSceneObjectTargetSelector.cs</a>, <a href="TaggedSceneObjectTargetSelector.cs">TaggedSceneObjectTargetSelector.cs</a></td>
+<td>Resolve a scene object by name / Unity tag at runtime (asset-safe)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="2-the-execution-model">2. The execution model</h2>
+<p>A trigger flows through three target-selector touch points. <strong>The initiator never changes</strong> during the lifetime of a single <code>Trigger.Execute</code>.</p>
+<pre><code>caller builds EventData
+        │
+        ▼
+   Trigger.Execute(eventData)
+        │
+        ├── Trigger.TargetSelector          ── fan-out: one branch per selected target
+        │       │
+        │       ▼  (eventData.Fork(target))
+        │   per-target eventData (Initiator unchanged, Target reassigned)
+        │       │
+        │       ├── For each Condition:
+        │       │       Condition.TargetSelector? ── optional fan-out + Combine (All/Any)
+        │       │
+        │       └── For each Action in the met/not-met branch:
+        │               Action.TargetSelector?    ── optional fan-out (no combine)
+</code></pre>
+<h3 id="21-top-level-triggertargetselector">2.1 Top-level <code>Trigger.TargetSelector</code></h3>
+<ul>
+<li>Set → trigger fans out once per yielded target, running condition + action evaluation per target.</li>
+<li><strong>Null → trigger fires once against the eventData as-is</strong> (whatever <code>Target</code> the caller put in). This is the intended fallback for OnHit, region, dialogue, and item-use triggers.</li>
+</ul>
+<h3 id="22-per-condition-baseconditiontargetselector">2.2 Per-condition <code>BaseCondition.TargetSelector</code></h3>
+<ul>
+<li>Optional. When set, the condition fans out across selected targets, combining results per <code>ConditionTargetCombine</code>:
+<ul>
+<li><code>All</code> → all must pass (vacuous-true on empty selection).</li>
+<li><code>Any</code> → at least one must pass (false on empty selection).</li>
+</ul>
+</li>
+</ul>
+<h3 id="23-per-action-baseactiontargetselector">2.3 Per-action <code>BaseAction.TargetSelector</code></h3>
+<ul>
+<li>Optional. When set, the action executes once per yielded target (no combine — actions are imperative).</li>
+</ul>
+<p>All fan-out is implemented in <code>TriggerExecution</code> (in <a href="../../../../Core/Entity/ECA/Core/Trigger.cs">Trigger.cs</a>) and uses <code>EventData.Fork(target)</code> to create per-target scopes that preserve <code>Initiator</code>, <code>RNG</code>, and all sub-payloads while reassigning <code>Target</code> / <code>TargetCharacter</code>.</p>
+<hr>
+<h2 id="3-anatomy-of-targetselector">3. Anatomy of <code>TargetSelector</code></h2>
+<p>Every selector inherits these slots from the abstract base (<a href="TargetSelector.cs">TargetSelector.cs</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Slot</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Conditions</code></td>
+<td><code>List&lt;BaseCondition&gt;</code></td>
+<td>Per-candidate filter. A candidate is only yielded if every condition passes for it.</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Why no <code>TargetOverride</code> / <code>InitiatorOverride</code>?</strong> Selectors live inside <code>[SerializeReference]</code> lists on ScriptableObject Trigger assets. Unity cannot serialize direct scene <code>GameObject</code> references from an asset, so design-time &quot;pick this scene object&quot; slots silently became <code>null</code> at runtime. The clean replacement: use <a href="NamedSceneObjectTargetSelector.cs">NamedSceneObjectTargetSelector</a> or <a href="TaggedSceneObjectTargetSelector.cs">TaggedSceneObjectTargetSelector</a> for scene-object resolution at fire time, or set <code>EventData.Target</code> at the invocation site for inline (MonoBehaviour-hosted) triggers.</p>
+</blockquote>
+<h3 id="helper-methods-for-selector-authors">Helper methods (for selector authors)</h3>
+<ul>
+<li><code>GetContext(eventData)</code> → returns the spatial reference point: <code>eventData.Target ?? eventData.Initiator.GameObject</code>.</li>
+<li><code>AreConditionsMet(candidate, eventData)</code> → evaluates per-candidate <code>Conditions</code> against a forked event data scoped to the candidate. Delegates to <code>TriggerExecution.AreConditionsMet</code>, so a condition placed inside a selector's <code>Conditions</code> list honors its own <code>TargetSelector</code> / <code>Combine</code> settings exactly the same way a top-level trigger condition does.</li>
+</ul>
+<h3 id="standard-selector-skeleton">Standard selector skeleton</h3>
+<pre><code class="lang-csharp">public override IEnumerable&lt;GameObject&gt; SelectTargets(EventData eventData)
+{
+    GameObject context = GetContext(eventData);
+    if (context == null) yield break;
+
+    // ... query (overlap, raycast, hierarchy, …) ...
+
+    foreach (var candidate in candidates)
+    {
+        if (AreConditionsMet(candidate, eventData))
+            yield return candidate;
+    }
+}
+</code></pre>
+<hr>
+<h2 id="4-selector-catalogue">4. Selector catalogue</h2>
+<h3 id="identity--event-resolved">Identity / event-resolved</h3>
+<table>
+<thead>
+<tr>
+<th>Selector</th>
+<th>Yields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InitiatorTargetSelector</code></td>
+<td><code>eventData.Initiator.GameObject</code>. Use for <strong>self-only</strong> effects (heals, self-buffs). Ignores Target.</td>
+</tr>
+<tr>
+<td><code>EventTargetSelector</code></td>
+<td><code>eventData.Target</code> as-is (optional <code>FallbackToInitiator</code>). Use for <strong>OnHit / region / interaction</strong> triggers where the caller already resolved the target.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="spatial-use-getcontext-as-origin">Spatial (use <code>GetContext</code> as origin)</h3>
+<table>
+<thead>
+<tr>
+<th>Selector</th>
+<th>Shape</th>
+<th>Yields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AreaTargetSelector</code></td>
+<td>Sphere</td>
+<td>All colliders within <code>Radius</code></td>
+</tr>
+<tr>
+<td><code>ConeTargetSelector</code></td>
+<td>Cone</td>
+<td>Colliders within <code>Radius</code> and <code>Angle</code> of context's forward</td>
+</tr>
+<tr>
+<td><code>LineTargetSelector</code></td>
+<td>Ray</td>
+<td>RaycastAll hits along context's forward for <code>Length</code></td>
+</tr>
+<tr>
+<td><code>ChainTargetSelector</code></td>
+<td>Chained spheres</td>
+<td>Up to <code>ChainLength</code> targets, each within <code>ChainRadius</code> of the previous</td>
+</tr>
+</tbody>
+</table>
+<h3 id="distance-ranked">Distance-ranked</h3>
+<table>
+<thead>
+<tr>
+<th>Selector</th>
+<th>Yields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NearestTargetSelector</code></td>
+<td>The single closest candidate within <code>Radius</code> (excluding the context itself)</td>
+</tr>
+<tr>
+<td><code>FurthestTargetSelector</code></td>
+<td>The single furthest candidate within <code>Radius</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="random">Random</h3>
+<table>
+<thead>
+<tr>
+<th>Selector</th>
+<th>Yields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RandomTargetSelector</code></td>
+<td>One random candidate within <code>Radius</code>. Uses <code>eventData.RNG</code> when present for deterministic client/server agreement.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scene-wide--hierarchy">Scene-wide / hierarchy</h3>
+<table>
+<thead>
+<tr>
+<th>Selector</th>
+<th>Yields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AllCharactersTargetSelector</code></td>
+<td>Every <code>ICharacter</code> in the context's scene (toggles for inactive / unspawned).</td>
+</tr>
+<tr>
+<td><code>ChildrenTargetSelector</code></td>
+<td>Direct children of the context's transform.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scene-lookup-asset-safe-scene-references">Scene lookup (asset-safe scene references)</h3>
+<table>
+<thead>
+<tr>
+<th>Selector</th>
+<th>Yields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NamedSceneObjectTargetSelector</code></td>
+<td>The first scene <code>GameObject</code> whose name matches <code>ObjectName</code>. Scoped to the context's scene; falls back to the active scene when no context.</td>
+</tr>
+<tr>
+<td><code>TaggedSceneObjectTargetSelector</code></td>
+<td>All scene <code>GameObject</code>s carrying the given Unity tag in the context's scene. <code>FirstOnly = true</code> yields just the first match.</td>
+</tr>
+</tbody>
+</table>
+<p>These exist specifically because <code>[SerializeReference]</code> selectors on asset Triggers cannot hold direct scene references — they let designers point a Trigger at a named/tagged scene object without breaking serialization. For frequent triggers, prefer wiring the reference through <code>EventData.Target</code> at the invocation site (e.g., from a scene-hosted MonoBehaviour) rather than paying the name/tag scan on every fire.</p>
+<hr>
+<h2 id="5-designer-cookbook">5. Designer cookbook</h2>
+<h3 id="hit-whatever-the-ability-collided-with">&quot;Hit whatever the ability collided with&quot;</h3>
+<p>Either of these is equivalent:</p>
+<ul>
+<li><strong>Implicit:</strong> leave <code>Trigger.TargetSelector</code> null on the OnHit trigger.</li>
+<li><strong>Explicit:</strong> set <code>Trigger.TargetSelector = EventTargetSelector</code>. Use this when you need per-candidate <code>Conditions</code>.</li>
+</ul>
+<h3 id="buff-myself-when-conditions-pass">&quot;Buff myself when conditions pass&quot;</h3>
+<p>Set <code>Trigger.TargetSelector = InitiatorTargetSelector</code>. The caster is the only target regardless of any <code>Target</code> on the event.</p>
+<h3 id="damage-the-hit-character-and-its-4-nearest-allies">&quot;Damage the hit character AND its 4 nearest allies&quot;</h3>
+<p>Two ways:</p>
+<ol>
+<li>Two actions on the same trigger:
+<ul>
+<li>Action A: <code>ApplyDamageAction</code> with no <code>TargetSelector</code> (uses event Target).</li>
+<li>Action B: <code>ApplyDamageAction</code> with <code>NearestTargetSelector</code> (configure to chain — use <code>AreaTargetSelector</code> with <code>MaxHits=4</code> for &quot;4 nearest&quot;).</li>
+</ul>
+</li>
+<li>One action with <code>ChainTargetSelector</code> on the trigger.</li>
+</ol>
+<h3 id="aoe-around-the-impact-point">&quot;AoE around the impact point&quot;</h3>
+<ul>
+<li>Trigger <code>TargetSelector = AreaTargetSelector</code> (radius, layer). Conditions can filter to enemies of the initiator via <code>HasFactionCondition</code> or similar.</li>
+<li>All downstream actions fan out per AoE target automatically.</li>
+</ul>
+<h3 id="apply-different-effects-to-allies-vs-enemies-in-one-trigger">&quot;Apply different effects to allies vs enemies in one trigger&quot;</h3>
+<ul>
+<li>Use the <code>Conditions</code> list on <strong>two separate Triggers</strong> (or duplicate the action set with selector-level <code>Conditions</code>).</li>
+<li>The OnConditionsMet / OnConditionsNotMet branching on a single Trigger is per-target, so you can also model &quot;if target is ally → heal, else → damage&quot; by putting a faction check in <code>Conditions</code> and a heal in the met branch / damage in the not-met branch.</li>
+</ul>
+<h3 id="per-condition-target-check-that-differs-from-the-actions-target">&quot;Per-condition target check that differs from the action's target&quot;</h3>
+<ul>
+<li>Set <code>BaseCondition.TargetSelector</code> (e.g. <code>AllCharactersTargetSelector</code> with <code>Combine=Any</code>) to ask &quot;is there <em>any</em> enemy in the scene that satisfies X?&quot; without changing the action's target.</li>
+</ul>
+<h3 id="pre-pick-a-specific-scene-object-regardless-of-context">&quot;Pre-pick a specific scene object regardless of context&quot;</h3>
+<p>Asset-based Triggers cannot store direct scene references, so use one of:</p>
+<ul>
+<li><strong><code>NamedSceneObjectTargetSelector</code></strong> — set <code>ObjectName</code> to the scene object's name. Resolves at fire time within the event's scene.</li>
+<li><strong><code>TaggedSceneObjectTargetSelector</code></strong> — set <code>Tag</code> to a Unity tag pre-assigned to the scene object (Inspector &gt; Tag dropdown). Cheaper than a name walk and works for multi-object selection.</li>
+<li><strong>Inline trigger (preferred for one-offs):</strong> host the Trigger on a MonoBehaviour in the scene and have the MonoBehaviour pass the picked GameObject through <code>EventData.Target</code> when firing — no string lookup, no scan.</li>
+</ul>
+<hr>
+<h2 id="6-resolution-in-actions-and-conditions">6. Resolution in actions and conditions</h2>
+<p>Actions and conditions read targets via the convention:</p>
+<pre><code class="lang-csharp">ICharacter target = (eventData?.TargetCharacter ?? initiator);
+</code></pre>
+<p>This works because:</p>
+<ul>
+<li>The trigger / per-action / per-condition <code>TargetSelector</code> fan-out re-forks the <code>EventData</code>, reassigning <code>Target</code> (and inferring <code>TargetCharacter</code>) per yielded candidate.</li>
+<li>Callers that resolve their own target up front (collision, region enter, dialogue) build <code>EventData</code> with <code>Target</code> already set, so the fallback simply uses it.</li>
+<li>When nothing is resolvable, <code>initiator</code> is the last-resort fallback (acceptable for self-effects; avoid for damage by always configuring a selector or ensuring the event carries a Target).</li>
+</ul>
+<p>See <a href="../Actions/Character/ApplyDamageAction.cs">ApplyDamageAction.cs</a> for the canonical pattern.</p>
+<h3 id="61-fork-semantics-important">6.1 Fork semantics (important)</h3>
+<p><code>EventData.Fork(target)</code> does <strong>not</strong> mutate the parent event. It constructs a brand-new <code>EventData</code>, calls <code>SetTarget</code> on that new instance, copies <code>Initiator</code> + <code>RNG</code>, and finally calls <code>scoped.Merge(this)</code> to copy sub-payload references in. The original event's <code>Target</code> is never touched.</p>
+<p>This means a single top-level <code>EventData</code> may be the parent of many independent forks during a Trigger's fan-out, each with its own <code>Target</code> / <code>TargetCharacter</code>, all sharing the same <code>Initiator</code> and <code>RNG</code>. None of them can clobber the parent or each other.</p>
+<p><strong>However</strong>, <code>Merge</code> keeps the parent payload in the fork's dictionary under its concrete type so phase-specific data (collision, ability object, region, etc.) is still reachable. That gives every fork two routes to a &quot;target&quot;:</p>
+<table>
+<thead>
+<tr>
+<th>Access path</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>eventData.Target</code> / <code>eventData.TargetCharacter</code></td>
+<td>The <strong>per-fork</strong> target (use this in actions/conditions).</td>
+</tr>
+<tr>
+<td><code>eventData.TryGet&lt;AbilityCollisionEventData&gt;(out var c); c.Target</code></td>
+<td>The <strong>original</strong> parent's target (stale for this fork — kept for the parent's typed context).</td>
+</tr>
+</tbody>
+</table>
+<p>The convention <code>eventData?.TargetCharacter ?? initiator</code> reads the base-class field, so it always sees the current fork. Do <strong>not</strong> dig through <code>TryGet&lt;T&gt;()</code> for <code>Target</code>/<code>TargetCharacter</code> — only do that for typed extras like <code>c.Collision</code>, <code>c.AbilityObject</code>, <code>c.Region</code>, etc. Mutating <code>Target</code> on a flowing event is also discouraged for the same reason: any forks already in flight that retained the parent in their <code>Merge</code> will see the new value through the typed payload.</p>
+<hr>
+<h2 id="7-determinism-notes">7. Determinism notes</h2>
+<ul>
+<li><code>RandomTargetSelector</code> and any value provider that rolls (<code>RandomRangeValue</code>, <code>RandomRangeFloatValue</code>, <code>ApplyDispelAction</code>) read <code>EventData.RNG</code>. Always seed <code>RNG</code> on <code>EventData</code> for events that originate from a deterministic context (ability casts, collisions). Selectors do <strong>not</strong> propagate or fork RNG state — <code>EventData.Fork</code> shares the same RNG reference so all downstream targets draw from one deterministic stream.</li>
+<li>Avoid <code>UnityEngine.Random</code> inside custom selectors. Use <code>eventData.RNG</code> instead.</li>
+</ul>
+<hr>
+<h2 id="8-writing-a-new-selector">8. Writing a new selector</h2>
+<ol>
+<li>Create <code>MySelector.cs</code> in this folder.</li>
+<li>Inherit <code>TargetSelector</code>, mark <code>[Serializable]</code>.</li>
+<li>Implement <code>SelectTargets(EventData)</code> using the skeleton above.</li>
+<li>Surface tunable fields with <code>[Tooltip]</code> so they render usefully in the Inspector.</li>
+<li>Reuse a preallocated <code>Collider[] hits</code> buffer for physics queries (see <code>AreaTargetSelector</code>).</li>
+<li>If your selector references scene physics, query <code>context.scene.GetPhysicsScene()</code> rather than the global physics scene — this keeps multi-scene servers correct.</li>
+<li>For every yielded candidate, call <code>AreConditionsMet(candidate, eventData)</code> so designers' per-candidate condition filters work uniformly.</li>
+</ol>
+<hr>
+<h2 id="9-quick-reference-lifecycle-invariants">9. Quick reference: lifecycle invariants</h2>
+<ul>
+<li><code>EventData.Initiator</code> is <strong>immutable</strong> for the life of <code>Trigger.Execute</code>.</li>
+<li><code>EventData.Target</code> / <code>TargetCharacter</code> are mutable instance fields, but <strong><code>Fork</code> does not mutate the parent</strong> — each fork is a new instance with its own values. Avoid manually reassigning these on a flowing event during action execution.</li>
+<li><code>EventData.RNG</code> is <strong>shared</strong> across forks — one deterministic stream per top-level event.</li>
+<li>Trigger <code>OnConditionsMetActions</code> / <code>OnConditionsNotMetActions</code> branching is <strong>per-target</strong>, not per-trigger.</li>
+<li><code>IResourceCost</code> conditions are skipped during <code>AbilityEvent</code> execution (they're already aggregated and consumed at activation). Other triggers evaluate them normally.</li>
+</ul>
+<hr>
+<h2 id="10-condition--action-framework-hooks">10. Condition &amp; action framework hooks</h2>
+<p>These are not selector features, but they directly affect how Triggers behave around the targets a selector yields.</p>
+<h3 id="101-baseconditioninvert-centralized">10.1 <code>BaseCondition.Invert</code> (centralized)</h3>
+<p>Every concrete condition inherits an <code>Invert</code> toggle from <a href="../../../Core/Entity/ECA/Core/Condition/BaseCondition.cs">BaseCondition</a>. The framework evaluates conditions through the non-virtual <code>Check(initiator, eventData)</code> wrapper, which calls the derived <code>Evaluate(...)</code> and flips the result when <code>Invert</code> is set. Implementers write <strong>plain positive logic</strong> in <code>Evaluate</code> and never re-derive <code>Invert ? !x : x</code> themselves.</p>
+<p>Callers that previously called <code>condition.Evaluate(...)</code> directly have been migrated to <code>condition.Check(...)</code> (see <a href="../../../Core/Entity/ECA/Core/Trigger.cs">Trigger.cs</a>, <a href="../../../Core/Entity/ECA/Core/Condition/CompositeCondition.cs">CompositeCondition.cs</a>, and <a href="../../Prediction/Ability/Ability.cs">Ability.cs</a>).</p>
+<h3 id="102-baseactionstopchainonfailure--iabortableaction-opt-in">10.2 <code>BaseAction.StopChainOnFailure</code> + <code>IAbortableAction</code> (opt-in)</h3>
+<p><a href="../../../Core/Entity/ECA/Core/Action/BaseAction.cs">BaseAction</a> exposes a <code>StopChainOnFailure</code> bool. By itself it is inert \u2014 the action must also implement <code>IAbortableAction</code> to be cancellable:</p>
+<pre><code class="lang-csharp">public interface IAbortableAction { bool TryExecute(ICharacter initiator, EventData eventData); }
+</code></pre>
+<p>When <code>TriggerExecution</code> walks an action list:</p>
+<ul>
+<li>If an action implements <code>IAbortableAction</code>, its <code>TryExecute</code> runs. Returning <code>false</code> while <code>StopChainOnFailure == true</code> aborts the rest of the list.</li>
+<li>Plain <code>IAction</code> implementations continue to execute via <code>Execute(...)</code> with no abort semantics, so existing actions are unaffected.</li>
+</ul>
+<p>Canonical example: <a href="../Actions/Character/ConsumeResourceAction.cs">ConsumeResourceAction.cs</a> returns <code>false</code> when the resource attribute is missing or under cost, letting designers gate follow-up actions on a successful spend.</p>
+<h3 id="103-baseactiontryresolvetarget-vs-tryresolvetargetorinitiator">10.3 <code>BaseAction.TryResolveTarget</code> vs <code>TryResolveTargetOrInitiator</code></h3>
+<p>Two helpers for action authors with deliberately different fallback semantics:</p>
+<table>
+<thead>
+<tr>
+<th>Helper</th>
+<th>Returns</th>
+<th>Use for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TryResolveTarget(eventData, out target)</code></td>
+<td><code>eventData.TargetCharacter</code> only, false when null</td>
+<td><strong>Outward-effecting</strong> actions (damage, dispel, interrupt, knockback). A missing target is a no-op, never a self-hit.</td>
+</tr>
+<tr>
+<td><code>TryResolveTargetOrInitiator(initiator, eventData, out target)</code></td>
+<td><code>TargetCharacter ?? initiator</code></td>
+<td><strong>Self-or-target</strong> actions (resource consume, self-buffs, self-heals) where &quot;no target&quot; naturally means &quot;act on self&quot;.</td>
+</tr>
+</tbody>
+</table>
+<p>The split exists because the old &quot;fall back to initiator&quot; convention silently turned a misconfigured selector into a caster self-hit. The strict variant makes that impossible; pick the forgiving variant only when self-action is the documented intent.</p>
+<p>Migrated examples: <a href="../Actions/Character/ApplyDamageAction.cs">ApplyDamageAction</a>, <a href="../Actions/Character/ApplyDispelAction.cs">ApplyDispelAction</a>, <a href="../Actions/Character/InterruptAction.cs">InterruptAction</a>, <a href="../Actions/Character/KnockbackHitAction.cs">KnockbackHitAction</a> use the <strong>strict</strong> helper. <a href="../Actions/Character/ApplyHealAction.cs">ApplyHealAction</a>, <a href="../Actions/Character/ApplyBuffAction.cs">ApplyBuffAction</a>, <a href="../Actions/Character/ConsumeResourceAction.cs">ConsumeResourceAction</a> use the <strong>forgiving</strong> variant.</p>
+<h3 id="104-fault-isolation">10.4 Fault isolation</h3>
+<p><code>TriggerExecution</code> wraps both condition evaluation and action invocation in try/catch:</p>
+<ul>
+<li>A throwing <strong>condition</strong> is treated as a failed condition (the trigger takes the not-met branch) and the exception is logged at error level — it does not crash the whole trigger.</li>
+<li>A throwing <strong>action</strong> is logged at error level; sibling actions and fan-out targets continue to execute. Throwing actions do <strong>not</strong> trigger <code>StopChainOnFailure</code> semantics — that flag is reserved for <em>intentional</em> failure via <code>IAbortableAction.TryExecute</code> returning false. Designer-authored content cannot poison the chain by raising an exception.</li>
+</ul>
+<h3 id="105-condition-filter-propagation">10.5 Condition filter propagation</h3>
+<p>A <code>Trigger</code> subclass may override <code>ShouldEvaluateCondition</code> to skip categories of conditions during execution (e.g. <code>AbilityEvent</code> skips <code>IResourceCost</code> conditions because the cost was already paid at activation). The filter is published on <code>EventData.ConditionFilter</code> at the start of <code>ExecuteForTarget</code> and carried across <code>Fork</code>, so it applies uniformly at three levels:</p>
+<ol>
+<li>Top-level <code>Trigger.Conditions</code> (via <code>TriggerExecution.AreConditionsMet</code>).</li>
+<li>Children of any <code>CompositeCondition</code> nested in those lists.</li>
+<li>Per-candidate <code>TargetSelector.Conditions</code> evaluated during selector fan-out.</li>
+</ol>
+<p>This means a designer can nest a <code>HasResourceCondition</code> (or any other <code>IResourceCost</code>) inside a composite or behind a selector filter without it being silently double-charged at execution time. An OR composite that has all of its children filtered out evaluates to <strong>true</strong> (matching the empty-list behavior of AND), so an &quot;OR of resource-paid conditions&quot; doesn't collapse into a falsy gate after activation.</p>
+<h3 id="106-tooltip-contribution">10.6 Tooltip contribution</h3>
+<p><code>BaseCondition</code>, <code>BaseAction</code>, and <code>TargetSelector</code> each expose a <code>virtual string GetTooltipContribution() =&gt; null;</code> hook. Override on concrete types that should appear in ability/quest/dialogue tooltips; returning <code>null</code> or whitespace omits the line. <code>BaseAbilityTemplate.BuildTooltip</code> aggregates contributions into four ordered sections per <code>AbilityEvent</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Source</th>
+<th>Sort order</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Resource Cost</td>
+<td><code>IResourceCost</code>-implementing conditions</td>
+<td>50</td>
+</tr>
+<tr>
+<td>Targeting</td>
+<td><code>AbilityEvent.TargetSelector.GetTooltipContribution()</code></td>
+<td>55</td>
+</tr>
+<tr>
+<td>Requirements</td>
+<td>Other conditions' <code>GetTooltipContribution()</code></td>
+<td>60</td>
+</tr>
+<tr>
+<td>Effects</td>
+<td><code>OnConditionsMetActions[*].GetTooltipContribution()</code></td>
+<td>70</td>
+</tr>
+</tbody>
+</table>
+<p>Designers no longer need to author tooltip text twice: a <code>Deal 50 fire damage</code> ApplyDamageAction implementation can simply override the hook and the tooltip line will appear automatically.</p>
+<h3 id="107-instrumentation-hook">10.7 Instrumentation hook</h3>
+<p><code>Trigger.OnExecuted</code> is a static <code>event Action&lt;Trigger, EventData&gt;</code> invoked once per <code>Execute()</code> call (after fan-out completes). Subscribers receive the firing trigger asset and the <em>original</em> event data passed to <code>Execute</code> (not the per-target fork). Exceptions thrown by subscribers are caught and logged so a misbehaving recorder/audit subscriber can't poison gameplay. Use for replay, server-side audit, editor instrumentation, or to wire a breakpoint into any trigger fire without modifying it.</p>
+<h3 id="108-editor-validation">10.8 Editor validation</h3>
+<p><code>Trigger.OnValidate</code> (editor-only) strips null entries that Unity may leave after <code>SubclassSelector</code> type renames and warns on common authoring mistakes:</p>
+<ul>
+<li>Both action lists empty (trigger has no observable effect).</li>
+<li><code>OnConditionsNotMetActions</code> populated while <code>Conditions</code> is empty (not-met branch is unreachable).</li>
+</ul>
+<p>Warnings are non-blocking — they appear in the Console attached to the offending asset. Designers can re-run the checks on demand via the <code>Validate Now</code> context-menu entry on any <code>Trigger</code> asset.</p>
+<h3 id="109-polymorphic-payload-lookup">10.9 Polymorphic payload lookup</h3>
+<p><code>EventData.TryGet&lt;T&gt;()</code> first does an exact-type dictionary lookup; if that misses it falls back to a linear scan returning the first stored payload assignable to <code>T</code>. This lets a designer-authored subclass of e.g. <code>AbilityCollisionEventData</code> still be retrieved by code that asks for the base type, removing a sharp edge that previously required callers to know the concrete subclass key.</p>
+<h3 id="1010-per-trigger-verbose-logging">10.10 Per-trigger verbose logging</h3>
+<p><code>Trigger</code> exposes a <code>Verbose</code> toggle (Inspector → <em>Debug</em> group). When checked, the trigger's own lifecycle logs (conditions met / not met / no targets produced) are promoted from <code>Log.Debug</code> to <code>Log.Info</code> so a single misbehaving asset can be diagnosed without flipping the global log level for the whole project.</p>
+<h3 id="1011-designer-facing-action-ordering">10.11 Designer-facing action ordering</h3>
+<p><code>OnConditionsMetActions</code> and <code>OnConditionsNotMetActions</code> are executed top-to-bottom. When an action implements <code>IAbortableAction</code> and has <code>StopChainOnFailure</code> set, a failed <code>TryExecute</code> aborts every action below it in the same list (and any remaining targets in the action's own fan-out). Put resource-cost / can-afford gates at the top of the list so they short-circuit cleanly. The list <code>[Tooltip]</code> text reminds designers of this contract.</p>
+<h3 id="1012-inline-triggers-share-the-asset-trigger-code-path">10.12 Inline triggers share the asset-trigger code path</h3>
+<p>Some host MonoBehaviours (e.g. <code>WorldDayNightCycle</code>) author triggers inline via <code>[Serializable]</code> types like <code>WorldSceneTrigger</code> rather than referencing a <code>Trigger</code> asset. These inline types must not reimplement the execution loop; instead they delegate to <code>TriggerExecution.RunInline(selector, conditions, onConditionsMetActions, onConditionsNotMetActions, eventData)</code>. The helper centralises selector fan-out, per-target <code>EventData.Fork</code>, condition evaluation, and the met/not-met branch dispatch — the same logic <code>Trigger.Execute</code> uses. Any future fix made to the asset path (fault isolation, ambient <code>ConditionFilter</code>, fan-out rules, …) is therefore inherited automatically by inline triggers. Inline triggers also mirror the <code>OnExecuted</code> instrumentation event and expose an editor-only <code>Sanitize()</code> so their host's <code>OnValidate</code> can null-strip <code>SubclassSelector</code> remnants exactly like <code>Trigger.OnValidate</code> does on the asset.</p>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart LR
+    Event[Event] --&gt; ECA[ECA pipeline]
+    ECA --&gt; Cond[Condition match]
+    Cond --&gt; Target[Target resolver]
+    Target --&gt; Action[Action handler]
+    Action --&gt; Effect[Effect on entity]
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

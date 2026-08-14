@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO-DB | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO-DB | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../favicon.ico">
+      <link rel="stylesheet" href="../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../toc.html">
+      <meta name="docfx:tocrel" content="../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Database/FishMMO-DB/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../index.html">
+            <img id="logo" class="svg" src="../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-db">FishMMO-DB</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Database/FishMMO-DB/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><code>FishMMO-DB</code> is the shared data-access library for the FishMMO project.</p>
+<p>This document describes the project layout, the supported platforms, and — at length — how to wire environment configuration (<code>appsettings.json</code>, <code>FISHMMO_ENVIRONMENT</code>, OS-specific environment variable persistence) for development, CI, and production deployments.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#description">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#key-components">Key Components</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#recommended-appsettings-files">Recommended appsettings files</a></li>
+<li><a href="#environment-variables-by-os">Environment variables by OS</a></li>
+<li><a href="#overriding-individual-settings-via-environment-variables">Overriding individual settings via environment variables</a></li>
+<li><a href="#databasecs-setup-examples">Database.cs setup examples</a></li>
+<li><a href="#npgsql-service-usage-examples">Npgsql service usage examples</a></li>
+<li><a href="#securing-appsettingsjson">Securing appsettings.json</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#notes">Notes</a></li>
+</ul>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET Standard 2.1 (this library)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>.NET 8.0 hosts (LoginServer / WorldServer / SceneServer launchers, web services)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS (Editor + headless server builds)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Linux / Windows / macOS</td>
+<td>All supported</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Backing Store</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL</td>
+<td>14+ recommended. Primary persistence (Npgsql / EF Core). Used for cross-server data persistence.</td>
+</tr>
+<tr>
+<td>PgBouncer</td>
+<td>Recommended in front of PostgreSQL for transaction pooling.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="architecture">Architecture</h2>
+<pre><code>FishMMO-DB/
+├── Data/                       POCO entities + enums shared across servers
+├── Migrations/                 EF Core migrations (created by FishMMO-DB-Migrator)
+├── Exceptions/                 Typed database exceptions
+├── Npgsql/                     Concrete PostgreSQL implementation
+│   ├── NpgsqlDbContext.cs        EF Core DbContext
+│   ├── NpgsqlDbContextFactory.cs Factory + interceptors + monitoring wiring
+│   ├── NpgsqlDbConfiguration.cs  Reads IConfiguration → connection string
+│   ├── NpgsqlServiceRegistry.cs  IDatabaseServiceRegistry implementation
+│   ├── Entities/                 EF Core entity types
+│   ├── EntityConfigurations/     Fluent EF Core configurations
+│   ├── Services/                 Per-domain service implementations
+│   │   └── Interfaces/             IAccountService, ICharacterService, IEmailQueueService, …
+│   └── Monitoring/               Health / Metrics / Diagnostics (see Monitoring/README.md)
+├── Unity/                          Unity MonoBehaviour wrapper (see Unity/README.md)
+├── Database.cs                 High-level orchestrator (IDatabase implementation)
+├── IDatabase.cs                Public contract consumed by servers / services
+├── IDatabaseServiceRegistry.cs Per-domain service registry contract
+├── AppSettings.cs              Strongly-typed appsettings.json binder
+├── DatabaseConfigurationHelper.cs  Convenience helpers for IConfiguration builders
+├── DatabaseErrorCodes.cs       Stable error code enum returned via DatabaseResult
+├── DatabaseResult.cs           Result&lt;T&gt; envelope (IsSuccess / ErrorCode / Data)
+└── appsettings.json            Default config (do NOT commit secrets)
+</code></pre>
+<h2 id="key-components">Key Components</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Database</code></td>
+<td>High-level orchestrator. Wraps an <code>INpgsqlDbContextFactory</code> and an <code>IDatabaseServiceRegistry</code>. Consumed by servers as <code>IDatabase</code>.</td>
+</tr>
+<tr>
+<td><code>IDatabase</code></td>
+<td>Public contract: <code>ServiceRegistry</code>, <code>ContextFactory</code>, async lifecycle.</td>
+</tr>
+<tr>
+<td><code>IDatabaseServiceRegistry</code></td>
+<td>Per-domain service lookup (<code>TryGet&lt;TService&gt;(out var svc)</code>).</td>
+</tr>
+<tr>
+<td><code>NpgsqlDbContext</code> / <code>NpgsqlDbContextFactory</code></td>
+<td>EF Core context + factory with connection interceptors driving <code>ConnectionPoolMetrics</code>.</td>
+</tr>
+<tr>
+<td><code>NpgsqlServiceRegistry</code></td>
+<td>Wires <code>IAccountService</code>, <code>ICharacterService</code>, <code>IChatService</code>, <code>IEmailQueueService</code>, <code>ILoginServerService</code>, etc.</td>
+</tr>
+<tr>
+<td><code>NpgsqlDbConfiguration</code></td>
+<td>Builds the connection string from <code>IConfiguration</code> (<code>ConnectionStrings:NpgsqlConnection</code> or <code>Npgsql:*</code>).</td>
+</tr>
+<tr>
+<td><code>AppSettings</code></td>
+<td>Strongly-typed <code>appsettings.json</code> binder (Npgsql).</td>
+</tr>
+<tr>
+<td><code>DatabaseResult&lt;T&gt;</code> / <code>DatabaseErrorCodes</code></td>
+<td>Uniform error envelope returned from every service.</td>
+</tr>
+<tr>
+<td><code>Monitoring/</code> (under Npgsql)</td>
+<td>Health probes, pool metrics, query performance diagnostics. See <a href="Npgsql/Monitoring/README.html"><code>Npgsql/Monitoring/README.md</code></a>.</td>
+</tr>
+<tr>
+<td><code>Unity/DatabaseHealthService</code></td>
+<td>MonoBehaviour that surfaces all of the above to Unity headless servers. See <a href="Unity/README.html"><code>Unity/README.md</code></a>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration">Configuration</h2>
+<p><code>FishMMO-DB</code> reads configuration through the standard ASP.NET / .NET Generic Host <code>IConfiguration</code> pipeline. The recommended source order is:</p>
+<ol>
+<li><code>appsettings.json</code> (default values, committed)</li>
+<li><code>appsettings.{FISHMMO_ENVIRONMENT}.json</code> (per-environment overrides, NOT committed)</li>
+<li>Environment variables (typically used for secrets)</li>
+</ol>
+<p>The selected environment is controlled by <code>FISHMMO_ENVIRONMENT</code> (preferred). <code>DOTNET_ENVIRONMENT</code> is also honoured as a fallback. The remainder of this document covers the OS-specific mechanics for persisting these variables and the supported override keys.</p>
+<hr>
+<h1 id="fishmmo-db-environment-configuration">FishMMO-DB Environment Configuration</h1>
+<p>This library supports layered configuration in this order:</p>
+<ol>
+<li><code>appsettings.json</code> (required)</li>
+<li><code>appsettings.{Environment}.json</code> (optional)</li>
+<li>Environment variables (highest priority)</li>
+</ol>
+<p>Environment is resolved by your host/.NET configuration pipeline (for example via <code>DOTNET_ENVIRONMENT</code> or <code>ASPNETCORE_ENVIRONMENT</code>).</p>
+<hr>
+<h2 id="recommended-appsettings-files">Recommended appsettings files</h2>
+<p>Keep shared defaults in <code>appsettings.json</code>, and only override differences in environment files.</p>
+<ul>
+<li><code>appsettings.Development.json</code></li>
+<li><code>appsettings.Production.json</code></li>
+</ul>
+<p>Example override file:</p>
+<pre><code class="lang-json">{
+  &quot;Npgsql&quot;: {
+    &quot;Host&quot;: &quot;127.0.0.1&quot;,
+    &quot;Database&quot;: &quot;fishmmo_dev&quot;,
+    &quot;Username&quot;: &quot;postgres&quot;,
+    &quot;Password&quot;: &quot;dev_password&quot;
+  },
+  &quot;QueryPerformanceTracking&quot;: {
+    &quot;Enabled&quot;: true,
+    &quot;Level&quot;: &quot;Basic&quot;
+  }
+}
+</code></pre>
+<hr>
+<h2 id="environment-variables-by-os">Environment variables by OS</h2>
+<h2 id="windows">Windows</h2>
+<h3 id="powershell-current-session">PowerShell (current session)</h3>
+<pre><code class="lang-powershell">$env:DOTNET_ENVIRONMENT = &quot;Development&quot;
+</code></pre>
+<h3 id="cmd-current-session">CMD (current session)</h3>
+<pre><code class="lang-cmd">set DOTNET_ENVIRONMENT=Development
+</code></pre>
+<h3 id="persist-for-future-sessions">Persist for future sessions</h3>
+<pre><code class="lang-powershell">setx DOTNET_ENVIRONMENT &quot;Production&quot;
+</code></pre>
+<p>Restart terminal (or app) after <code>setx</code>.</p>
+<hr>
+<h2 id="cachyos-arch-linux-fish-shell">CachyOS (Arch Linux, fish shell)</h2>
+<h3 id="current-shell-session">Current shell session</h3>
+<pre><code class="lang-fish">set -x DOTNET_ENVIRONMENT Development
+</code></pre>
+<h3 id="persist-for-your-user-all-future-fish-sessions">Persist for your user (all future fish sessions)</h3>
+<pre><code class="lang-fish">set -Ux DOTNET_ENVIRONMENT Production
+</code></pre>
+<h3 id="remove-universal-variable">Remove universal variable</h3>
+<pre><code class="lang-fish">set -eU DOTNET_ENVIRONMENT
+</code></pre>
+<hr>
+<h2 id="ubuntu-debian-family">Ubuntu (Debian family)</h2>
+<h3 id="current-shell-session-bashzsh">Current shell session (bash/zsh)</h3>
+<pre><code class="lang-bash">export DOTNET_ENVIRONMENT=Development
+</code></pre>
+<h3 id="persist-per-user-bash">Persist per-user (bash)</h3>
+<p>Add to <code>~/.bashrc</code>:</p>
+<pre><code class="lang-bash">export DOTNET_ENVIRONMENT=Production
+</code></pre>
+<p>Then reload:</p>
+<pre><code class="lang-bash">source ~/.bashrc
+</code></pre>
+<h3 id="systemd-service-example">Systemd service example</h3>
+<p>Use in service unit:</p>
+<pre><code class="lang-ini">[Service]
+Environment=DOTNET_ENVIRONMENT=Production
+</code></pre>
+<p>or use an env file:</p>
+<pre><code class="lang-ini">[Service]
+EnvironmentFile=/etc/fishmmo-db.env
+</code></pre>
+<p>with <code>/etc/fishmmo-db.env</code>:</p>
+<pre><code class="lang-bash">DOTNET_ENVIRONMENT=Production
+</code></pre>
+<hr>
+<h2 id="overriding-individual-settings-via-environment-variables">Overriding individual settings via environment variables</h2>
+<p>Use double underscores (<code>__</code>) for nested keys:</p>
+<ul>
+<li><code>Npgsql__Host</code></li>
+<li><code>Npgsql__Port</code></li>
+<li><code>Npgsql__Database</code></li>
+<li><code>Npgsql__Username</code></li>
+<li><code>Npgsql__Password</code></li>
+<li><code>Npgsql__CommandTimeout</code></li>
+</ul>
+<p>Example (fish):</p>
+<pre><code class="lang-fish">set -x Npgsql__Host 10.0.0.25
+set -x Npgsql__Database fishmmo
+set -x Npgsql__Username postgres
+set -x Npgsql__Password super_secret
+</code></pre>
+<hr>
+<h2 id="databasecs-setup-examples">Database.cs setup examples</h2>
+<h2 id="1-build-iconfiguration-and-pass-it-to-database">1) Build IConfiguration and pass it to Database</h2>
+<pre><code class="lang-csharp">using FishMMO.Database;
+using Microsoft.Extensions.Configuration;
+
+IConfiguration configuration = new ConfigurationBuilder()
+	.SetBasePath(&quot;/opt/fishmmo/config&quot;)
+	.AddJsonFile(&quot;appsettings.json&quot;, optional: false, reloadOnChange: false)
+	.AddJsonFile($&quot;appsettings.{Environment.GetEnvironmentVariable(&quot;DOTNET_ENVIRONMENT&quot;)}.json&quot;, optional: true, reloadOnChange: false)
+	.AddEnvironmentVariables()
+	.Build();
+
+IDatabase database = new Database(
+	configuration,
+	enableLogging: false,
+	commandTimeout: 15,
+	healthCheckWarningMs: 100,
+	healthCheckCriticalMs: 500);
+</code></pre>
+<h2 id="2-normalize-custom-environment-variable-before-building-configuration">2) Normalize custom environment variable before building configuration</h2>
+<pre><code class="lang-csharp">string? fishEnv = Environment.GetEnvironmentVariable(&quot;FISHMMO_ENVIRONMENT&quot;);
+if (!string.IsNullOrWhiteSpace(fishEnv))
+{
+	Environment.SetEnvironmentVariable(&quot;DOTNET_ENVIRONMENT&quot;, fishEnv);
+	Environment.SetEnvironmentVariable(&quot;ASPNETCORE_ENVIRONMENT&quot;, fishEnv);
+}
+</code></pre>
+<hr>
+<h2 id="npgsql-service-usage-examples">Npgsql service usage examples</h2>
+<p>Services are resolved from <code>database.ServiceRegistry</code> by interface.</p>
+<h2 id="account-service">Account service</h2>
+<pre><code class="lang-csharp">using FishMMO.Database.Npgsql.Services.Interfaces;
+
+if (!database.ServiceRegistry.TryGet&lt;IAccountService&gt;(out var accountService))
+	throw new InvalidOperationException(&quot;IAccountService not registered.&quot;);
+
+var loginResult = await accountService.FetchForLoginAsync(&quot;myAccount&quot;, cancellationToken);
+if (!loginResult.IsSuccess)
+{
+	Console.WriteLine($&quot;Login lookup failed: {loginResult.ErrorCode} - {loginResult.ErrorMessage}&quot;);
+	return;
+}
+
+var account = loginResult.Data;
+</code></pre>
+<h2 id="character-service">Character service</h2>
+<pre><code class="lang-csharp">using FishMMO.Database.Npgsql.Services.Interfaces;
+
+if (!database.ServiceRegistry.TryGet&lt;ICharacterService&gt;(out var characterService))
+	throw new InvalidOperationException(&quot;ICharacterService not registered.&quot;);
+
+var characterResult = await characterService.FetchByAccountAsync(&quot;myAccount&quot;, cancellationToken);
+if (!characterResult.IsSuccess)
+{
+	Console.WriteLine($&quot;Character fetch failed: {characterResult.ErrorCode} - {characterResult.ErrorMessage}&quot;);
+	return;
+}
+
+var character = characterResult.Data;
+</code></pre>
+<h2 id="chat-service">Chat service</h2>
+<pre><code class="lang-csharp">using FishMMO.Database.Npgsql.Services.Interfaces;
+using FishMMO.Database.Data.Enums;
+
+if (!database.ServiceRegistry.TryGet&lt;IChatService&gt;(out var chatService))
+	throw new InvalidOperationException(&quot;IChatService not registered.&quot;);
+
+var persist = await chatService.PersistAsync(
+	characterId: 123,
+	characterName: &quot;Ari&quot;,
+	accountName: &quot;myAccount&quot;,
+	worldServerId: 1,
+	sceneServerId: 10,
+	channel: ChatChannel.World,
+	message: &quot;Hello world&quot;,
+	serverReceivedTime: DateTime.UtcNow,
+	cancellationToken: cancellationToken);
+
+if (!persist.IsSuccess)
+	Console.WriteLine($&quot;Chat persist failed: {persist.ErrorCode} - {persist.ErrorMessage}&quot;);
+</code></pre>
+<hr>
+<h2 id="optional-explicit-environment-selection-in-code">Optional: explicit environment selection in code</h2>
+<p>If you need direct factory creation, pass <code>IConfiguration</code> into <code>NpgsqlDbConfiguration</code>:</p>
+<pre><code class="lang-csharp">using FishMMO.Database.Npgsql;
+using Microsoft.Extensions.Configuration;
+
+var rootConfiguration = new ConfigurationBuilder()
+	.SetBasePath(&quot;/opt/fishmmo/config&quot;)
+	.AddJsonFile(&quot;appsettings.json&quot;, optional: false, reloadOnChange: false)
+	.AddJsonFile(&quot;appsettings.Production.json&quot;, optional: true, reloadOnChange: false)
+	.AddEnvironmentVariables()
+	.Build();
+
+var config = new NpgsqlDbConfiguration(
+	rootConfiguration,
+	enableLogging: false,
+	commandTimeoutOverride: null);
+
+var factory = new NpgsqlDbContextFactory(config);
+</code></pre>
+<h2 id="securing-appsettingsjson">Securing appsettings.json</h2>
+<p>Protecting <code>appsettings.json</code> (and any environment-specific overrides) is essential to prevent accidental secret leakage. The following guidance shows practical, OS-specific steps and general recommendations.</p>
+<ul>
+<li><strong>General recommendations:</strong>
+<ul>
+<li><strong>Avoid committing secrets:</strong> Add <code>appsettings.*.json</code> to <code>.gitignore</code> in your project root.</li>
+<li><strong>Prefer environment variables/secret stores:</strong> Use environment variables or a secret manager (Azure Key Vault, AWS Secrets Manager, HashiCorp Vault) in production instead of plaintext files.</li>
+<li><strong>Use <code>dotnet user-secrets</code> for development only:</strong> Useful for local dev, not for servers.</li>
+<li><strong>Restrict file read access:</strong> Ensure only the service account or user running the application can read the file.</li>
+</ul>
+</li>
+</ul>
+<h3 id="ubuntu--debian-and-most-linux-distributions">Ubuntu / Debian (and most Linux distributions)</h3>
+<ul>
+<li><p><strong>Set ownership and permissions</strong> (example where <code>fishmmo</code> is the service user and <code>/opt/fishmmo/config/appsettings.json</code> is the file):</p>
+<pre><code class="lang-bash">  sudo chown root:fishmmo /opt/fishmmo/config/appsettings.json
+  sudo chmod 640 /opt/fishmmo/config/appsettings.json
+  # If the service runs as root-owned user, consider 600 and appropriate owner
+</code></pre>
+</li>
+<li><p><strong>Systemd service using an EnvironmentFile</strong> (store sensitive values in a separate file with restricted permissions):</p>
+<pre><code class="lang-ini">  [Service]
+  User=fishmmo
+  Group=fishmmo
+  EnvironmentFile=/etc/fishmmo-db.env
+</code></pre>
+<p>Set permissions on the env file so only root (or the service user) can read it:</p>
+<pre><code class="lang-bash">  sudo chown root:root /etc/fishmmo-db.env
+  sudo chmod 600 /etc/fishmmo-db.env
+</code></pre>
+</li>
+<li><p><strong>Optional: encrypt config files at rest</strong> using tools like <code>gpg</code> or filesystem encryption (LUKS) if disk-level protection is required.</p>
+</li>
+</ul>
+<h3 id="cachyos--arch-linux">CachyOS / Arch Linux</h3>
+<ul>
+<li>Arch-derived systems use the same POSIX permissions and <code>systemd</code> examples above. Use the same <code>chown</code>/<code>chmod</code> patterns and keep the environment file under <code>/etc</code> with <code>600</code> permissions.</li>
+</ul>
+<h3 id="windows-1">Windows</h3>
+<ul>
+<li><p><strong>Use ACLs to restrict access</strong> to the JSON file. Example using <code>icacls</code> to remove inheritance and grant read access to a specific service account (replace <code>NT Service\\MyService</code> or <code>DOMAIN\\svc_account</code> as appropriate):</p>
+<pre><code class="lang-powershell">  # Remove inherited permissions and grant read to the service account
+  icacls &quot;C:\\path\\to\\appsettings.json&quot; /inheritance:r
+  icacls &quot;C:\\path\\to\\appsettings.json&quot; /grant &quot;NT Service\\MyService&quot;:R
+</code></pre>
+</li>
+<li><p><strong>Data Protection API / user secrets:</strong> For development, prefer <code>dotnet user-secrets</code>. For production, use Windows Certificate Store or a managed secret store rather than plaintext files.</p>
+</li>
+</ul>
+<h3 id="git--source-control">Git / Source control</h3>
+<ul>
+<li><p><strong>Exclude configuration with secrets</strong> from commits. Add this to your repository <code>.gitignore</code>:</p>
+<pre><code class="lang-gitignore">  # Local/secret config — use environment variables for production secrets
+  FishMMO-Setup/**/appsettings.*.json
+  **/appsettings.*.json
+</code></pre>
+</li>
+<li><p><strong>Audit history:</strong> If secrets were committed historically, rotate those credentials immediately and remove them from git history using tools like <code>git-filter-repo</code>.</p>
+</li>
+</ul>
+<h3 id="quick-checklist-before-deploy">Quick checklist before deploy</h3>
+<ul>
+<li><strong>Remove secrets from repo</strong>, or ensure overrides are not committed.</li>
+<li><strong>Set file ownership and permissions</strong> so only the service user can read config files.</li>
+<li><strong>Use environment variables or secret manager</strong> for production secrets.</li>
+<li><strong>Disable sensitive logging</strong> in production (<code>enableLogging: false</code>).</li>
+</ul>
+<hr>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart LR
+    Host[Server / Service host] --&gt;|build| Cfg[IConfiguration&lt;br/&gt;appsettings.json + env]
+    Cfg --&gt; NCfg[NpgsqlDbConfiguration]
+    NCfg --&gt; Factory[NpgsqlDbContextFactory]
+    Factory --&gt;|interceptors| Mon[Monitoring&lt;br/&gt;Health / Metrics / Diagnostics]
+    Factory --&gt;|CreateDbContext| Ctx[NpgsqlDbContext]
+    Ctx --&gt; DB[(PostgreSQL)]
+    Factory --&gt; Reg[NpgsqlServiceRegistry]
+    Reg --&gt; Svcs[IAccountService&lt;br/&gt;ICharacterService&lt;br/&gt;IChatService&lt;br/&gt;ILoginServerService&lt;br/&gt;...]
+    Svcs --&gt;|DatabaseResult&amp;lt;T&amp;gt;| Game[Game / Web logic]
+</code></pre>
+<h2 id="notes">Notes</h2>
+<ul>
+<li>Prefer <code>FISHMMO_ENVIRONMENT</code> for environment configuration.</li>
+<li>Keep secrets out of source control; use environment variables or secret stores.</li>
+<li>In production, set <code>enableLogging: false</code> to avoid sensitive data logging.</li>
+</ul>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Database/FishMMO-DB/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

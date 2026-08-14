@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Bootstrap System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Bootstrap System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="bootstrap-system">Bootstrap System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> The Bootstrap system manages sequential, event-driven initialization of FishMMO — including Addressable asset and scene loading, logging setup, version management, dynamic load-path overrides, and graceful shutdown — across Editor, Standalone, and WebGL platforms.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Bootstrap system is the first code that executes when FishMMO launches. It provides a sequential, event-driven startup pipeline where each bootstrap stage loads Addressable assets and scenes through two phases (Preload and Postload), then chains to the next stage by discovering <code>BootstrapSystem</code> components in newly loaded scenes.</p>
+<p><code>MainBootstrapSystem</code> is the entry point placed in the initial Unity scene. It auto-starts via <code>Awake()</code>, initializes the structured logging framework (bridging Unity's <code>Debug.Log</code> with FishMMO's central <code>Log</code> manager), reads <code>VersionConfig</code> for game version validation, enqueues the first scene (<code>ServerLauncher</code> for server builds or <code>ClientPreboot</code> for client builds), and registers graceful shutdown handlers for both editor and standalone environments.</p>
+<p><code>DynamicAddressableLoadPathSystem</code> allows runtime overriding of remote Addressable asset URLs — useful for IP discovery or CDN redirection — by replacing the domain portion of HTTP/HTTPS URLs while leaving local paths unchanged.</p>
+<p>The Logging subsystem (<code>Logging/</code> subdirectory) provides Unity-specific integration with <code>FishMMO.Logging</code>: a <code>UnityLoggerBridge</code> that intercepts all <code>Debug.Log</code> calls and routes them through the central <code>Log</code> manager, a <code>UnityConsoleLogger</code> that renders structured <code>LogEntry</code> objects with rich-text coloring back to the Unity console, a <code>UnityConsoleFormatter</code> for columnar multi-colored output, and a <code>UnityConsoleLoggerConfig</code> for per-level color theming and filtering. Re-entrant loop prevention is handled via the <code>IsLoggingInternally</code> flag.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Standalone builds; full Preload/Postload pipeline</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Standalone and dedicated server builds</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>Yes</td>
+<td>Uses <code>WebGLPreloadAssets</code> / <code>WebGLPreloadScenes</code> compile-time lists</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version / Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unity</td>
+<td>6.3 LTS</td>
+</tr>
+<tr>
+<td>Scripting Backend</td>
+<td>IL2CPP</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Two-phase Addressable loading pipeline</strong> — each <code>BootstrapSystem</code> runs a Preload phase then a Postload phase, each with platform-specific asset and scene lists selected at compile time (<code>UNITY_EDITOR</code>, <code>UNITY_WEBGL</code>, default Standalone).</li>
+<li><strong>Automatic bootstrap chaining</strong> — when a scene finishes loading, <code>OnBootstrapPostProcess</code> scans its root GameObjects for <code>BootstrapSystem</code> components and calls <code>StartBootstrap()</code> on each after the current stage completes.</li>
+<li><strong>Virtual hook points</strong> — <code>OnPreload()</code>, <code>OnPostLoad()</code>, <code>OnCompletePreload()</code>, <code>OnCompleteProcessing()</code>, and <code>OnDestroying()</code> allow subclasses to inject custom logic at every stage of the pipeline.</li>
+<li><strong>Structured logging initialization</strong> — <code>MainBootstrapSystem</code> configures <code>FishMMO.Logging.Log</code> with <code>UnityConsoleLogger</code>, <code>UnityConsoleFormatter</code>, <code>UnityLoggerBridge</code>, and a JSON-serializable <code>UnityConsoleLoggerConfig</code>.</li>
+<li><strong>Bidirectional Unity ↔ FishMMO log bridging</strong> — <code>UnityLoggerBridge</code> intercepts Unity <code>Debug.Log</code> calls and routes them to <code>Log.Write()</code>; <code>UnityConsoleLogger</code> writes back to <code>Debug.Log</code> with <code>IsLoggingInternally = true</code> to prevent infinite recursion.</li>
+<li><strong>Rich-text columnar console output</strong> — <code>UnityConsoleFormatter</code> renders timestamped, padded, color-coded log entries with exception details and additional data sections.</li>
+<li><strong>Per-level log filtering and color theming</strong> — <code>UnityConsoleLoggerConfig</code> provides <code>AllowedLevels</code> (HashSet) and <code>LogLevelColors</code> (Dictionary) for runtime configuration.</li>
+<li><strong>Version management</strong> — reads <code>VersionConfig</code> ScriptableObject and optionally validates against <code>version.txt</code> in standalone builds.</li>
+<li><strong>Dynamic Addressable load-path override</strong> — <code>DynamicAddressableLoadPathSystem</code> replaces remote asset URL domains at runtime via <code>Addressables.ResourceManager.InternalIdTransformFunc</code>.</li>
+<li><strong>Graceful async shutdown</strong> — handles <code>Application.wantsToQuit</code>, editor play-mode exit (<code>EditorApplication.playModeStateChanged</code>), and <code>OnDestroy</code> with deferred quit, logging config save, <code>Log.Shutdown()</code>, and Addressable asset release.</li>
+<li><strong>Duplicate-start guard</strong> — <code>BootstrapSystem.StartBootstrap()</code> tracks <code>hasStartedBootstrap</code> to prevent re-entrant initialization.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS with IL2CPP scripting backend.</li>
+<li>Addressables package configured with valid asset groups and load paths.</li>
+<li><code>FishMMO.Logging</code> assembly (provides <code>Log</code>, <code>ILogger</code>, <code>IConsoleFormatter</code>, <code>ILoggerConfig</code>, <code>LogEntry</code>, <code>LogLevel</code>, <code>ConsoleFormatterHelpers</code>).</li>
+<li><code>AddressableLoadProcessor</code> — shared utility for queuing and processing Addressable loads.</li>
+<li><code>VersionConfig</code> ScriptableObject assigned in the <code>MainBootstrapSystem</code> inspector.</li>
+<li><code>Constants</code> class providing <code>GetWorkingDirectory()</code>.</li>
+<li>Initial Unity scene containing a GameObject with the <code>MainBootstrapSystem</code> component.</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO Unity project. No separate installation steps are required. The Bootstrap classes are compiled as part of the <code>FishMMO.Shared</code> assembly and are available to both server and client builds.</p>
+<p>Ensure the initial scene in your build settings contains a <code>MainBootstrapSystem</code> component on a root GameObject, and that the <code>VersionConfig</code> asset reference is assigned in the Inspector.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="running-the-bootstrap-chain">Running the Bootstrap Chain</h3>
+<ol>
+<li>Open the FishMMO Unity project.</li>
+<li>Ensure the initial scene (e.g., <code>Bootstrap</code> or <code>Main</code>) is the first scene in <strong>Build Settings</strong>.</li>
+<li>Verify a root GameObject in that scene has the <code>MainBootstrapSystem</code> component attached.</li>
+<li>Assign the <code>VersionConfig</code> asset in the Inspector.</li>
+<li>Enter Play Mode — <code>MainBootstrapSystem.Awake()</code> triggers <code>StartBootstrap()</code>, which runs the full Preload → Postload → chain pipeline.</li>
+</ol>
+<h3 id="adding-a-new-bootstrap-stage">Adding a New Bootstrap Stage</h3>
+<ol>
+<li>Create a new class inheriting from <code>BootstrapSystem</code>.</li>
+<li>Override <code>OnPreload()</code> and/or <code>OnPostLoad()</code> to add custom initialization logic.</li>
+<li>Place the component on a root GameObject in the scene that the preceding stage loads.</li>
+<li>The preceding stage's <code>OnBootstrapPostProcess</code> will discover it, and <code>OnCompleteProcessing</code> will call <code>StartBootstrap()</code> on it automatically.</li>
+</ol>
+<h3 id="configuring-logging">Configuring Logging</h3>
+<ol>
+<li><code>MainBootstrapSystem</code> reads the logging config from <code>logging.json</code> in the working directory (configurable via <code>configFileName</code> in the Inspector).</li>
+<li>In the Editor, a <code>UnityConsoleFormatter</code> and a manual <code>UnityConsoleLogger</code> (all levels enabled) are created automatically.</li>
+<li>In Standalone builds, logging is driven entirely by the JSON config file; the formatter and manual loggers are <code>null</code>.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="mainbootstrapsystem-inspector-properties">MainBootstrapSystem Inspector Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>configFileName</code></td>
+<td><code>string</code></td>
+<td>Name of the logging configuration JSON file (default: <code>&quot;logging.json&quot;</code>)</td>
+</tr>
+<tr>
+<td><code>versionConfig</code></td>
+<td><code>VersionConfig</code></td>
+<td>Reference to the VersionConfig ScriptableObject</td>
+</tr>
+</tbody>
+</table>
+<h3 id="bootstrapsystem-inspector-properties">BootstrapSystem Inspector Properties</h3>
+<p>Each <code>BootstrapSystem</code> exposes platform-specific load lists in the Inspector:</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Platform</th>
+<th>Phase</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EditorPreloadAssets</code></td>
+<td>Editor</td>
+<td>Preload</td>
+<td><code>List&lt;AddressableAssetKey&gt;</code></td>
+</tr>
+<tr>
+<td><code>EditorPostloadAssets</code></td>
+<td>Editor</td>
+<td>Postload</td>
+<td><code>List&lt;AddressableAssetKey&gt;</code></td>
+</tr>
+<tr>
+<td><code>EditorPreloadScenes</code></td>
+<td>Editor</td>
+<td>Preload</td>
+<td><code>List&lt;AddressableSceneLoadData&gt;</code></td>
+</tr>
+<tr>
+<td><code>EditorPostloadScenes</code></td>
+<td>Editor</td>
+<td>Postload</td>
+<td><code>List&lt;AddressableSceneLoadData&gt;</code></td>
+</tr>
+<tr>
+<td><code>PreloadAssets</code></td>
+<td>Standalone</td>
+<td>Preload</td>
+<td><code>List&lt;AddressableAssetKey&gt;</code></td>
+</tr>
+<tr>
+<td><code>PostloadAssets</code></td>
+<td>Standalone</td>
+<td>Postload</td>
+<td><code>List&lt;AddressableAssetKey&gt;</code></td>
+</tr>
+<tr>
+<td><code>PreloadScenes</code></td>
+<td>Standalone</td>
+<td>Preload</td>
+<td><code>List&lt;AddressableSceneLoadData&gt;</code></td>
+</tr>
+<tr>
+<td><code>PostloadScenes</code></td>
+<td>Standalone</td>
+<td>Postload</td>
+<td><code>List&lt;AddressableSceneLoadData&gt;</code></td>
+</tr>
+<tr>
+<td><code>WebGLPreloadAssets</code></td>
+<td>WebGL</td>
+<td>Preload</td>
+<td><code>List&lt;AddressableAssetKey&gt;</code></td>
+</tr>
+<tr>
+<td><code>WebGLPostloadAssets</code></td>
+<td>WebGL</td>
+<td>Postload</td>
+<td><code>List&lt;AddressableAssetKey&gt;</code></td>
+</tr>
+<tr>
+<td><code>WebGLPreloadScenes</code></td>
+<td>WebGL</td>
+<td>Preload</td>
+<td><code>List&lt;AddressableSceneLoadData&gt;</code></td>
+</tr>
+<tr>
+<td><code>WebGLPostloadScenes</code></td>
+<td>WebGL</td>
+<td>Postload</td>
+<td><code>List&lt;AddressableSceneLoadData&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="dynamicaddressableloadpathsystem-inspector-properties">DynamicAddressableLoadPathSystem Inspector Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RuntimeBaseUrl</code></td>
+<td><code>string</code></td>
+<td>Base URL to prepend to relative asset paths for remote Addressable loading</td>
+</tr>
+</tbody>
+</table>
+<h3 id="unityconsoleloggerconfig-properties-json">UnityConsoleLoggerConfig Properties (JSON)</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Type</code></td>
+<td><code>string</code></td>
+<td><code>&quot;UnityConsoleLoggerConfig&quot;</code></td>
+<td>Config type identifier for serialization</td>
+</tr>
+<tr>
+<td><code>LoggerType</code></td>
+<td><code>string</code></td>
+<td><code>&quot;UnityConsoleLogger&quot;</code></td>
+<td>Logger type identifier for factory lookup</td>
+</tr>
+<tr>
+<td><code>Enabled</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Whether the Unity console logger is active</td>
+</tr>
+<tr>
+<td><code>AllowedLevels</code></td>
+<td><code>HashSet&lt;LogLevel&gt;</code></td>
+<td>All levels (Critical, Error, Warning, Info, Debug, Verbose)</td>
+<td>Which log levels to process</td>
+</tr>
+<tr>
+<td><code>LogLevelColors</code></td>
+<td><code>Dictionary&lt;LogLevel, string&gt;</code></td>
+<td>Critical/Error = <code>red</code>, Warning = <code>yellow</code>, Info = <code>white</code>, Debug = <code>lime</code>, Verbose = <code>grey</code></td>
+<td>Unity rich-text color per log level</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="subclassing-bootstrapsystem">Subclassing BootstrapSystem</h3>
+<pre><code class="lang-csharp">public class MyCustomBootstrap : BootstrapSystem
+{
+    public override void OnPreload()
+    {
+        // Custom initialization before preload assets finish loading.
+        Log.Info(&quot;MyCustomBootstrap&quot;, &quot;Preload phase started.&quot;);
+    }
+
+    public override void OnPostLoad()
+    {
+        // Custom initialization before postload assets finish loading.
+        Log.Info(&quot;MyCustomBootstrap&quot;, &quot;Postload phase started.&quot;);
+    }
+
+    public override void OnCompleteProcessing()
+    {
+        // Custom logic after all loading completes, before chaining.
+        Log.Info(&quot;MyCustomBootstrap&quot;, &quot;All loading complete.&quot;);
+        base.OnCompleteProcessing(); // Chains to next bootstrap stages.
+    }
+}
+</code></pre>
+<h3 id="overriding-addressable-load-paths-at-runtime">Overriding Addressable Load Paths at Runtime</h3>
+<pre><code class="lang-csharp">// Attach DynamicAddressableLoadPathSystem to a GameObject and set RuntimeBaseUrl:
+// RuntimeBaseUrl = &quot;http://cdn.example.com/&quot;
+//
+// URL transformation examples:
+//   &quot;http://old-host.com/path/to/asset&quot;   → &quot;http://cdn.example.com/path/to/asset&quot;
+//   &quot;http://127.0.0.1:8000/bundles/data&quot;  → &quot;http://cdn.example.com/bundles/data&quot;
+//   &quot;file:///local/asset&quot;                 → &quot;file:///local/asset&quot; (unchanged)
+</code></pre>
+<h3 id="logging-configuration-loggingjson">Logging Configuration (logging.json)</h3>
+<pre><code class="lang-json">{
+  &quot;Loggers&quot;: [
+    {
+      &quot;Type&quot;: &quot;UnityConsoleLoggerConfig&quot;,
+      &quot;LoggerType&quot;: &quot;UnityConsoleLogger&quot;,
+      &quot;Enabled&quot;: true,
+      &quot;AllowedLevels&quot;: [&quot;Critical&quot;, &quot;Error&quot;, &quot;Warning&quot;, &quot;Info&quot;, &quot;Debug&quot;, &quot;Verbose&quot;],
+      &quot;LogLevelColors&quot;: {
+        &quot;Critical&quot;: &quot;red&quot;,
+        &quot;Error&quot;: &quot;red&quot;,
+        &quot;Warning&quot;: &quot;yellow&quot;,
+        &quot;Info&quot;: &quot;white&quot;,
+        &quot;Debug&quot;: &quot;lime&quot;,
+        &quot;Verbose&quot;: &quot;grey&quot;
+      }
+    }
+  ]
+}
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bootstrap starts on Play</td>
+<td>Enter Play Mode with <code>MainBootstrapSystem</code> in the initial scene</td>
+<td>Console shows <code>[MainBootstrapSystem] Initializing...</code> and <code>Logging system initialized successfully.</code></td>
+</tr>
+<tr>
+<td>Version loaded</td>
+<td>Check console output after bootstrap</td>
+<td><code>Loaded GameVersion: X.Y.Z</code> message appears</td>
+</tr>
+<tr>
+<td>Preload phase completes</td>
+<td>Watch console during startup</td>
+<td><code>Preload Complete</code> message for each <code>BootstrapSystem</code></td>
+</tr>
+<tr>
+<td>Postload phase completes</td>
+<td>Watch console during startup</td>
+<td><code>Postload Complete</code> message for each <code>BootstrapSystem</code></td>
+</tr>
+<tr>
+<td>Bootstrap chaining works</td>
+<td>Load a scene containing another <code>BootstrapSystem</code></td>
+<td><code>OnCompleteProcessing</code> triggers <code>StartBootstrap()</code> on discovered systems</td>
+</tr>
+<tr>
+<td>Duplicate start prevented</td>
+<td>Attempt to call <code>StartBootstrap()</code> twice on same system</td>
+<td>Warning: <code>BootstrapSystem tried to start multiple times. Ignoring.</code></td>
+</tr>
+<tr>
+<td>Logging bridge active</td>
+<td>Call <code>Debug.Log(&quot;test&quot;)</code> during play</td>
+<td>Message routed through <code>FishMMO.Logging.Log</code> with source <code>&quot;UNITY&quot;</code></td>
+</tr>
+<tr>
+<td>Re-entrant loop prevention</td>
+<td><code>UnityConsoleLogger</code> writes to <code>Debug.Log</code></td>
+<td>No infinite loop; <code>IsLoggingInternally</code> flag prevents re-capture</td>
+</tr>
+<tr>
+<td>Graceful shutdown (Editor)</td>
+<td>Exit Play Mode</td>
+<td><code>Editor exiting Play Mode. Initiating shutdown...</code> followed by synchronous <code>Log.Shutdown()</code></td>
+</tr>
+<tr>
+<td>Graceful shutdown (Standalone)</td>
+<td>Close application</td>
+<td>Async shutdown: logging config saved, <code>Log.Shutdown()</code> awaited, then <code>Application.Quit()</code></td>
+</tr>
+<tr>
+<td>Dynamic load path override</td>
+<td>Set <code>RuntimeBaseUrl</code> and load remote assets</td>
+<td>HTTP/HTTPS asset URLs have domain replaced; local paths unchanged</td>
+</tr>
+<tr>
+<td>WebGL asset lists used</td>
+<td>Build for WebGL platform</td>
+<td><code>WebGLPreloadAssets</code> / <code>WebGLPreloadScenes</code> selected at compile time</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart TD
+    Entry[Process / scene start] --&gt; Boot[Bootstrap]
+    Boot --&gt; Cfg[Configuration]
+    Boot --&gt; Log[Logging]
+    Boot --&gt; Reg[Service / system registration]
+    Reg --&gt; Sys1[Shared systems]
+    Reg --&gt; Sys2[Domain systems]
+    Boot --&gt; Ready[Ready signal]
+</code></pre>
+<h3 id="full-bootstrap-loading-pipeline">Full Bootstrap Loading Pipeline</h3>
+<pre><code>MainBootstrapSystem.Awake()
+    │
+    └── StartBootstrap()
+            │
+            ├── Guard: skip if already started
+            │
+            └── InitializePreload()
+                    │
+                    ├── Enqueue platform-specific preload assets
+                    │   ├── UNITY_EDITOR  → EditorPreloadAssets / EditorPreloadScenes
+                    │   ├── UNITY_WEBGL   → WebGLPreloadAssets / WebGLPreloadScenes
+                    │   └── default       → PreloadAssets / PreloadScenes
+                    │
+                    ├── OnPreload() — MainBootstrapSystem overrides:
+                    │   ├── Load VersionConfig (asset + optional version.txt validation)
+                    │   ├── Set GameVersion static string
+                    │   ├── Register editor play-mode state handler (editor only)
+                    │   ├── Register Application.wantsToQuit handler
+                    │   ├── Configure FishMMO.Logging:
+                    │   │   ├── Register UnityConsoleLoggerConfig factory
+                    │   │   ├── Create UnityConsoleFormatter (editor only)
+                    │   │   ├── Create manual UnityConsoleLogger list (editor only)
+                    │   │   └── Log.Initialize(configFilePath, formatter, loggers, callback, configTypes)
+                    │   └── Enqueue initial scene:
+                    │       ├── UNITY_SERVER  → &quot;ServerLauncher&quot;
+                    │       └── !UNITY_SERVER → &quot;ClientPreboot&quot;
+                    │
+                    ├── Subscribe to AddressableLoadProcessor.OnProgressUpdate
+                    └── AddressableLoadProcessor.BeginProcessQueue()
+                            │
+                            └── OnPreloadProgressUpdate(progress)
+                                    │
+                                    ├── Wait until progress &gt;= 1.0
+                                    ├── Unsubscribe from OnProgressUpdate
+                                    └── OnCompletePreload()
+                                            │
+                                            └── InitializePostload()
+                                                    │
+                                                    ├── Enqueue platform-specific postload assets/scenes
+                                                    ├── OnPostLoad() — virtual hook
+                                                    ├── Subscribe to OnProgressUpdate
+                                                    └── BeginProcessQueue()
+                                                            │
+                                                            └── OnPostloadProgressUpdate(progress)
+                                                                    │
+                                                                    ├── Wait until progress &gt;= 1.0
+                                                                    ├── Unsubscribe from OnProgressUpdate
+                                                                    └── OnCompleteProcessing()
+                                                                            │
+                                                                            └── Start preloaded BootstrapSystems
+                                                                                (chaining to next stage)
+</code></pre>
+<h3 id="bootstrap-chain-across-builds">Bootstrap Chain Across Builds</h3>
+<pre><code>MainBootstrapSystem (initial scene)
+    │
+    ├── UNITY_SERVER path:
+    │   └── Loads &quot;ServerLauncher&quot; scene
+    │       └── ServerLauncher : BootstrapSystem
+    │           └── Loads world/scene server scenes
+    │
+    └── Client path:
+        └── Loads &quot;ClientPreboot&quot; scene
+            └── ClientPostbootSystem : BootstrapSystem
+                └── Loads client UI and gameplay scenes
+</code></pre>
+<h3 id="logging-flow">Logging Flow</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                        Application Code                             │
+│                                                                     │
+│   Unity Debug.Log(&quot;...&quot;)          FishMMO Log.Write(level, src, msg)│
+│         │                                    │                      │
+│         ▼                                    ▼                      │
+│   ┌─────────────────┐              ┌────────────────┐               │
+│   │ UnityLoggerBridge│              │  Log (static)  │               │
+│   │  (ILogHandler)   │──────────►  │  FishMMO.Logging│               │
+│   └─────────────────┘              └───────┬────────┘               │
+│                                            │                        │
+│                              ┌─────────────┼─────────────┐          │
+│                              ▼             ▼             ▼          │
+│                    ┌──────────────┐ ┌────────────┐ ┌──────────┐     │
+│                    │UnityConsole  │ │ File       │ │ Other    │     │
+│                    │Logger        │ │ Logger     │ │ Loggers  │     │
+│                    └──────┬───────┘ └────────────┘ └──────────┘     │
+│                           │                                         │
+│                           ▼                                         │
+│                    Unity Debug.Log (with IsLoggingInternally=true)   │
+│                           │                                         │
+│                           ▼                                         │
+│                    UnityLoggerBridge passes through to default       │
+│                    handler (no re-capture loop)                      │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="shutdown-flow">Shutdown Flow</h3>
+<pre><code>Application.wantsToQuit / Editor ExitingPlayMode / OnDestroy
+    │
+    └── InitiateShutdown()
+            │
+            ├── Guard: skip if already shutting down
+            ├── GraphicsCleanup() — releases Addressable assets
+            ├── UnityLoggerBridge.Shutdown() — restores Unity's default log handler
+            │
+            ├── Editor path:
+            │   ├── Log.Shutdown().Wait() — synchronous
+            │   └── canQuitApplication = true
+            │
+            └── Standalone path:
+                └── PerformAsyncShutdown()
+                        ├── Save logging config to disk
+                        ├── await Log.Shutdown()
+                        ├── canQuitApplication = true
+                        └── Application.Quit()
+</code></pre>
+<h3 id="url-transformation-dynamicaddressableloadpathsystem">URL Transformation (DynamicAddressableLoadPathSystem)</h3>
+<table>
+<thead>
+<tr>
+<th>Original URL</th>
+<th>RuntimeBaseUrl</th>
+<th>Transformed URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>http://old-host.com/path/to/asset</code></td>
+<td><code>http://new-host.com/</code></td>
+<td><code>http://new-host.com/path/to/asset</code></td>
+</tr>
+<tr>
+<td><code>http://127.0.0.1:8000/bundles/data</code></td>
+<td><code>http://cdn.example.com/</code></td>
+<td><code>http://cdn.example.com/bundles/data</code></td>
+</tr>
+<tr>
+<td><code>file:///local/asset</code></td>
+<td>(any)</td>
+<td><code>file:///local/asset</code> (unchanged)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Bootstrap/
+├── BootstrapSystem.cs                   # Base class for all bootstrap stages
+├── MainBootstrapSystem.cs               # Entry point: logging, version, shutdown
+├── DynamicAddressableLoadPathSystem.cs  # Runtime Addressable URL override
+├── README.md                            # This file
+└── Logging/
+    ├── UnityConsoleFormatter.cs         # IConsoleFormatter for Unity rich text
+    ├── UnityConsoleLogger.cs            # ILogger outputting to Unity console
+    ├── UnityConsoleLoggerConfig.cs      # ILoggerConfig with level filtering and colors
+    ├── UnityLoggerBridge.cs             # ILogHandler bridging Unity → FishMMO Log
+    └── README.md                        # Logging subsystem documentation
+</code></pre>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<h4 id="bootstrap-systems-monobehaviour">Bootstrap Systems (MonoBehaviour)</h4>
+<pre><code>MonoBehaviour
+└── BootstrapSystem
+    └── MainBootstrapSystem
+</code></pre>
+<p>External subclasses (outside this directory):</p>
+<pre><code>BootstrapSystem
+├── ServerLauncher           (Server)
+└── ClientPostbootSystem     (Client)
+</code></pre>
+<h4 id="logging-interfaces">Logging Interfaces</h4>
+<pre><code>IConsoleFormatter
+└── UnityConsoleFormatter
+
+FishMMO.Logging.ILogger
+└── UnityConsoleLogger
+
+ILogHandler (Unity)
+└── UnityLoggerBridge
+
+ILoggerConfig
+└── UnityConsoleLoggerConfig
+</code></pre>
+<h3 id="virtual-hooks-bootstrapsystem">Virtual Hooks (BootstrapSystem)</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>When Called</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnPreload()</code></td>
+<td>After preload assets/scenes are enqueued</td>
+<td>Subclass initialization before preload begins</td>
+</tr>
+<tr>
+<td><code>OnPostLoad()</code></td>
+<td>After postload assets/scenes are enqueued</td>
+<td>Subclass initialization before postload begins</td>
+</tr>
+<tr>
+<td><code>OnCompletePreload()</code></td>
+<td>When preload progress reaches 1.0</td>
+<td>Triggers postload (can be overridden)</td>
+</tr>
+<tr>
+<td><code>OnCompleteProcessing()</code></td>
+<td>When postload progress reaches 1.0</td>
+<td>Chains to next bootstrap stages (can be overridden)</td>
+</tr>
+<tr>
+<td><code>OnDestroying()</code></td>
+<td>During OnDestroy cleanup</td>
+<td>Custom cleanup logic</td>
+</tr>
+</tbody>
+</table>
+<h3 id="external-dependencies">External Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AddressableLoadProcessor</code></td>
+<td>Queuing and processing Addressable asset/scene loads; progress events</td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.Log</code></td>
+<td>Central static log manager for routing entries to registered loggers</td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.ILogger</code></td>
+<td>Interface implemented by <code>UnityConsoleLogger</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.IConsoleFormatter</code></td>
+<td>Interface implemented by <code>UnityConsoleFormatter</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.ILoggerConfig</code></td>
+<td>Interface implemented by <code>UnityConsoleLoggerConfig</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.LogEntry</code></td>
+<td>Structured log entry (Level, Source, Message, Timestamp, ExceptionDetails, Data)</td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.LogLevel</code></td>
+<td>Enum: Critical, Error, Warning, Info, Debug, Verbose</td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.ConsoleFormatterHelpers</code></td>
+<td>Shared column widths, padding, and Unity rich-text escaping</td>
+</tr>
+<tr>
+<td><code>Constants</code></td>
+<td>Provides <code>GetWorkingDirectory()</code></td>
+</tr>
+<tr>
+<td><code>VersionConfig</code></td>
+<td>ScriptableObject providing game version string</td>
+</tr>
+<tr>
+<td><code>UnityEngine.Debug</code></td>
+<td>Unity's built-in logging API</td>
+</tr>
+<tr>
+<td><code>UnityEngine.ILogHandler</code></td>
+<td>Unity interface for custom log handlers</td>
+</tr>
+<tr>
+<td><code>UnityEngine.AddressableAssets.Addressables</code></td>
+<td>Addressable asset system; <code>InternalIdTransformFunc</code> for URL overrides</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is distributed under the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

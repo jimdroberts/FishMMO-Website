@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>World Server Authentication System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="World Server Authentication System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/Authentication/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="world-server-authentication-system">World Server Authentication System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/Authentication/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> World-server-specific authentication gate that enforces admission rules (server lock, population cap, selected-character requirement) after shared token-based authentication succeeds, with per-account rate limiting and bounded memory sweeps.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The WorldServer Authentication system specializes the shared token-based authenticator flow for world-server entry. After base token authentication succeeds, it enforces world-specific admission rules (server lock state, population limit, selected-character requirement) and returns world-scoped authentication outcomes (<code>WorldLoginSuccess</code>, <code>ServerFull</code>, etc.).</p>
+<p>The implementation uses a layered execution model:</p>
+<ul>
+<li><strong>Base layer (<code>BaseServerAuthenticator</code>):</strong> X25519 ECDH key exchange, main-thread action queue with time-sliced drain, stale-auth TTL sweeps with hard deadline enforcement, and connection encryption data management.</li>
+<li><strong>Token layer (<code>TokenServerAuthenticator</code>):</strong> HMAC-signed token verification, bounded channel with configurable worker count for async token processing, account mapping, and the <code>ClientHandshake → ServerHandshake → TokenAuthBroadcast → ClientAuthResultBroadcast</code> flow.</li>
+<li><strong>World layer (<code>WorldServerAuthenticator</code>):</strong> World-specific admission gate — per-account rate limiting via <code>ExpiringKeyTracker&lt;string&gt;</code>, server lock check, population cap enforcement, character service availability check, and selected-character verification via database query.</li>
+</ul>
+<p>On successful token authentication the token layer calls <code>TryLoginAsync(ClientAuthenticationResult.LoginSuccess, username)</code>, which the world layer overrides to apply its admission checks before returning a final <code>ClientAuthenticationResult</code>.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Inherits full X25519 ECDH handshake, main-thread marshalling, stale-auth TTL sweeps, and hard deadline enforcement from <code>BaseServerAuthenticator</code></li>
+<li>Inherits HMAC-signed token verification, bounded async worker channel, and account mapping from <code>TokenServerAuthenticator</code></li>
+<li>Per-account rate limiting via <code>ExpiringKeyTracker&lt;string&gt;</code> with a 1-second debounce window to prevent repeated expensive database calls</li>
+<li>Bounded memory growth guarantee — expired rate-limit entries are swept automatically during <code>OnAuthSweep()</code> with configurable scan and removal caps</li>
+<li>Server lock check via <code>IWorldServerSystemRuntimeData.IsLocked</code> returning <code>ServerFull</code> when the world is locked</li>
+<li>Population cap enforcement via <code>IWorldSceneMappingData&lt;NetworkConnection&gt;.ConnectionCount</code> against configurable <code>MaxPlayers</code> threshold</li>
+<li>Character service availability check with graceful <code>ServerBusy</code> fallback when the database service registry is unavailable</li>
+<li>Selected-character verification via <code>ICharacterService.FetchByAccountAsync(username, selected: true)</code> returning <code>WorldLoginSuccess</code> or <code>NoCharacterSelected</code></li>
+<li>Empty/whitespace username rejection returning <code>InvalidUsernameOrPassword</code> before any database or registry access</li>
+<li>Async <code>TryLoginAsync</code> override — all admission checks run on the async authentication path without blocking the main thread</li>
+<li>Warning-level logging for rate-limited authentication attempts with account identification</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework (provides <code>Authenticator</code>, <code>NetworkConnection</code>)</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>BaseServerAuthenticator</code>, <code>TokenServerAuthenticator</code>, <code>IWorldServerSystemRuntimeData</code>, <code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code>, <code>ExpiringKeyTracker&lt;string&gt;</code>, and <code>DataContainerRegistry</code></li>
+<li><strong>FishMMO Database</strong> — provides <code>ICharacterService</code>, <code>CharacterData</code>, <code>DatabaseResult&lt;T&gt;</code>, and <code>ServiceRegistry</code></li>
+<li><strong>FishMMO Shared</strong> — provides <code>ClientAuthenticationResult</code> enum (<code>LoginSuccess</code>, <code>WorldLoginSuccess</code>, <code>ServerFull</code>, <code>ServerBusy</code>, <code>NoCharacterSelected</code>, <code>InvalidUsernameOrPassword</code>)</li>
+<li><strong>FishMMO Logging</strong> — provides async-safe <code>Log.Warning</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side world-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>WorldServerAuthenticator</code> is present on the world server GameObject. It inherits from <code>TokenServerAuthenticator</code> (which inherits from <code>BaseServerAuthenticator</code> → FishNet <code>Authenticator</code>), so it automatically participates in the FishNet authentication lifecycle.</li>
+<li>Set <code>maxPlayers</code> in the inspector to the desired concurrent player cap (default: <code>5000</code>).</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>IWorldServerSystemRuntimeData</code> — provides the <code>IsLocked</code> flag for server lock checks.</li>
+<li><code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code> — provides <code>ConnectionCount</code> for population cap enforcement.</li>
+</ul>
+</li>
+<li>Verify that the database <code>ServiceRegistry</code> is initialized and <code>ICharacterService</code> is registered for selected-character verification.</li>
+<li>On client connection, the inherited base/token layers handle the ECDH handshake, token verification, and account mapping. If token auth succeeds, <code>TryLoginAsync</code> is called with <code>LoginSuccess</code> and the account username.</li>
+<li><code>WorldServerAuthenticator.TryLoginAsync</code> applies admission checks in order: username validation → rate limit → server lock → population cap → character service availability → selected character. The final <code>ClientAuthenticationResult</code> is returned to the token layer for broadcast to the client.</li>
+<li><code>OnAuthSweep()</code> runs periodically (at the base authenticator's sweep interval) and automatically evicts expired rate-limit entries.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxPlayers</code></td>
+<td><code>uint</code></td>
+<td><code>5000</code></td>
+<td>Upper bound for concurrent world-server admissions. When <code>ConnectionCount &gt;= MaxPlayers</code>, new logins receive <code>ServerFull</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="internal-constants">Internal Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Type</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LoginAttemptDebounceWindow</code></td>
+<td><code>TimeSpan</code></td>
+<td><code>1.0 s</code></td>
+<td>Per-account rate-limit window for <code>TryLoginAsync</code>. Rapid duplicate attempts within this window are rejected with <code>ServerBusy</code>.</td>
+</tr>
+<tr>
+<td><code>SweepMaxScan</code></td>
+<td><code>int</code></td>
+<td><code>128</code></td>
+<td>Maximum entries to scan per auth sweep cycle in <code>OnAuthSweep()</code>.</td>
+</tr>
+<tr>
+<td><code>SweepMaxRemove</code></td>
+<td><code>int</code></td>
+<td><code>64</code></td>
+<td>Maximum entries to remove per auth sweep cycle in <code>OnAuthSweep()</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="admission-rules">Admission Rules</h3>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Source</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Empty/whitespace username</td>
+<td><code>string.IsNullOrWhiteSpace(username)</code></td>
+<td><code>InvalidUsernameOrPassword</code></td>
+</tr>
+<tr>
+<td>Per-account rate limit</td>
+<td><code>ExpiringKeyTracker&lt;string&gt;</code> (1 s debounce)</td>
+<td><code>ServerBusy</code></td>
+</tr>
+<tr>
+<td>World server is locked</td>
+<td><code>IWorldServerSystemRuntimeData.IsLocked</code></td>
+<td><code>ServerFull</code></td>
+</tr>
+<tr>
+<td>World server is at capacity</td>
+<td><code>IWorldSceneMappingData&lt;NetworkConnection&gt;.ConnectionCount &gt;= MaxPlayers</code></td>
+<td><code>ServerFull</code></td>
+</tr>
+<tr>
+<td>Character service unavailable</td>
+<td><code>Server.Database?.ServiceRegistry</code> null or <code>ICharacterService</code> unresolvable</td>
+<td><code>ServerBusy</code></td>
+</tr>
+<tr>
+<td>Database fetch failed</td>
+<td><code>!fetchResult.IsSuccess</code></td>
+<td><code>ServerBusy</code></td>
+</tr>
+<tr>
+<td>Selected character present</td>
+<td><code>ICharacterService.FetchByAccountAsync(..., selected: true)</code> returns data</td>
+<td><code>WorldLoginSuccess</code></td>
+</tr>
+<tr>
+<td>Selected character missing</td>
+<td>Same query, no data</td>
+<td><code>NoCharacterSelected</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="runtime-dependencies">Runtime Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Source</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IWorldServerSystemRuntimeData</code></td>
+<td><code>DataContainerRegistry</code></td>
+<td>Server lock flag</td>
+</tr>
+<tr>
+<td><code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code></td>
+<td><code>DataContainerRegistry</code></td>
+<td>Current connection count</td>
+</tr>
+<tr>
+<td><code>ICharacterService</code></td>
+<td><code>Database.ServiceRegistry</code></td>
+<td>Selected character verification</td>
+</tr>
+<tr>
+<td><code>ExpiringKeyTracker&lt;string&gt;</code></td>
+<td>Internal field</td>
+<td>Per-account rate limiting with bounded memory</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="authentication-flow-step-by-step">Authentication Flow (Step by Step)</h3>
+<ol>
+<li>A client connects to the world server and the FishNet <code>Authenticator</code> lifecycle begins.</li>
+<li><code>BaseServerAuthenticator</code> performs the X25519 ECDH key exchange, establishing an encrypted channel.</li>
+<li><code>TokenServerAuthenticator</code> receives the encrypted token, decrypts it, verifies the HMAC signature, and maps the account.</li>
+<li>On success, <code>TokenServerAuthenticator</code> calls <code>TryLoginAsync(ClientAuthenticationResult.LoginSuccess, username)</code>.</li>
+<li><code>WorldServerAuthenticator.TryLoginAsync</code> executes:</li>
+</ol>
+<pre><code>TryLoginAsync(result, username)
+│
+├── result != LoginSuccess? → return result unchanged
+├── username empty/whitespace? → return InvalidUsernameOrPassword
+├── loginAttemptByAccount.TryBegin(username) fails? → return ServerBusy (rate-limited)
+├── worldData.IsLocked? → return ServerFull
+├── sceneData.ConnectionCount &gt;= MaxPlayers? → return ServerFull
+├── ICharacterService unavailable? → return ServerBusy
+├── FetchByAccountAsync failed? → return ServerBusy
+├── selected character exists? → return WorldLoginSuccess
+└── no selected character → return NoCharacterSelected
+</code></pre>
+<ol start="6">
+<li>The result is broadcast to the client via <code>ClientAuthResultBroadcast</code>.</li>
+</ol>
+<h3 id="rate-limiting-behavior">Rate Limiting Behavior</h3>
+<p>When a client rapidly retries authentication for the same account within the 1-second debounce window:</p>
+<ul>
+<li>The first attempt proceeds through all admission checks.</li>
+<li>Subsequent attempts within the window are immediately rejected with <code>ServerBusy</code>.</li>
+<li>A warning is logged: <code>&quot;Rate-limited TryLoginAsync for account '{username}'&quot;</code>.</li>
+<li>After the debounce window expires the next attempt proceeds normally.</li>
+<li>Expired entries are cleaned up by <code>OnAuthSweep()</code> which scans up to 128 entries and removes up to 64 per cycle.</li>
+</ul>
+<h3 id="extending-admission-rules">Extending Admission Rules</h3>
+<p>To add a custom admission rule, override <code>TryLoginAsync</code> in a subclass of <code>WorldServerAuthenticator</code>:</p>
+<pre><code class="lang-csharp">internal override async Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(
+    ClientAuthenticationResult result, string username)
+{
+    result = await base.TryLoginAsync(result, username);
+    if (result != ClientAuthenticationResult.WorldLoginSuccess)
+        return result;
+
+    // Custom check here
+    return result;
+}
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>WorldServerAuthenticator</code> is attached to the world server GameObject and no errors appear during startup</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>IWorldServerSystemRuntimeData</code> and <code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code> both resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Character service available</td>
+<td>Verify <code>ICharacterService</code> resolves from <code>Server.Database.ServiceRegistry</code></td>
+</tr>
+<tr>
+<td>Successful world login</td>
+<td>Connect with a valid token and a selected character; confirm client receives <code>WorldLoginSuccess</code></td>
+</tr>
+<tr>
+<td>No selected character</td>
+<td>Connect with a valid token but no selected character; confirm client receives <code>NoCharacterSelected</code></td>
+</tr>
+<tr>
+<td>Server full (population cap)</td>
+<td>Fill the server to <code>MaxPlayers</code> connections; confirm next login receives <code>ServerFull</code></td>
+</tr>
+<tr>
+<td>Server locked</td>
+<td>Set <code>IWorldServerSystemRuntimeData.IsLocked = true</code>; confirm next login receives <code>ServerFull</code></td>
+</tr>
+<tr>
+<td>Rate limiting</td>
+<td>Send rapid consecutive login attempts for the same account; confirm excess attempts receive <code>ServerBusy</code> and a warning is logged</td>
+</tr>
+<tr>
+<td>Rate-limit sweep</td>
+<td>Wait for auth sweep interval; confirm <code>ExpiringKeyTracker</code> entries are evicted (no unbounded memory growth)</td>
+</tr>
+<tr>
+<td>Empty username rejection</td>
+<td>Send a login with empty/whitespace username; confirm <code>InvalidUsernameOrPassword</code> is returned</td>
+</tr>
+<tr>
+<td>Database service unavailable</td>
+<td>Disconnect the database; confirm login attempts receive <code>ServerBusy</code></td>
+</tr>
+<tr>
+<td>Database fetch failure</td>
+<td>Simulate a failed <code>FetchByAccountAsync</code>; confirm <code>ServerBusy</code> is returned</td>
+</tr>
+<tr>
+<td>Token auth failure passthrough</td>
+<td>Send an invalid token; confirm the base authentication failure result propagates unchanged</td>
+</tr>
+<tr>
+<td>Auth sweep cycle</td>
+<td>Confirm <code>OnAuthSweep()</code> runs periodically, invoking both the base sweep and <code>loginAttemptByAccount.SweepExpired()</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|token from LoginServer| WAuth[WorldServer.Authentication]
+    WAuth --&gt;|validate token| DB[(PostgreSQL Tokens)]
+    WAuth --&gt;|character payload| Scene[Route to SceneServer]
+    Scene --&gt; SceneSrv[SceneServer]
+</code></pre>
+<h3 id="full-authentication-pipeline">Full Authentication Pipeline</h3>
+<pre><code>Client Connection
+│
+▼
+BaseServerAuthenticator
+├── X25519 ECDH Key Exchange
+├── Encrypted Channel Established
+├── Stale-Auth TTL Sweep (periodic)
+│
+▼
+TokenServerAuthenticator
+├── Decrypt Token Payload (max 2048 bytes)
+├── HMAC Signature Verification
+├── Account Mapping
+├── Bounded Channel → Async Workers (2 workers, capacity 500)
+│
+▼
+TryLoginAsync(LoginSuccess, username)
+│
+▼
+WorldServerAuthenticator.TryLoginAsync
+│
+├── 1. Pre-check: result != LoginSuccess → pass through
+├── 2. Username validation: empty/whitespace → InvalidUsernameOrPassword
+├── 3. Rate limit: ExpiringKeyTracker.TryBegin(username, 1s)
+│      └── Blocked → ServerBusy (+ warning log)
+├── 4. Server lock: IWorldServerSystemRuntimeData.IsLocked
+│      └── Locked → ServerFull
+├── 5. Population cap: ConnectionCount &gt;= MaxPlayers
+│      └── Full → ServerFull
+├── 6. Service check: ICharacterService available?
+│      └── Unavailable → ServerBusy
+├── 7. DB query: FetchByAccountAsync(username, selected: true)
+│      ├── Fetch failed → ServerBusy
+│      ├── Character found → WorldLoginSuccess
+│      └── No character → NoCharacterSelected
+│
+▼
+ClientAuthResultBroadcast → Client
+</code></pre>
+<h3 id="auth-sweep-lifecycle">Auth Sweep Lifecycle</h3>
+<pre><code>OnAuthSweep() [periodic, inherited interval]
+│
+├── base.OnAuthSweep()
+│   └── BaseServerAuthenticator stale-connection purge
+│
+└── loginAttemptByAccount.SweepExpired(DateTime.UtcNow, 128, 64)
+    └── Evicts expired rate-limit entries (bounded scan + removal)
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Authentication/
+├── WorldServerAuthenticator.cs   # World-server-specific post-token authentication gate
+└── README.md                     # This file
+</code></pre>
+<h3 id="related-files">Related Files</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Server/Implementation/Authentication/BaseServerAuthenticator.cs</code></td>
+<td>Shared X25519 ECDH handshake, main-thread queue, stale-auth TTL sweeps, hard deadline enforcement</td>
+</tr>
+<tr>
+<td><code>Server/Implementation/Authentication/TokenServerAuthenticator.cs</code></td>
+<td>Token-based auth pipeline: HMAC verification, bounded async channel, account mapping</td>
+</tr>
+<tr>
+<td><code>Server/Core/World/WorldServer/WorldServer/IWorldServerSystemRuntimeData.cs</code></td>
+<td>Interface providing <code>IsLocked</code> flag for server lock checks</td>
+</tr>
+<tr>
+<td><code>Server/Core/World/WorldServer/WorldScene/IWorldSceneMappingData.cs</code></td>
+<td>Interface providing <code>ConnectionCount</code> for population tracking</td>
+</tr>
+<tr>
+<td><code>Shared/Implementation/Network/Authentication/ClientAuthenticationResult.cs</code></td>
+<td>Enum defining all authentication result codes</td>
+</tr>
+<tr>
+<td><code>Server/Core/Collections/ExpiringKeyTracker.cs</code></td>
+<td>Bounded expiring key collection used for per-account rate limiting</td>
+</tr>
+</tbody>
+</table>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>Authenticator (FishNet)
+└── BaseServerAuthenticator
+    ├── X25519 ECDH handshake
+    ├── Main-thread action queue (time-sliced drain)
+    ├── Stale-auth TTL sweeps (hard deadline)
+    └── TokenServerAuthenticator
+        ├── HMAC-signed token verification
+        ├── Bounded async channel (2 workers, capacity 500)
+        ├── Account mapping
+        └── WorldServerAuthenticator
+            ├── Per-account rate limiting (ExpiringKeyTracker, 1s debounce)
+            ├── Server lock / population cap checks
+            ├── Selected-character DB verification
+            └── Bounded auth sweep (128 scan, 64 remove)
+</code></pre>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license. See the repository root for license details.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/Authentication/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

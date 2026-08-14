@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Party System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Party System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Party/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="party-system">Party System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Party/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> SceneServer social subsystem for party lifecycle and member synchronization, handling party creation, invitations, accept/decline, leaving, member removal, rank transfer, periodic membership reconciliation, achievement triggers, and chat-based invite commands.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Party system is the SceneServer social subsystem for party lifecycle and member synchronization. It handles party creation, invitations, invitation accept/decline, leaving, member removal, rank transfer, periodic membership reconciliation, and party chat invite commands.</p>
+<p>The implementation uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> request validation, in-memory controller/tracker updates, ingress guard checks, invitation sweep, and network broadcasts.</li>
+<li><strong>Async worker:</strong> database reads/writes and party update marker persistence via <code>TryEnqueueAsyncWork</code>.</li>
+<li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe context via <code>IPartySystemMainThreadQueueData</code>.</li>
+</ul>
+<p>All party mutations emit a party update marker (<code>IPartyUpdateService.PersistAsync</code>) so that other scene servers can reconcile their local party lists during <code>FetchAndProcessPartyUpdatesAsync</code>. Pending invitations are tracked in a <code>LastSeenCacheTracker</code> with configurable TTL and bounded sweep. Per-connection ingress guards enforce debounce and in-flight exclusion across all seven party operations.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Party creation with automatic leader assignment and database persistence</li>
+<li>Chat-based party invite commands (<code>/pi</code>, <code>/invite</code>) resolving targets by lowercase character name</li>
+<li>Invitation flow with pending-invite tracking, TTL expiration, and bounded cleanup sweep</li>
+<li>Accept/decline invitation with capacity checks and membership persistence</li>
+<li>Party leave with automatic random leadership transfer when the leader departs</li>
+<li>Party deletion when the last member leaves</li>
+<li>Leader-initiated member removal with rank validation</li>
+<li>Leader-initiated rank transfer (promote member to leader, demote self to member) with rollback on partial failure</li>
+<li>Periodic party update pump fetching database changes and broadcasting <code>PartyAddMultipleBroadcast</code> snapshots to local online members</li>
+<li>Removed-member detection via diff between cached and fetched member sets, with immediate <code>PartyLeaveBroadcast</code> dispatch</li>
+<li>Per-connection ingress debounce and in-flight guard across all seven operations (<code>Create</code>, <code>Invite</code>, <code>AcceptInvite</code>, <code>DeclineInvite</code>, <code>Leave</code>, <code>Remove</code>, <code>ChangeRank</code>)</li>
+<li>Bounded ingress guard sweep with configurable TTL, interval, and max removals</li>
+<li>Achievement integration via configurable <code>PartyCreateAchievementTemplate</code> and <code>PartyJoinAchievementTemplate</code></li>
+<li>Character connect/disconnect hooks for tracker maintenance and health-percentage persistence</li>
+<li>Async worker backpressure via <code>TryEnqueueAsyncWork</code> (rejects when queue unavailable/full, logs warning)</li>
+<li>Per-system main-thread queue isolation with configurable drain cap per frame</li>
+<li>Optimistic concurrency via versioned <code>CharacterPartyData</code> for all membership mutations</li>
+<li>Graceful failure semantics: invalid requests fail closed with no mutation; permission/capacity checks enforced before persistence; async failures logged without blocking main thread</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IPartySystem</code>, <code>IPartySystemRuntimeData</code>, <code>IPartySystemMainThreadQueueData</code>, <code>IPartyCharacterMappingData</code>, broadcast types (<code>PartyCreateBroadcast</code>, <code>PartyInviteBroadcast</code>, <code>PartyAcceptInviteBroadcast</code>, <code>PartyDeclineInviteBroadcast</code>, <code>PartyLeaveBroadcast</code>, <code>PartyRemoveBroadcast</code>, <code>PartyChangeRankBroadcast</code>, <code>PartyAddBroadcast</code>, <code>PartyAddMultipleBroadcast</code>, <code>ChatBroadcast</code>), <code>IngressGuard</code>, <code>AsyncWorkerData</code>, and <code>ChatHelper</code></li>
+<li><strong>FishMMO Database</strong> — provides <code>IPartyService</code>, <code>ICharacterPartyService</code>, <code>IPartyUpdateService</code>, <code>CharacterPartyData</code>, <code>PartyUpdateData</code>, and <code>DatabaseResult&lt;T&gt;</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>PartySystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>IPartySystem&lt;NetworkConnection&gt;</code>). The asset is created via <code>Create &gt; FishMMO &gt; Server &gt; SceneServer &gt; Party System</code>.</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>PartySystemRuntimeData</code> → <code>IPartySystemRuntimeData</code></li>
+<li><code>PartyCharacterMappingData</code> → <code>IPartyCharacterMappingData</code></li>
+<li><code>PartySystemMainThreadQueueData</code> → <code>IPartySystemMainThreadQueueData</code></li>
+<li><code>AsyncWorkerData</code> (shared async work queue)</li>
+</ul>
+</li>
+<li>Verify that <code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code> is registered in <code>BehaviourRegistry</code> for connect/disconnect event subscriptions.</li>
+<li>Optionally assign <code>PartyCreateAchievementTemplate</code> and <code>PartyJoinAchievementTemplate</code> in the inspector to trigger achievements on party creation and joining.</li>
+<li>On initialize, <code>PartySystem</code> registers chat commands (<code>/pi</code>, <code>/invite</code>), broadcast handlers for all seven party operations, character connect/disconnect callbacks, and a periodic update callback at <code>UpdatePumpRate</code> interval.</li>
+<li>On deinitialize, it drains the remaining main-thread queue, unregisters broadcast handlers, unsubscribes character callbacks, and unregisters the periodic callback.</li>
+<li>Clients send the appropriate broadcast to trigger party operations; the server validates, persists to database, and replies with result broadcasts.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>int</td>
+<td>100</td>
+<td>Max party-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>maxPartySize</code></td>
+<td>int</td>
+<td>6</td>
+<td>Maximum number of members allowed in a party</td>
+</tr>
+<tr>
+<td><code>updatePumpRate</code></td>
+<td>float</td>
+<td>1.0</td>
+<td>Periodic party update pump rate limit in seconds</td>
+</tr>
+<tr>
+<td><code>invitationTtlSeconds</code></td>
+<td>float</td>
+<td>45.0</td>
+<td>Invitation lifetime in seconds before automatic expiration</td>
+</tr>
+<tr>
+<td><code>invitationSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>1.0</td>
+<td>Seconds between bounded invitation cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>invitationSweepMaxScan</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum invitation entries scanned per cleanup sweep</td>
+</tr>
+<tr>
+<td><code>invitationSweepMaxRemove</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum invitation entries removed per cleanup sweep</td>
+</tr>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td>int</td>
+<td>100</td>
+<td>Minimum milliseconds between party requests per connection and operation</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>Seconds between bounded ingress guard cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Seconds before stale ingress guard entries are removed</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum stale ingress guard entries removed per sweep</td>
+</tr>
+<tr>
+<td><code>PartyCreateAchievementTemplate</code></td>
+<td>AchievementTemplate</td>
+<td>—</td>
+<td>Achievement template incremented when a party is created</td>
+</tr>
+<tr>
+<td><code>PartyJoinAchievementTemplate</code></td>
+<td>AchievementTemplate</td>
+<td>—</td>
+<td>Achievement template incremented when a player joins a party</td>
+</tr>
+</tbody>
+</table>
+<h3 id="chat-commands">Chat Commands</h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/pi &lt;name&gt;</code></td>
+<td>Invite a character by name to the sender's party</td>
+</tr>
+<tr>
+<td><code>/invite &lt;name&gt;</code></td>
+<td>Alias for <code>/pi</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, ingress guards, invitation sweep, ingress sweep, controller/tracker updates, broadcast dispatch, queue drain</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Database reads/writes (<code>CreatePartyAsync</code>, <code>ValidateAndSendPartyInviteAsync</code>, <code>AcceptPartyInviteAsync</code>, <code>LeavePartyAsync</code>, <code>RemovePartyMemberAsync</code>, <code>ChangePartyRankAsync</code>, <code>FetchAndProcessPartyUpdatesAsync</code>, <code>PersistPartyMemberAndNotifyAsync</code>, <code>PersistPartyUpdateAsync</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-handlers">Broadcast Handlers</h3>
+<p><code>PartySystem</code> registers the following server-side broadcast handlers on initialize:</p>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PartyCreateBroadcast</code></td>
+<td><code>OnServerPartyCreateBroadcastReceived</code></td>
+<td>Create a new party with the requester as leader</td>
+</tr>
+<tr>
+<td><code>PartyInviteBroadcast</code></td>
+<td><code>OnServerPartyInviteBroadcastReceived</code></td>
+<td>Invite a target character to the inviter's party</td>
+</tr>
+<tr>
+<td><code>PartyAcceptInviteBroadcast</code></td>
+<td><code>OnServerPartyAcceptInviteBroadcastReceived</code></td>
+<td>Accept a pending party invitation</td>
+</tr>
+<tr>
+<td><code>PartyDeclineInviteBroadcast</code></td>
+<td><code>OnServerPartyDeclineInviteBroadcastReceived</code></td>
+<td>Decline a pending party invitation</td>
+</tr>
+<tr>
+<td><code>PartyLeaveBroadcast</code></td>
+<td><code>OnServerPartyLeaveBroadcastReceived</code></td>
+<td>Leave the current party</td>
+</tr>
+<tr>
+<td><code>PartyRemoveBroadcast</code></td>
+<td><code>OnServerPartyRemoveBroadcastReceived</code></td>
+<td>Remove a member from the party (leader only)</td>
+</tr>
+<tr>
+<td><code>PartyChangeRankBroadcast</code></td>
+<td><code>OnServerPartyChangeRankBroadcastReceived</code></td>
+<td>Transfer leadership to another member (leader only)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="create-party">Create Party</h3>
+<p><code>OnServerPartyCreateBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, spawned object, and ingress guard.</li>
+<li>Confirms the requester is not already in a party (<code>partyController.ID == 0</code>).</li>
+<li>Captures character ID, scene name, and health percentage.</li>
+<li>Enqueues <code>CreatePartyAsync</code>:
+<ul>
+<li>Creates party via <code>IPartyService.CreateAsync</code>.</li>
+<li>Persists leader membership via <code>ICharacterPartyService.PersistAsync</code>.</li>
+<li>Marshals to main thread: sets controller ID/rank, adds tracker entry, broadcasts <code>PartyCreateBroadcast</code> with party ID and location, increments <code>PartyCreateAchievementTemplate</code>.</li>
+</ul>
+</li>
+</ol>
+<h3 id="invite--accept--decline">Invite / Accept / Decline</h3>
+<p><strong>Invite</strong> (<code>OnServerPartyInviteBroadcastReceived</code>):</p>
+<ol>
+<li>Validates inviter is a party leader.</li>
+<li>Enqueues <code>ValidateAndSendPartyInviteAsync</code>:
+<ul>
+<li>Checks party capacity via <code>ICharacterPartyService.CountAsync</code>.</li>
+<li>Marshals to main thread: adds pending invitation, validates target not already in a party (sends error chat if so), sends <code>PartyInviteBroadcast</code> to target.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Accept</strong> (<code>OnServerPartyAcceptInviteBroadcastReceived</code>):</p>
+<ol>
+<li>Validates requester is not in a party and has a pending invitation.</li>
+<li>Enqueues <code>AcceptPartyInviteAsync</code>:
+<ul>
+<li>Re-checks party capacity via <code>ICharacterPartyService.FetchManyAsync</code>.</li>
+<li>Persists membership and party update marker.</li>
+<li>Marshals to main thread: sets controller ID/rank, removes pending invitation, adds tracker entry, broadcasts <code>PartyAddBroadcast</code> to the new member, increments <code>PartyJoinAchievementTemplate</code>.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Decline</strong> (<code>OnServerPartyDeclineInviteBroadcastReceived</code>):</p>
+<ol>
+<li>Validates connection and removes the pending invitation entry (synchronous, no async work).</li>
+</ol>
+<h3 id="leave--remove--rank-change">Leave / Remove / Rank Change</h3>
+<p><strong>Leave</strong> (<code>OnServerPartyLeaveBroadcastReceived</code>):</p>
+<ol>
+<li>Validates requester is in a party.</li>
+<li>Enqueues <code>LeavePartyAsync</code>:
+<ul>
+<li>Fetches current members.</li>
+<li>If leader and others remain, randomly selects a new leader and persists rank update.</li>
+<li>Deletes the leaving member via versioned <code>DeleteAsync</code>.</li>
+<li>If no members remain, deletes the party and its update marker; otherwise persists update marker.</li>
+<li>Marshals to main thread: resets controller, removes tracker, broadcasts <code>PartyLeaveBroadcast</code>.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Remove</strong> (<code>OnServerPartyRemoveBroadcastReceived</code>):</p>
+<ol>
+<li>Validates requester is leader and target is not self.</li>
+<li>Enqueues <code>RemovePartyMemberAsync</code>:
+<ul>
+<li>Fetches target member and verifies party membership.</li>
+<li>Deletes via versioned <code>DeleteAsync</code>.</li>
+<li>Marshals tracker removal to main thread.</li>
+<li>Persists update marker for cross-server reconciliation.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Rank Change</strong> (<code>OnServerPartyChangeRankBroadcastReceived</code>):</p>
+<ol>
+<li>Validates requester is leader and target is not self.</li>
+<li>Enqueues <code>ChangePartyRankAsync</code>:
+<ul>
+<li>Fetches both leader and target member data with versions.</li>
+<li>Promotes target to leader first (avoids zero-leader state).</li>
+<li>Demotes old leader to member.</li>
+<li>On demotion failure, rolls back the target promotion and logs a warning.</li>
+<li>On rollback failure, logs a critical error for manual correction.</li>
+<li>Persists update marker on success.</li>
+</ul>
+</li>
+</ol>
+<h3 id="periodic-update-pump">Periodic Update Pump</h3>
+<p><code>OnPeriodicUpdate(deltaTime)</code> fires at <code>UpdatePumpRate</code> intervals:</p>
+<ol>
+<li>Acquires pump lock via <code>TryBeginUpdatePump</code> (atomic compare-exchange).</li>
+<li>Snapshots tracked party IDs and last fetch time on main thread.</li>
+<li>Enqueues <code>FetchAndProcessPartyUpdatesAsync</code>:
+<ul>
+<li>Fetches party updates via <code>IPartyUpdateService.FetchAsync(partyIds, lastFetch)</code>.</li>
+<li>Fetches current members for each updated party.</li>
+<li>Marshals to main thread:
+<ul>
+<li>Updates <code>LastFetchTime</code>.</li>
+<li>Computes removed members (diff previous cached vs current) and sends <code>PartyLeaveBroadcast</code> to each.</li>
+<li>Refreshes <code>PartyMemberTracker</code> cache.</li>
+<li>Broadcasts <code>PartyAddMultipleBroadcast</code> snapshots (including <code>PartyID</code>, <code>CharacterID</code>, <code>Rank</code>, <code>HealthPCT</code>) to all local online members.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Releases pump lock in <code>finally</code>.</li>
+</ol>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Invalid requests fail closed with no mutation.</li>
+<li>Permission/capacity checks are enforced before persistence.</li>
+<li>Async failures are logged and do not block the main thread.</li>
+<li>Main-thread completion paths revalidate runtime state before mutating or broadcasting.</li>
+<li>Rank-change rollback protects against partial-failure two-leader states.</li>
+<li><code>TryEnqueueAsyncWork</code> returns <code>false</code> when the queue is unavailable or full; a warning is logged.</li>
+<li>Ingress guards are always released in <code>finally</code> blocks or via <code>TryEnqueueIngressWork</code> deferred release.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>PartySystem</code> logs &quot;Initialized (MaxPartySize=6, UpdatePumpRate=1s)&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>IPartySystemRuntimeData</code>, <code>IPartyCharacterMappingData</code>, and <code>IPartySystemMainThreadQueueData</code> all resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Chat commands registered</td>
+<td>Confirm <code>/pi</code> and <code>/invite</code> are available in party chat and route to <code>OnPartyInvite</code></td>
+</tr>
+<tr>
+<td>Party creation</td>
+<td>Send <code>PartyCreateBroadcast</code> from a character not in a party; confirm <code>PartyCreateBroadcast</code> reply with new party ID and location</td>
+</tr>
+<tr>
+<td>Party invite</td>
+<td>As party leader, send <code>PartyInviteBroadcast</code> with a valid target; confirm target receives <code>PartyInviteBroadcast</code></td>
+</tr>
+<tr>
+<td>Invite target already in party</td>
+<td>Invite a character already in a party; confirm inviter receives <code>ChatBroadcast</code> with <code>PARTY_ERROR_TARGET_IN_PARTY</code></td>
+</tr>
+<tr>
+<td>Accept invitation</td>
+<td>Target sends <code>PartyAcceptInviteBroadcast</code>; confirm <code>PartyAddBroadcast</code> reply with correct party ID, rank, and health</td>
+</tr>
+<tr>
+<td>Decline invitation</td>
+<td>Target sends <code>PartyDeclineInviteBroadcast</code>; confirm pending invitation is removed</td>
+</tr>
+<tr>
+<td>Invitation TTL expiry</td>
+<td>Wait beyond <code>invitationTtlSeconds</code>; confirm expired invitations are swept and no longer accepted</td>
+</tr>
+<tr>
+<td>Party leave (member)</td>
+<td>Member sends <code>PartyLeaveBroadcast</code>; confirm <code>PartyLeaveBroadcast</code> reply and tracker removal</td>
+</tr>
+<tr>
+<td>Party leave (leader)</td>
+<td>Leader sends <code>PartyLeaveBroadcast</code> with other members present; confirm new leader is randomly assigned</td>
+</tr>
+<tr>
+<td>Party leave (last member)</td>
+<td>Last member sends <code>PartyLeaveBroadcast</code>; confirm party and update marker are deleted</td>
+</tr>
+<tr>
+<td>Member removal</td>
+<td>Leader sends <code>PartyRemoveBroadcast</code> for a member; confirm member is removed and update marker persisted</td>
+</tr>
+<tr>
+<td>Self-removal prevention</td>
+<td>Leader sends <code>PartyRemoveBroadcast</code> targeting self; confirm request is rejected</td>
+</tr>
+<tr>
+<td>Rank change</td>
+<td>Leader sends <code>PartyChangeRankBroadcast</code>; confirm leadership is transferred and update marker persisted</td>
+</tr>
+<tr>
+<td>Rank change rollback</td>
+<td>Simulate demotion failure after promotion; confirm target promotion is rolled back</td>
+</tr>
+<tr>
+<td>Periodic update pump</td>
+<td>Wait for <code>UpdatePumpRate</code>; confirm <code>FetchAndProcessPartyUpdatesAsync</code> fires and members receive <code>PartyAddMultipleBroadcast</code></td>
+</tr>
+<tr>
+<td>Removed member detection</td>
+<td>Remove a member on another server; confirm local server detects the diff and sends <code>PartyLeaveBroadcast</code></td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid consecutive party requests from the same connection; confirm excess requests are dropped</td>
+</tr>
+<tr>
+<td>Ingress in-flight guard</td>
+<td>Send overlapping async party requests; confirm only one is processed at a time per operation type</td>
+</tr>
+<tr>
+<td>Ingress sweep</td>
+<td>Wait for <code>ingressSweepIntervalSeconds</code>; confirm stale guard entries are cleaned up</td>
+</tr>
+<tr>
+<td>Character connect</td>
+<td>Connect a character in a party; confirm tracker is updated and <code>PersistPartyMemberAndNotifyAsync</code> fires</td>
+</tr>
+<tr>
+<td>Character disconnect</td>
+<td>Disconnect a character in a party; confirm tracker is updated, pending invitations cleared, and <code>PersistPartyUpdateAsync</code> fires</td>
+</tr>
+<tr>
+<td>Tracker cleanup</td>
+<td>Disconnect the last local member of a party; confirm both <code>PartyCharacterTracker</code> and <code>PartyMemberTracker</code> entries are removed</td>
+</tr>
+<tr>
+<td>Achievement trigger</td>
+<td>Create or join a party with achievement templates assigned; confirm achievement controllers are incremented</td>
+</tr>
+<tr>
+<td>Main-thread queue drain</td>
+<td>Confirm queued async results are dispatched on the main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Async backpressure</td>
+<td>Saturate async worker queue; confirm new work is rejected with a logged warning</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm broadcast handlers unregistered, character callbacks unsubscribed, periodic callback unregistered, and main-thread queue drained</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|party op| Sys[PartySystem]
+    Sys --&gt;|invite / accept| Members[Member registry]
+    Sys --&gt;|persist| DB[(PostgreSQL Parties)]
+    Sys --&gt;|broadcast| Client
+    Sys --&gt;|cross-scene sync| World[WorldServer]
+</code></pre>
+<h3 id="create-party-1">Create Party</h3>
+<pre><code>OnServerPartyCreateBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (Create)
+├─ 3. Confirm requester not already in a party
+├─ 4. Capture characterID, sceneName, healthPCT
+└─ 5. TryEnqueueIngressWork → CreatePartyAsync
+       │
+       ├─ IPartyService.CreateAsync → newPartyID
+       ├─ ICharacterPartyService.PersistAsync (leader membership)
+       └─ TryEnqueueMainThread
+              ├─ Set partyController.ID = newPartyID, Rank = Leader
+              ├─ AddPartyCharacterTracker(newPartyID, characterID)
+              ├─ Broadcast PartyCreateBroadcast to conn
+              └─ Increment PartyCreateAchievementTemplate
+</code></pre>
+<h3 id="invite--accept">Invite → Accept</h3>
+<pre><code>OnServerPartyInviteBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate inviter is party leader
+├─ 2. Acquire ingress guard (Invite)
+└─ 3. TryEnqueueIngressWork → ValidateAndSendPartyInviteAsync
+       │
+       ├─ ICharacterPartyService.CountAsync (capacity check)
+       └─ TryEnqueueMainThread
+              ├─ TryAddPendingInvitation(target, partyID)
+              ├─ Validate target not already in party
+              │    └── Already in party → ChatBroadcast error to inviter, remove pending
+              └─ Broadcast PartyInviteBroadcast to target
+
+OnServerPartyAcceptInviteBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate requester not already in a party
+├─ 2. Acquire ingress guard (AcceptInvite)
+├─ 3. Validate pending invitation exists
+└─ 4. TryEnqueueIngressWork → AcceptPartyInviteAsync
+       │
+       ├─ ICharacterPartyService.FetchManyAsync (re-check capacity)
+       ├─ ICharacterPartyService.PersistAsync (member)
+       ├─ IPartyUpdateService.PersistAsync (marker)
+       └─ TryEnqueueMainThread
+              ├─ Set partyController.ID, Rank = Member
+              ├─ RemovePendingInvitation
+              ├─ AddPartyCharacterTracker
+              ├─ Broadcast PartyAddBroadcast to new member
+              └─ Increment PartyJoinAchievementTemplate
+</code></pre>
+<h3 id="leave-party">Leave Party</h3>
+<pre><code>OnServerPartyLeaveBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate requester is in a party
+├─ 2. Acquire ingress guard (Leave)
+└─ 3. TryEnqueueIngressWork → LeavePartyAsync
+       │
+       ├─ ICharacterPartyService.FetchManyAsync (current members)
+       ├─ If leader + others remain:
+       │    └─ Randomly select new leader → UpdateRankAsync
+       ├─ ICharacterPartyService.DeleteAsync (leaving member, versioned)
+       ├─ If no remaining members:
+       │    ├─ IPartyService.DeleteAsync
+       │    └─ IPartyUpdateService.DeleteAsync
+       ├─ Else: IPartyUpdateService.PersistAsync
+       └─ TryEnqueueMainThread
+              ├─ Reset partyController (ID=0, Rank=None)
+              ├─ RemovePartyCharacterTracker
+              └─ Broadcast PartyLeaveBroadcast to conn
+</code></pre>
+<h3 id="rank-change">Rank Change</h3>
+<pre><code>OnServerPartyChangeRankBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate requester is leader, target is not self
+├─ 2. Acquire ingress guard (ChangeRank)
+└─ 3. TryEnqueueIngressWork → ChangePartyRankAsync
+       │
+       ├─ Fetch leader + target CharacterPartyData (with versions)
+       ├─ Verify both in same party
+       ├─ UpdateRankAsync(target → Leader)   ← promote first
+       ├─ UpdateRankAsync(leader → Member)   ← demote second
+       │    └── Failure → rollback target back to original rank
+       └─ IPartyUpdateService.PersistAsync
+</code></pre>
+<h3 id="periodic-update-pump-1">Periodic Update Pump</h3>
+<pre><code>OnPeriodicUpdate(deltaTime)
+│
+├─ 1. Check Initialized + Server started
+├─ 2. TryBeginUpdatePump (atomic lock)
+├─ 3. Snapshot partyIds + lastFetch on main thread
+└─ 4. TryEnqueueAsyncWork → FetchAndProcessPartyUpdatesAsync
+       │
+       ├─ IPartyUpdateService.FetchAsync(partyIds, lastFetch)
+       ├─ For each updated party: ICharacterPartyService.FetchManyAsync
+       └─ TryEnqueueMainThread
+              ├─ Update LastFetchTime
+              ├─ For each party:
+              │    ├─ Diff previous cached members vs current
+              │    ├─ Removed members → reset controller, Broadcast PartyLeaveBroadcast
+              │    ├─ Update PartyMemberTracker cache
+              │    └─ Build PartyAddMultipleBroadcast (PartyID, CharacterID, Rank, HealthPCT)
+              └─ Broadcast PartyAddMultipleBroadcast to each local online member
+       │
+       └─ finally: EndUpdatePump
+</code></pre>
+<h3 id="onupdate-sweep">OnUpdate Sweep</h3>
+<pre><code>OnUpdate(deltaTime)
+│
+├─ 1. DrainMainThreadQueue (up to maxMainThreadActionsPerFrame)
+├─ 2. SweepPendingInvitations()
+│      ├── Check if sweep interval has elapsed
+│      └── SweepExpiredInvitations(ttl, maxScan, maxRemove)
+└─ 3. SweepIngressGuards()
+       └── IngressGuard.Sweep(interval, ttl, maxRemovals)
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Party/
+├── PartySystem.cs                     # Core party orchestration, handlers, async persistence, and update pump
+├── PartySystemRuntimeData.cs          # Pending invitation map, last update fetch cursor, ingress guard, pump lock
+├── PartySystemMainThreadQueueData.cs  # Per-system main-thread action queue container
+├── PartyCharacterMappingData.cs       # Party online/cached membership trackers
+└── README.md                          # System documentation
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/Party/IPartySystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Party/IPartySystemRuntimeData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Party/IPartyCharacterMappingData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Party/IPartySystemMainThreadQueueData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── PartySystem : IPartySystem&lt;NetworkConnection&gt;
+
+RuntimeDataContainer
+├── PartySystemRuntimeData : IPartySystemRuntimeData
+└── PartyCharacterMappingData : IPartyCharacterMappingData
+
+SystemMainThreadQueueData
+└── PartySystemMainThreadQueueData : IPartySystemMainThreadQueueData
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Party/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

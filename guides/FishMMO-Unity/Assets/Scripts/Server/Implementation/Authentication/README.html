@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Server Authentication | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Server Authentication | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/Authentication/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="server-authentication">Server Authentication</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/Authentication/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Provides server-side authentication via SRP-6a (LoginServer) and HMAC-signed token verification (World/Scene servers) using a bounded-channel architecture with X25519 ECDH key exchange, AES-256-GCM encryption, and comprehensive DoS hardening.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>Server-side authentication with a bounded-channel architecture for high-throughput, non-blocking operation. Two authentication modes — <strong>SRP-6a</strong> (LoginServer) and <strong>HMAC-signed token verification</strong> (World/Scene servers) — share a common abstract base class (<code>BaseServerAuthenticator</code>) that routes FishNet lifecycle events to an engine-independent <code>BaseAuthenticatorCore&lt;NetworkConnection&gt;</code> in the <code>FishMMO-Auth.dll</code> shared library.</p>
+<h3 id="composition-architecture">Composition Architecture</h3>
+<p>Because <code>Authenticator</code> (FishNet) is a MonoBehaviour, and C# single-inheritance prevents a Unity class from also extending <code>BaseAuthenticatorCore&lt;TConnection&gt;</code>, the Unity authenticator classes use <strong>composition with inner sealed classes</strong>:</p>
+<pre><code>BaseServerAuthenticator : Authenticator      ← Unity MonoBehaviour
+  └─ protected abstract Core                  ← holds FishMMO-Auth core instance
+
+ServerAuthenticator : BaseServerAuthenticator
+  └─ ServerAuthenticatorCore                  ← inner sealed class
+      : SrpAuthenticatorCore&lt;NetworkConnection&gt; (FishMMO-Auth)
+
+TokenServerAuthenticator : BaseServerAuthenticator
+  └─ TokenCore                                ← inner sealed class
+      : TokenAuthenticatorCore&lt;NetworkConnection&gt; (FishMMO-Auth)
+</code></pre>
+<p>The Unity classes are <strong>thin routing shells</strong>: they register FishNet broadcast handlers, forward received messages to the core, supply DB callbacks via abstract method implementations, and marshal core-initiated broadcasts back to the FishNet main thread. All handshake, TTL sweep, channel, worker, rate-limit, and crypto orchestration logic lives in FishMMO-Auth.</p>
+<p>All cryptographic operations are delegated to three static service classes in the <code>FishMMO.Auth.Implementation</code> namespace (shipped via <code>FishMMO-Auth.dll</code>):</p>
+<ul>
+<li><strong><code>HandshakeService</code></strong> — X25519 ECDH key agreement, transcript-hash computation, and cookie HMAC generation/verification.</li>
+<li><strong><code>SrpService</code></strong> — Server-side SRP field encryption/decryption, fake SRP verifier generation, and all AES-GCM encrypt/decrypt for SRP broadcasts.</li>
+<li><strong><code>TokenService</code></strong> — Server-side token generation, HMAC signing, structure verification, and token encrypt/decrypt.</li>
+</ul>
+<p>Core types (<code>CryptoHelper</code>, <code>ConnectionEncryptionData</code>, <code>ServerSrpData</code>, <code>SrpVerifyRequest</code>, <code>SrpProofRequest</code>, <code>AuthState</code>, <code>IAccountManager</code>, <code>ISrpAccountManager</code>, <code>ITokenAccountManager</code>, <code>AccessLevel</code>, <code>ClientAuthenticationResult</code>) are in the <code>FishMMO.Auth.Core</code> namespace.</p>
+<h3 id="bounded-channel-pipeline">Bounded-Channel Pipeline</h3>
+<p>The pipeline below is owned by the FishMMO-Auth core classes. The Unity wrapper classes route incoming broadcast messages into the core; the core internally manages the channels, workers, and main-thread enqueue callbacks.</p>
+<pre><code>Network Thread (UDP Gates)              Worker Threads (Async)              Main Thread
+┌─────────────────────────┐        ┌────────────────────────────┐     ┌──────────────────┐
+│ OnSrpVerifyReceived()   │──────► │ ProcessSrpVerifyAsync()    │────►│ DrainMainThread() │
+│   • Validate connection │ Verify │   • AES-GCM decrypt user   │ Enq │   • Broadcast()   │
+│   • In-flight gate      │Channel │   • StrictUtf8 decode      │ ──► │   • Disconnect()  │
+│   • TryWrite(channel)   │        │   • DB: fetch account      │     │   • OnAuthResult() │
+│   • Zero blocking       │        │   • SRP state setup        │     └──────────────────┘
+└─────────────────────────┘        └────────────────────────────┘
+┌─────────────────────────┐        ┌────────────────────────────┐     ┌──────────────────┐
+│ OnSrpProofReceived()    │──────► │ ProcessSrpProofAsync()     │────►│ DrainMainThread() │
+│   • Validate connection │ Proof  │   • AES-GCM decrypt proof  │ Enq │   • Broadcast()   │
+│   • In-flight gate      │Channel │   • SRP proof verification │ ──► │   • Disconnect()  │
+│   • TryWrite(channel)   │        │   • TryLoginAsync()        │     │   • OnAuthResult() │
+└─────────────────────────┘        └────────────────────────────┘     └──────────────────┘
+</code></pre>
+<h3 id="thread-model">Thread Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Responsibilities</th>
+<th>Blocking Allowed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Network Thread</strong></td>
+<td>UDP gate handlers — validate, in-flight gate, enqueue</td>
+<td><strong>No</strong> (zero blocking)</td>
+</tr>
+<tr>
+<td><strong>Worker Threads</strong></td>
+<td>AES decryption, StrictUtf8 decode, database I/O, SRP math, ZeroMemory</td>
+<td><strong>Yes</strong> (async/await)</td>
+</tr>
+<tr>
+<td><strong>Main Thread</strong></td>
+<td><code>Broadcast()</code>, <code>Disconnect()</code>, <code>OnAuthenticationResult</code></td>
+<td>N/A (Unity main loop)</td>
+</tr>
+</tbody>
+</table>
+<p>Workers enqueue <code>Action</code> delegates into a <code>ConcurrentQueue&lt;Action&gt;</code> held by <code>BaseServerAuthenticator</code>, drained each frame by <code>Update()</code> → <code>DrainMainThreadQueue()</code>. A per-frame cap (<code>maxMainThreadActionsPerUpdate = 100</code>, Inspector-configurable) time-slices draining to avoid frame spikes, with back-pressure logging when the queue is not fully drained.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Fully supported as a server host</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Fully supported as a server host</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only component; not applicable to browser builds</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Engine:</strong> Unity 6.3 LTS
+<strong>Scripting backend:</strong> IL2CPP</p>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>SRP-6a authentication</strong> — Full Secure Remote Password protocol (2048-bit group, SHA-512) for LoginServer password verification without transmitting passwords.</li>
+<li><strong>HMAC-signed token authentication</strong> — Token-based authentication for World/Scene servers with database-backed revocation support and configurable expiration.</li>
+<li><strong>X25519 ECDH key exchange</strong> — Ephemeral Diffie-Hellman key agreement with transcript-hash binding and version negotiation for forward secrecy.</li>
+<li><strong>AES-256-GCM encryption</strong> — All authentication payloads encrypted with Additional Authenticated Data (AAD) binding <code>(messageType, agreedVersion, sequenceNumber)</code> to prevent cross-message ciphertext swapping.</li>
+<li><strong>Stateless cookie challenge</strong> — Two-phase handshake: HMAC-SHA256 cookie challenge filters spoofed-source-IP attacks before any X25519 computation. Cookies are time-bucketed (30 s) with fail-closed key rotation on restart.</li>
+<li><strong>Bounded-channel pipeline</strong> — <code>System.Threading.Channels</code> with <code>DropWrite</code> policy for non-blocking network-thread operation. State rollback on write failure enables client retry without re-handshaking.</li>
+<li><strong>Counter-based nonce scheme</strong> — 12-byte nonces with HKDF-derived prefix, direction byte, and monotonic counter; overflow guard at <code>uint.MaxValue</code> prevents nonce reuse.</li>
+<li><strong>Strict UTF-8 decoding</strong> — All decrypted <code>byte[]</code> → <code>string</code> conversions use <code>UTF8Encoding(false, true)</code>. Invalid sequences trigger immediate buffer zeroing and disconnect.</li>
+<li><strong>Buffer and credential zeroing</strong> — Decrypted plaintext, symmetric keys, session prefixes, and HMAC keys are zeroed with <code>CryptographicOperations.ZeroMemory()</code> immediately after use.</li>
+<li><strong>Constant-time comparison</strong> — <code>CryptoHelper.FixedTimeEquals()</code> for timing-safe byte comparisons on proofs, cookies, and tokens.</li>
+<li><strong>Per-IP handshake rate limiting</strong> — 250 ms debounce per IP with bounded sweep cleanup to prevent X25519 CPU abuse.</li>
+<li><strong>Global handshake rate cap</strong> — Maximum 500 X25519 handshakes/second (wall-clock based) for botnet defence.</li>
+<li><strong>Per-IP SRP verify debounce</strong> — 1 s cooldown per IP before SRP verify channel ingress.</li>
+<li><strong>Per-account verify debounce</strong> — 2 s cooldown per account name before database lookup.</li>
+<li><strong>Kick-request write debounce</strong> — At most one <code>IKickRequestService.PersistAsync</code> per 10 s per account via <code>ExpiringKeyTracker&lt;string&gt;</code>.</li>
+<li><strong>Stale-auth TTL sweep</strong> — Periodic 1 s sweep disconnects and purges connections that exceed 15 s without completing authentication, with a 60 s hard deadline that cannot be extended.</li>
+<li><strong>Pending auth connection cap</strong> — Maximum 10,000 concurrent half-open auth connections to prevent memory exhaustion.</li>
+<li><strong>Fake SRP verifier for non-existent accounts</strong> — Pre-computed dummy salt/verifier with per-username HMAC-SHA512 derived salts prevents username enumeration via timing or salt-reuse analysis.</li>
+<li><strong>Deferred online check</strong> — Account online-status check is deferred until after SRP proof to prevent account-existence enumeration.</li>
+<li><strong>RejectAndPurge unified failure handling</strong> — All failure paths use a shared helper to atomically notify, disconnect, and purge, preventing information leakage through inconsistent error timing.</li>
+<li><strong>Error indistinguishability</strong> — Most failure paths disconnect without protocol-level detail, preventing oracle attacks.</li>
+<li><strong>Connection IP caching</strong> — <code>LastSeenCacheTracker&lt;int, string&gt;</code> with 120 s TTL caches resolved IP strings to avoid repeated allocations on hot paths, and optionally stores real client IPs recovered from connection tokens (proxy deployments). Behind an L4 proxy, connection IP recovery requires the client to include a connection token validated via <code>IConnectionTokenService</code>; the recovered real IP is stored in the same cache for rate-limiting purposes.</li>
+<li><strong>Token generation and issuance</strong> — LoginServer generates HMAC-signed auth tokens with configurable expiration (default 10 min), encrypted with session keys, and persisted for revocation support.</li>
+<li><strong>Token revocation</strong> — World/Scene servers verify token revocation status via database hash lookup before granting access.</li>
+<li><strong>Protocol version negotiation</strong> — <code>CryptoHelper.NegotiateProtocolVersion</code> with version range binding in the ECDH transcript hash prevents downgrade attacks.</li>
+<li><strong>TOTP two-factor authentication</strong> — After SRP proof, accounts with 2FA enabled enter a TOTP verification phase. TOTP secrets are AES-256-GCM encrypted at rest with a server-side master key. Codes are verified with a ±1 step window and anti-replay via persisted last-used window.</li>
+<li><strong>Recovery code login</strong> — When the authenticator app is unavailable, users can submit a single-use recovery code (XXXXX-XXXXX hex format) instead of a 6-digit TOTP code. The code is verified against PBKDF2-SHA256 hashes via <code>ITwoFactorRecoveryCodeService</code> and consumed after use.</li>
+<li><strong>Per-username TOTP brute-force protection</strong> — Failed TOTP/recovery code attempts are tracked per username (lowercased, cross-connection). After 15 failures within a 30-minute window, further attempts are rejected until the lockout expires. A bounded sweep (64 max scan) evicts stale entries.</li>
+<li><strong>Per-connection TOTP attempt cap</strong> — Each connection is limited to 5 TOTP attempts via <code>TotpPendingState.Attempts</code>. Exceeding the cap disconnects the client.</li>
+<li><strong>TOTP concurrency limiter</strong> — A semaphore (<code>MaxConcurrentTotpVerifications = 4</code>) limits parallel TOTP/recovery code verifications to bound CPU cost from PBKDF2 operations.</li>
+<li><strong>Email enumeration prevention</strong> — For email-based login, unverified accounts receive the same fake SRP flow as non-existent accounts, preventing account-existence disclosure via the <code>AccountUnverified</code> response code. Username-based login still returns <code>AccountUnverified</code> for user-friendly UX.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>FishNet</strong> — Networking framework providing <code>Authenticator</code> base class, <code>NetworkConnection</code>, <code>NetworkManager</code>, and broadcast infrastructure.</li>
+<li><strong>SecureRemotePassword</strong> — SRP-6a library (2048-bit group, SHA-512 parameters).</li>
+<li><strong>FishMMO-Auth.dll</strong> — netstandard2.1 shared authentication library (auto-copied to <code>Assets/Dependencies/</code>). Provides:
+<ul>
+<li><code>FishMMO.Auth.Core</code>: enums (<code>AuthState</code>, <code>AccessLevel</code>, <code>ClientAuthenticationResult</code>), interfaces (<code>IAccountManager</code>, <code>ISrpAccountManager</code>, <code>ITokenAccountManager</code>), DTOs, and the <code>ArrivalOrderTracker</code> / <code>ExpiringKeyTracker</code> / <code>LastSeenCacheTracker</code> collections.</li>
+<li><code>FishMMO.Auth.Implementation</code>: abstract auth core classes (<code>BaseAuthenticatorCore&lt;TConnection&gt;</code>, <code>SrpAuthenticatorCore&lt;TConnection&gt;</code>, <code>TokenAuthenticatorCore&lt;TConnection&gt;</code>), generic account managers (<code>AccountManager&lt;T&gt;</code>, <code>SrpAccountManager&lt;T&gt;</code>, <code>TokenAccountManager&lt;T&gt;</code>), connection data types (<code>ConnectionEncryptionData</code>, <code>AccountData</code>, <code>ServerSrpData</code>), static crypto service classes (<code>HandshakeService</code>, <code>SrpService</code>, <code>TokenService</code>), <code>CryptoHelper</code> (AES-256-GCM, X25519 ECDH, HKDF-SHA256, <code>GcmNonceContext</code>, <code>StrictUtf8</code>, constant-time compare), and request structs (<code>SrpVerifyRequest</code>, <code>SrpProofRequest</code>).</li>
+</ul>
+</li>
+<li><strong>Database services</strong> — <code>IAccountService</code> (fetch salt/verifier), <code>ICharacterService</code> (online check), <code>IKickRequestService</code> (kick persistence), <code>IAuthTokenService</code> (token hash CRUD), <code>ILoginServerSigningKeyService</code> (HMAC key fetch).</li>
+<li><strong>FishMMO.Shared.Authentication</strong> — Centralized validation rules (<code>IsAllowedUsername</code>, <code>IsAllowedPassword</code>).</li>
+<li><strong>FishMMO.Logging.Log</strong> — Structured async logging.</li>
+<li><strong>.NET 6+</strong> — <code>System.Threading.Channels</code>, <code>System.Security.Cryptography</code> (AES-GCM, X25519, HKDF, HMAC-SHA256/512).</li>
+<li><strong>NTP</strong> — Hosts MUST run NTP (or equivalent) to keep the clock monotonically accurate. Wall-clock TTL enforcement, hard deadlines, cookie expiration, and <strong>TOTP verification windows</strong> all use <code>DateTime.UtcNow</code>. Without NTP, TOTP codes may be rejected even when valid, and multi-server deployments will disagree on token expiration.</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This module is an integrated part of the FishMMO Unity project. The server authenticator classes are compiled as part of the server assembly and depend on <code>FishMMO-Auth.dll</code> (auto-copied to <code>Assets/Dependencies/</code> by the FishMMO-Auth build) for all crypto service classes and core types.</p>
+<ol>
+<li>Open the FishMMO-Unity project in Unity 6.3 LTS.</li>
+<li>Ensure FishNet, SecureRemotePassword, <code>FishMMO-Auth.dll</code>, and all database service assemblies are present in the project.</li>
+<li>The authenticator components (<code>ServerAuthenticator</code>, <code>TokenServerAuthenticator</code>) are attached to server prefabs and configured via the Unity Inspector.</li>
+<li>Build using IL2CPP scripting backend for production deployment.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="loginserver-srp-6a">LoginServer (SRP-6a)</h3>
+<ol>
+<li>Attach <code>ServerAuthenticator</code> to the LoginServer's NetworkManager.</li>
+<li>The <code>LoginServerSystem</code> assigns <code>Server</code>, calls <code>InitializeWorkers()</code>, and injects the HMAC signing key and LoginServer ID for token issuance.</li>
+<li>Clients connect and are authenticated through the three-phase SRP flow: Handshake → SRP Verify → SRP Proof.</li>
+<li>On success, clients receive an encrypted server proof and an HMAC-signed auth token for World/Scene server entry.</li>
+</ol>
+<h3 id="worldscene-server-token-based">World/Scene Server (Token-based)</h3>
+<ol>
+<li>Attach <code>TokenServerAuthenticator</code> (or a subclass like <code>WorldServerAuthenticator</code> / <code>SceneServerAuthenticator</code>) to the server's NetworkManager.</li>
+<li>The server system assigns <code>Server</code> and calls <code>InitializeWorkers()</code>.</li>
+<li>Clients connect with the auth token received from LoginServer. The flow is: Handshake → TokenAuth → Result.</li>
+<li>The worker decrypts the token, fetches the issuing LoginServer's signing key from the database, verifies HMAC, checks expiration and revocation, then calls <code>TryLoginAsync()</code> for server-type-specific admission.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="baseserverauthenticator-inspector-fields-fishmmo-unity">BaseServerAuthenticator Inspector Fields (FishMMO-Unity)</h3>
+<p>These are the only configurable values that live in the Unity wrapper classes:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerUpdate</code></td>
+<td>100</td>
+<td>Max queued main-thread actions drained per Update frame</td>
+</tr>
+<tr>
+<td><code>useConnectionIdForRateLimit</code></td>
+<td>false</td>
+<td>Use connection ID instead of remote IP for rate limiting. Enable when behind a NAT/proxy/load balancer</td>
+</tr>
+<tr>
+<td><code>tokenExpirationMinutes</code></td>
+<td>10 min</td>
+<td>Auth token expiration (<code>ServerAuthenticator</code> only; Inspector-configurable)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="baseauthenticatorcore-constants-fishmmo-auth">BaseAuthenticatorCore Constants (FishMMO-Auth)</h3>
+<p>The following constants are defined in <code>BaseAuthenticatorCore&lt;TConnection&gt;</code> and its subclasses in the <code>FishMMO-Auth</code> shared library.</p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AuthStaleTtlSeconds</code></td>
+<td>15 s</td>
+<td>TTL for stale-auth sweep</td>
+</tr>
+<tr>
+<td><code>AuthHardDeadlineSeconds</code></td>
+<td>60 s</td>
+<td>Absolute auth deadline (cannot be extended)</td>
+</tr>
+<tr>
+<td><code>AuthSweepIntervalSeconds</code></td>
+<td>1 s</td>
+<td>Sweep interval for stale auth cleanup</td>
+</tr>
+<tr>
+<td><code>AuthSweepMaxScan</code></td>
+<td>256</td>
+<td>Max entries scanned per stale-auth sweep</td>
+</tr>
+<tr>
+<td><code>AuthSweepMaxRemovals</code></td>
+<td>64</td>
+<td>Max entries purged per stale-auth sweep</td>
+</tr>
+<tr>
+<td><code>MaxPendingAuthConnections</code></td>
+<td>10,000</td>
+<td>Cap on concurrent half-open auth connections</td>
+</tr>
+<tr>
+<td><code>HandshakeIpDebounceSeconds</code></td>
+<td>0.25 s</td>
+<td>Minimum interval between handshakes from same IP</td>
+</tr>
+<tr>
+<td><code>MaxGlobalHandshakesPerSecond</code></td>
+<td>500</td>
+<td>Global X25519 handshake rate cap</td>
+</tr>
+<tr>
+<td><code>CookieTimeBucketSeconds</code></td>
+<td>30 s</td>
+<td>Handshake cookie validity window (max 2×)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="srpauthenticatorcore-constants-fishmmo-auth">SrpAuthenticatorCore Constants (FishMMO-Auth)</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VerifyWorkerCount</code></td>
+<td>2</td>
+<td>Concurrent SRP verify workers</td>
+</tr>
+<tr>
+<td><code>ProofWorkerCount</code></td>
+<td>2</td>
+<td>Concurrent SRP proof workers</td>
+</tr>
+<tr>
+<td><code>VerifyChannelCapacity</code></td>
+<td>500</td>
+<td>Bounded channel capacity for verify requests</td>
+</tr>
+<tr>
+<td><code>ProofChannelCapacity</code></td>
+<td>500</td>
+<td>Bounded channel capacity for proof requests</td>
+</tr>
+<tr>
+<td><code>KickRequestDebounceSeconds</code></td>
+<td>10 s</td>
+<td>Per-account kick-request debounce</td>
+</tr>
+<tr>
+<td><code>IpAuthAttemptDebounceSeconds</code></td>
+<td>1 s</td>
+<td>Per-IP SRP verify debounce</td>
+</tr>
+<tr>
+<td><code>AccountVerifyDebounceSeconds</code></td>
+<td>2 s</td>
+<td>Per-account SRP verify debounce</td>
+</tr>
+<tr>
+<td><code>ConnectionIpCacheTtlSeconds</code></td>
+<td>120 s</td>
+<td>IP cache entry TTL</td>
+</tr>
+<tr>
+<td><code>MaxConcurrentTotpVerifications</code></td>
+<td>4</td>
+<td>Semaphore limit for parallel TOTP/recovery verifications</td>
+</tr>
+<tr>
+<td><code>MaxTotpAttempts</code></td>
+<td>5</td>
+<td>Per-connection TOTP attempt cap (exceeding disconnects)</td>
+</tr>
+<tr>
+<td><code>MaxTotpFailuresPerUsername</code></td>
+<td>15</td>
+<td>Per-username failure threshold before lockout</td>
+</tr>
+<tr>
+<td><code>TotpUsernameLockoutDuration</code></td>
+<td>30 min</td>
+<td>Lockout window for per-username failures</td>
+</tr>
+<tr>
+<td><code>MaxTotpUsernameFailureEntries</code></td>
+<td>10,000</td>
+<td>Hard cap on tracked username entries</td>
+</tr>
+<tr>
+<td><code>TotpUsernameFailureSweepMaxScan</code></td>
+<td>64</td>
+<td>Max entries scanned per sweep iteration</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tokenauthenticatorcore-constants-fishmmo-auth">TokenAuthenticatorCore Constants (FishMMO-Auth)</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TokenWorkerCount</code></td>
+<td>2</td>
+<td>Concurrent token auth workers</td>
+</tr>
+<tr>
+<td><code>TokenChannelCapacity</code></td>
+<td>500</td>
+<td>Bounded channel capacity for token requests</td>
+</tr>
+<tr>
+<td><code>MaxTokenPayloadBytes</code></td>
+<td>2,048</td>
+<td>Maximum encrypted token payload size</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="registering-the-srp-authenticator-loginserver">Registering the SRP Authenticator (LoginServer)</h3>
+<pre><code class="lang-csharp">// LoginServerSystem.OnStartServer()
+ServerAuthenticator authenticator = networkManager.GetComponent&lt;ServerAuthenticator&gt;();
+authenticator.Server = this.Server;
+authenticator.InitializeWorkers();
+authenticator.TokenSigningKey = hmacKey;
+authenticator.LoginServerId = loginServerId;
+</code></pre>
+<h3 id="registering-the-token-authenticator-worldscene-server">Registering the Token Authenticator (World/Scene Server)</h3>
+<pre><code class="lang-csharp">// WorldServerSystem.OnStartServer()
+TokenServerAuthenticator authenticator = networkManager.GetComponent&lt;TokenServerAuthenticator&gt;();
+authenticator.Server = this.Server;
+authenticator.InitializeWorkers();
+</code></pre>
+<h3 id="overriding-tryloginasync-for-server-specific-admission">Overriding TryLoginAsync for Server-Specific Admission</h3>
+<pre><code class="lang-csharp">// WorldServerAuthenticator
+internal override Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(
+    ClientAuthenticationResult result, string username)
+{
+    // Check world lock, player cap, selected character, etc.
+    if (worldLocked)
+        return Task.FromResult(ClientAuthenticationResult.ServerFull);
+    return Task.FromResult(ClientAuthenticationResult.WorldLoginSuccess);
+}
+</code></pre>
+<h3 id="subscribing-to-authentication-events">Subscribing to Authentication Events</h3>
+<pre><code class="lang-csharp">authenticator.OnClientAuthenticationResult += (conn, authenticated) =&gt;
+{
+    if (authenticated)
+        Log.Info(&quot;Auth&quot;, $&quot;Client {conn.ClientId} authenticated successfully.&quot;);
+};
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Workers started</td>
+<td>Log output: <code>&quot;Workers initialized (Verify=2, Proof=2)&quot;</code> or <code>&quot;Workers initialized (Token=2)&quot;</code></td>
+</tr>
+<tr>
+<td>Handshake completing</td>
+<td>Client receives <code>ServerHandshake</code> with X25519 public key and agreed version</td>
+</tr>
+<tr>
+<td>SRP verify processing</td>
+<td>Client receives <code>SrpVerifyBroadcast</code> response with encrypted salt and server ephemeral</td>
+</tr>
+<tr>
+<td>SRP proof accepted</td>
+<td>Client receives <code>SrpSuccessBroadcast</code> with encrypted server proof and auth token</td>
+</tr>
+<tr>
+<td>Token auth accepted</td>
+<td>Client receives <code>ClientAuthResultBroadcast</code> with <code>LoginSuccess</code> / <code>WorldLoginSuccess</code> / <code>SceneLoginSuccess</code></td>
+</tr>
+<tr>
+<td>Stale auth sweep active</td>
+<td>Log warnings for purged connections exceeding 15 s TTL</td>
+</tr>
+<tr>
+<td>Rate limiting active</td>
+<td><code>ServerBusy</code> result returned to rate-limited clients</td>
+</tr>
+<tr>
+<td>Global handshake cap</td>
+<td>Silent drop (no disconnect) when rate exceeded; handshake counter resets each wall-clock second</td>
+</tr>
+<tr>
+<td>Pending auth cap</td>
+<td>Log warning: <code>&quot;Pending auth cap (10000) reached — handshake(s) dropped.&quot;</code> (rate-limited to 1 per 5 s)</td>
+</tr>
+<tr>
+<td>Main-thread back-pressure</td>
+<td>Log warning: <code>&quot;Main-thread queue back-pressure: N actions remain after draining 100.&quot;</code></td>
+</tr>
+<tr>
+<td>Cookie rotation</td>
+<td>In-flight handshakes with old cookies fail verification and disconnect after authenticator restart</td>
+</tr>
+<tr>
+<td>Token revocation</td>
+<td><code>TokenRevoked</code> result returned for revoked tokens</td>
+</tr>
+<tr>
+<td>Token expiration</td>
+<td><code>TokenExpired</code> result returned for expired tokens</td>
+</tr>
+<tr>
+<td>Graceful shutdown</td>
+<td>Workers stop, channels complete, HMAC key zeroed, shared state cleared</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|connect + token| Auth[Server Authentication]
+    Auth --&gt;|verify token| DB[(PostgreSQL Tokens)]
+    Auth --&gt;|attach session| Conn[Connection state]
+    Auth --&gt;|approve / reject| Client
+    Auth --&gt;|on failure| Kick[KickRequest]
+</code></pre>
+<h3 id="srp-6a-authentication-loginserver">SRP-6a Authentication (LoginServer)</h3>
+<h4 id="phase-1-key-exchange-inline--no-channel">Phase 1: Key Exchange (Inline — No Channel)</h4>
+<pre><code>Client                              Server (Network Thread)
+  │                                      │
+  │── ClientHandshake ─────────────────► │  OnServerClientHandshakeReceived()
+  │   { PublicKey (X25519) }             │    • Cookie == null → compute HMAC cookie, reply
+  │◄── ServerHandshake ──────────────── │    • { Cookie } (no PublicKey)
+  │   { Cookie }                         │
+  │                                      │
+  │── ClientHandshake ─────────────────► │  OnServerClientHandshakeReceived()
+  │   { PublicKey, Cookie }              │    • Verify cookie (current + previous time bucket)
+  │                                      │    • Per-IP rate limit (0.25 s debounce)
+  │                                      │    • Global rate limit (500/s)
+  │                                      │    • Pending auth cap check (10,000)
+  │                                      │    • Version negotiation (min/max → agreed)
+  │                                      │    • AddConnectionEncryptionData()
+  │                                      │    • X25519 ECDH + transcript hash + HKDF-SHA256
+  │                                      │      → directional AES keys + session prefix
+  │◄── ServerHandshake ──────────────── │    • { ServerPublicKey, AgreedVersion }
+</code></pre>
+<h4 id="phase-2-srp-verify-bounded-channel">Phase 2: SRP Verify (Bounded Channel)</h4>
+<pre><code>Client                              Server
+  │                                      │
+  │── SrpVerifyBroadcast ──────────────► │  UDP Gate → verifyChannel
+  │   { Username (enc), Ephemeral (enc)} │    • Per-IP debounce (1 s)
+  │                                      │    • AuthState: Handshake → VerifyPending
+  │                                      │    • DropWrite rollback on channel full
+  │                                      │
+  │                                      │  Worker: ProcessSrpVerifyAsync()
+  │                                      │    • Consume seq-1: AES-GCM decrypt username
+  │                                      │    • StrictUtf8 decode (DecoderFallbackException → zero + disconnect)
+  │                                      │    • ZeroMemory on decrypted byte arrays
+  │                                      │    • IsAllowedUsername validation
+  │                                      │    • Per-account verify debounce (2 s)
+  │                                      │    • Consume seq: AES-GCM decrypt public ephemeral
+  │                                      │    • DB: FetchForLoginAsync(username)
+  │                                      │    • RefreshAuthTtl (hard deadline enforced)
+  │                                      │    • Non-existent account → fake SRP tuple + per-username HMAC salt
+  │                                      │    • AddConnectionAccount (VerifyPending → WaitingForProof)
+  │                                      │    • AES-GCM encrypt salt + server ephemeral
+  │◄── SrpVerifyBroadcast ──────────── │    • Enqueue → Main Thread Broadcast
+  │   { Salt (enc), Ephemeral (enc) }   │
+</code></pre>
+<h4 id="phase-3-srp-proof-bounded-channel">Phase 3: SRP Proof (Bounded Channel)</h4>
+<pre><code>Client                              Server
+  │                                      │
+  │── SrpProofBroadcast ──────────────► │  UDP Gate → proofChannel
+  │   { ClientProof (encrypted) }       │    • AuthState: WaitingForProof → ProofPending
+  │                                      │    • DropWrite rollback on channel full
+  │                                      │
+  │                                      │  Worker: ProcessSrpProofAsync()
+  │                                      │    • Consume seq: AES-GCM decrypt client proof
+  │                                      │    • ZeroMemory on decrypted byte array
+  │                                      │    • Atomically: validate proof + advance ProofPending → SrpSuccess
+  │                                      │    • RefreshAuthTtl after SRP modular exponentiation
+  │                                      │    • Deferred online check via ICharacterService.FetchManyAsync
+  │                                      │    • Online → kick-request debounce + IKickRequestService.PersistAsync
+  │                                      │    • TryLoginAsync() (virtual — subclass-specific)
+  │                                      │    • Generate HMAC-signed auth token (if signing key available)
+  │                                      │    • Persist token hash via IAuthTokenService.IssueAsync
+  │                                      │    • AES-GCM encrypt server proof + token
+  │◄── SrpSuccessBroadcast ──────────── │    • Enqueue → Main Thread Broadcast
+  │   { ServerProof (enc), Token (enc)} │    • OnAuthentication(conn, true)
+  │                                      │    • Advance SrpSuccess → Authenticated
+  │                                      │    • ClearSrpState()
+</code></pre>
+<h4 id="phase-35-two-factor-authentication-conditional">Phase 3.5: Two-Factor Authentication (Conditional)</h4>
+<p>If the account has TOTP enabled (<code>accountData.TotpEnabled == true</code>), the SRP proof handler defers token issuance and enters a TOTP verification phase. The client receives <code>TwoFactorRequired</code> instead of <code>SrpSuccessBroadcast</code>.</p>
+<pre><code>Client                              Server
+  │                                      │
+  │◄── ClientAuthResultBroadcast ────── │  ProcessSrpProofAsync()
+  │   { TwoFactorRequired }             │    • SRP proof valid, 2FA enabled
+  │                                      │    • Create TotpPendingState (attempts, serverProof, accessLevel)
+  │                                      │    • State remains at SrpSuccess (not Authenticated)
+  │                                      │
+  │── TwoFactorVerifyBroadcast ────────► │  UDP Gate → totpSemaphore
+  │   { Code (encrypted), Seq }          │    • Increment TotpPendingState.Attempts (volatile)
+  │                                      │    • Acquire totpSemaphore (MaxConcurrent=4)
+  │                                      │
+  │                                      │  Worker: ProcessTwoFactorVerifyAsync()
+  │                                      │    • Consume seq: AES-GCM decrypt code
+  │                                      │    • Per-username lockout check (15 failures / 30 min)
+  │                                      │    • Detect code format:
+  │                                      │      ┌── 6-digit numeric → TOTP path
+  │                                      │      │   • Decrypt TOTP secret with master key
+  │                                      │      │   • VerifyTotpCode (±1 step, anti-replay)
+  │                                      │      │   • Persist last-used window
+  │                                      │      │
+  │                                      │      └── XXXXX-XXXXX hex → Recovery code path
+  │                                      │          • FetchUnusedByAccountAsync()
+  │                                      │          • VerifyRecoveryCode (PBKDF2-SHA256)
+  │                                      │          • ConsumeCodeAsync() on match
+  │                                      │
+  │                                      │    • On failure: track per-username, send TwoFactorInvalid
+  │                                      │    • On success: SrpSuccess → Authenticated
+  │                                      │    • Encrypt server proof + generate auth token
+  │◄── SrpSuccessBroadcast ──────────── │    • Enqueue → Main Thread Broadcast
+  │   { ServerProof (enc), Token (enc)} │    • OnAuthentication(conn, true)
+  │                                      │    • ClearSrpState()
+</code></pre>
+<h3 id="token-authentication-worldscene-server">Token Authentication (World/Scene Server)</h3>
+<pre><code>Client                              Server (Network Thread)
+  │                                      │
+  │── ClientHandshake ─────────────────► │  (Same cookie + ECDH flow as above)
+  │◄── ServerHandshake ──────────────── │
+  │                                      │
+  │── TokenAuthBroadcast ──────────────► │  UDP Gate → tokenChannel
+  │   { Token (encrypted) }             │    • AuthState: Handshake → TokenPending
+  │                                      │    • Payload size check (≤ 2048 bytes)
+  │                                      │
+  │                                      │  Worker: ProcessTokenAuthAsync()
+  │                                      │    • Consume seq: AES-GCM decrypt token
+  │                                      │    • Validate minimum token structure (≥ 69 bytes)
+  │                                      │    • Parse loginServerId from token payload
+  │                                      │    • DB: Fetch signing key for issuing LoginServer
+  │                                      │    • RefreshAuthTtl after DB fetch
+  │                                      │    • Timing-equalized HMAC verify (random key on miss)
+  │                                      │    • Check expiration (DateTime.UtcNow ≥ expiresUtc)
+  │                                      │    • Check revocation via token hash DB lookup
+  │                                      │    • RefreshAuthTtl after revocation check
+  │                                      │    • AddConnectionAccount(conn, accountName, AccessLevel.Player)
+  │                                      │    • TryLoginAsync() (virtual — WorldServer/SceneServer logic)
+  │◄── ClientAuthResultBroadcast ────── │    • Enqueue → Main Thread Broadcast
+  │   { Result }                         │    • OnAuthentication(conn, authenticated)
+  │                                      │    • Advance TokenPending → Authenticated
+</code></pre>
+<h3 id="failure-handling">Failure Handling</h3>
+<p>On failure at any step, workers call <code>RejectAndPurge(conn, result)</code> which atomically:</p>
+<ol>
+<li>Enqueues a <code>ClientAuthResultBroadcast</code> on <code>Channel.Reliable</code> to the main thread.</li>
+<li>Disconnects the client after the broadcast is sent.</li>
+<li>Purges all transient auth state via <code>PurgeConnectionAuthState</code>.</li>
+</ol>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code># FishMMO-Auth (netstandard2.1 shared library — Assets/Dependencies/FishMMO-Auth.dll)
+FishMMO-Auth/
+├── Core/
+│   ├── Enums/
+│   │   ├── AuthState.cs                       # Enum: Handshake → VerifyPending → … → Authenticated
+│   │   ├── AccessLevel.cs                     # Enum: Player, Moderator, Admin, etc.
+│   │   └── ClientAuthenticationResult.cs      # Enum: auth result codes
+│   ├── Interfaces/
+│   │   ├── IAccountManager.cs                 # Thread-safe account/connection state management
+│   │   ├── ISrpAccountManager.cs              # SRP-specific account manager (LoginServer)
+│   │   └── ITokenAccountManager.cs            # Token-specific account manager (World/Scene)
+│   └── Collections/
+│       ├── ExpiringKeyTracker.cs              # Keyed debounce/rate-limit (head-first expiry queue)
+│       ├── LastSeenCacheTracker.cs            # Key/value cache with TTL by last-seen timestamp
+│       └── ArrivalOrderTracker.cs             # Oldest-first tracker for stale-connection sweeps
+│
+└── Implementation/
+    ├── Auth/
+    │   ├── BaseAuthenticatorCore.cs           # Abstract base: handshake, TTL sweeps, workers, rate limits, cookie, nonce
+    │   ├── SrpAuthenticatorCore.cs            # Abstract SRP-6a pipeline: bounded channels, verify/proof workers, TOTP
+    │   ├── TokenAuthenticatorCore.cs          # Abstract token pipeline: bounded channel, token worker, revocation
+    │   └── ClientAuthenticatorCore.cs         # Abstract client-side auth flow
+    ├── Account/
+    │   ├── AccountManager.cs                  # Thread-safe base: all dictionaries, CAS machine, sweep tracking
+    │   ├── SrpAccountManager.cs               # SRP extension: AddConnectionAccount, SweepUnauthenticated
+    │   └── TokenAccountManager.cs             # Token extension: AddConnectionAccount (name + ACL)
+    ├── Connection/
+    │   ├── AccountData.cs                     # Access level + auth state + SRP data container
+    │   └── ConnectionEncryptionData.cs        # Per-connection AES-256 keys, nonce contexts, sequence tracking
+    ├── SRP/
+    │   ├── ServerSrpData.cs                   # Server SRP session state (ephemeral, proof, verifier)
+    │   └── ClientSrpData.cs                   # Client SRP session state
+    ├── Requests/
+    │   ├── SrpVerifyRequest.cs                # Immutable request struct (encrypted credentials)
+    │   └── SrpProofRequest.cs                 # Immutable request struct (encrypted proof)
+    └── Services/
+        ├── HandshakeService.cs                # X25519 ECDH key agreement, cookie HMAC (client + server sides)
+        ├── SrpService.cs                      # Server-side SRP encrypt/decrypt, fake SRP verifier generation
+        └── TokenService.cs                    # Token generation, HMAC signing, structure verification
+
+# FishMMO-Unity (this assembly)
+Server/
+├── Core/Authentication/
+│   └── IAuthenticatorQueueData.cs             # Legacy interface for bounded channels + CTS runtime data
+│
+├── Implementation/Authentication/             # FishNet-typed composition wrappers (this directory)
+│   ├── IServerAuthenticator.cs                # Interface: Server ref + worker lifecycle
+│   ├── BaseServerAuthenticator.cs             # Composition host: owns Core, routes FishNet events to core
+│   ├── ServerAuthenticator.cs                 # SRP wrapper: inner ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkConnection&gt;
+│   └── TokenServerAuthenticator.cs            # Token wrapper: inner TokenCore : TokenAuthenticatorCore&lt;NetworkConnection&gt;
+│
+└── Implementation/World/
+    ├── WorldServer/Authentication/
+    │   └── WorldServerAuthenticator.cs        # Subclass of TokenServerAuthenticator: world admission (player cap, character check)
+    └── SceneServer/Authentication/
+        └── SceneServerAuthenticator.cs        # Subclass of TokenServerAuthenticator: scene-transfer pass-through
+</code></pre>
+<h3 id="related-modules">Related Modules</h3>
+<pre><code>Shared/
+└── Implementation/Network/Authentication/
+    └── AuthenticationBroadcasts.cs            # ClientHandshake, ServerHandshake, SrpVerify/Proof/Success, AuthResult
+</code></pre>
+<h3 id="composition-and-inheritance">Composition and Inheritance</h3>
+<p>C# single-inheritance prevents a MonoBehaviour from also extending <code>BaseAuthenticatorCore&lt;TConnection&gt;</code>. The pattern is composition via inner sealed classes:</p>
+<pre><code># Class hierarchy
+Authenticator (FishNet MonoBehaviour)
+└── BaseServerAuthenticator              # owns Core; routes FishNet lifecycle to it
+    ├── ServerAuthenticator              # this directory — inner: ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkConnection&gt;
+    └── TokenServerAuthenticator         # this directory — inner: TokenCore : TokenAuthenticatorCore&lt;NetworkConnection&gt;
+        ├── WorldServerAuthenticator     # in Server/Implementation/World/WorldServer/Authentication/
+        │                                # — overrides TryLoginAsync + OnAuthSweep (player cap, character check)
+        └── SceneServerAuthenticator     # in Server/Implementation/World/SceneServer/Authentication/
+                                         # — overrides TryLoginAsync (scene pass-through)
+
+# FishMMO-Auth core abstract hierarchy
+BaseAuthenticatorCore&lt;TConnection&gt;
+├── SrpAuthenticatorCore&lt;TConnection&gt;    # used as base for ServerAuthenticatorCore (inner class)
+└── TokenAuthenticatorCore&lt;TConnection&gt;  # used as base for TokenCore (inner class)
+
+# Inner sealed class example (ServerAuthenticator.cs)
+private sealed class ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkConnection&gt;
+{
+    // implements all abstract callbacks by routing to _outer (the ServerAuthenticator instance)
+}
+</code></pre>
+<h3 id="key-interfaces-and-classes">Key Interfaces and Classes</h3>
+<ul>
+<li><strong><code>IServerAuthenticator</code></strong> — Unity interface exposing <code>Server</code> property, <code>InitializeWorkers()</code>, and <code>ShutdownWorkers()</code>. Consumed by <code>FishNetNetworkWrapper.AttachLoginAuthenticator</code>.</li>
+<li><strong><code>BaseServerAuthenticator</code></strong> — Abstract Unity composition host. Holds <code>protected abstract BaseAuthenticatorCore&lt;NetworkConnection&gt; Core</code>. Owns the <code>ConcurrentQueue&lt;Action&gt;</code> drained by <code>Update()</code>, handles <code>InitializeOnce</code>, <code>OnRemoteConnectionState</code>, <code>ClientHandshake</code> broadcast routing, and the <code>OnAuthSweep()</code> / <code>TryLoginAsync()</code> virtual hooks. Includes an <code>OnDestroy()</code> failsafe that calls <code>ShutdownWorkers()</code>.</li>
+<li><strong><code>ServerAuthenticator</code></strong> — SRP wrapper (LoginServer). Inspector fields: <code>tokenExpirationMinutes</code>. Contains inner <code>ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkConnection&gt;</code> which implements all abstract callbacks by routing to <code>_outer</code>. The outer class provides DB method implementations (<code>FetchAccountForLoginCoreAsync</code>, <code>CheckIsOnlineCoreAsync</code>, <code>PersistTokenHashCoreAsync</code>, <code>VerifyTotpCodeCoreAsync</code>, etc.).</li>
+<li><strong><code>TokenServerAuthenticator</code></strong> — Token wrapper (base for World/Scene servers). Contains inner <code>TokenCore : TokenAuthenticatorCore&lt;NetworkConnection&gt;</code>. Provides <code>FetchSigningKeyCoreAsync</code> and <code>CheckTokenRevocationCoreAsync</code>. Subclassed by <code>WorldServerAuthenticator</code> and <code>SceneServerAuthenticator</code> (both located outside this directory under <code>Server/Implementation/World/...</code>).</li>
+<li><strong><code>BaseAuthenticatorCore&lt;TConnection&gt;</code></strong> (FishMMO-Auth) — Engine-independent base: cookie challenge, X25519 handshake, stale-auth TTL sweep, pending-auth cap, global/per-IP handshake rate limits, worker lifecycle (<code>InitializeWorkers</code>, <code>ShutdownWorkers</code>, <code>Tick</code>), and <code>HandleConnectionStopped</code>.</li>
+<li><strong><code>SrpAuthenticatorCore&lt;TConnection&gt;</code></strong> (FishMMO-Auth) — All SRP-6a logic: bounded verify/proof channels, workers, fake SRP verifier, TOTP, per-IP/account debounce, IP cache, kick-request debounce, token generation. <code>TickRateLimits()</code> must be called each frame from the Unity wrapper's <code>OnUpdate()</code>.</li>
+<li><strong><code>TokenAuthenticatorCore&lt;TConnection&gt;</code></strong> (FishMMO-Auth) — All token-auth logic: bounded token channel, worker, HMAC verification with timing equalization, expiration and revocation checks.</li>
+</ul>
+<h3 id="broadcast-types">Broadcast Types</h3>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Direction</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ClientHandshake</code></td>
+<td>Client → Server</td>
+<td>X25519 public key, cookie (phase 2), min/max protocol version</td>
+</tr>
+<tr>
+<td><code>ServerHandshake</code></td>
+<td>Server → Client</td>
+<td>X25519 public key (phase 2) or cookie (phase 1), agreed version</td>
+</tr>
+<tr>
+<td><code>SrpVerifyBroadcast</code></td>
+<td>Bidirectional</td>
+<td>Encrypted username/salt + public ephemeral</td>
+</tr>
+<tr>
+<td><code>SrpProofBroadcast</code></td>
+<td>Client → Server</td>
+<td>Encrypted client proof</td>
+</tr>
+<tr>
+<td><code>SrpSuccessBroadcast</code></td>
+<td>Server → Client</td>
+<td>Encrypted server proof + auth result + encrypted token</td>
+</tr>
+<tr>
+<td><code>TokenAuthBroadcast</code></td>
+<td>Client → Server</td>
+<td>Encrypted auth token</td>
+</tr>
+<tr>
+<td><code>TwoFactorVerifyBroadcast</code></td>
+<td>Client → Server</td>
+<td>Encrypted TOTP or recovery code + sequence number</td>
+</tr>
+<tr>
+<td><code>ClientAuthResultBroadcast</code></td>
+<td>Server → Client</td>
+<td>Authentication result code</td>
+</tr>
+</tbody>
+</table>
+<h3 id="authentication-results">Authentication Results</h3>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SrpVerify</code></td>
+<td>SRP verify phase completed, awaiting proof</td>
+</tr>
+<tr>
+<td><code>LoginSuccess</code></td>
+<td>Full SRP authentication succeeded</td>
+</tr>
+<tr>
+<td><code>InvalidUsernameOrPassword</code></td>
+<td>Credentials failed or SRP proof invalid</td>
+</tr>
+<tr>
+<td><code>AlreadyOnline</code></td>
+<td>Account has an online character (kick request issued)</td>
+</tr>
+<tr>
+<td><code>Banned</code></td>
+<td>Account is banned</td>
+</tr>
+<tr>
+<td><code>ServerBusy</code></td>
+<td>Channel full, services unavailable, or rate-limited</td>
+</tr>
+<tr>
+<td><code>WorldLoginSuccess</code></td>
+<td>World-server entry approved</td>
+</tr>
+<tr>
+<td><code>SceneLoginSuccess</code></td>
+<td>Scene-server entry approved</td>
+</tr>
+<tr>
+<td><code>ServerFull</code></td>
+<td>World server locked or at capacity</td>
+</tr>
+<tr>
+<td><code>NoCharacterSelected</code></td>
+<td>No selected character for world entry</td>
+</tr>
+<tr>
+<td><code>AccountUnverified</code></td>
+<td>Account exists but email not verified (username login only)</td>
+</tr>
+<tr>
+<td><code>TwoFactorRequired</code></td>
+<td>SRP proof valid; TOTP/recovery code required to complete login</td>
+</tr>
+<tr>
+<td><code>TwoFactorInvalid</code></td>
+<td>TOTP code or recovery code verification failed</td>
+</tr>
+<tr>
+<td><code>TokenInvalid</code></td>
+<td>Token HMAC verification failed or structure invalid</td>
+</tr>
+<tr>
+<td><code>TokenExpired</code></td>
+<td>Token past expiration time</td>
+</tr>
+<tr>
+<td><code>TokenRevoked</code></td>
+<td>Token revoked in database</td>
+</tr>
+<tr>
+<td><code>TokenDecryptFailed</code></td>
+<td>Client-only: SRP login succeeded but auth token decryption failed (non-fatal, not sent over wire)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="security-summary">Security Summary</h3>
+<table>
+<thead>
+<tr>
+<th>Defence</th>
+<th>Mechanism</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AES-256-GCM with AAD binding</td>
+<td><code>(messageType, agreedVersion, sequenceNumber)</code> — cross-message swap → GCM tag failure</td>
+</tr>
+<tr>
+<td>Counter-based nonce</td>
+<td><code>[prefix(4B)‖dir(1B)‖pad(3B)‖counter(4B)]</code> — overflow guard at <code>uint.MaxValue</code></td>
+</tr>
+<tr>
+<td>Strict UTF-8</td>
+<td><code>DecoderFallbackException</code> → <code>ZeroMemory</code> + disconnect</td>
+</tr>
+<tr>
+<td>Buffer zeroing</td>
+<td><code>CryptographicOperations.ZeroMemory()</code> on all decrypted data</td>
+</tr>
+<tr>
+<td>Constant-time compare</td>
+<td><code>CryptographicOperations.FixedTimeEquals</code> for proofs, cookies, tokens</td>
+</tr>
+<tr>
+<td>Forward secrecy</td>
+<td>Ephemeral X25519 keypairs discarded after ECDH</td>
+</tr>
+<tr>
+<td>Transcript binding</td>
+<td>SHA-256 hash of <code>(domain‖clientPub‖serverPub‖versions)</code> fed into HKDF</td>
+</tr>
+<tr>
+<td>Cookie challenge</td>
+<td>Stateless HMAC-SHA256, time-bucketed, fail-closed rotation</td>
+</tr>
+<tr>
+<td>Fake SRP state</td>
+<td>Pre-computed verifier + per-username HMAC-SHA512 salt derivation</td>
+</tr>
+<tr>
+<td>Email enumeration prevention</td>
+<td>Unverified accounts on email login use fake SRP (same as non-existent)</td>
+</tr>
+<tr>
+<td>TOTP anti-replay</td>
+<td>Persisted last-used window; conditional DB update rejects same-window reuse</td>
+</tr>
+<tr>
+<td>Recovery code one-time use</td>
+<td>Matched code consumed via <code>ConsumeCodeAsync</code> immediately after verification</td>
+</tr>
+<tr>
+<td>Per-username TOTP lockout</td>
+<td>15 failures / 30 min cross-connection; bounded tracker with sweep</td>
+</tr>
+<tr>
+<td>Cookie HMAC IP length prefix</td>
+<td>2-byte big-endian IP length prefix eliminates variable-length concatenation ambiguity</td>
+</tr>
+<tr>
+<td>Error indistinguishability</td>
+<td>Generic failures, no protocol-level detail</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cleanup-and-lifecycle">Cleanup and Lifecycle</h3>
+<table>
+<thead>
+<tr>
+<th>Trigger</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Client Disconnect</strong></td>
+<td><code>OnRemoteConnectionState</code> purges transient auth state + <code>AccountManager</code> data</td>
+</tr>
+<tr>
+<td><strong>Worker Shutdown</strong></td>
+<td><code>ShutdownWorkers()</code> → complete channel writers → cancel CTS → drain main-thread queue → clear shared state → zero HMAC key</td>
+</tr>
+<tr>
+<td><strong>Stale Auth Sweep</strong></td>
+<td>Periodic 1 s sweep disconnects + purges half-open sessions (15 s TTL, 60 s hard deadline)</td>
+</tr>
+<tr>
+<td><strong>AccountManager Backstop</strong></td>
+<td><code>SweepUnauthenticatedConnections()</code> with oldest-first tracking purges stale SRP/encryption state</td>
+</tr>
+<tr>
+<td><strong>ExpiringKeyTracker Sweep</strong></td>
+<td><code>OnAuthSweep()</code> / <code>OnUpdate()</code> in subclasses evicts stale debounce/rate-limit entries</td>
+</tr>
+<tr>
+<td><strong>Cookie Key Rotation</strong></td>
+<td><code>InitializeWorkers()</code> regenerates HMAC key; <code>ShutdownWorkers()</code> zeroes it — in-flight cookies fail-closed</td>
+</tr>
+</tbody>
+</table>
+<h3 id="extensibility">Extensibility</h3>
+<p><code>TryLoginAsync</code> is <code>internal virtual</code> on <code>BaseServerAuthenticator</code>, returning <code>Task&lt;ClientAuthenticationResult&gt;</code>. Subclasses override for server-type-specific admission logic:</p>
+<ul>
+<li><strong>LoginServer</strong> (<code>ServerAuthenticator</code>) — Default: returns <code>LoginSuccess</code>.</li>
+<li><strong>WorldServer</strong> (<code>WorldServerAuthenticator</code> — located under <code>Server/Implementation/World/WorldServer/Authentication/</code>) — Checks world lock, player cap, selected character via <code>ExpiringKeyTracker</code>-rate-limited DB query.</li>
+<li><strong>SceneServer</strong> (<code>SceneServerAuthenticator</code> — located under <code>Server/Implementation/World/SceneServer/Authentication/</code>) — Scene-transfer pass-through.</li>
+</ul>
+<h3 id="external-dependencies">External Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FishNet.Authenticating.Authenticator</code></td>
+<td>Base class for auth lifecycle</td>
+</tr>
+<tr>
+<td><code>FishNet.Connection.NetworkConnection</code></td>
+<td>Connection type (<code>TConnection</code>)</td>
+</tr>
+<tr>
+<td><code>System.Threading.Channels</code></td>
+<td>Bounded async producer-consumer queues</td>
+</tr>
+<tr>
+<td><code>SecureRemotePassword</code></td>
+<td>SRP-6a library (2048-bit group, SHA-512)</td>
+</tr>
+<tr>
+<td><code>FishMMO-Auth.dll</code></td>
+<td>Shared auth library: <code>CryptoHelper</code> (AES-256-GCM, X25519 ECDH, HKDF-SHA256, <code>GcmNonceContext</code>, nonce builder, <code>StrictUtf8</code>, constant-time compare), <code>ConnectionEncryptionData</code>, <code>ServerSrpData</code>, <code>SrpVerifyRequest</code>, <code>SrpProofRequest</code>, <code>AuthState</code>, <code>IAccountManager</code>, <code>ISrpAccountManager</code>, <code>ITokenAccountManager</code>, <code>AccessLevel</code>, <code>ClientAuthenticationResult</code>, <code>HandshakeService</code>, <code>SrpService</code>, <code>TokenService</code></td>
+</tr>
+<tr>
+<td><code>FishMMO.Shared.Authentication</code></td>
+<td>Centralized validation rules (<code>IsAllowedUsername</code>, <code>IsAllowedPassword</code>)</td>
+</tr>
+<tr>
+<td><code>IAccountService</code></td>
+<td>Database: fetch account salt/verifier for SRP</td>
+</tr>
+<tr>
+<td><code>ICharacterService</code></td>
+<td>Database: check online characters</td>
+</tr>
+<tr>
+<td><code>IKickRequestService</code></td>
+<td>Database: persist kick requests for already-online accounts</td>
+</tr>
+<tr>
+<td><code>IAuthTokenService</code></td>
+<td>Database: issue/fetch/revoke auth tokens by hash</td>
+</tr>
+<tr>
+<td><code>ILoginServerSigningKeyService</code></td>
+<td>Database: fetch HMAC signing keys by LoginServer ID</td>
+</tr>
+<tr>
+<td><code>ITwoFactorRecoveryCodeService</code></td>
+<td>Database: fetch unused recovery code hashes, consume used codes</td>
+</tr>
+<tr>
+<td><code>ExpiringKeyTracker&lt;T&gt;</code></td>
+<td>Head-first expiry queue for bounded rate limiting</td>
+</tr>
+<tr>
+<td><code>LastSeenCacheTracker&lt;K, V&gt;</code></td>
+<td>TTL cache with bounded sweep for IP/encryption caches</td>
+</tr>
+<tr>
+<td><code>ArrivalOrderTracker&lt;T&gt;</code> <em>(in <code>FishMMO-Auth.dll</code> — <code>FishMMO.Auth.Core.Collections</code>)</em></td>
+<td>Oldest-first tracking for stale-connection sweeps</td>
+</tr>
+<tr>
+<td><code>FishMMO.Logging.Log</code></td>
+<td>Structured async logging</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/Authentication/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

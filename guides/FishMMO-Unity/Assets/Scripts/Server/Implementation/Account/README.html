@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Account System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Account System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/Account/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="account-system">Account System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/Account/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Manages server-side account and connection lifecycle including X25519 encryption key exchange, SRP and token authentication state machines, bidirectional account-to-connection mappings, and periodic stale-connection sweeps.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Account system manages the server-side lifecycle of player connections, including encryption key exchange, authentication state, account-to-connection mappings, and access level tracking. It is split into a Core interface layer (transport-agnostic) and an Implementation layer that binds to FishNet's <code>NetworkConnection</code>.</p>
+<p>The Core layer defines <code>IAccountManager&lt;TConnection&gt;</code>, <code>ISrpAccountManager&lt;TConnection&gt;</code>, and <code>ITokenAccountManager&lt;TConnection&gt;</code> — generic interfaces for encryption management, auth-state transitions, and account lookup. The Implementation layer provides three thin Unity wrappers — concrete FishNet-typed classes that bind <code>TConnection = NetworkConnection</code> and carry no logic of their own. All implementation lives in the FishMMO-Auth generic base classes (<code>FishMMO.Auth.Implementation</code> namespace):</p>
+<ul>
+<li><strong><code>AccountManager</code></strong> — Inherits <code>AccountManager&lt;NetworkConnection&gt;</code> from FishMMO-Auth verbatim. No additional members. Thread-safe base implementing <code>IAccountManager&lt;NetworkConnection&gt;</code>: owns all internal dictionaries, the unified <code>AuthState</code> CAS machine, and the <code>ArrivalOrderTracker</code>-backed unauthenticated connection tracker.</li>
+<li><strong><code>SrpAccountManager</code></strong> — Inherits <code>SrpAccountManager&lt;NetworkConnection&gt;</code> from FishMMO-Auth verbatim. No additional members. Extends <code>AccountManager&lt;TConnection&gt;</code> with SRP-specific <code>AddConnectionAccount</code>, periodic <code>SweepUnauthenticatedConnections</code>, and <code>ClearSrpState</code>. Used by <code>LoginServer</code>.</li>
+<li><strong><code>TokenAccountManager</code></strong> — Inherits <code>TokenAccountManager&lt;NetworkConnection&gt;</code> from FishMMO-Auth, providing a constructor that passes <code>conn =&gt; conn.ClientId.ToString()</code> as the connection-ID resolver. Extends <code>AccountManager&lt;TConnection&gt;</code> with a simplified <code>AddConnectionAccount</code> (name + access level only). Used by World and Scene servers.</li>
+</ul>
+<p>All public methods acquire <code>lock(syncRoot)</code> before accessing any internal state. <code>AccountData.AuthState</code> is the <strong>single source of truth</strong> for where a connection sits in the authentication lifecycle. All transitions are performed atomically via <code>TryAdvanceAuthState</code> (compare-and-swap under lock).</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Fully supported as a server host</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Fully supported as a server host</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only component; not applicable to browser builds</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Engine:</strong> Unity 6.3 LTS
+<strong>Scripting backend:</strong> IL2CPP</p>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Thread-safe account/connection management</strong> — All public methods synchronize via <code>lock(syncRoot)</code>, supporting concurrent access from FishNet broadcast handlers, async worker threads, and scene-server handoff operations.</li>
+<li><strong>Unified AuthState machine</strong> — A single <code>AuthState</code> enum (8 states, <code>byte</code>-backed) replaces former per-flow in-flight dictionaries. All transitions use atomic compare-and-swap under lock.</li>
+<li><strong>Bidirectional account ↔ connection maps</strong> — <code>connectionAccounts</code> (connection → name) and <code>accountConnections</code> (name → connection) are kept in sync by all add/remove operations, providing O(1) lookup in both directions.</li>
+<li><strong>X25519 encryption key exchange</strong> — <code>AddConnectionEncryptionData</code> stores the client's X25519 public key and creates <code>AccountData</code> at <code>Handshake</code> state. Directional AES-256-GCM keys and nonce contexts are established later via <code>PromoteToDirectional</code> after ECDH key agreement.</li>
+<li><strong>SRP authentication (LoginServer)</strong> — <code>SrpAccountManager.AddConnectionAccount</code> creates <code>ServerSrpData</code> (2048-bit SRP parameters, SHA-512), generates server ephemeral values, and advances auth state to <code>WaitingForProof</code>. Proof verification via <code>ServerSrpData.GetProof</code> derives the session.</li>
+<li><strong>Token authentication (World/Scene)</strong> — <code>TokenAccountManager.AddConnectionAccount</code> registers account name and access level without SRP state. Used for post-login reconnection via signed tokens.</li>
+<li><strong>Oldest-first stale-connection sweeps</strong> — <code>SweepUnauthenticatedConnections</code> processes the <code>ArrivalOrderTracker</code> head-first, dropping authenticated entries from tracking and purging stale unauthenticated entries with configurable <code>maxScan</code> and <code>maxRemovals</code> per sweep.</li>
+<li><strong>Sensitive material cleanup</strong> — <code>ConnectionEncryptionData.Clear()</code> zeroes AES keys via <code>CryptographicOperations.ZeroMemory</code> and disposes nonce contexts. <code>AccountData.Clear()</code> resets auth state and nulls SRP references. <code>ClearSrpState()</code> removes SRP material post-success while preserving access level.</li>
+<li><strong>Re-handshake protection</strong> — <code>IsAuthInProgress</code> checks <code>AuthState &gt; Handshake</code> to reject repeated handshakes while authentication is in progress.</li>
+<li><strong>Callback-in-lock transitions</strong> — <code>TryAdvanceAuthState</code> with an <code>onSuccess</code> callback executes the callback inside the lock, enabling atomic read-modify-write patterns. Callbacks must not block or re-enter the manager.</li>
+<li><strong>Graceful full clear</strong> — <code>Clear()</code> zeroes all encryption key material, clears all SRP data, and empties all dictionaries and the unauthenticated tracker.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS (IL2CPP scripting backend)</li>
+<li>FishNet networking framework (<code>FishNet.Connection.NetworkConnection</code>)</li>
+<li>FishMMO server core assemblies (<code>FishMMO.Server.Core.Account</code>, <code>FishMMO.Server.Core.Collections</code>)</li>
+<li><code>FishMMO-Auth.dll</code> shared library — provides the generic <code>AccountManager&lt;T&gt;</code> / <code>SrpAccountManager&lt;T&gt;</code> / <code>TokenAccountManager&lt;T&gt;</code> base classes, <code>AccountData</code>, <code>ConnectionEncryptionData</code>, <code>ServerSrpData</code>, the <code>AuthState</code> enum, and the <code>ArrivalOrderTracker&lt;T&gt;</code> collection (in <code>FishMMO.Auth.Core.Collections</code>).</li>
+<li><code>SecureRemotePassword</code> third-party library (2048-bit parameters, SHA-512)</li>
+<li><code>System.Security.Cryptography</code> for SHA-512 and <code>CryptographicOperations.ZeroMemory</code></li>
+<li><code>CryptoHelper</code> (FishMMO shared) for X25519 ECDH + HKDF-SHA256 key derivation, AES-GCM, nonce construction</li>
+<li><code>AccessLevel</code> enum (FishMMO shared) defining account permission tiers</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO Unity project. No separate installation is required.</p>
+<ol>
+<li>Ensure the FishMMO Unity project is open in the Unity Editor.</li>
+<li>The account managers are instantiated by server behaviours (e.g., <code>LoginServerSystem</code> creates <code>SrpAccountManager</code>; World/Scene server systems create <code>TokenAccountManager</code>).</li>
+<li>No separate ScriptableObject or asset creation is needed — the managers are plain C# objects owned by their respective server systems.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="using-srpaccountmanager-loginserver">Using SrpAccountManager (LoginServer)</h3>
+<ol>
+<li>Create an <code>SrpAccountManager</code> instance in the login server's initialization.</li>
+<li>When a client connects and sends its public key, call <code>AddConnectionEncryptionData(connection, publicKey)</code> — this creates <code>AccountData</code> at <code>Handshake</code> state and begins unauthenticated tracking.</li>
+<li>On receiving an SRP verify request, advance state with <code>TryAdvanceAuthState(connection, Handshake, VerifyPending)</code>.</li>
+<li>In the async worker, call <code>AddConnectionAccount(connection, accountName, publicClientEphemeral, salt, verifier, accessLevel)</code> — this creates <code>ServerSrpData</code>, generates server ephemeral values, and advances to <code>WaitingForProof</code>.</li>
+<li>Send the server's ephemeral and salt back to the client.</li>
+<li>On receiving the client's proof, advance with <code>TryAdvanceAuthState(connection, WaitingForProof, ProofPending)</code>.</li>
+<li>In the async worker, verify using <code>ServerSrpData.GetProof(clientProof, out serverProof)</code> and advance to <code>SrpSuccess</code>.</li>
+<li>Send the server's proof, then advance to <code>Authenticated</code> and call <code>ClearSrpState(connection)</code> to remove sensitive SRP material.</li>
+</ol>
+<h3 id="using-tokenaccountmanager-worldscene-server">Using TokenAccountManager (World/Scene Server)</h3>
+<ol>
+<li>Create a <code>TokenAccountManager</code> instance in the world or scene server's initialization.</li>
+<li>On public-key handshake, call <code>AddConnectionEncryptionData(connection, publicKey)</code>.</li>
+<li>On receiving a token, advance with <code>TryAdvanceAuthState(connection, Handshake, TokenPending)</code>.</li>
+<li>In the async worker, validate the token against the database. On success, call <code>AddConnectionAccount(connection, accountName, accessLevel)</code> and advance to <code>Authenticated</code>.</li>
+</ol>
+<h3 id="periodic-stale-connection-cleanup">Periodic Stale-Connection Cleanup</h3>
+<ol>
+<li>In the server's update loop (e.g., <code>ServerAuthenticator.Update()</code>), periodically call:
+<pre><code class="lang-csharp">srpAccountManager.SweepUnauthenticatedConnections(
+    maxUnauthenticatedAge: TimeSpan.FromSeconds(30),
+    isAuthenticated: conn =&gt; conn.IsAuthenticated,
+    maxScan: 50,
+    maxRemovals: 10
+);
+</code></pre>
+</li>
+<li>This processes the oldest tracked entries first, drops already-authenticated entries from the tracker, and purges stale unauthenticated entries (encryption data, account data, and mappings).</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<p>The account managers have no serialized inspector fields. All behaviour is controlled programmatically by the server systems that own them.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Configured By</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxUnauthenticatedAge</code></td>
+<td>Caller of <code>SweepUnauthenticatedConnections</code></td>
+<td>Maximum age before an unauthenticated connection is purged</td>
+</tr>
+<tr>
+<td><code>maxScan</code></td>
+<td>Caller of <code>SweepUnauthenticatedConnections</code></td>
+<td>Maximum tracked entries to evaluate per sweep</td>
+</tr>
+<tr>
+<td><code>maxRemovals</code></td>
+<td>Caller of <code>SweepUnauthenticatedConnections</code></td>
+<td>Maximum stale entries to purge per sweep</td>
+</tr>
+<tr>
+<td><code>isAuthenticated</code></td>
+<td>Caller of <code>SweepUnauthenticatedConnections</code></td>
+<td>Predicate to check if a connection is authenticated at the transport level</td>
+</tr>
+</tbody>
+</table>
+<h3 id="srp-parameters">SRP Parameters</h3>
+<p>SRP authentication uses fixed parameters defined at <code>ServerSrpData</code> construction:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Group size</td>
+<td>2048-bit</td>
+</tr>
+<tr>
+<td>Hash algorithm</td>
+<td>SHA-512</td>
+</tr>
+<tr>
+<td>Library</td>
+<td><code>SecureRemotePassword</code> (third-party)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="looking-up-an-account-name">Looking Up an Account Name</h3>
+<pre><code class="lang-csharp">if (accountManager.GetAccountNameByConnection(connection, out string accountName))
+{
+    // accountName is the authenticated player's account
+}
+</code></pre>
+<h3 id="reverse-lookup-connection-by-account-name">Reverse Lookup: Connection by Account Name</h3>
+<pre><code class="lang-csharp">if (accountManager.GetConnectionByAccountName(&quot;PlayerOne&quot;, out NetworkConnection conn))
+{
+    // conn is the live connection for &quot;PlayerOne&quot;
+}
+</code></pre>
+<h3 id="checking-authentication-state">Checking Authentication State</h3>
+<pre><code class="lang-csharp">if (accountManager.HasAuthState(connection, AuthState.Authenticated))
+{
+    // Connection is fully authenticated
+}
+
+if (accountManager.IsAuthInProgress(connection))
+{
+    // Reject repeated handshake — auth already in progress
+}
+</code></pre>
+<h3 id="atomic-state-transition-with-callback">Atomic State Transition with Callback</h3>
+<pre><code class="lang-csharp">bool ok = accountManager.TryAdvanceAuthState(
+    connection,
+    AuthState.WaitingForProof,
+    AuthState.WaitingForProof,
+    accountData =&gt;
+    {
+        // Runs inside the lock — read SRP data, prepare response
+        var srpData = accountData.SrpData;
+        serverEphemeral = srpData.ServerEphemeral.Public;
+        salt = srpData.Salt;
+        return true;
+    });
+</code></pre>
+<h3 id="removing-a-connection-on-disconnect">Removing a Connection on Disconnect</h3>
+<pre><code class="lang-csharp">accountManager.RemoveConnectionAccount(connection);
+// All encryption data zeroed, AccountData cleared, bidirectional maps removed, tracking removed
+</code></pre>
+<h3 id="server-shutdown">Server Shutdown</h3>
+<pre><code class="lang-csharp">accountManager.Clear();
+// All encryption keys zeroed, all SRP data cleared, all dictionaries emptied
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Encryption data stored</td>
+<td>Call <code>GetConnectionEncryptionData</code> after handshake</td>
+<td>Returns <code>true</code>, non-null <code>ConnectionEncryptionData</code> with public key</td>
+</tr>
+<tr>
+<td>AccountData created at handshake</td>
+<td>Call <code>GetConnectionAccountData</code> after <code>AddConnectionEncryptionData</code></td>
+<td>Returns <code>true</code>, <code>AuthState == Handshake</code></td>
+</tr>
+<tr>
+<td>SRP state transitions</td>
+<td>Advance through <code>Handshake → VerifyPending → WaitingForProof → ProofPending → SrpSuccess → Authenticated</code></td>
+<td>Each <code>TryAdvanceAuthState</code> returns <code>true</code> in order</td>
+</tr>
+<tr>
+<td>Token state transitions</td>
+<td>Advance through <code>Handshake → TokenPending → Authenticated</code></td>
+<td>Each <code>TryAdvanceAuthState</code> returns <code>true</code> in order</td>
+</tr>
+<tr>
+<td>Bidirectional map consistency</td>
+<td>Call <code>GetAccountNameByConnection</code> and <code>GetConnectionByAccountName</code> after <code>AddConnectionAccount</code></td>
+<td>Both return <code>true</code> and cross-reference correctly</td>
+</tr>
+<tr>
+<td>Re-handshake rejection</td>
+<td>Call <code>IsAuthInProgress</code> after advancing past <code>Handshake</code></td>
+<td>Returns <code>true</code></td>
+</tr>
+<tr>
+<td>Stale sweep removes old entries</td>
+<td>Call <code>SweepUnauthenticatedConnections</code> with a short <code>maxAge</code> after waiting</td>
+<td>Returns count &gt; 0; encryption and account data removed</td>
+</tr>
+<tr>
+<td>Stale sweep skips authenticated</td>
+<td>Authenticate a connection, then sweep</td>
+<td>Connection untracked but not purged</td>
+</tr>
+<tr>
+<td>SRP material cleared post-success</td>
+<td>Call <code>ClearSrpState</code> after <code>Authenticated</code></td>
+<td><code>AccountData.SrpData</code> is <code>null</code>, access level preserved</td>
+</tr>
+<tr>
+<td>Full clear zeroes keys</td>
+<td>Call <code>Clear()</code></td>
+<td>All dictionaries empty, all <code>ConnectionEncryptionData</code> zeroed</td>
+</tr>
+<tr>
+<td>Out-of-order transition rejected</td>
+<td>Call <code>TryAdvanceAuthState</code> with wrong <code>required</code> state</td>
+<td>Returns <code>false</code>, state unchanged</td>
+</tr>
+<tr>
+<td>Disconnect cleanup</td>
+<td>Call <code>RemoveConnectionAccount</code></td>
+<td>All maps, encryption data, and account data removed; <code>AccountData.Clear()</code> called</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    AcctOp[Account-scoped op] --&gt; Sys[AccountSystem]
+    Sys --&gt;|lookup| DB[(PostgreSQL Accounts)]
+    Sys --&gt;|update status| DB
+    Sys --&gt;|notify| Connections[Client connections]
+</code></pre>
+<pre><code>┌─────────────────────────────────────────────────────────────────────────┐
+│                   Account System — Connection Lifecycle                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. Client Connects — Public Key Handshake                              │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ AddConnectionEncryptionData(connection, publicKey)                 │ │
+│  │   ├── Store ConnectionEncryptionData (X25519 public key)          │ │
+│  │   ├── Create AccountData { AuthState = Handshake }                │ │
+│  │   └── Track in unauthenticatedTracker (arrival-ordered)           │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                              │                                          │
+│              ┌───────────────┴───────────────┐                          │
+│              ▼                               ▼                          │
+│                                                                         │
+│  2a. SRP Flow (LoginServer)       2b. Token Flow (World/Scene)         │
+│  ┌──────────────────────────┐     ┌──────────────────────────────────┐ │
+│  │ TryAdvanceAuthState      │     │ TryAdvanceAuthState              │ │
+│  │   Handshake → VerifyPend.│     │   Handshake → TokenPending       │ │
+│  │                          │     │                                  │ │
+│  │ Worker:                  │     │ Worker:                          │ │
+│  │   AddConnectionAccount   │     │   Validate token against DB      │ │
+│  │   (name, ephemeral,      │     │   AddConnectionAccount           │ │
+│  │    salt, verifier, ACL)  │     │   (name, accessLevel)            │ │
+│  │   → AuthState =          │     │   TryAdvanceAuthState            │ │
+│  │     WaitingForProof      │     │     TokenPending → Authenticated │ │
+│  │                          │     └──────────────────────────────────┘ │
+│  │ Send server ephemeral    │                    │                     │
+│  │   + salt to client       │                    │                     │
+│  │                          │                    │                     │
+│  │ TryAdvanceAuthState      │                    │                     │
+│  │   WaitingForProof →      │                    │                     │
+│  │   ProofPending           │                    │                     │
+│  │                          │                    │                     │
+│  │ Worker:                  │                    │                     │
+│  │   GetProof(clientProof)  │                    │                     │
+│  │   → SrpSuccess           │                    │                     │
+│  │   Send server proof      │                    │                     │
+│  │                          │                    │                     │
+│  │ TryAdvanceAuthState      │                    │                     │
+│  │   SrpSuccess →           │                    │                     │
+│  │   Authenticated          │                    │                     │
+│  │ ClearSrpState(conn)      │                    │                     │
+│  └──────────────────────────┘                    │                     │
+│              │                                   │                     │
+│              └───────────────┬───────────────────┘                     │
+│                              ▼                                          │
+│  3. Authenticated Session                                               │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ AuthState = Authenticated                                         │ │
+│  │ Unauthenticated tracking removed                                  │ │
+│  │ Bidirectional maps active: connection ↔ accountName               │ │
+│  │ Encryption keys active: directional AES-256-GCM                   │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                              │                                          │
+│                              ▼                                          │
+│  4. Disconnect / Removal                                                │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ RemoveConnectionAccount(connection)                                │ │
+│  │   ├── ConnectionEncryptionData.Clear() — zero AES keys, dispose   │ │
+│  │   ├── AccountData.Clear() — reset AuthState, null SRP refs        │ │
+│  │   ├── Remove from connectionAccounts + accountConnections         │ │
+│  │   └── Untrack from unauthenticatedTracker                         │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│  5. Periodic Stale Sweep (SrpAccountManager only)                       │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ SweepUnauthenticatedConnections(maxAge, isAuthenticated,          │ │
+│  │                                  maxScan, maxRemovals)            │ │
+│  │   ├── Process oldest tracked entries first                        │ │
+│  │   ├── Authenticated entries → untrack only                        │ │
+│  │   ├── Fresh entries → stop (queue is ordered oldest→newest)       │ │
+│  │   └── Stale entries → ClearEncryption + ClearAccountData + remove │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="authstate-transitions">AuthState Transitions</h3>
+<pre><code>SRP flow:   None → Handshake → VerifyPending → WaitingForProof → ProofPending → SrpSuccess → Authenticated
+Token flow: None → Handshake → TokenPending → Authenticated
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>None</code></td>
+<td>0</td>
+<td>Default / cleared — no active authentication</td>
+</tr>
+<tr>
+<td><code>Handshake</code></td>
+<td>1</td>
+<td>Public-key exchange complete — AccountData created</td>
+</tr>
+<tr>
+<td><code>VerifyPending</code></td>
+<td>2</td>
+<td>SRP verify request accepted — worker in progress</td>
+</tr>
+<tr>
+<td><code>WaitingForProof</code></td>
+<td>3</td>
+<td>SRP server ephemeral ready — awaiting client proof</td>
+</tr>
+<tr>
+<td><code>ProofPending</code></td>
+<td>4</td>
+<td>SRP proof request accepted — worker in progress</td>
+</tr>
+<tr>
+<td><code>SrpSuccess</code></td>
+<td>5</td>
+<td>SRP proof verified — session keys established</td>
+</tr>
+<tr>
+<td><code>TokenPending</code></td>
+<td>6</td>
+<td>Token auth request accepted — worker in progress</td>
+</tr>
+<tr>
+<td><code>Authenticated</code></td>
+<td>7</td>
+<td>Terminal state — fully authenticated session</td>
+</tr>
+</tbody>
+</table>
+<p>Values are explicitly numbered and must not be renumbered — sweep logic and guard checks rely on ordinal comparisons (<code>state &gt; AuthState.Handshake</code> means &quot;auth is in progress&quot;).</p>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code># FishMMO-Auth (netstandard2.1 shared library — Assets/Dependencies/FishMMO-Auth.dll)
+FishMMO-Auth/
+├── Core/
+│   ├── Interfaces/
+│   │   ├── IAccountManager.cs                 # Generic interface: encryption, auth-state, account-connection maps
+│   │   ├── ISrpAccountManager.cs              # SRP-specific interface: AddConnectionAccount with SRP params
+│   │   └── ITokenAccountManager.cs            # Token-specific interface: AddConnectionAccount (name + ACL)
+│   ├── Enums/
+│   │   ├── AuthState.cs                       # Unified auth state enum (None → Handshake → … → Authenticated)
+│   │   └── AccessLevel.cs                     # Account permission tiers
+│   └── Collections/
+│       ├── ArrivalOrderTracker.cs             # Oldest-first tracking utility for TTL sweeps
+│       ├── ExpiringKeyTracker.cs              # Keyed debounce / rate-limit with head-first expiry
+│       └── LastSeenCacheTracker.cs            # TTL cache by last-seen timestamp
+│
+└── Implementation/
+    ├── Connection/
+    │   ├── AccountData.cs                     # Access level + auth state + SRP data container
+    │   └── ConnectionEncryptionData.cs        # X25519 public key, directional AES-256 keys, nonce contexts
+    ├── SRP/
+    │   └── ServerSrpData.cs                   # Server-side SRP session (ephemeral, proof, session)
+    └── Account/
+        ├── AccountManager.cs                  # Thread-safe base: all dictionaries, CAS machine, sweep tracking
+        ├── SrpAccountManager.cs               # SRP extension: AddConnectionAccount, SweepUnauthenticated, ClearSrpState
+        └── TokenAccountManager.cs             # Token extension: simplified AddConnectionAccount (name + ACL)
+
+# FishMMO-Unity (this assembly)
+Server/
+└── Implementation/Account/                    # FishNet-typed thin wrappers (this directory)
+    ├── AccountManager.cs                      # Inherits AccountManager&lt;NetworkConnection&gt;; no members
+    ├── SrpAccountManager.cs                   # Inherits SrpAccountManager&lt;NetworkConnection&gt;; no members
+    ├── TokenAccountManager.cs                 # Inherits TokenAccountManager&lt;NetworkConnection&gt;; adds ClientId resolver ctor
+    └── README.md                              # This file
+</code></pre>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<p><strong>Interfaces</strong></p>
+<pre><code>IAccountManager&lt;TConnection&gt;
+├── ISrpAccountManager&lt;TConnection&gt;
+└── ITokenAccountManager&lt;TConnection&gt;
+</code></pre>
+<p><strong>Generic Implementation Classes (FishMMO-Auth)</strong></p>
+<pre><code>AccountManager&lt;TConnection&gt; : IAccountManager&lt;TConnection&gt;
+├── SrpAccountManager&lt;TConnection&gt; : AccountManager&lt;TConnection&gt;, ISrpAccountManager&lt;TConnection&gt;
+└── TokenAccountManager&lt;TConnection&gt; : AccountManager&lt;TConnection&gt;, ITokenAccountManager&lt;TConnection&gt;
+</code></pre>
+<p><strong>FishNet-Typed Wrappers (FishMMO-Unity)</strong></p>
+<pre><code>AccountManager : AccountManager&lt;NetworkConnection&gt;             // no additional members
+SrpAccountManager : SrpAccountManager&lt;NetworkConnection&gt;      // no additional members
+TokenAccountManager : TokenAccountManager&lt;NetworkConnection&gt;   // adds ClientId resolver constructor
+</code></pre>
+<p><strong>Data Types</strong></p>
+<pre><code>AccountData
+├── AuthState         (enum, byte-backed)
+├── AccessLevel       (enum, from FishMMO.Shared)
+└── ServerSrpData     (nullable, SRP session state)
+
+ConnectionEncryptionData
+├── PublicKey          (byte[], X25519)
+├── MasterSecret      (byte[], ECDH-derived, nulled after promotion)
+├── ClientToServerKey  (byte[], AES-256)
+├── ServerToClientKey  (byte[], AES-256)
+├── SendNonceCtx      (GcmNonceContext, server→client)
+├── ReceiveNonceCtx   (GcmNonceContext, client→server)
+└── AgreedVersion     (ushort, protocol version for AAD)
+</code></pre>
+<h3 id="internal-data-stores-accountmanager">Internal Data Stores (AccountManager)</h3>
+<table>
+<thead>
+<tr>
+<th>Dictionary</th>
+<th>Key → Value</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>connectionEncryptionEntries</code></td>
+<td><code>NetworkConnection → ConnectionEncryptionData</code></td>
+<td>Encryption keys per connection</td>
+</tr>
+<tr>
+<td><code>connectionAccounts</code></td>
+<td><code>NetworkConnection → string</code></td>
+<td>Connection → account name lookup</td>
+</tr>
+<tr>
+<td><code>accountConnections</code></td>
+<td><code>string → NetworkConnection</code></td>
+<td>Account name → connection reverse lookup</td>
+</tr>
+<tr>
+<td><code>connectionAccountData</code></td>
+<td><code>NetworkConnection → AccountData</code></td>
+<td>Connection → full account data (auth state, access level, SRP)</td>
+</tr>
+<tr>
+<td><code>unauthenticatedTracker</code></td>
+<td><code>ArrivalOrderTracker&lt;NetworkConnection&gt;</code></td>
+<td>Oldest-first stale-state sweep support</td>
+</tr>
+</tbody>
+</table>
+<h3 id="thread-safety-model">Thread Safety Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FishNet main thread</td>
+<td>Broadcast handlers, handshake processing, disconnect cleanup</td>
+</tr>
+<tr>
+<td>Async worker threads</td>
+<td>Database lookups, SRP verification, token validation</td>
+</tr>
+<tr>
+<td>Scene server handoff</td>
+<td>Account queries during cross-server transitions</td>
+</tr>
+</tbody>
+</table>
+<p>All public methods acquire <code>lock(syncRoot)</code>. The <code>TryAdvanceAuthState</code> callback variant executes the callback <strong>inside</strong> the lock — callbacks must not block or re-enter the <code>AccountManager</code>.</p>
+<h3 id="external-dependencies">External Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FishNet.Connection.NetworkConnection</code></td>
+<td>FishNet's connection type used as <code>TConnection</code></td>
+</tr>
+<tr>
+<td><code>SecureRemotePassword</code></td>
+<td>Third-party SRP library (2048-bit parameters, SHA-512)</td>
+</tr>
+<tr>
+<td><code>System.Security.Cryptography</code></td>
+<td>SHA-512 hash algorithm for SRP; <code>CryptographicOperations.ZeroMemory</code> for key cleanup</td>
+</tr>
+<tr>
+<td><code>CryptoHelper</code></td>
+<td>X25519 ECDH + HKDF-SHA256 key derivation, AES-GCM, nonce construction, protocol versioning</td>
+</tr>
+<tr>
+<td><code>AccessLevel</code></td>
+<td>Enum defining account permission tiers (Player, GameMaster, Admin, etc.)</td>
+</tr>
+<tr>
+<td><code>ArrivalOrderTracker&lt;T&gt;</code> <em>(now in <code>FishMMO-Auth.dll</code> — <code>FishMMO.Auth.Core.Collections</code>)</em></td>
+<td>O(1) track/untrack with oldest-first iteration for TTL sweeps</td>
+</tr>
+</tbody>
+</table>
+<h3 id="integration-points">Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Interface Used</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Login ServerBehaviour</td>
+<td><code>SrpAccountManager</code></td>
+<td>Creates manager; passes to <code>SrpAuthenticatorCore</code> via <code>InitializeCoreInstance</code></td>
+</tr>
+<tr>
+<td><code>SrpAuthenticatorCore</code> (FishMMO-Auth)</td>
+<td><code>ISrpAccountManager&lt;NetworkConnection&gt;</code></td>
+<td>Calls <code>AddConnectionEncryptionData</code>, drives all SRP state transitions, runs <code>SweepUnauthenticatedConnections</code></td>
+</tr>
+<tr>
+<td><code>TokenAuthenticatorCore</code> (FishMMO-Auth)</td>
+<td><code>ITokenAccountManager&lt;NetworkConnection&gt;</code></td>
+<td>Drives <code>Handshake → TokenPending → Authenticated</code> transitions</td>
+</tr>
+<tr>
+<td>World/Scene Servers</td>
+<td><code>AccountManager</code> (base)</td>
+<td>Query <code>GetAccountNameByConnection</code> and <code>GetConnectionAccountData</code> for permission checks</td>
+</tr>
+<tr>
+<td>Disconnect Handling</td>
+<td><code>AccountManager</code> (base)</td>
+<td>Calls <code>RemoveConnectionAccount</code> to clean up all mappings</td>
+</tr>
+<tr>
+<td>Server Shutdown</td>
+<td><code>AccountManager</code> (base)</td>
+<td>Calls <code>Clear()</code> to release all tracked connections and data</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/Account/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

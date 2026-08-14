@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO-SharedUtility | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO-SharedUtility | FishMMO ">
+      
+      
+      <link rel="icon" href="../../favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="../toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-SharedUtility/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-sharedutility">FishMMO-SharedUtility</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-SharedUtility/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p>A lightweight, <strong>pure C# / netstandard2.1</strong> class library containing cross-cutting
+utility code shared between the FishMMO Unity client and the FishMMO-Database
+server project. The library has no dependency on <code>UnityEngine</code>, FishNet, or EF
+Core, which lets it be referenced from both Unity and headless .NET tooling.</p>
+<p>The post-build target copies <code>FishMMO-SharedUtility.dll</code> into
+<code>../FishMMO-Unity/Assets/Dependencies/</code> so Unity picks it up automatically as a
+managed plugin.</p>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#description">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#key-components">Key Components</a>
+<ul>
+<li><a href="#top-level-utilities">Top-level utilities</a></li>
+<li><a href="#compression">Compression</a></li>
+<li><a href="#extensions">Extensions</a></li>
+</ul>
+</li>
+<li><a href="#what-belongs-here">What Belongs Here</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#build">Build</a></li>
+<li><a href="#consuming-from-fishmmo-db">Consuming from FishMMO-DB</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+</ul>
+<hr>
+<h2 id="description">Description</h2>
+<p><code>FishMMO-SharedUtility</code> is the lowest layer of the FishMMO C# stack. It is the
+only assembly that is safe to reference from every other C# project in the
+monorepo, including FishMMO-DB, FishMMO-AppHealthMonitor, the WebServers, and
+the Unity managed scripts. Its scope is intentionally narrow:</p>
+<ul>
+<li>Pure-data validators (e.g. SRP-6a-friendly password and username rules).</li>
+<li>Generic, allocation-aware data structures (<code>CircularBuffer&lt;T&gt;</code>, <code>SetOnce&lt;T&gt;</code>).</li>
+<li>Math and bit utilities that aren't already in BCL.</li>
+<li>String / dictionary compression that wraps <code>System.IO.Compression</code>.</li>
+<li>A large set of primitive and collection extensions used throughout the codebase.</li>
+</ul>
+<hr>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET Standard 2.1</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS (IL2CPP / Mono)</td>
+<td>Yes (via <code>Assets/Dependencies/</code>)</td>
+</tr>
+<tr>
+<td>.NET 8.0 server projects</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET SDK</td>
+<td>8.0+</td>
+</tr>
+<tr>
+<td>Language Version</td>
+<td><code>latest</code></td>
+</tr>
+<tr>
+<td>Nullable Reference Types</td>
+<td>Enabled</td>
+</tr>
+<tr>
+<td><code>ZString</code></td>
+<td><code>2.6.0</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="architecture">Architecture</h2>
+<pre><code>FishMMO-SharedUtility/
+├── Authentication.cs          # Username/password validators
+├── CircularBuffer.cs          # Allocation-light ring buffer
+├── Configuration.cs           # Hierarchical key/value config tree
+├── FastActivator.cs           # Expression-tree compiled object factory
+├── MathHelper.cs              # Vector/scalar/clamp helpers
+├── IReference.cs              # Reference-equality interface contract
+├── RefWrapper.cs              # Boxed reference wrapper for value types
+├── SetOnce.cs                 # Write-once latch (no validator)
+├── Compression/
+│   ├── StringCompression.cs   # GZip-based string round-trip
+│   └── DictionaryCompression.cs
+└── Extensions/
+    ├── ArrayExtensions.cs
+    ├── DirectoryExtensions.cs
+    ├── EnumExtensions.cs
+    ├── IListExtensions.cs
+    ├── ProcessExtensions.cs
+    ├── RandomExtensions.cs
+    ├── StringExtensions.cs
+    ├── TypeExtensions.cs
+    └── Primitive/             # Byte, Short, Int, Long, Float bit helpers
+</code></pre>
+<p>All public types live in the <code>FishMMO.Shared</code> namespace.</p>
+<hr>
+<h2 id="key-components">Key Components</h2>
+<h3 id="top-level-utilities">Top-level utilities</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Authentication</code></td>
+<td>Static validators for usernames, passwords, character names — the same rules used by the LoginServer and account-creation flows.</td>
+</tr>
+<tr>
+<td><code>CircularBuffer&lt;T&gt;</code></td>
+<td>Circular doubly-linked list — an unbounded, thread-safe container for reference types.</td>
+</tr>
+<tr>
+<td><code>Configuration</code></td>
+<td>In-memory hierarchical config (<code>Node</code> tree) that can be loaded from key/value text files.</td>
+</tr>
+<tr>
+<td><code>FastActivator&lt;TResult&gt;</code></td>
+<td>Compiled-expression factory — faster than <code>Activator.CreateInstance</code> and avoids reflection per-call.</td>
+</tr>
+<tr>
+<td><code>MathHelper</code></td>
+<td>Numeric helpers (clamp, lerp, snapping).</td>
+</tr>
+<tr>
+<td><code>RefWrapper&lt;T&gt;</code></td>
+<td>Wraps a value type so reference-comparison works (used for parameter capture).</td>
+</tr>
+<tr>
+<td><code>SetOnce&lt;T&gt;</code></td>
+<td>Latch that allows exactly one assignment; throws thereafter (no validator parameter).</td>
+</tr>
+<tr>
+<td><code>IReference</code></td>
+<td>Marker interface for objects compared by reference.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="compression">Compression</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StringCompression</code></td>
+<td>GZip compress/decompress for arbitrary UTF-8 strings.</td>
+</tr>
+<tr>
+<td><code>DictionaryCompression</code></td>
+<td>Compresses dictionaries of strings using a shared dictionary frame.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="extensions">Extensions</h3>
+<table>
+<thead>
+<tr>
+<th>Namespace</th>
+<th>Highlights</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Extensions/*Extensions.cs</code></td>
+<td><code>ArrayExtensions</code>, <code>IListExtensions</code> (binary search, swap, shuffle), <code>StringExtensions</code> (case-insensitive contains, hex), <code>TypeExtensions</code> (assignable-from cache), <code>RandomExtensions</code> (range pickers), <code>DirectoryExtensions</code>, <code>EnumExtensions</code>, <code>ProcessExtensions</code>.</td>
+</tr>
+<tr>
+<td><code>Extensions/Primitive/</code></td>
+<td><code>ByteExtensions</code>, <code>ShortExtensions</code>, <code>IntExtensions</code>, <code>LongExtensions</code>, <code>FloatExtensions</code>, and their bit-twiddling helpers (<code>IntBitExtensions</code>, <code>LongBitExtensions</code>).</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="what-belongs-here">What Belongs Here</h2>
+<table>
+<thead>
+<tr>
+<th>Include</th>
+<th>Do NOT Include</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Validation helpers (Authentication, naming rules)</td>
+<td>Anything that references <code>UnityEngine</code></td>
+</tr>
+<tr>
+<td>Pure math / string / collection utilities</td>
+<td>Database / EF Core entities or services</td>
+</tr>
+<tr>
+<td>Shared constants and enums</td>
+<td>Networking code that depends on FishNet</td>
+</tr>
+<tr>
+<td>Compression / allocation-free helpers</td>
+<td>Logging — use FishMMO-Logger instead</td>
+</tr>
+</tbody>
+</table>
+<p>If a candidate utility imports <code>UnityEngine</code>, FishNet, or <code>Microsoft.EntityFrameworkCore</code>, it does <strong>not</strong> belong here.</p>
+<hr>
+<h2 id="configuration">Configuration</h2>
+<p>None. The library is dependency-injection-free and runtime-config-free.</p>
+<hr>
+<h2 id="build">Build</h2>
+<pre><code class="lang-bash">dotnet build FishMMO-SharedUtility.slnx
+</code></pre>
+<p>The <code>CopyToUnityDependencies</code> MSBuild target copies the built DLL into
+<code>../../FishMMO-Unity/Assets/Dependencies/</code> after every successful build (both
+<code>Debug</code> and <code>Release</code>).</p>
+<hr>
+<h2 id="consuming-from-fishmmo-db">Consuming from FishMMO-DB</h2>
+<p>FishMMO-DB references this project via a <code>&lt;ProjectReference&gt;</code>. No manual DLL
+copying is needed for the database side.</p>
+<pre><code class="lang-xml">&lt;ProjectReference Include=&quot;../../FishMMO-SharedUtility/FishMMO-SharedUtility/FishMMO-SharedUtility.csproj&quot; /&gt;
+</code></pre>
+<hr>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart LR
+    SU[FishMMO-SharedUtility&lt;br/&gt;netstandard2.1]
+
+    SU --&gt;|ProjectReference| DB[FishMMO-DB]
+    SU --&gt;|ProjectReference| LOG[FishMMO-Logger]
+    SU --&gt;|ProjectReference| AHM[FishMMO-AppHealthMonitor]
+    SU --&gt;|ProjectReference| WEB[FishMMO-WebServers]
+    SU --&gt;|DLL copy after build| UN[FishMMO-Unity&lt;br/&gt;Assets/Dependencies/]
+
+    UN --&gt; CL[Unity Client / Editor]
+    UN --&gt; SV[Unity Headless Server builds]
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-SharedUtility/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Character Prediction System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Character Prediction System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="character-prediction-system">Character Prediction System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Unified FishNet Prediction V2 pipeline that discovers, sorts, and drives all <code>IPredictableController</code> subsystems through a single <code>[Replicate]</code>/<code>[Reconcile]</code> pair on the character's <code>NetworkObject</code>.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features--capabilities--security-features">Features / Capabilities / Security Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#system-architecture-mermaid">System Architecture (Mermaid)</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="detailed-file-level-topology">Detailed File-Level Topology</h2>
+<h2 id="overview">Overview</h2>
+<p>FishNet's Prediction V2 allows only one <code>[Replicate]</code>/<code>[Reconcile]</code> pair per <code>NetworkObject</code> to work correctly. <code>CharacterPredictionController</code> solves this by acting as the single <code>NetworkBehaviour</code> entry point for the entire prediction pipeline. On <code>Awake()</code> it discovers all <code>IPredictableController</code> components on the same <code>GameObject</code>, sorts them by <code>Order</code>, and drives them through a unified tick cycle: <code>PopulateInput</code> → <code>Replicate</code> → <code>CreateReconcile</code> → <code>Reconcile</code>.</p>
+<p>Subsystems (movement, buffs, cooldowns, equipment, attributes, abilities) implement <code>IPredictableController</code> and declare an <code>Order</code> value to control execution sequence. They never carry <code>[Replicate]</code>/<code>[Reconcile]</code> attributes themselves — all prediction traffic flows through the shared <code>CharacterReplicateData</code> and <code>CharacterReconcileData</code> structs, which are delta-serialized to minimize bandwidth.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>✅ Supported</td>
+<td>Primary development platform</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>✅ Supported</td>
+<td>Server and client builds</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>✅ Supported</td>
+<td>Via Unity WebGL export</td>
+</tr>
+</tbody>
+</table>
+<p>Built with <strong>Unity 6.3 LTS</strong> using <strong>IL2CPP</strong> scripting backend.</p>
+<h2 id="features--capabilities--security-features">Features / Capabilities / Security Features</h2>
+<h3 id="features">Features</h3>
+<ul>
+<li><strong>Single prediction entry point</strong> — One <code>[Replicate]</code>/<code>[Reconcile]</code> pair per <code>NetworkObject</code>, avoiding FishNet multi-behaviour prediction conflicts</li>
+<li><strong>Automatic controller discovery</strong> — <code>GetComponents&lt;IPredictableController&gt;()</code> on <code>Awake()</code> with <code>Order</code>-based sorting</li>
+<li><strong>Unified data structs</strong> — <code>CharacterReplicateData</code> (input) and <code>CharacterReconcileData</code> (state) carry all subsystem data in one pipeline</li>
+<li><strong>Delta serialization</strong> — Bitmask-based field compression on structs, index-delta compression on arrays (<code>CooldownReconcileEntry[]</code>, <code>BuffReconcileEntry[]</code>)</li>
+<li><strong>Reference-equality shortcut</strong> — Cached reconcile snapshots skip delta comparison entirely when the array reference hasn't changed</li>
+<li><strong>Deterministic replay</strong> — All controllers run against the same tick value (<code>input.GetTick()</code>), ensuring identical results during reconcile replay</li>
+</ul>
+<h3 id="registered-controllers">Registered Controllers</h3>
+<table>
+<thead>
+<tr>
+<th>Controller</th>
+<th>Order</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KCCPlayer</code></td>
+<td>80</td>
+<td>Movement input, motor simulation, camera state</td>
+</tr>
+<tr>
+<td><code>BuffController</code></td>
+<td>85</td>
+<td>Buff tick/expiry, reconcile buff snapshots</td>
+</tr>
+<tr>
+<td><code>CooldownController</code></td>
+<td>90</td>
+<td>Cooldown expiry, reconcile cooldown snapshots</td>
+</tr>
+<tr>
+<td><code>EquipmentController</code></td>
+<td>93</td>
+<td>Equipment state, attribute modifiers, reconcile equip</td>
+</tr>
+<tr>
+<td><code>CharacterAttributeController</code></td>
+<td>95</td>
+<td>Resource regeneration, reconcile resource state</td>
+</tr>
+<tr>
+<td><code>AbilityController</code></td>
+<td>100</td>
+<td>Ability activation, spawning, RNG seed reconcile</td>
+</tr>
+</tbody>
+</table>
+<h3 id="security-features">Security Features</h3>
+<ul>
+<li>All prediction state is server-authoritative — clients cannot forge reconcile data</li>
+<li>Reconcile overwrites client state on mismatch, preventing prediction exploits</li>
+<li>Delta serializers guard against malformed packets with <code>MaxEntries</code> caps (4096)</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong> (or compatible version)</li>
+<li><strong>FishNetworking</strong> with Prediction V2 support (<code>[Replicate]</code>/<code>[Reconcile]</code> attributes)</li>
+<li><strong>FishMMO Shared Core</strong> — <code>IPredictableController</code> interface, <code>CharacterBehaviour</code> base class</li>
+<li><strong>KinematicCharacterController</strong> — for <code>KinematicCharacterMotorState</code> in reconcile data</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>The prediction system is an integral part of the <strong>FishMMO Unity project</strong>. There is no separate installation step.</p>
+<ol>
+<li>Clone or update the FishMMO repository.</li>
+<li>Open the project in Unity 6.3 LTS.</li>
+<li>The prediction system is located at <code>Assets/Scripts/Shared/Implementation/Entity/Prediction/</code>.</li>
+<li>Ensure all FishMMO dependencies (FishNetworking, Shared Core, KinematicCharacterController) are present.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="adding-a-new-predictable-controller">Adding a New Predictable Controller</h3>
+<ol>
+<li>Implement <code>IPredictableController</code> on your <code>CharacterBehaviour</code> or <code>NetworkBehaviour</code>:</li>
+</ol>
+<pre><code class="lang-csharp">public class MyController : CharacterBehaviour, IMyInterface, IPredictableController
+{
+    public int Order =&gt; 50; // Choose order relative to other controllers
+
+    public void PopulateInput(ref CharacterReplicateData input)
+    {
+        // Write owner input into the shared struct (owner-only)
+    }
+
+    public void OnReplicate(ref CharacterReplicateData input, ReplicateState state, Channel channel)
+    {
+        // Simulate one tick using input data (runs on client + server)
+    }
+
+    public void OnCreateReconcile(ref CharacterReconcileData reconcileData)
+    {
+        // Write authoritative state into shared reconcile struct (server-only)
+    }
+
+    public void OnReconcile(CharacterReconcileData rd, Channel channel)
+    {
+        // Restore state from server reconcile data (client-only on mismatch)
+    }
+}
+</code></pre>
+<ol start="2">
+<li>Add the component to the character prefab alongside <code>CharacterPredictionController</code>.</li>
+<li>Add any new fields to <code>CharacterReplicateData</code> and/or <code>CharacterReconcileData</code>.</li>
+<li>Update the corresponding delta serializers if adding new fields.</li>
+</ol>
+<h3 id="adding-fields-to-replicatereconcile-structs">Adding Fields to Replicate/Reconcile Structs</h3>
+<p>When a new subsystem needs to carry data through the prediction pipeline:</p>
+<ol>
+<li>Add the field to <code>CharacterReplicateData</code> (for input) or <code>CharacterReconcileData</code> (for state).</li>
+<li>Update the corresponding delta serializer (<code>CharacterReplicateDataDeltaSerializer</code> or <code>CharacterReconcileDataDeltaSerializer</code>) to include the new field in the bitmask.</li>
+<li>For array fields, implement <code>WriteArrayDelta</code>/<code>ReadArrayDelta</code> methods (see <code>CooldownReconcileEntry</code> or <code>BuffReconcileEntry</code> for examples).</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="characterpredictioncontroller">CharacterPredictionController</h3>
+<p><code>CharacterPredictionController</code> extends <code>NetworkBehaviour</code> and has no inspector-exposed fields. All configuration is implicit:</p>
+<table>
+<thead>
+<tr>
+<th>Behaviour</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Controller discovery</td>
+<td><code>GetComponents&lt;IPredictableController&gt;()</code> on <code>Awake()</code> — all controllers on the same <code>GameObject</code> are automatically found</td>
+</tr>
+<tr>
+<td>Execution order</td>
+<td>Sorted by <code>IPredictableController.Order</code> ascending — lower values run first</td>
+</tr>
+<tr>
+<td>Tick binding</td>
+<td>Subscribes to <code>TimeManager.OnTick</code> on <code>OnStartNetwork()</code>, unsubscribes on <code>OnStopNetwork()</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="characterreplicatedata">CharacterReplicateData</h3>
+<p>Unified per-tick input struct. Contains only input, not state.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Subsystem</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MoveAxisForward</code></td>
+<td><code>float</code></td>
+<td>KCC</td>
+<td>Forward movement axis (W/S)</td>
+</tr>
+<tr>
+<td><code>MoveAxisRight</code></td>
+<td><code>float</code></td>
+<td>KCC</td>
+<td>Right movement axis (A/D)</td>
+</tr>
+<tr>
+<td><code>MoveFlags</code></td>
+<td><code>int</code></td>
+<td>KCC</td>
+<td>Bitmask: Jump, Crouch, Sprint (<code>KCCMoveFlags</code>)</td>
+</tr>
+<tr>
+<td><code>CameraPosition</code></td>
+<td><code>Vector3</code></td>
+<td>KCC</td>
+<td>Camera position for ability aiming</td>
+</tr>
+<tr>
+<td><code>CameraRotation</code></td>
+<td><code>Quaternion</code></td>
+<td>KCC</td>
+<td>Camera rotation for ability aiming</td>
+</tr>
+<tr>
+<td><code>ActivationFlags</code></td>
+<td><code>int</code></td>
+<td>Ability</td>
+<td>Bitmask: IsActualData, Interrupt, IsHeld, IsConsumable, IsMount</td>
+</tr>
+<tr>
+<td><code>QueuedAbilityID</code></td>
+<td><code>long</code></td>
+<td>Ability</td>
+<td>Ability or consumable template ID to activate</td>
+</tr>
+</tbody>
+</table>
+<p>Delta serialized with a 7-bit byte bitmask — only changed fields are transmitted.</p>
+<h3 id="characterreconciledata">CharacterReconcileData</h3>
+<p>Unified per-tick authoritative state struct.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Subsystem</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MotorState</code></td>
+<td><code>KinematicCharacterMotorState</code></td>
+<td>KCC</td>
+<td>Full motor state (position, velocity, grounding)</td>
+</tr>
+<tr>
+<td><code>AbilityID</code></td>
+<td><code>long</code></td>
+<td>Ability</td>
+<td>Currently active ability ID</td>
+</tr>
+<tr>
+<td><code>RemainingTicks</code></td>
+<td><code>uint</code></td>
+<td>Ability</td>
+<td>Remaining activation ticks</td>
+</tr>
+<tr>
+<td><code>Seed</code></td>
+<td><code>int</code></td>
+<td>Ability</td>
+<td>Deterministic RNG seed output</td>
+</tr>
+<tr>
+<td><code>PackedFlagsAndSlot</code></td>
+<td><code>int</code></td>
+<td>Ability</td>
+<td>Packed activation flags (16-bit) + consumable slot (16-bit)</td>
+</tr>
+<tr>
+<td><code>ResourceState</code></td>
+<td><code>CharacterAttributeResourceState</code></td>
+<td>Attribute</td>
+<td>Health/Mana/Stamina current + max values</td>
+</tr>
+<tr>
+<td><code>Cooldowns</code></td>
+<td><code>CooldownReconcileEntry[]</code></td>
+<td>Cooldown</td>
+<td>Active cooldown snapshots (index-delta, ref-eq shortcut)</td>
+</tr>
+<tr>
+<td><code>Buffs</code></td>
+<td><code>BuffReconcileEntry[]</code></td>
+<td>Buff</td>
+<td>Active buff snapshots (index-delta, ref-eq shortcut)</td>
+</tr>
+<tr>
+<td><code>Equipment</code></td>
+<td><code>EquipmentReconcileEntry[]</code></td>
+<td>Equipment</td>
+<td>Equipped item snapshots (TemplateID, Slot, Seed, InstanceID) — field 11 (bit 10)</td>
+</tr>
+<tr>
+<td><code>Attributes</code></td>
+<td><code>AttributeReconcileEntry[]</code></td>
+<td>Attribute</td>
+<td>Non-resource attribute snapshots (Value + ExternalModifier), sorted by <code>TemplateID</code></td>
+</tr>
+<tr>
+<td><code>RngS0</code>–<code>RngS3</code></td>
+<td><code>uint</code> × 4</td>
+<td>Ability</td>
+<td>Full xoshiro128** RNG internal state</td>
+</tr>
+</tbody>
+</table>
+<p>Delta serialized with a bitmask + per-field delta encoding. Array fields use index-delta compression with reference-equality shortcutting.</p>
+<blockquote>
+<p><strong>Sort contract:</strong> producers of <code>Attributes</code>, <code>Buffs</code>, and <code>Cooldowns</code> MUST emit entries sorted by their stable key (<code>TemplateID</code> ascending) so index-delta comparisons stay meaningful across ticks.</p>
+</blockquote>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="tick-execution-flow">Tick Execution Flow</h3>
+<p>Each <code>TimeManager.OnTick</code>, the controller executes:</p>
+<pre><code class="lang-csharp">// 1. Owner populates unified input
+CharacterReplicateData input = default;
+if (IsOwner)
+{
+    for (int i = 0; i &lt; controllers.Length; i++)
+        controllers[i].PopulateInput(ref input);
+}
+
+// 2. Replicate (runs on all: owner, server, replay)
+Replicate(input);
+
+// 3. Server creates reconcile
+CreateReconcile();
+</code></pre>
+<h3 id="controller-order-example">Controller Order Example</h3>
+<p>If you need current movement/camera state to be available before buff, cooldown, attribute, and ability logic:</p>
+<pre><code>KCCPlayer (Order=80)          → Updates position/velocity/camera state
+BuffController (Order=85)      → Ticks/expires buffs, applies modifiers
+CooldownController (Order=90)  → Expires elapsed cooldowns
+CharacterAttributeController (Order=95) → Regenerates resources
+AbilityController (Order=100)  → Activates abilities, checks cooldowns + resources
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Controller discovery</td>
+<td>Enter Play mode, break on <code>Awake()</code></td>
+<td><code>controllers</code> array contains all 5 controllers sorted by Order</td>
+</tr>
+<tr>
+<td>State Forwarding</td>
+<td>Inspect <code>NetworkObject</code> Prediction settings</td>
+<td><code>EnableStateForwarding == true</code>. <code>CharacterPredictionController.OnStartNetwork</code> logs a warning otherwise — observers desync without it</td>
+</tr>
+<tr>
+<td>Tick execution</td>
+<td>Place a breakpoint in <code>TimeManager_OnTick</code></td>
+<td>Called every server tick; <code>PopulateInput</code> runs only for owner</td>
+</tr>
+<tr>
+<td>Replicate pipeline</td>
+<td>Activate an ability on client</td>
+<td><code>OnReplicate</code> fires on both client and server with identical tick</td>
+</tr>
+<tr>
+<td>Reconcile pipeline</td>
+<td>Force a mismatch (server modifies ability state)</td>
+<td><code>OnReconcile</code> fires on client, restoring server state</td>
+</tr>
+<tr>
+<td><code>IsSpawned</code> gate</td>
+<td>Break in <code>CreateReconcile</code></td>
+<td>Guarded by <code>IsServerStarted &amp;&amp; IsSpawned</code>; reconciles are dropped before the <code>NetworkObject</code> is fully spawned to avoid NREs through partially-wired subsystems</td>
+</tr>
+<tr>
+<td>Delta serialization</td>
+<td>Monitor network traffic</td>
+<td>Unchanged ticks transmit minimal bytes (bitmask-only for structs, skipped for reference-equal arrays)</td>
+</tr>
+<tr>
+<td>Replay determinism</td>
+<td>Cause a reconcile</td>
+<td>All controllers replay from the reconcile tick with identical results</td>
+</tr>
+<tr>
+<td>Order enforcement</td>
+<td>Log <code>Order</code> values in <code>Awake()</code></td>
+<td>Sorted ascending: 80, 85, 90, 93, 95, 100</td>
+</tr>
+</tbody>
+</table>
+<h2 id="system-architecture-mermaid">System Architecture (Mermaid)</h2>
+<p>The diagrams below describe the entire <code>Prediction/</code> folder — components, the unified data structs, delta-serializer paths, and the per-tick lifecycle. They are the canonical reference; ASCII diagrams further down repeat the same information for terminal-only viewers.</p>
+<h3 id="1-component--data-flow-topology">1. Component &amp; Data-Flow Topology</h3>
+<pre><code class="lang-mermaid">flowchart TB
+    classDef driver       fill:#1f4e79,color:#fff,stroke:#0f2030,stroke-width:1px
+    classDef subsystem    fill:#2e7d32,color:#fff,stroke:#143316,stroke-width:1px
+    classDef data         fill:#7e57c2,color:#fff,stroke:#311b6b,stroke-width:1px
+    classDef serializer   fill:#ef6c00,color:#fff,stroke:#7a3700,stroke-width:1px
+    classDef external     fill:#455a64,color:#fff,stroke:#1c272c,stroke-width:1px,stroke-dasharray:3 3
+
+    subgraph NO[NetworkObject: Character]
+        direction TB
+        CPC[&quot;CharacterPredictionController\n(single [Replicate] / [Reconcile])&quot;]:::driver
+
+        subgraph Subs[&quot;IPredictableController components (sorted by Order)&quot;]
+            direction TB
+            KCC[&quot;KCCPlayer · Order 80&quot;]:::subsystem
+            BUF[&quot;BuffController · Order 85&quot;]:::subsystem
+            CD[&quot;CooldownController · Order 90&quot;]:::subsystem
+            ATT[&quot;CharacterAttributeController · Order 95&quot;]:::subsystem
+            ABI[&quot;AbilityController · Order 100&quot;]:::subsystem
+        end
+
+        CPC --&gt; KCC
+        CPC --&gt; BUF
+        CPC --&gt; CD
+        CPC --&gt; ATT
+        CPC --&gt; ABI
+    end
+
+    subgraph Shared[&quot;Unified prediction structs&quot;]
+        direction LR
+        RD[&quot;CharacterReplicateData\n(IReplicateData)&quot;]:::data
+        RC[&quot;CharacterReconcileData\n(IReconcileData)&quot;]:::data
+    end
+
+    subgraph Ser[&quot;Delta serializers&quot;]
+        direction LR
+        REP_SER[&quot;CharacterReplicateData\n(generated)&quot;]:::serializer
+        REC_SER[&quot;CharacterReconcileDataDeltaSerializer\nbitmask + per-field + array delta&quot;]:::serializer
+        RES_SER[&quot;CharacterAttributeResourceStateSerializer\n(7-bit bitmask)&quot;]:::serializer
+        BUF_SER[&quot;BuffReconcileEntry\nWrite/ReadArrayDelta&quot;]:::serializer
+        CD_SER[&quot;CooldownReconcileEntry\nWrite/ReadArrayDelta&quot;]:::serializer
+        ATT_SER[&quot;AttributeReconcileEntry\nWrite/ReadArrayDelta&quot;]:::serializer
+        KCC_SER[&quot;KCCPredictionDeltaSerializers\n(MotorState 14-bit bitmask)&quot;]:::serializer
+    end
+
+    subgraph Sep[&quot;Separate NetworkObjects (own predicted pair)&quot;]
+        direction TB
+        PLAT[&quot;KCCPlatform&quot;]:::external
+        REG[&quot;Region · server-only\n(OnTick LocalTick)&quot;]:::external
+    end
+
+    KCC -- &quot;PopulateInput / OnReplicate / OnReconcile&quot; --&gt; RD
+    ABI -- &quot;PopulateInput / OnReplicate / OnReconcile&quot; --&gt; RD
+    BUF -- &quot;OnCreateReconcile / OnReconcile&quot; --&gt; RC
+    CD  -- &quot;OnCreateReconcile / OnReconcile&quot; --&gt; RC
+    ATT -- &quot;OnCreateReconcile / OnReconcile&quot; --&gt; RC
+    KCC -- &quot;OnCreateReconcile / OnReconcile&quot; --&gt; RC
+    ABI -- &quot;OnCreateReconcile / OnReconcile (RNG + flags)&quot; --&gt; RC
+
+    RD --&gt; REP_SER
+    RC --&gt; REC_SER
+    REC_SER --&gt; RES_SER
+    REC_SER --&gt; BUF_SER
+    REC_SER --&gt; CD_SER
+    REC_SER --&gt; ATT_SER
+    REC_SER --&gt; KCC_SER
+
+    REP_SER -. &quot;wire (Unreliable Channel)&quot; .-&gt; CPC
+    REC_SER -. &quot;wire (Unreliable Channel)&quot; .-&gt; CPC
+</code></pre>
+<h3 id="2-per-tick-lifecycle-sequence">2. Per-Tick Lifecycle (sequence)</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    autonumber
+    participant TM as TimeManager
+    participant CPC as CharacterPredictionController
+    participant Subs as Subsystems (Order 80,85,90,95,100)
+    participant Net as FishNet wire
+    participant Cli as Owning client
+
+    TM-&gt;&gt;CPC: OnTick
+    alt IsOwner
+        loop for each subsystem (asc Order)
+            CPC-&gt;&gt;Subs: PopulateInput(ref CharacterReplicateData)
+        end
+    end
+    CPC-&gt;&gt;CPC: Replicate(input)
+    loop for each subsystem (asc Order)
+        CPC-&gt;&gt;Subs: OnReplicate(ref input, state, channel)
+    end
+
+    opt IsServerStarted &amp;&amp; IsSpawned
+        CPC-&gt;&gt;CPC: CreateReconcile()
+        loop for each subsystem (asc Order)
+            CPC-&gt;&gt;Subs: OnCreateReconcile(ref CharacterReconcileData)
+        end
+        CPC-&gt;&gt;Net: Reconcile(data)   [DeltaSerializer]
+        Net--&gt;&gt;Cli: snapshot bytes
+    end
+
+    Cli-&gt;&gt;CPC: [Reconcile] entry (on mismatch)
+    loop for each subsystem (asc Order)
+        CPC-&gt;&gt;Subs: OnReconcile(rd, channel)
+    end
+    Cli-&gt;&gt;CPC: Replay [reconcileTick … currentTick]
+    Note over CPC,Subs: Each replayed tick re-runs&lt;br/&gt;OnReplicate with cached inputs&lt;br/&gt;under state.ContainsReplayed()
+</code></pre>
+<h3 id="3-characterreconciledata-layout--delta-strategy">3. CharacterReconcileData Layout &amp; Delta Strategy</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    classDef field   fill:#37474f,color:#fff,stroke:#101a1f,stroke-width:1px
+    classDef arr     fill:#5d4037,color:#fff,stroke:#1b0f0c,stroke-width:1px
+    classDef serial  fill:#ef6c00,color:#fff,stroke:#7a3700,stroke-width:1px
+
+    RC([CharacterReconcileData])
+
+    RC --&gt; MS[&quot;MotorState\n14-bit bitmask&quot;]:::field
+    RC --&gt; RS[&quot;ResourceState\n(7-bit bitmask: HP/MP/Stamina + max + RegenTickAccum)&quot;]:::field
+    RC --&gt; AID[&quot;AbilityID + RemainingTicks + Seed&quot;]:::field
+    RC --&gt; PFS[&quot;PackedFlagsAndSlot (int32)\nlow 16 = AbilityActivationFlags\nhigh 16 = consumable slot (signed)&quot;]:::field
+    RC --&gt; RNG[&quot;RngS0..RngS3 (xoshiro128**)&quot;]:::field
+    RC --&gt; COOL[&quot;Cooldowns[]&quot;]:::arr
+    RC --&gt; BUFF[&quot;Buffs[]&quot;]:::arr
+    RC --&gt; ATTR[&quot;Attributes[]\n(non-resource: Value + ExternalModifier)&quot;]:::arr
+
+    MS   --&gt; KCC_SER[&quot;KCCPredictionDeltaSerializers&quot;]:::serial
+    RS   --&gt; RES_SER[&quot;CharacterAttributeResourceStateSerializer&quot;]:::serial
+    COOL --&gt; CD_SER[&quot;CooldownReconcileEntry.Write/ReadArrayDelta&quot;]:::serial
+    BUFF --&gt; BUF_SER[&quot;BuffReconcileEntry.Write/ReadArrayDelta&quot;]:::serial
+    ATTR --&gt; ATT_SER[&quot;AttributeReconcileEntry.Write/ReadArrayDelta&quot;]:::serial
+
+    subgraph Compression[&quot;Array compression rules&quot;]
+        direction TB
+        R1[&quot;ReferenceEquals(prev,next) → 0 bytes&quot;]
+        R2[&quot;Equal length, partial change → packed 16-bit header (high bit = delta) + (index, entry) pairs&quot;]
+        R3[&quot;Length change or forceWrite → packed header + full array&quot;]
+        R4[&quot;MaxEntries = 4096 with stream-preserving drain on overflow&quot;]
+    end
+    CD_SER  --- Compression
+    BUF_SER --- Compression
+    ATT_SER --- Compression
+</code></pre>
+<h3 id="4-folder--cross-folder-dependencies">4. Folder &amp; Cross-Folder Dependencies</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    classDef folder fill:#263238,color:#fff,stroke:#000
+
+    subgraph PRED[&quot;Prediction/ (this folder)&quot;]
+        direction TB
+        DRV[&quot;Driver:\nCharacterPredictionController,\nCharacterReplicateData,\nCharacterReconcileData,\nCharacterReconcileDataDeltaSerializer,\nCharacterTickExtensions&quot;]:::folder
+        K[&quot;KCC/&quot;]:::folder
+        B[&quot;Buff/&quot;]:::folder
+        A[&quot;CharacterAttribute/&quot;]:::folder
+        AB[&quot;Ability/&quot;]:::folder
+        ABCD[&quot;Ability/Cooldown/&quot;]:::folder
+        ABACT[&quot;Ability/Activation/&quot;]:::folder
+        ABSN[&quot;Ability/Snapshot/&quot;]:::folder
+        ABTPL[&quot;Ability/Template/&quot;]:::folder
+        R[&quot;Region/&quot;]:::folder
+    end
+
+    subgraph EXT[&quot;Outside this folder&quot;]
+        direction TB
+        IF[&quot;Shared/Core/Entity/Prediction/\nIPredictableController, ICooldownController,\nIAbilityController&quot;]:::folder
+        FN[&quot;FishNet.Object.Prediction&quot;]:::folder
+        KCCPkg[&quot;KinematicCharacterController package&quot;]:::folder
+    end
+
+    DRV --&gt; K
+    DRV --&gt; B
+    DRV --&gt; A
+    DRV --&gt; AB
+    AB --&gt; ABCD
+    AB --&gt; ABACT
+    AB --&gt; ABSN
+    AB --&gt; ABTPL
+    A  -. &quot;AttributeReconcileEntry rides DRV's CharacterReconcileData&quot; .- DRV
+    R  -. &quot;server-only triggers; not part of the predicted character pipeline&quot; .- DRV
+
+    DRV --&gt; IF
+    DRV --&gt; FN
+    K   --&gt; KCCPkg
+</code></pre>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Input[Local input] --&gt; Predict[Client predict]
+    Predict --&gt; State[Local state]
+    Server[Server tick] --&gt;|snapshot| Reconcile[Reconcile]
+    Reconcile --&gt; Predict
+    Predict --&gt; Replay[Replay unacked inputs]
+    Replay --&gt; State
+</code></pre>
+<h3 id="per-tick-pipeline">Per-Tick Pipeline</h3>
+<pre><code>TimeManager.OnTick()
+        │
+        ▼
+┌──────────────────────────────────────────────────┐
+│  PopulateInput (Owner only)                      │
+│  ┌─ KCCPlayer.PopulateInput          (Order=80)  │
+│  ├─ BuffController.PopulateInput     (Order=85)  │ ← no-op
+│  ├─ CooldownController.PopulateInput (Order=90)  │ ← no-op
+│  ├─ EquipmentController.PopulateInput(Order=93)  │ ← no-op
+│  ├─ CharacterAttributeController     (Order=95)  │ ← no-op
+│  └─ AbilityController.PopulateInput  (Order=100) │
+│                                                  │
+│  Result: CharacterReplicateData populated        │
+└─────────────────────────┬────────────────────────┘
+                          │
+                          ▼
+┌──────────────────────────────────────────────────┐
+│  [Replicate] (Owner + Server + Replay)           │
+│  ┌─ KCCPlayer.OnReplicate            → Motor sim │
+│  ├─ BuffController.OnReplicate       → Tick()    │
+│  ├─ CooldownController.OnReplicate   → Expire()  │
+│  ├─ CharacterAttributeController     → Regen()   │
+│  └─ AbilityController.OnReplicate    → Activate  │
+└─────────────────────────┬────────────────────────┘
+                          │
+                          ▼
+┌──────────────────────────────────────────────────┐
+│  CreateReconcile (Server only)                   │
+│  ┌─ KCCPlayer.OnCreateReconcile      → MotorState│
+│  ├─ BuffController.OnCreateReconcile → Buffs[]   │
+│  ├─ CooldownController               → Cooldowns │
+│  ├─ CharacterAttributeController     → Resources │
+│  └─ AbilityController               → Ability+RNG│
+│                                                  │
+│  Result: CharacterReconcileData sent to client   │
+└─────────────────────────┬────────────────────────┘
+                          │
+                          ▼ (on mismatch)
+┌──────────────────────────────────────────────────┐
+│  [Reconcile] (Client only)                       │
+│  ┌─ KCCPlayer.OnReconcile           → Restore    │
+│  ├─ BuffController.OnReconcile      → Restore    │
+│  ├─ CooldownController.OnReconcile  → Restore    │
+│  ├─ CharacterAttributeController    → Restore    │
+│  └─ AbilityController.OnReconcile   → Restore    │
+│                                                  │
+│  Then: Replay all ticks from reconcile→current   │
+└──────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="delta-serialization">Delta Serialization</h3>
+<pre><code>CharacterReplicateData: 7-bit byte bitmask → only changed fields written
+CharacterReconcileData: ushort bitmask → per-field delta encoding
+├── KinematicCharacterMotorState: 14-bit ushort bitmask
+├── CharacterAttributeResourceState: 7-bit byte bitmask
+├── CooldownReconcileEntry[]: index-delta compression (reference-equality shortcut)
+├── BuffReconcileEntry[]: index-delta compression (reference-equality shortcut)
+├── EquipmentReconcileEntry[]: index-delta compression (reference-equality shortcut)
+├── AttributeReconcileEntry[]: index-delta compression (reference-equality shortcut)
+└── RNG state (RngS0–S3): 4 × uint, only when changed
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Prediction/
+├── CharacterPredictionController.cs            # Unified prediction driver (NetworkBehaviour, sole [Replicate]/[Reconcile])
+├── CharacterReplicateData.cs                   # Shared per-tick input struct [UseGlobalCustomSerializer]
+├── CharacterReconcileData.cs                   # Shared per-tick state struct [UseGlobalCustomSerializer]
+├── CharacterReconcileDataDeltaSerializer.cs    # Bitmask-based delta serializer for reconcile data
+├── CharacterTickExtensions.cs                  # ICharacter.GetLocalTick() helper
+├── Ability/                                    # Ability system (see Ability/README.md)
+│   ├── Ability.cs                              # Runtime ability instance
+│   ├── AbilityController.cs                    # IPredictableController (Order=100), partials below
+│   ├── AbilityController.Activation.cs         # Activation pipeline
+│   ├── AbilityController.Knowledge.cs          # Known ability / event templates
+│   ├── AbilityController.Networking.cs         # Knowledge broadcasts (NOT state replication)
+│   ├── AbilityObject.cs                        # Spawned ability instance (projectile / hit volume)
+│   ├── AbilityObjectSnapshot.cs                # Detached object snapshot (outlives caster)
+│   ├── AbilityPrefabColliderCache.cs           # Caches colliders per ability prefab to avoid GetComponent per spawn
+│   ├── AbilityContainerAllocator.cs            # Allocates deterministic container IDs for spawned objects
+│   ├── AbilityActivationFlags.cs               # 16-bit flags packed into CharacterReconcileData.PackedFlagsAndSlot
+│   ├── Activation/                             # AbilityActivationReplicateData (per-ability input shape)
+│   ├── Cooldown/                               # Cooldown system (see Ability/Cooldown/README.md)
+│   ├── Snapshot/                               # SnapshotCharacter / SnapshotAttributeController
+│   └── Template/                               # AbilityTemplate, AbilityType, AbilitySpawnTarget, Pet*, Events/
+├── Buff/                                       # Buff system (see Buff/README.md)
+│   ├── Buff.cs                                 # Per-buff state holder
+│   ├── BuffController.cs                       # IPredictableController (Order=85)
+│   ├── BuffReconcileEntry.cs                   # (TemplateID, ExpiryTick, NextTickTick, Stacks) + array-delta
+│   └── Template/                               # AttributeBuffTemplate, CompositeBuffTemplate, etc.
+├── Equipment/                                  # Equipment state reconcile (EquipmentController, EquipmentReconcileEntry)
+├── CharacterAttribute/                         # Attribute system (see CharacterAttribute/README.md)
+│   ├── CharacterAttributeController.cs         # IPredictableController (Order=95)
+│   ├── CharacterAttribute.cs                   # Non-resource attribute runtime
+│   ├── CharacterResourceAttribute.cs           # Health / Mana / Stamina runtime
+│   ├── CharacterAttributeResourceState.cs      # 7-field snapshot struct
+│   ├── CharacterAttributeResourceStateSerializer.cs  # Regular + delta serializers (BeforeSceneLoad registration)
+│   ├── AttributeReconcileEntry.cs              # Non-resource attribute snapshot + array-delta
+│   ├── CharacterDamageController.cs            # Damage / heal / kill pipeline
+│   └── Template/                               # CharacterAttributeTemplate, formulas, damage/resistance
+├── KCC/                                        # Kinematic Character Controller
+│   ├── KCCPlayer.cs                            # IPredictableController (Order=80) — movement prediction
+│   ├── KCCController.cs                        # Motor simulation (ICharacterController)
+│   ├── KCCCamera.cs                            # Third-person camera controller
+│   ├── KCCPlatform.cs                          # Moving platform prediction (separate NetworkObject — own [Replicate]/[Reconcile])
+│   ├── KCCInputReplicateData.cs                # KCC-specific replicate data (used internally)
+│   ├── KCCMoveFlags.cs                         # Movement flag enum (Jump, Crouch, Sprint)
+│   └── KCCPredictionDeltaSerializers.cs        # Delta serializers for motor state + replicate data
+└── Region/                                     # Region trigger system (server-authoritative; NOT part of the predicted character pipeline)
+    ├── Region.cs                               # NetworkBehaviour with NetworkTrigger; OnRegionEnter/Stay/Exit Trigger lists
+    └── FogSettings.cs                          # Per-region fog configuration data
+</code></pre>
+<h3 id="related-files">Related Files</h3>
+<pre><code>Shared/Core/Entity/Prediction/IPredictableController.cs     # Interface all controllers implement
+Shared/Core/Entity/Prediction/Ability/Cooldown/ICooldownController.cs  # Cooldown controller interface
+Shared/Core/Entity/Prediction/Ability/IAbilityController.cs  # Ability controller interface
+</code></pre>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>NetworkBehaviour
+└── CharacterPredictionController       # Drives the unified pipeline
+
+IPredictableController                  # Implemented by all subsystem controllers
+├── KCCPlayer              (Order=80)
+├── BuffController         (Order=85)
+├── CooldownController     (Order=90)
+├── EquipmentController    (Order=93)
+├── CharacterAttributeController (Order=95)
+└── AbilityController      (Order=100)
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

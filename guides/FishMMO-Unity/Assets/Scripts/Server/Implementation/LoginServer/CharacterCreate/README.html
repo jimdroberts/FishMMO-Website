@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Character Create System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Character Create System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/CharacterCreate/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="character-create-system">Character Create System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/CharacterCreate/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> LoginServer subsystem that validates character creation requests, initializes starting data (attributes, factions, abilities, inventory, equipment), and persists new characters atomically via a transactional database pipeline with main-thread safety for Unity API access.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Character Create system is the LoginServer subsystem responsible for handling character creation for player accounts. It validates character data, initializes starting equipment and abilities, and persists everything transactionally to the database.</p>
+<p>The implementation uses a three-phase execution model:</p>
+<ul>
+<li><strong>Main thread (network handler):</strong> receives <code>CharacterCreateBroadcast</code>, performs fast validation (character name, account binding, race template, prefab/spawnable checks via Unity API), acquires the per-connection in-flight gate, and enqueues async work.</li>
+<li><strong>Async worker:</strong> validates immutable spawn/race data from <code>WorldSceneDetailsCache</code>, enforces the account character count limit, builds all DTOs (character, factions, abilities, inventory, equipment, attributes), creates the character row and all sub-entities inside a Unit of Work transaction, and commits atomically.</li>
+<li><strong>Main-thread queue:</strong> marshals all network responses (<code>Broadcast</code>, <code>Kick</code>) back to the Unity main thread via <code>ICharacterCreateSystemMainThreadQueueData</code>, drained each frame in <code>OnUpdate</code> with a bounded per-frame cap (<code>maxMainThreadResponsesPerFrame</code>).</li>
+</ul>
+<p>All Unity object access (templates, prefabs, <code>SpawnablePrefabs</code>) occurs on the main thread. Only database operations and DTO construction run asynchronously. Broadcast replies are marshalled back to the main thread via a thread-safe queue to guarantee FishNet/Unity API safety.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Character name validation via <code>Authentication.IsAllowedCharacterName</code> with field-length guards (<code>MaxSceneFieldLength = 256</code>)</li>
+<li>Account binding verification through <code>AccountManager.GetAccountNameByConnection</code></li>
+<li>Race template and model validation via <code>RaceTemplate.Get&lt;RaceTemplate&gt;(msg.RaceTemplateID)</code> and <code>GetModelReference(msg.ModelIndex)</code></li>
+<li>Spawnable prefab validation through <code>IPlayerCharacter</code> component check and <code>SpawnablePrefabs.GetObject</code></li>
+<li>Spawn point validation against <code>WorldSceneDetailsCache</code> with per-spawner allowed-race enforcement</li>
+<li>Per-account character count limit enforcement (configurable <code>maxCharacters</code>, default 8)</li>
+<li>Starting data composition combining global templates with race-specific templates:
+<ul>
+<li><strong>Attributes:</strong> from <code>raceTemplate.InitialAttributes.Attributes</code></li>
+<li><strong>Factions:</strong> from <code>raceTemplate.InitialFaction</code> (allied, neutral, hostile)</li>
+<li><strong>Abilities:</strong> global <code>StartingAbilities</code> + <code>raceTemplate.StartingAbilities</code></li>
+<li><strong>Inventory:</strong> global <code>StartingInventoryItems</code> + <code>raceTemplate.StartingInventoryItems</code></li>
+<li><strong>Equipment:</strong> global <code>StartingEquipment</code> + <code>raceTemplate.StartingEquipment</code> (with <code>ItemGenerator</code> seed generation)</li>
+</ul>
+</li>
+<li>Atomic transactional persistence via <code>IUnitOfWorkService</code> — character row created first to obtain ID, then all sub-entities persisted and committed together</li>
+<li>Database error mapping: <code>AlreadyExists</code> → <code>CharacterNameTaken</code>, <code>ValidationError</code> → <code>InvalidCharacterName</code></li>
+<li>Per-connection in-flight gate (<code>InFlightRequests</code>) preventing duplicate concurrent create operations</li>
+<li>Per-connection post-release cooldown (<code>createRequestCooldownMilliseconds</code>, default 2000 ms) preventing sequential spam</li>
+<li>Bounded main-thread response drain (<code>maxMainThreadResponsesPerFrame</code>, default 100) to avoid frame spikes during login waves</li>
+<li>Automatic cleanup of per-connection state on disconnect via <code>OnRemoteConnectionStopped</code></li>
+<li>Deinitialize drains all remaining main-thread responses so clients receive final messages</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS with IL2CPP scripting backend</li>
+<li>FishNet networking framework (FishNet.Runtime)</li>
+<li>FishMMO Server Core and Shared assemblies</li>
+<li>PostgreSQL database with Npgsql services:
+<ul>
+<li><code>ICharacterService</code></li>
+<li><code>ICharacterFactionService</code></li>
+<li><code>ICharacterAbilityService</code></li>
+<li><code>ICharacterInventoryService</code></li>
+<li><code>ICharacterEquipmentService</code></li>
+<li><code>ICharacterAttributeService</code></li>
+<li><code>IUnitOfWorkService</code></li>
+</ul>
+</li>
+<li>Configured <code>WorldSceneDetailsCache</code> asset with scene spawn positions and allowed races</li>
+<li>Race templates (<code>RaceTemplate</code>) with prefabs, models, initial attributes, factions, and starting items</li>
+<li>Ability templates (<code>AbilityTemplate</code>), item templates (<code>BaseItemTemplate</code>), and equipment templates (<code>EquippableItemTemplate</code>) as needed</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO server architecture. No separate installation is required.</p>
+<ol>
+<li>The <code>CharacterCreateSystem</code> ScriptableObject is created via the Unity menu:
+<strong>Assets → Create → FishMMO → Server → LoginServer → Character Create System</strong></li>
+<li>Assign the asset to the LoginServer's server behaviour list.</li>
+<li>The system's <code>[RequiresDataContainer]</code> attributes ensure the <code>DataContainerRegistry</code> automatically creates:
+<ul>
+<li><code>CharacterCreateSystemMainThreadQueueData</code></li>
+<li><code>CharacterCreateSystemRuntimeData</code></li>
+<li><code>AsyncWorkerData</code></li>
+</ul>
+</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="creating-the-system-asset">Creating the System Asset</h3>
+<ol>
+<li>In the Unity Editor, right-click in the Project window.</li>
+<li>Select <strong>Create → FishMMO → Server → LoginServer → Character Create System</strong>.</li>
+<li>Configure the inspector fields (see <a href="#configuration">Configuration</a>).</li>
+<li>Add the asset to the LoginServer's behaviour collection.</li>
+</ol>
+<h3 id="configuring-starting-data">Configuring Starting Data</h3>
+<ol>
+<li>Populate <code>Starting Abilities</code> with <code>AbilityTemplate</code> references for abilities all new characters should receive.</li>
+<li>Populate <code>Starting Inventory Items</code> with <code>BaseItemTemplate</code> references for default inventory contents.</li>
+<li>Populate <code>Starting Equipment</code> with <code>EquippableItemTemplate</code> references for default equipped gear.</li>
+<li>Assign the <code>World Scene Details Cache</code> asset containing scene spawn point definitions.</li>
+<li>Race-specific starting data is configured on each <code>RaceTemplate</code> asset (attributes, factions, abilities, inventory, equipment).</li>
+</ol>
+<h3 id="character-creation-flow-client">Character Creation Flow (Client)</h3>
+<ol>
+<li>Client sends a <code>CharacterCreateBroadcast</code> with <code>CharacterName</code>, <code>RaceTemplateID</code>, <code>ModelIndex</code>, <code>SceneName</code>, and <code>SpawnerName</code>.</li>
+<li>Server validates and processes the request asynchronously.</li>
+<li>Client receives a <code>CharacterCreateResultBroadcast</code> with the result (<code>Success</code>, <code>TooMany</code>, <code>InvalidCharacterName</code>, <code>CharacterNameTaken</code>, <code>InvalidSpawn</code>, or <code>Error</code>).</li>
+<li>On success, the original <code>CharacterCreateBroadcast</code> is echoed back to the client as confirmation.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-fields">Inspector Fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadResponsesPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Maximum character-create responses drained from the main-thread queue per frame. Caps per-frame dispatch cost to avoid frame spikes.</td>
+</tr>
+<tr>
+<td><code>maxCharacters</code></td>
+<td><code>int</code></td>
+<td><code>8</code></td>
+<td>Maximum number of characters allowed per account. Clamped to minimum 1 at initialization.</td>
+</tr>
+<tr>
+<td><code>createRequestCooldownMilliseconds</code></td>
+<td><code>int</code></td>
+<td><code>2000</code></td>
+<td>Cooldown in milliseconds between character-create requests per connection. Prevents sequential spam after the in-flight guard releases.</td>
+</tr>
+<tr>
+<td><code>worldSceneDetailsCache</code></td>
+<td><code>WorldSceneDetailsCache</code></td>
+<td>—</td>
+<td>Cached world scene details used for validating spawn positions and initial character creation. Must be assigned.</td>
+</tr>
+<tr>
+<td><code>startingAbilities</code></td>
+<td><code>List&lt;AbilityTemplate&gt;</code></td>
+<td>empty</td>
+<td>Global ability templates granted to all new characters on creation.</td>
+</tr>
+<tr>
+<td><code>startingInventoryItems</code></td>
+<td><code>List&lt;BaseItemTemplate&gt;</code></td>
+<td>empty</td>
+<td>Global item templates added to all new characters' inventory on creation.</td>
+</tr>
+<tr>
+<td><code>startingEquipment</code></td>
+<td><code>List&lt;EquippableItemTemplate&gt;</code></td>
+<td>empty</td>
+<td>Global equipment templates equipped on all new characters at creation.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="constants">Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MaxSceneFieldLength</code></td>
+<td><code>256</code></td>
+<td>Maximum allowed length for <code>SceneName</code> and <code>SpawnerName</code> fields from client messages. Oversized fields result in a kick.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-structures">Broadcast Structures</h3>
+<p><strong>Client → Server: <code>CharacterCreateBroadcast</code></strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CharacterName</code></td>
+<td><code>string</code></td>
+<td>Name of the character to create</td>
+</tr>
+<tr>
+<td><code>RaceTemplateID</code></td>
+<td><code>int</code></td>
+<td>Template ID for the character's race</td>
+</tr>
+<tr>
+<td><code>ModelIndex</code></td>
+<td><code>int</code></td>
+<td>Index of the character model to use</td>
+</tr>
+<tr>
+<td><code>SceneName</code></td>
+<td><code>string</code></td>
+<td>Name of the scene where the character will be spawned</td>
+</tr>
+<tr>
+<td><code>SpawnerName</code></td>
+<td><code>string</code></td>
+<td>Name of the spawner to use for character placement</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Server → Client: <code>CharacterCreateResultBroadcast</code></strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Result</code></td>
+<td><code>CharacterCreateResult</code></td>
+<td>Result of the character creation operation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="result-codes">Result Codes</h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>0</code></td>
+<td>Character creation succeeded</td>
+</tr>
+<tr>
+<td><code>TooMany</code></td>
+<td><code>1</code></td>
+<td>Too many characters exist for this account</td>
+</tr>
+<tr>
+<td><code>InvalidCharacterName</code></td>
+<td><code>2</code></td>
+<td>Character name is invalid (forbidden characters, empty, etc.)</td>
+</tr>
+<tr>
+<td><code>CharacterNameTaken</code></td>
+<td><code>3</code></td>
+<td>Character name is already taken by another player</td>
+</tr>
+<tr>
+<td><code>InvalidSpawn</code></td>
+<td><code>4</code></td>
+<td>Spawn location or spawner is invalid</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td><code>5</code></td>
+<td>An internal server error occurred during character creation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="starting-data-composition">Starting Data Composition</h3>
+<p>Global starting templates from the system inspector are merged with race-specific templates from <code>RaceTemplate</code>:</p>
+<pre><code>Final Abilities   = system.StartingAbilities       + raceTemplate.StartingAbilities
+Final Inventory   = system.StartingInventoryItems   + raceTemplate.StartingInventoryItems
+Final Equipment   = system.StartingEquipment        + raceTemplate.StartingEquipment
+Final Attributes  = raceTemplate.InitialAttributes.Attributes
+Final Factions    = raceTemplate.InitialFaction (allied/neutral/hostile)
+</code></pre>
+<p>Equipment uses <code>ItemGenerator.Generate(1, template)</code> to produce a deterministic seed so item-derived stats can be reconstructed on character load.</p>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Expected</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System initializes</td>
+<td><code>Log.Debug(&quot;CharacterCreateSystem&quot;, &quot;Initialized&quot;)</code></td>
+<td>Requires all three data containers registered</td>
+</tr>
+<tr>
+<td>Character name validation</td>
+<td>Rejects names failing <code>Authentication.IsAllowedCharacterName</code></td>
+<td>Returns <code>InvalidCharacterName</code> result</td>
+</tr>
+<tr>
+<td>Scene/spawner field length</td>
+<td>Fields &gt; 256 characters trigger kick</td>
+<td><code>MaxSceneFieldLength</code> constant</td>
+</tr>
+<tr>
+<td>Account not bound</td>
+<td>Connection kicked</td>
+<td><code>KickReason.UnusualActivity</code></td>
+</tr>
+<tr>
+<td>Invalid race/model/prefab</td>
+<td>Connection kicked</td>
+<td><code>KickReason.UnusualActivity</code></td>
+</tr>
+<tr>
+<td>Invalid spawn scene</td>
+<td>Returns <code>InvalidSpawn</code></td>
+<td>Scene not in <code>WorldSceneDetailsCache</code></td>
+</tr>
+<tr>
+<td>Invalid spawner name</td>
+<td>Returns <code>InvalidSpawn</code></td>
+<td>Spawner not in scene's <code>InitialSpawnPositions</code></td>
+</tr>
+<tr>
+<td>Race not allowed at spawner</td>
+<td>Connection kicked</td>
+<td><code>KickReason.UnusualActivity</code></td>
+</tr>
+<tr>
+<td>Character count at limit</td>
+<td>Returns <code>TooMany</code></td>
+<td>Checked via <code>characterService.CountAsync</code></td>
+</tr>
+<tr>
+<td>Duplicate character name</td>
+<td>Returns <code>CharacterNameTaken</code></td>
+<td>Database <code>AlreadyExists</code> error code</td>
+</tr>
+<tr>
+<td>In-flight duplicate request</td>
+<td>Returns <code>Error</code></td>
+<td><code>InFlightRequests.TryAdd</code> fails</td>
+</tr>
+<tr>
+<td>Cooldown not elapsed</td>
+<td>Returns <code>Error</code></td>
+<td><code>NextAllowedCreateUtcByClientId</code> check</td>
+</tr>
+<tr>
+<td>Async worker queue full</td>
+<td>Returns <code>Error</code></td>
+<td><code>TryEnqueueAsyncWork</code> returns false</td>
+</tr>
+<tr>
+<td>Unit of work commit failure</td>
+<td>Returns <code>Error</code></td>
+<td>Transaction rolled back, no partial data</td>
+</tr>
+<tr>
+<td>Sub-entity persist failure</td>
+<td>Returns <code>Error</code></td>
+<td>Logged and reported to client</td>
+</tr>
+<tr>
+<td>Client disconnects mid-request</td>
+<td>In-flight state cleaned up</td>
+<td><code>OnRemoteConnectionStopped</code> removes entries</td>
+</tr>
+<tr>
+<td>Deinitialize</td>
+<td>All queued responses drained</td>
+<td><code>DrainMainThreadQueue(drainAll: true)</code> called</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|CreateCharacter request| Sys[CharacterCreateSystem]
+    Sys --&gt;|validate name + archetype| Naming[NamingService]
+    Sys --&gt;|insert character| DB[(PostgreSQL Characters)]
+    Sys --&gt;|seed inventory + spawn| DB
+    Sys --&gt;|result| Client
+</code></pre>
+<pre><code>┌────────┐  CharacterCreateBroadcast   ┌──────────────────────────────────────┐
+│ Client ├─────────────────────────────►│ OnServerCharacterCreateBroadcastRcvd │
+└────────┘                              │          (Main Thread)               │
+                                        └──────────┬───────────────────────────┘
+                                                   │
+                                    ┌──────────────▼──────────────┐
+                                    │  1. Validate character name  │
+                                    │  2. Validate field lengths   │
+                                    │  3. Resolve account name     │
+                                    │  4. Resolve DB services      │
+                                    │  5. Validate RaceTemplate    │
+                                    │  6. Validate prefab/spawnable│
+                                    │  7. Acquire in-flight gate   │
+                                    └──────────────┬──────────────┘
+                                                   │ TryEnqueueAsyncWork
+                                    ┌──────────────▼──────────────┐
+                                    │  ProcessCharacterCreateAsync │
+                                    │       (Worker Thread)        │
+                                    └──────────────┬──────────────┘
+                                                   │
+                                    ┌──────────────▼──────────────┐
+                                    │  1. Validate spawn scene     │
+                                    │  2. Validate spawner name    │
+                                    │  3. Validate allowed race    │
+                                    │  4. Check character count    │
+                                    │  5. Build all DTOs           │
+                                    │  6. Begin Unit of Work       │
+                                    │  7. Create character row     │
+                                    │  8. Persist sub-entities     │
+                                    │     (factions, abilities,    │
+                                    │      inventory, equipment,   │
+                                    │      attributes)             │
+                                    │  9. Commit transaction       │
+                                    └──────────────┬──────────────┘
+                                                   │ TryEnqueueMainThread
+                                    ┌──────────────▼──────────────┐
+                                    │   DrainMainThreadQueue       │
+                                    │      (OnUpdate / frame)      │
+                                    │   Broadcast result to client │
+                                    └──────────────┬──────────────┘
+                                                   │
+                                    ┌──────────────▼──────────────┐
+                                    │         EndCreateRequest     │
+                                    │  Release in-flight gate      │
+                                    │  Set cooldown timestamp      │
+                                    └─────────────────────────────┘
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Server/Implementation/LoginServer/CharacterCreate/
+├── CharacterCreateSystem.cs                    # Main system: validation, async pipeline, DTO building, persistence
+├── CharacterCreateSystemRuntimeData.cs         # Per-connection in-flight gate and cooldown tracking
+├── CharacterCreateSystemMainThreadQueueData.cs # Per-system main-thread action queue container
+└── README.md
+
+Shared/Implementation/Network/CharacterCreate/
+├── CharacterCreateBroadcasts.cs                # CharacterCreateBroadcast and CharacterCreateResultBroadcast
+└── CharacterCreateResult.cs                    # CharacterCreateResult enum (Success, TooMany, etc.)
+
+Server/Core/LoginServer/CharacterCreate/
+├── ICharacterCreateSystem.cs                   # Engine-agnostic public API interface
+└── ICharacterCreateSystemMainThreadQueueData.cs # Main-thread queue data interface
+</code></pre>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<p><strong>System Behaviour:</strong></p>
+<pre><code>ServerBehaviour
+└── CharacterCreateSystem : ICharacterCreateSystem
+</code></pre>
+<p><strong>Runtime Data Containers:</strong></p>
+<pre><code>RuntimeDataContainer
+├── CharacterCreateSystemRuntimeData
+└── MainThreadQueueData (abstract)
+    └── SystemMainThreadQueueData (abstract)
+        └── CharacterCreateSystemMainThreadQueueData : ICharacterCreateSystemMainThreadQueueData
+</code></pre>
+<p><strong>Prepared DTO Structs (private, inside CharacterCreateSystem):</strong></p>
+<pre><code>PreparedAttributeEntry   — readonly struct { TemplateID, Value, IsResourceAttribute }
+PreparedFactionEntry     — readonly struct { TemplateID, Value }
+PreparedAbilityEntry     — readonly struct { TemplateID, AbilityEvents }
+PreparedInventoryEntry   — readonly struct { TemplateID, Slot }
+PreparedEquipmentEntry   — readonly struct { TemplateID, Slot, Seed }
+</code></pre>
+<h3 id="runtime-data-container-details">Runtime Data Container Details</h3>
+<p><strong><code>CharacterCreateSystemRuntimeData</code></strong></p>
+<p>Mutable runtime state for the character creation system.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InFlightRequests</code></td>
+<td><code>ConcurrentDictionary&lt;int, byte&gt;</code></td>
+<td>Per-connection in-flight gate preventing duplicate concurrent create operations</td>
+</tr>
+<tr>
+<td><code>NextAllowedCreateUtcByClientId</code></td>
+<td><code>ConcurrentDictionary&lt;int, DateTime&gt;</code></td>
+<td>Per-connection post-release cooldown timestamp; enforces <code>createRequestCooldownMilliseconds</code> gap between successive create attempts</td>
+</tr>
+</tbody>
+</table>
+<p>Thread safety: <code>ConcurrentDictionary</code> allows safe access from both network and worker threads.</p>
+<p>Lifecycle: <code>InitializeOnce()</code> creates empty dictionaries → <code>Clear()</code> clears entries → <code>Deinitialize()</code> clears and nulls references.</p>
+<p><strong><code>CharacterCreateSystemMainThreadQueueData</code></strong></p>
+<p>Per-system main-thread action queue. Inherits from <code>SystemMainThreadQueueData</code> (which inherits <code>MainThreadQueueData</code>). Implements <code>ICharacterCreateSystemMainThreadQueueData</code>.</p>
+<p>Provides <code>Enqueue(Action)</code> and <code>Drain(int)</code> methods for marshalling async worker responses back to the Unity main thread. A separate concrete type ensures the <code>DataContainerRegistry</code> creates an independent instance for this system.</p>
+<h3 id="runtime-data-dependencies">Runtime Data Dependencies</h3>
+<p><code>CharacterCreateSystem</code> declares three runtime container dependencies via attributes:</p>
+<table>
+<thead>
+<tr>
+<th>Container</th>
+<th>Attribute</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CharacterCreateSystemRuntimeData</code></td>
+<td><code>[RequiresDataContainer]</code></td>
+<td>Per-connection in-flight gate and cooldown tracking</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code></td>
+<td><code>[RequiresDataContainer]</code></td>
+<td>Runs DB-heavy work off the network/main thread with bounded backpressure-aware queuing</td>
+</tr>
+<tr>
+<td><code>CharacterCreateSystemMainThreadQueueData</code></td>
+<td><code>[RequiresDataContainer]</code></td>
+<td>Marshals thread-unsafe FishNet/Unity operations back to the main thread</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/CharacterCreate/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

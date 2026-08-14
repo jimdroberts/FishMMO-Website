@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Pet System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Pet System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Pet/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="pet-system">Pet System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Pet/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Server-side pet lifecycle and runtime control system for scene-server player characters, handling pet follow/stay/summon/release requests, ability-driven spawning, character-driven spawn/despawn transitions, ingress guarding, and asynchronous database persistence with main-thread-marshaled broadcasts.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Pet system is the SceneServer authority for pet lifecycle and runtime control. It handles pet follow/stay/summon/release requests from connected players, character-driven pet spawn/despawn transitions, pet summon ability integration, and pet persistence across sessions.</p>
+<p>The design separates responsibilities across execution contexts:</p>
+<ul>
+<li><strong>Main thread:</strong> request validation, ingress guarding, controller/AI updates, spawning/despawning, faction copying, and network broadcasts.</li>
+<li><strong>Async worker:</strong> database fetch/persist operations dispatched through <code>IAsyncWorkerData</code>.</li>
+<li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe context via <code>PetSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>All DB writes are queued through <code>TryEnqueueAsyncWork(...)</code> to <code>IAsyncWorkerData</code> with <code>entityKey = characterID</code> for per-character operation ordering. If queueing fails (backpressure/missing dependency), the system logs warnings while keeping gameplay state intact. Broadcasts are only emitted after successful state transitions, ensuring clients never see stale or uncommitted data.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Pet follow, stay, summon (warp), and release commands via network broadcasts with full validation</li>
+<li>Per-connection ingress guarding with debounce and in-flight protection to prevent duplicate operations across all pet control actions</li>
+<li>Ability-driven pet summoning via <code>AbilityObject.OnPetSummon</code> with bounding-box randomization and ground sphere cast for spawn positioning</li>
+<li>Automatic pet spawn on character login via async database load and main-thread marshaling</li>
+<li>Automatic pet state capture and async persistence on character despawn or pet death</li>
+<li>Pet AI initialization with follow-target and home-position management via <code>IAIController</code></li>
+<li>Faction data copying from owner to pet via <code>IFactionController.CopyFrom</code></li>
+<li>Shared <code>SpawnAndInitializePet</code> helper that handles existing-pet despawn, pooled object retrieval, AI/faction init, scene transfer, network spawn, and broadcast emission</li>
+<li>Optimistic concurrency on pet persistence with version-incremented writes via <code>ICharacterPetService</code></li>
+<li>Time-sliced main-thread queue draining with configurable per-frame action limits to avoid frame spikes</li>
+<li>Periodic ingress guard cleanup sweeps with configurable TTL and max removals per sweep</li>
+<li>Achievement integration for pet summon events via configurable <code>AchievementTemplate</code></li>
+<li>Graceful degradation: logs warnings on persistence queue failures while keeping in-memory gameplay state intact</li>
+<li>Object pool integration: pets are retrieved from and returned to the FishNet object pool to reduce allocation pressure</li>
+<li>Guard release deferred until async operation completes for character spawn pet loads, preventing overlap windows for duplicate operations</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IPetSystem</code>, controller interfaces, broadcast types, <code>IAsyncWorkerData</code>, and <code>IngressGuard</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>PetSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>IPetSystem</code>).</li>
+<li>Verify that <code>PetSystemMainThreadQueueData</code> and <code>PetSystemRuntimeData</code> data containers are registered (declared via <code>[RequiresDataContainer]</code> attributes).</li>
+<li>Confirm that <code>AsyncWorkerData</code> (<code>IAsyncWorkerData</code>) is available for non-blocking DB write queuing.</li>
+<li>Confirm that <code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code> is registered in the behaviour registry.</li>
+<li>Verify that the database service <code>ICharacterPetService</code> is available in the DB service registry.</li>
+<li>On initialize, <code>PetSystem</code> automatically registers broadcast handlers for <code>PetFollowBroadcast</code>, <code>PetStayBroadcast</code>, <code>PetSummonBroadcast</code>, and <code>PetReleaseBroadcast</code>, and subscribes to <code>AbilityObject.OnPetSummon</code>, <code>OnSpawnCharacter</code>, <code>OnDespawnCharacter</code>, and <code>OnPetKilled</code>; on deinitialize, it unregisters them all.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-settings">Inspector Settings</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Max pet-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td><code>int</code></td>
+<td><code>80</code></td>
+<td>Minimum milliseconds between pet control requests per connection</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td><code>float</code></td>
+<td><code>5.0</code></td>
+<td>Seconds between bounded ingress guard cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td><code>float</code></td>
+<td><code>30.0</code></td>
+<td>Seconds before stale ingress guard entries are removed</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td><code>int</code></td>
+<td><code>128</code></td>
+<td>Maximum stale ingress guard entries removed per sweep</td>
+</tr>
+<tr>
+<td><code>PetSummonAchievementTemplate</code></td>
+<td><code>AchievementTemplate</code></td>
+<td><code>null</code></td>
+<td>Optional achievement template incremented when a pet is summoned</td>
+</tr>
+</tbody>
+</table>
+<h3 id="required-data-containers">Required Data Containers</h3>
+<table>
+<thead>
+<tr>
+<th>Container</th>
+<th>Interface</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PetSystemMainThreadQueueData</code></td>
+<td><code>IPetSystemMainThreadQueueData</code></td>
+<td>Per-system main-thread action queue for marshaling async completions</td>
+</tr>
+<tr>
+<td><code>PetSystemRuntimeData</code></td>
+<td><code>IPetSystemRuntimeData</code></td>
+<td>Runtime state container for ingress guard</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code></td>
+<td><code>IAsyncWorkerData</code></td>
+<td>Queued non-blocking async DB work dispatch</td>
+</tr>
+</tbody>
+</table>
+<h3 id="database-service-dependencies">Database Service Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ICharacterPetService</code></td>
+<td>Fetches and persists pet records (spawned state, template, abilities, version)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, ingress guarding, pet AI/faction updates, spawning/despawning, network broadcasts, DTO capture</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Database fetch/persist operations via <code>IAsyncWorkerData</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-handlers">Broadcast Handlers</h3>
+<p><code>PetSystem</code> registers the following server broadcast handlers on initialize:</p>
+<ul>
+<li><code>PetFollowBroadcast</code> → <code>OnPetFollowBroadcastReceived</code></li>
+<li><code>PetStayBroadcast</code> → <code>OnPetStayBroadcastReceived</code></li>
+<li><code>PetSummonBroadcast</code> → <code>OnPetSummonBroadcastReceived</code></li>
+<li><code>PetReleaseBroadcast</code> → <code>OnPetReleaseBroadcastReceived</code></li>
+</ul>
+<p>And unregisters them on deinitialize.</p>
+<h3 id="broadcasts-emitted">Broadcasts Emitted</h3>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PetAddBroadcast</code></td>
+<td>Notify owner of successful pet spawn (includes pet ID)</td>
+</tr>
+<tr>
+<td><code>PetRemoveBroadcast</code></td>
+<td>Notify owner of pet removal (release or death)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="external-integration-points">External Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Integration</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IPetController</code></td>
+<td>Pet ownership state on the character object</td>
+</tr>
+<tr>
+<td><code>IAIController</code></td>
+<td>Pet AI home position, follow target, agent warping, and initialization</td>
+</tr>
+<tr>
+<td><code>IFactionController</code></td>
+<td>Faction data copying from owner to pet</td>
+</tr>
+<tr>
+<td><code>ICharacterAttributeController</code></td>
+<td>Health attribute read during despawn to determine alive/spawned state</td>
+</tr>
+<tr>
+<td><code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code></td>
+<td>Character spawn/despawn/pet-killed event subscriptions</td>
+</tr>
+<tr>
+<td><code>AbilityObject.OnPetSummon</code></td>
+<td>Ability-driven pet summon event integration</td>
+</tr>
+<tr>
+<td><code>IngressGuard</code> (via <code>IPetSystemRuntimeData</code>)</td>
+<td>Per-connection debounce and in-flight protection</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code> (<code>IAsyncWorkerData</code>)</td>
+<td>Queued non-blocking async persistence</td>
+</tr>
+<tr>
+<td><code>IAchievementController</code></td>
+<td>Optional achievement increment on pet summon</td>
+</tr>
+<tr>
+<td><code>PetAbilityTemplate</code></td>
+<td>Template defining pet prefab, spawn bounding box, spawn distance, and ability data</td>
+</tr>
+<tr>
+<td>Database service (<code>ICharacterPetService</code>)</td>
+<td>Pet relationship persistence and spawned-state loading</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ingress-guarding">Ingress Guarding</h3>
+<p>Pet ingress uses per-connection operation keys with debounce + in-flight protection. Operation codes are scoped per action type (<code>Follow</code>, <code>Stay</code>, <code>Summon</code>, <code>Release</code>, <code>LoadPet</code>). For the character-spawn pet load path, guard release is deferred until the async operation completes (not at enqueue-time), preventing overlap windows for duplicate pet loads on rapid reconnect. For synchronous broadcast handlers (follow, stay, summon), guards are released in a <code>finally</code> block after the handler completes.</p>
+<h3 id="async-worker-and-backpressure">Async Worker and Backpressure</h3>
+<p><code>TryEnqueueAsyncWork(...)</code> dispatches all async DB work through <code>IAsyncWorkerData</code>.</p>
+<p>Behavior:</p>
+<ul>
+<li>Returns <code>true</code> when accepted.</li>
+<li>Returns <code>false</code> when queue is unavailable or full.</li>
+<li>Logs warnings on rejection/unavailability.</li>
+<li>Uses <code>entityKey = characterID</code> for per-character ordering.</li>
+</ul>
+<p>This prevents unbounded fire-and-forget tasks and preserves operation order per player.</p>
+<h3 id="persistence-model">Persistence Model</h3>
+<p><code>SavePetAsync(...)</code>:</p>
+<ul>
+<li>Fetches the existing pet row for optimistic version increment.</li>
+<li>Persists <code>(characterID, templateID, abilities, spawned)</code> state with <code>version + 1</code>.</li>
+<li>Uses per-character keyed queueing to preserve operation order.</li>
+<li>Skips persistence and logs a warning if <code>templateID</code> is invalid (≤ 0).</li>
+</ul>
+<p><code>LoadAndSpawnPetAsync(...)</code>:</p>
+<ul>
+<li>Fetches the currently spawned pet record via <code>ICharacterPetService.FetchSpawnedAsync</code>.</li>
+<li>Marshals pet reconstruction/spawn back to the main thread via <code>TryEnqueueMainThread</code>.</li>
+<li>Re-validates connection, character, and pet template before spawning.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System initialization</td>
+<td>Confirm <code>PetSystem</code> initializes without errors; broadcast handlers are registered</td>
+</tr>
+<tr>
+<td>Pet follow</td>
+<td>Send a <code>PetFollowBroadcast</code> with an active pet; verify AI target is set to owner transform</td>
+</tr>
+<tr>
+<td>Pet stay</td>
+<td>Send a <code>PetStayBroadcast</code> with an active pet; verify AI home is set to pet position and target is cleared</td>
+</tr>
+<tr>
+<td>Pet summon (warp)</td>
+<td>Send a <code>PetSummonBroadcast</code> with an active pet; verify AI agent warps to owner position</td>
+</tr>
+<tr>
+<td>Pet release</td>
+<td>Send a <code>PetReleaseBroadcast</code> with an active pet; verify pet is despawned, <code>PetRemoveBroadcast</code> reaches client, and async save is queued with <code>spawned=false</code></td>
+</tr>
+<tr>
+<td>Character spawn pet load</td>
+<td>Spawn a character with a previously saved pet; verify async load triggers and pet is instantiated with correct template and abilities</td>
+</tr>
+<tr>
+<td>Character despawn persistence</td>
+<td>Despawn a character with an active pet; verify pet state is captured and async save is queued with correct alive/spawned flag</td>
+</tr>
+<tr>
+<td>Pet killed</td>
+<td>Trigger pet death; verify despawn persistence flow runs and <code>PetRemoveBroadcast</code> reaches client</td>
+</tr>
+<tr>
+<td>Ability-driven summon</td>
+<td>Execute a pet summon ability; verify pet spawns at ground-cast position with AI initialized and <code>PetAddBroadcast</code> emitted</td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid duplicate pet control requests; confirm only the first is processed within the debounce window</td>
+</tr>
+<tr>
+<td>Async persistence</td>
+<td>Check logs for successful <code>TryEnqueueAsyncWork</code> calls after release/despawn/death operations</td>
+</tr>
+<tr>
+<td>Main-thread queue draining</td>
+<td>Verify queued actions are executed each frame within <code>maxMainThreadActionsPerFrame</code> limit</td>
+</tr>
+<tr>
+<td>Persistence failure graceful degradation</td>
+<td>Simulate persistence queue failure; confirm warning is logged and in-memory state remains unchanged</td>
+</tr>
+<tr>
+<td>Achievement increment</td>
+<td>Configure <code>PetSummonAchievementTemplate</code>; summon a pet and verify achievement counter increments</td>
+</tr>
+<tr>
+<td>Ingress guard cleanup</td>
+<td>Verify stale ingress guard entries are removed during periodic sweeps</td>
+</tr>
+<tr>
+<td>Optimistic concurrency</td>
+<td>Verify pet save logs a warning on version conflict or DB error</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Owner[Character] --&gt;|summon / dismiss| Sys[PetSystem]
+    Sys --&gt;|load pet state| DB[(PostgreSQL Pets)]
+    Sys --&gt;|spawn AI| Pet[Pet entity]
+    Pet --&gt;|tick / commands| Sys
+    Sys --&gt;|persist diffs| DB
+    Sys --&gt;|broadcast| Clients[Nearby Clients]
+</code></pre>
+<h3 id="pet-follow">Pet Follow</h3>
+<pre><code>OnPetFollowBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection and spawned object
+├─ 2. Acquire ingress guard (debounce + in-flight)
+├─ 3. Validate IPetController exists with active pet
+├─ 4. Set IAIController.Home to owner position
+├─ 5. Set IAIController.Target to owner transform
+└─ 6. Release ingress guard (finally)
+</code></pre>
+<h3 id="pet-stay">Pet Stay</h3>
+<pre><code>OnPetStayBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection and spawned object
+├─ 2. Acquire ingress guard (debounce + in-flight)
+├─ 3. Validate IPetController exists with active pet
+├─ 4. Set IAIController.Home to pet's current position
+├─ 5. Clear IAIController.Target (null)
+└─ 6. Release ingress guard (finally)
+</code></pre>
+<h3 id="pet-summon-warp">Pet Summon (Warp)</h3>
+<pre><code>OnPetSummonBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection and spawned object
+├─ 2. Acquire ingress guard (debounce + in-flight)
+├─ 3. Validate IPetController exists with active pet
+├─ 4. Warp IAIController.Agent to owner position
+└─ 5. Release ingress guard (finally)
+</code></pre>
+<h3 id="pet-release">Pet Release</h3>
+<pre><code>OnPetReleaseBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection and spawned object
+├─ 2. Acquire ingress guard (debounce + in-flight)
+├─ 3. Validate database services available
+├─ 4. Validate IPetController exists with active pet
+├─ 5. Capture immutable DTO (characterID, templateID, abilities)
+├─ 6. Despawn pet network object to pool
+├─ 7. Clear pet owner and controller references
+├─ 8. Broadcast PetRemoveBroadcast to owner
+├─ 9. Enqueue async SavePetAsync(spawned=false) keyed by characterID
+└─ 10. Release ingress guard (finally)
+</code></pre>
+<h3 id="character-spawn--pet-load">Character Spawn → Pet Load</h3>
+<pre><code>CharacterSystem_OnSpawnCharacter(conn, character, scene)
+│
+├─ 1. Validate character and IPetController
+├─ 2. Validate database services available
+├─ 3. Acquire ingress guard (LoadPet, in-flight only)
+├─ 4. Enqueue async LoadAndSpawnPetAsync(...)
+│      │
+│      ├─ Resolve ICharacterPetService
+│      ├─ FetchSpawnedAsync pet record from DB
+│      └─ Enqueue main-thread completion action:
+│           ├── Re-validate connection/character/network state
+│           ├── Resolve PetAbilityTemplate from templateID
+│           ├── Retrieve pooled pet NetworkObject at owner position
+│           ├── SpawnAndInitializePet(...)
+│           │    ├── Despawn any existing pet
+│           │    ├── Initialize Pet component (owner, template, abilities)
+│           │    ├── Initialize AI (home, follow target)
+│           │    ├── Move to owner scene
+│           │    ├── Activate and network-spawn
+│           │    ├── Copy faction from owner
+│           │    ├── Broadcast PetAddBroadcast
+│           │    └── Increment achievement (if configured)
+│           └── Guard release (finally, deferred)
+│
+└─ On enqueue failure: release guard immediately
+</code></pre>
+<h3 id="character-despawn--pet-save">Character Despawn → Pet Save</h3>
+<pre><code>CharacterSystem_OnDespawnCharacter(conn, character)
+│
+├─ 1. Validate character and IPetController
+├─ 2. Validate database services available
+├─ 3. Read pet health to determine alive/spawned state
+├─ 4. Capture immutable DTO (characterID, templateID, abilities, spawned)
+├─ 5. Despawn pet network object to pool (if spawned)
+└─ 6. Enqueue async SavePetAsync(characterID, templateID, abilities, spawned)
+</code></pre>
+<h3 id="pet-killed">Pet Killed</h3>
+<pre><code>CharacterSystem_OnPetKilled(conn, character)
+│
+├─ 1. Reuse CharacterSystem_OnDespawnCharacter flow (captures state + async save)
+└─ 2. Broadcast PetRemoveBroadcast to owner
+</code></pre>
+<h3 id="ability-driven-pet-summon">Ability-Driven Pet Summon</h3>
+<pre><code>AbilityObject_OnPetSummon(petAbilityTemplate, caster)
+│
+├─ 1. Validate template, caster, IPetController, and pet prefab
+├─ 2. Get physics scene from caster scene
+├─ 3. Generate random spawn origin within bounding box
+├─ 4. Sphere cast downward to find ground position
+├─ 5. Retrieve pooled pet NetworkObject at ground position
+└─ 6. SpawnAndInitializePet(...)
+       ├── Despawn any existing pet
+       ├── Initialize Pet component (owner, template)
+       ├── Initialize AI (spawn position, follow target)
+       ├── Move to caster scene
+       ├── Activate and network-spawn
+       ├── Copy faction from caster
+       ├── Broadcast PetAddBroadcast
+       └── Increment achievement (if configured)
+</code></pre>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<pre><code>Error Handling
+│
+├─ Invalid requests → ignored without state mutation
+├─ DB/service lookup failures → abort async operation safely
+├─ Queue rejection/unavailability → logged, work skipped
+├─ Async exceptions → caught and logged with character context
+├─ Invalid templateID (≤ 0) → save skipped with warning
+├─ Optimistic concurrency conflict → logged with version details
+├─ Pooled object missing Pet component → returned to pool, spawn aborted
+└─ Broadcasts → only emitted after successful state transitions
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Pet/
+├── PetSystem.cs                       # Pet lifecycle orchestration, broadcast handlers, and async persistence
+├── PetSystemRuntimeData.cs            # Runtime state container for ingress guard
+├── PetSystemMainThreadQueueData.cs    # Per-system main-thread action queue container
+└── README.md                          # System documentation
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/Pet/IPetSystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Pet/IPetSystemMainThreadQueueData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Pet/IPetSystemRuntimeData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── PetSystem : IPetSystem
+
+RuntimeDataContainer
+└── PetSystemRuntimeData : IPetSystemRuntimeData
+
+SystemMainThreadQueueData
+└── PetSystemMainThreadQueueData : IPetSystemMainThreadQueueData
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Pet/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

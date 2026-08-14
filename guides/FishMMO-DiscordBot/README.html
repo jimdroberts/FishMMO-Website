@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO Discord Bot | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO Discord Bot | FishMMO ">
+      
+      
+      <link rel="icon" href="../../favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="../toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-DiscordBot/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-discord-bot">FishMMO Discord Bot</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-DiscordBot/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p>A standalone .NET 8 application that bridges a live FishMMO server with a Discord
+guild. The bot relays in-game chat to Discord channels and back, lets players
+<strong>link</strong> their Discord account to a FishMMO character, exposes administrative
+slash-style commands (mute, ban, kick, character lookup), and dynamically
+provisions per-guild / per-party voice or text channels.</p>
+<p>It runs as a long-lived service alongside the rest of the FishMMO server stack.</p>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#description">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#key-components">Key Components</a>
+<ul>
+<li><a href="#modules-discord-side-commands">Modules (Discord-side commands)</a></li>
+<li><a href="#services-long-running-workers">Services (long-running workers)</a></li>
+<li><a href="#data">Data</a></li>
+</ul>
+</li>
+<li><a href="#configuration">Configuration</a>
+<ul>
+<li><a href="#appsettingsjson-shape"><code>appsettings.json</code> shape</a></li>
+</ul>
+</li>
+<li><a href="#build--run">Build &amp; Run</a></li>
+<li><a href="#deployment-notes">Deployment Notes</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+</ul>
+<hr>
+<h2 id="description">Description</h2>
+<p>The bot is built on the <strong>Discord.Net</strong> client library and the standard
+<code>Microsoft.Extensions.Hosting</code> generic host. It composes a fixed set of
+modules (command handlers) and services (background workers) through DI, reads
+its configuration from <code>appsettings.json</code>, and connects to the FishMMO chat
+endpoint to poll chat events and post outbound messages.</p>
+<p>Bridging is two-way:</p>
+<ul>
+<li><strong>Game → Discord:</strong> <code>ChatPollingService</code> periodically polls the FishMMO chat
+REST API and forwards new messages to the configured Discord channels via
+<code>GameChatBridgeService</code>.</li>
+<li><strong>Discord → Game:</strong> Discord chat messages (and slash commands) are intercepted
+by <code>CommandHandlingService</code> and pushed back to the FishMMO chat API, subject
+to <code>RateLimiterService</code> and <code>BridgeBanService</code>.</li>
+</ul>
+<hr>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET 8.0 (Linux, Windows, macOS)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Docker / Linux service</td>
+<td>Recommended for production</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET SDK</td>
+<td>8.0+</td>
+</tr>
+<tr>
+<td>Discord application + bot token</td>
+<td>Required</td>
+</tr>
+<tr>
+<td>FishMMO server</td>
+<td>Required (for chat API)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="architecture">Architecture</h2>
+<pre><code>FishMMO-DiscordBot/
+├── Program.cs                 # Generic host + DI composition + bot startup
+├── ChatChannel.cs             # Enum / mapping of FishMMO chat channels
+├── appsettings.json           # Bot configuration (token, mappings, limits)
+├── Data/                      # Plain DTOs / configuration POCOs
+├── Modules/                   # Discord slash + text command handlers
+│   ├── AdminModule.cs
+│   ├── CharacterModule.cs
+│   ├── CommandListModule.cs
+│   ├── DatabaseModule.cs
+│   ├── GeneralModule.cs
+│   ├── LinkModule.cs
+│   └── ModerationModule.cs
+└── Services/                  # Long-running hosted services
+    ├── AccountLinkingService.cs
+    ├── BotConfigurationService.cs
+    ├── BridgeBanService.cs
+    ├── ChatPollingService.cs
+    ├── CommandHandlingService.cs
+    ├── DynamicChannelManagerService.cs
+    ├── GameChatBridgeService.cs
+    └── RateLimiterService.cs
+</code></pre>
+<p>The generic host wires <code>IHostedService</code> implementations for each background
+worker; the bot's lifetime is the host's lifetime.</p>
+<hr>
+<h2 id="key-components">Key Components</h2>
+<h3 id="modules-discord-side-commands">Modules (Discord-side commands)</h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AdminModule</code></td>
+<td>Owner / admin-only commands (reload config, shutdown, diagnostics).</td>
+</tr>
+<tr>
+<td><code>CharacterModule</code></td>
+<td>Character lookup by name / Discord-linked account.</td>
+</tr>
+<tr>
+<td><code>CommandListModule</code></td>
+<td><code>!help</code> / <code>/help</code> — self-documenting command list.</td>
+</tr>
+<tr>
+<td><code>DatabaseModule</code></td>
+<td>Read-only DB queries gated behind admin permissions.</td>
+</tr>
+<tr>
+<td><code>GeneralModule</code></td>
+<td>Ping, status, server uptime.</td>
+</tr>
+<tr>
+<td><code>LinkModule</code></td>
+<td><code>/link</code> workflow — issues short-lived one-time codes that a player redeems in-game to link Discord ↔ FishMMO account.</td>
+</tr>
+<tr>
+<td><code>ModerationModule</code></td>
+<td>Mute / unmute / ban / unban for the chat bridge (uses <code>BridgeBanService</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="services-long-running-workers">Services (long-running workers)</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BotConfigurationService</code></td>
+<td>Loads <code>appsettings.json</code>, watches for changes, exposes config to other services.</td>
+</tr>
+<tr>
+<td><code>AccountLinkingService</code></td>
+<td>Manages pending link codes and persists confirmed Discord ↔ account mappings.</td>
+</tr>
+<tr>
+<td><code>ChatPollingService</code></td>
+<td>Polls FishMMO chat API at a configured interval; emits events to <code>GameChatBridgeService</code>.</td>
+</tr>
+<tr>
+<td><code>GameChatBridgeService</code></td>
+<td>Forwards game messages → Discord channels and Discord messages → game chat.</td>
+</tr>
+<tr>
+<td><code>DynamicChannelManagerService</code></td>
+<td>Creates / archives Discord channels in response to in-game events (party formed, guild created, etc.).</td>
+</tr>
+<tr>
+<td><code>CommandHandlingService</code></td>
+<td>Dispatches inbound Discord messages to <code>Modules/</code> and handles command results.</td>
+</tr>
+<tr>
+<td><code>BridgeBanService</code></td>
+<td>Tracks Discord users banned from the bridge; consulted before forwarding.</td>
+</tr>
+<tr>
+<td><code>RateLimiterService</code></td>
+<td>Per-user / per-channel sliding-window rate limiter to prevent spam from either side.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="data">Data</h3>
+<p><code>Data/</code> holds POCOs used for configuration binding (channel mappings, bridge
+policy, rate-limit windows) and DTOs for the FishMMO chat REST contract.</p>
+<hr>
+<h2 id="configuration">Configuration</h2>
+<p>Place <code>appsettings.json</code> in the project root. It is copied to the output
+directory by the build (<code>&lt;CopyToOutputDirectory&gt;PreserveNewest&lt;/CopyToOutputDirectory&gt;</code>).</p>
+<h3 id="appsettingsjson-shape"><code>appsettings.json</code> shape</h3>
+<pre><code class="lang-json">{
+  &quot;Discord&quot;: {
+    &quot;Token&quot;: &quot;YOUR_DISCORD_BOT_TOKEN&quot;,
+    &quot;Prefix&quot;: &quot;!&quot;,
+    &quot;GuildId&quot;: &quot;0000000000000000000&quot;
+  },
+  &quot;FishMMO&quot;: {
+    &quot;ApiUrl&quot;: &quot;http://localhost:5000/api/&quot;,
+    &quot;ApiKey&quot;: &quot;YOUR_FISHMMO_API_KEY&quot;,
+    &quot;ChatPollIntervalMs&quot;: 1500
+  },
+  &quot;ChannelMappings&quot;: {
+    &quot;World&quot;:   &quot;discord-channel-id&quot;,
+    &quot;Trade&quot;:   &quot;discord-channel-id&quot;,
+    &quot;Admin&quot;:   &quot;discord-admin-channel-id&quot;
+  },
+  &quot;DynamicChannels&quot;: {
+    &quot;Enabled&quot;: true,
+    &quot;CategoryId&quot;: &quot;discord-category-id&quot;,
+    &quot;AutoArchiveMinutes&quot;: 60
+  },
+  &quot;RateLimits&quot;: {
+    &quot;PerUserPerMinute&quot;: 10,
+    &quot;PerChannelPerMinute&quot;: 60
+  },
+  &quot;Linking&quot;: {
+    &quot;CodeLengthChars&quot;: 8,
+    &quot;CodeTtlSeconds&quot;: 300
+  }
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Discord.Token</code></td>
+<td><strong>Secret.</strong> Store via environment override in production.</td>
+</tr>
+<tr>
+<td><code>Discord.Prefix</code></td>
+<td>Legacy text-command prefix (slash commands are preferred).</td>
+</tr>
+<tr>
+<td><code>FishMMO.ApiUrl</code> / <code>ApiKey</code></td>
+<td>FishMMO chat / account REST endpoint.</td>
+</tr>
+<tr>
+<td><code>ChannelMappings</code></td>
+<td>In-game chat channel → Discord channel ID.</td>
+</tr>
+<tr>
+<td><code>DynamicChannels</code></td>
+<td>Configures <code>DynamicChannelManagerService</code>.</td>
+</tr>
+<tr>
+<td><code>RateLimits</code></td>
+<td>Sliding-window settings for <code>RateLimiterService</code>.</td>
+</tr>
+<tr>
+<td><code>Linking</code></td>
+<td>Controls <code>/link</code> codes (length and TTL).</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Production:</strong> override <code>Discord.Token</code>, <code>FishMMO.ApiKey</code>, and any SMTP-like
+secrets through environment variables (e.g. <code>Discord__Token=…</code>) rather than
+committing them to <code>appsettings.json</code>.</p>
+</blockquote>
+<hr>
+<h2 id="build--run">Build &amp; Run</h2>
+<pre><code class="lang-bash"># Restore + build
+dotnet build FishMMO-DiscordBot.sln -c Release
+
+# Run from source
+dotnet run --project FishMMO-DiscordBot/FishMMO-DiscordBot.csproj
+</code></pre>
+<p>The process is intended to be supervised — restart on exit. The published
+output is a self-contained app suitable for <code>systemd</code>, Windows Service, or
+Docker.</p>
+<hr>
+<h2 id="deployment-notes">Deployment Notes</h2>
+<ul>
+<li>The bot needs the <code>MESSAGE CONTENT</code> and <code>GUILD MEMBERS</code> privileged intents
+enabled in the Discord developer portal.</li>
+<li>Required Discord scopes: <code>bot</code>, <code>applications.commands</code>.</li>
+<li>Required bot permissions: read/send/manage messages in the bridged channels,
+manage channels under the configured dynamic category, and (for moderation
+commands) timeout / ban members.</li>
+<li>Run it on the same network as the FishMMO API so polling latency stays low.</li>
+</ul>
+<hr>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart LR
+    subgraph Discord
+        DUser[Discord users]
+        DChan[Bridged channels]
+    end
+    subgraph Bot[&quot;FishMMO-DiscordBot&quot;]
+        Host[Generic Host]
+        Poll[ChatPollingService]
+        Bridge[GameChatBridgeService]
+        Cmd[CommandHandlingService]
+        Link[AccountLinkingService]
+        Dyn[DynamicChannelManagerService]
+        Rate[RateLimiterService]
+        Ban[BridgeBanService]
+    end
+    subgraph Game[&quot;FishMMO Server&quot;]
+        API[Chat / Account REST API]
+        Players[In-game players]
+    end
+
+    Players --&gt; API
+    API --&gt;|poll| Poll
+    Poll --&gt; Bridge --&gt; DChan
+
+    DUser --&gt; DChan --&gt; Cmd
+    Cmd --&gt;|allow?| Rate
+    Cmd --&gt;|allow?| Ban
+    Cmd --&gt; Bridge --&gt; API --&gt; Players
+
+    DUser --&gt;|/link code| Link --&gt; API
+    API --&gt;|in-game redeem| Link
+
+    API --&gt;|&quot;events (party, guild)&quot;| Dyn --&gt; DChan
+
+    Host --- Poll
+    Host --- Bridge
+    Host --- Cmd
+    Host --- Link
+    Host --- Dyn
+    Host --- Rate
+    Host --- Ban
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-DiscordBot/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

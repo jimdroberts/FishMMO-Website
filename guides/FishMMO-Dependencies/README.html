@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO-Dependencies | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO-Dependencies | FishMMO ">
+      
+      
+      <link rel="icon" href="../../favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="../toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Dependencies/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-dependencies">FishMMO-Dependencies</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Dependencies/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p>A <strong>.NET Standard 2.1 class library</strong> whose sole purpose is to centralize all
+third-party NuGet packages used by the server-side and Unity-consumable parts
+of FishMMO. Building this project produces a folder of DLLs that is mirrored
+into <code>FishMMO-Unity/Assets/Dependencies/</code> so Unity can use the exact same
+package versions as the headless servers and EF Core migrator.</p>
+<p>There is intentionally no source code beyond a placeholder <code>Placeholder.cs</code> — the
+project file (<code>FishMMO-Dependencies.csproj</code>) is the artifact that matters.</p>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#description">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#key-components">Key Components</a>
+<ul>
+<li><a href="#ef-core-stack">EF Core stack</a></li>
+<li><a href="#database-providers">Database providers</a></li>
+<li><a href="#microsoftextensions-stack">Microsoft.Extensions stack</a></li>
+<li><a href="#utility-libraries">Utility libraries</a></li>
+</ul>
+</li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#build--usage">Build &amp; Usage</a></li>
+<li><a href="#adding-or-upgrading-a-package">Adding or Upgrading a Package</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+</ul>
+<hr>
+<h2 id="description">Description</h2>
+<p>Unity (especially older LTS releases that target .NET Standard 2.1) cannot
+consume NuGet packages directly. The standard workaround is to compile a normal
+.NET project that lists the needed NuGet packages, then copy the resulting DLLs
+into <code>Assets/Dependencies/</code>.</p>
+<p>This project is that compile target. It guarantees a <strong>single source of truth</strong>
+for third-party package versions across the entire FishMMO solution, so the
+server, the database, and Unity all link against the same binaries.</p>
+<hr>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.NET Standard 2.1</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes (via DLL copy)</td>
+</tr>
+<tr>
+<td>.NET 8.0 servers</td>
+<td>Yes (via <code>PackageReference</code> instead of DLL copy when possible)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="architecture">Architecture</h2>
+<pre><code>FishMMO-Dependencies/
+├── FishMMO-Dependencies.csproj   # The PackageReference list (the real artifact)
+├── Placeholder.cs                     # Empty placeholder (required for a .csproj to compile)
+└── bin/Release/netstandard2.1/   # Output: all package DLLs + dependencies
+                                  # → mirrored to FishMMO-Unity/Assets/Dependencies/
+</code></pre>
+<p>A custom MSBuild target copies the full transitive DLL closure (not just the
+top-level package DLLs) into the Unity <code>Assets/Dependencies/</code> folder after build.</p>
+<hr>
+<h2 id="key-components">Key Components</h2>
+<h3 id="ef-core-stack">EF Core stack</h3>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Microsoft.EntityFrameworkCore</code></td>
+<td>Core ORM</td>
+</tr>
+<tr>
+<td><code>Microsoft.EntityFrameworkCore.Abstractions</code></td>
+<td>Public abstractions (DbContext, DbSet)</td>
+</tr>
+<tr>
+<td><code>Microsoft.EntityFrameworkCore.Relational</code></td>
+<td>SQL-emitting relational provider base</td>
+</tr>
+<tr>
+<td><code>Microsoft.EntityFrameworkCore.Design</code></td>
+<td>Design-time services (used by Migrator)</td>
+</tr>
+<tr>
+<td><code>Microsoft.EntityFrameworkCore.Tools</code></td>
+<td><code>dotnet ef</code> CLI integration</td>
+</tr>
+<tr>
+<td><code>EFCore.NamingConventions</code></td>
+<td>Snake-case naming convention for PostgreSQL</td>
+</tr>
+</tbody>
+</table>
+<h3 id="database-providers">Database providers</h3>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Npgsql</code></td>
+<td>PostgreSQL ADO.NET driver</td>
+</tr>
+<tr>
+<td><code>Npgsql.EntityFrameworkCore.PostgreSQL</code></td>
+<td>EF Core PostgreSQL provider</td>
+</tr>
+</tbody>
+</table>
+<h3 id="microsoftextensions-stack">Microsoft.Extensions stack</h3>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Microsoft.Extensions.Configuration</code> (+<code>Abstractions</code>, +<code>Json</code>)</td>
+<td>Hierarchical config + JSON binding</td>
+</tr>
+<tr>
+<td><code>Microsoft.Extensions.DependencyInjection</code> (+<code>Abstractions</code>)</td>
+<td>DI container</td>
+</tr>
+<tr>
+<td><code>Microsoft.Extensions.Logging</code> (+<code>Abstractions</code>)</td>
+<td>Standard logging API</td>
+</tr>
+<tr>
+<td><code>Microsoft.Extensions.Caching.Abstractions</code> / <code>.Memory</code></td>
+<td><code>IMemoryCache</code></td>
+</tr>
+<tr>
+<td><code>Microsoft.Extensions.Options</code></td>
+<td>Options pattern</td>
+</tr>
+<tr>
+<td><code>Microsoft.Extensions.Primitives</code></td>
+<td>Change tracking (<code>IChangeToken</code>, <code>StringValues</code>)</td>
+</tr>
+<tr>
+<td><code>Microsoft.Bcl.AsyncInterfaces</code></td>
+<td><code>IAsyncEnumerable&lt;T&gt;</code> polyfill for netstandard2.1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="utility-libraries">Utility libraries</h3>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>srp</code></td>
+<td>Secure Remote Password (SRP-6a) protocol for login</td>
+</tr>
+<tr>
+<td><code>HtmlAgilityPack</code></td>
+<td>HTML parsing (used by the CMS and patcher tooling)</td>
+</tr>
+<tr>
+<td><code>Humanizer</code></td>
+<td>Human-readable strings / dates / numbers</td>
+</tr>
+<tr>
+<td><code>OpenAI</code></td>
+<td>OpenAI API client (used by experimental NPC tooling)</td>
+</tr>
+<tr>
+<td><code>System.Collections.Immutable</code></td>
+<td>Immutable collection types</td>
+</tr>
+<tr>
+<td><code>System.ComponentModel.Annotations</code></td>
+<td><code>[Required]</code>, <code>[MaxLength]</code>, etc.</td>
+</tr>
+<tr>
+<td><code>System.Diagnostics.DiagnosticSource</code></td>
+<td><code>Activity</code> / event source instrumentation</td>
+</tr>
+<tr>
+<td><code>System.IO.Hashing</code></td>
+<td>xxHash, Crc32, Crc64</td>
+</tr>
+<tr>
+<td><code>System.Runtime.CompilerServices.Unsafe</code></td>
+<td>Low-level pointer helpers</td>
+</tr>
+<tr>
+<td><code>System.Text.Encodings.Web</code></td>
+<td>Encoders for JSON / HTML / URL</td>
+</tr>
+<tr>
+<td><code>System.Text.Json</code></td>
+<td>High-performance JSON</td>
+</tr>
+<tr>
+<td><code>System.Threading.Channels</code></td>
+<td>Producer/consumer queues</td>
+</tr>
+<tr>
+<td><code>BouncyCastle.Cryptography</code></td>
+<td>ASN.1 / PKCS12 / PEM certificate parsing and cryptographic primitives used by the Auth project</td>
+</tr>
+<tr>
+<td><code>Otp.NET</code></td>
+<td>Time-based one-time password (TOTP) generation and validation for two-factor authentication</td>
+</tr>
+<tr>
+<td><code>ZString</code></td>
+<td>Zero-allocation string formatting and UTF-8 encoding for performance-critical paths</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="configuration">Configuration</h2>
+<p>None. This project is a build-only artifact.</p>
+<hr>
+<h2 id="build--usage">Build &amp; Usage</h2>
+<pre><code class="lang-bash"># Build (Release recommended for Unity)
+dotnet build FishMMO-Dependencies/FishMMO-Dependencies.csproj -c Release
+</code></pre>
+<p>After a successful build the DLL closure is copied to
+<code>../FishMMO-Unity/Assets/Dependencies/</code>. Unity must be <strong>closed</strong> during the
+build, otherwise file locks may cause <code>MSB3027</code> errors on locked DLLs.</p>
+<p>Other server projects in the solution should prefer a <code>PackageReference</code> of
+their own (re-listing the package they need) so NuGet handles transitive
+versioning — they should NOT reference <code>FishMMO-Dependencies.dll</code> directly.</p>
+<hr>
+<h2 id="adding-or-upgrading-a-package">Adding or Upgrading a Package</h2>
+<ol>
+<li>Add or change a <code>&lt;PackageReference&gt;</code> in
+<code>FishMMO-Dependencies/FishMMO-Dependencies.csproj</code>.</li>
+<li>Close Unity.</li>
+<li>Run <code>dotnet build FishMMO-Dependencies/FishMMO-Dependencies.csproj -c Release</code>.</li>
+<li>Re-open Unity; verify the assembly resolves under <code>Assets/Dependencies/</code>.</li>
+<li>If a previously copied DLL has been <strong>removed</strong> from the package list, delete
+it manually from <code>Assets/Dependencies/</code> or let the build prune it automatically
+— the csproj uses <code>RemoveStaleDependencies</code> which removes DLLs that are no
+longer produced by the build output.</li>
+</ol>
+<blockquote>
+<p><strong>Tip:</strong> When changing major versions of Npgsql / EF Core, also update the
+matching references in <code>FishMMO-DB.csproj</code> and the WebServer projects so all
+three trees agree on a single version.</p>
+</blockquote>
+<hr>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart LR
+    NuGet[(nuget.org)]
+    Deps[FishMMO-Dependencies.csproj&lt;br/&gt;PackageReference list]
+    Bin[bin/Release/netstandard2.1/&lt;br/&gt;DLL closure]
+    Unity[FishMMO-Unity&lt;br/&gt;Assets/Dependencies/]
+
+    NuGet --&gt; Deps
+    Deps --&gt;|dotnet build| Bin
+    Bin --&gt;|MSBuild post-build copy| Unity
+
+    Unity --&gt; Client[Unity Client / Editor]
+    Unity --&gt; ServerBuild[Unity Headless Server]
+
+    NuGet -.-&gt;|same versions via own PackageReference| DB[FishMMO-DB]
+    NuGet -.-&gt;|same versions via own PackageReference| Web[FishMMO-WebServers]
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Dependencies/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

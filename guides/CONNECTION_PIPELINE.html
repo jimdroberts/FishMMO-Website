@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO Connection Pipeline | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO Connection Pipeline | FishMMO ">
+      
+      
+      <link rel="icon" href="../favicon.ico">
+      <link rel="stylesheet" href="../public/docfx.min.css">
+      <link rel="stylesheet" href="../public/main.css">
+      <meta name="docfx:navrel" content="../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/CONNECTION_PIPELINE.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../index.html">
+            <img id="logo" class="svg" src="../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-connection-pipeline">FishMMO Connection Pipeline</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/CONNECTION_PIPELINE.md">View this file on GitHub</a></p>
+</blockquote>
+<blockquote>
+<p><strong>Complete end-to-end connection flow</strong> — from client launch through authentication, world entry, and gameplay.
+Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetworking.</p>
+</blockquote>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#infrastructure-topology">Infrastructure Topology</a></li>
+<li><a href="#connection-flow-diagram">Connection Flow Diagram</a>
+<ul>
+<li><a href="#phase-1-launcher-startup--version-check">Phase 1: Launcher Startup &amp; Version Check</a></li>
+<li><a href="#phase-2-login-server-discovery-ipfetch">Phase 2: Login Server Discovery (IPFetch)</a></li>
+<li><a href="#phase-3-quicwebtransport-connection">Phase 3: QUIC/WebTransport Connection</a></li>
+<li><a href="#phase-4-cryptographic-handshake-x25519-ecdh">Phase 4: Cryptographic Handshake (X25519 ECDH)</a></li>
+<li><a href="#phase-5-srp-6a-authentication">Phase 5: SRP-6a Authentication</a></li>
+<li><a href="#phase-6-totp-two-factor-authentication">Phase 6: TOTP Two-Factor Authentication</a></li>
+<li><a href="#phase-7-token-issuance--character-select">Phase 7: Token Issuance &amp; Character Select</a></li>
+<li><a href="#phase-8-world-server-connection">Phase 8: World Server Connection</a></li>
+<li><a href="#phase-9-scene-server-connection">Phase 9: Scene Server Connection</a></li>
+<li><a href="#phase-10-token-renewal--revocation">Phase 10: Token Renewal &amp; Revocation</a></li>
+</ul>
+</li>
+<li><a href="#protocol-layers">Protocol Layers</a></li>
+<li><a href="#security-properties">Security Properties</a></li>
+<li><a href="#rate-limiting--ddos-protection">Rate Limiting &amp; DDoS Protection</a></li>
+<li><a href="#reconnection-flow">Reconnection Flow</a></li>
+<li><a href="#platform-support-matrix">Platform Support Matrix</a></li>
+<li><a href="#port-reference">Port Reference</a></li>
+</ul>
+<hr>
+<h2 id="architecture-overview">Architecture Overview</h2>
+<pre><code>┌──────────────────────────────────────────────────────────────────────┐
+│                        FISHMMO CONNECTION STACK                       │
+│                                                                      │
+│  ┌─────────┐    ┌─────────┐    ┌──────────┐    ┌──────────────────┐ │
+│  │ Client  │◄──►│  NGINX  │◄──►│  Game    │◄──►│   PostgreSQL     │ │
+│  │ (Unity) │    │ (L4/L7) │    │ Servers  │    │   + pgBouncer    │ │
+│  └─────────┘    └─────────┘    └──────────┘    └──────────────────┘ │
+│       │              │               │                    │          │
+│       │   WebTransport (QUIC/HTTP3)  │                    │          │
+│       │   UDP via NGINX stream proxy │        EF Core + Npgsql      │
+│       │                              │                               │
+│       │   HTTPS/WSS for WebGL        │                               │
+│       └──────────────────────────────┘                               │
+└──────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>Key design decisions:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>WebTransport (QUIC) for all platforms</strong></td>
+<td>Unified transport — no TCP fallback, no WebSocket shim</td>
+</tr>
+<tr>
+<td><strong>NGINX L4 UDP stream proxy</strong></td>
+<td>Zero-copy packet forwarding; no TLS termination at proxy</td>
+</tr>
+<tr>
+<td><strong>Each game server terminates its own TLS</strong></td>
+<td>End-to-end encrypted; NGINX never sees plaintext game data</td>
+</tr>
+<tr>
+<td><strong>One-time connection token for IP recovery</strong></td>
+<td>Bridges real client IP from HTTP layer into QUIC layer</td>
+</tr>
+<tr>
+<td><strong>SRP-6a + X25519 ECDH</strong></td>
+<td>Zero-knowledge password proof; forward secrecy for session keys</td>
+</tr>
+<tr>
+<td><strong>HMAC-signed auth tokens</strong></td>
+<td>Stateless World/Scene server auth; no LoginServer dependency after login</td>
+</tr>
+</tbody>
+</table>
+<h3 id="static-deployment-architecture">Static Deployment Architecture</h3>
+<pre><code>                            ┌──────────────────────────────────────────────────────────┐
+                            │                       INTERNET                           │
+                            │  (Public-facing: ports 80/TCP, 443/TCP, 7770-7999/UDP)   │
+                            └──────────┬───────────────┬───────────────────┬───────────┘
+                                       │               │                   │
+                          ┌────────────┴────┐   ┌──────┴───────┐   ┌──────┴───────┐
+                          │   Client 443    │   │  WebSocket   │   │  QUIC/UDP    │
+                          │  (HTTPS API)    │   │   (WebGL)    │   │   :7770-7999 │
+                          │  api.fishmmo.com│   │ play.fishmmo │   │ game.fishmmo │
+                          └────────┬────────┘   └──────┬───────┘   └──────┬───────┘
+                                   │                    │                  │
+                          ┌────────┴────────────────────┴──────────────────┴────────┐
+                          │                   NGINX REVERSE PROXY                   │
+                          │  L4 UDP stream proxy for game ports (:7770-7999)        │
+                          │  L7 HTTPS reverse proxy for web servers (:80/443)       │
+                          │  Rate limiting, TLS termination (web servers only)      │
+                          └──────┬────────────┬────────────────┬───────────────────┘
+                                 │            │                │
+                    ┌────────────┴──┐  ┌──────┴───────┐  ┌────┴──────────┐
+                    │  Web Servers   │  │  Game Servers  │  │  WebGL       │
+                    │  (private)     │  │  (private,     │  │  Static      │
+                    │                │  │   via proxy)   │  │  (private)   │
+                    │  IPFetch :8080 │  │                │  │  :8000       │
+                    │  Patcher :8090 │  │  Login  :7770  │  └─────────────┘
+                    └────────┬───────┘  │  World  :7780  │
+                             │          │  Scene  :7790+ │
+                             │          └────────┬───────┘
+                             │                    │
+                    ┌────────┴────────────────────┴──────────────────────────┐
+                    │                   POSTGRESQL / pgBouncer               │
+                    │  pgBouncer :6432 (connection pooling)                  │
+                    │  PostgreSQL :5432 (database, localhost only)           │
+                    │                                                       │
+                    │  Web servers (IPFetch, Patcher) → DB for config/auth  │
+                    │  LoginServer → DB for accounts, characters, tokens    │
+                    │  WorldServer → DB for signing keys, world state       │
+                    │  SceneServer → DB for scene state, character data     │
+                    └───────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>Data flow summary:</strong></p>
+<ul>
+<li><strong>Client → NGINX (HTTPS :443) → IPFetch :8080 / Patcher :8090</strong>: Login server discovery, version check, patching</li>
+<li><strong>Client → NGINX (QUIC/UDP :7770-7999) → Login/World/Scene servers</strong>: Gameplay traffic (end-to-end encrypted, NGINX forwards raw UDP)</li>
+<li><strong>Client → NGINX (HTTPS :443) → WebGL :8000</strong>: Browser client static assets</li>
+<li><strong>All game servers → PostgreSQL</strong>: Persistence (accounts, characters, world state)</li>
+<li><strong>IPFetch / Patcher → PostgreSQL</strong>: Auth tokens, version data</li>
+</ul>
+<p><strong>Security domains:</strong></p>
+<ul>
+<li><strong>Public</strong>: Ports 80 (redirect), 443 (HTTPS/WSS), 7770-7999 (QUIC/UDP game ports via NGINX)</li>
+<li><strong>Private (localhost only)</strong>: PostgreSQL :5432, pgBouncer :6432</li>
+<li><strong>Private (behind NGINX, same host)</strong>: IPFetch :8080, Patcher :8090, WebGL :8000, Game servers (via L4 proxy)</li>
+</ul>
+<blockquote>
+<p>For a full port listing see the <a href="#port-reference">Port Reference</a> table below.</p>
+</blockquote>
+<hr>
+<h2 id="infrastructure-topology">Infrastructure Topology</h2>
+<pre><code>                          INTERNET
+                             │
+                    ┌────────┴────────┐
+                    │   NGINX :80/443  │
+                    │  (Reverse Proxy) │
+                    └───┬────┬────┬───┘
+                        │    │    │
+          ┌─────────────┘    │    └─────────────┐
+          │                  │                  │
+     UDP :7770-7999    TCP :443/*         TCP :443/*
+     (stream block)    api.fishmmo.com    play.fishmmo.com
+          │                  │                  │
+    ┌─────┴─────┐    ┌──────┴──────┐    ┌──────┴──────┐
+    │Game Servers│    │  IPFetch    │    │  WebGL      │
+    │Login :7770 │    │  :8080      │    │  Server     │
+    │World :7780 │    │  Patcher    │    │  :8000      │
+    │Scene :7790+│    │  :8090      │    │             │
+    └─────┬─────┘    └──────┬──────┘    └─────────────┘
+          │                 │
+    ┌─────┴─────┐    ┌──────┴──────┐
+    │ pgBouncer │    │ PostgreSQL  │
+    │ :6432     │◄──►│ :5432       │
+    └───────────┘    └─────────────┘
+</code></pre>
+<hr>
+<h2 id="connection-flow-diagram">Connection Flow Diagram</h2>
+<h3 id="phase-1-launcher-startup--version-check">Phase 1: Launcher Startup &amp; Version Check</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    actor Player
+    participant Launcher as ClientLauncher
+    participant API as api.fishmmo.com, (NGINX → Patcher)
+    participant CMS as CMS Server
+
+    Player-&gt;&gt;Launcher: Launch game
+    Launcher-&gt;&gt;Launcher: Awake(), • Init services, • Set screen resolution, • Build updater path
+
+    par Fetch News &amp; Version
+        Launcher-&gt;&gt;CMS: GET /news (HTML)
+        CMS--&gt;&gt;Launcher: HTML content
+        Launcher-&gt;&gt;Launcher: Parse div.content, → HtmlText
+    and Happy-Eyeballs Version Check
+        Launcher-&gt;&gt;API: GET /latest_version, X-FishMMO-Client: v1.{ts}.{nonce}.{sig}
+        API-&gt;&gt;API: ClientGate validation, • HMAC-SHA256 verify, • Timestamp ±300s, • Nonce replay check
+        API--&gt;&gt;Launcher: { version, upToDate, patch: { sha256, size } }
+    end
+
+    alt Client &lt; Server (outdated)
+        Launcher-&gt;&gt;Launcher: Show &quot;Update&quot; button
+        Player-&gt;&gt;Launcher: Click Update
+        Launcher-&gt;&gt;API: GET /{version} (patch ZIP)
+        API--&gt;&gt;Launcher: patch-{version}.zip
+        Launcher-&gt;&gt;Launcher: SHA-256 verify, Extract to temp
+        Launcher-&gt;&gt;Launcher: Launch Updater.exe, • Transactional patch apply, • Atomic file replacement
+        Updater--&gt;&gt;Launcher: Exit code 0 (success)
+    else Client == Server
+        Launcher-&gt;&gt;Launcher: Show &quot;Play&quot; button
+    else Client &gt; Server
+        Launcher-&gt;&gt;Launcher: Show &quot;Client Ahead&quot;, (allow play anyway)
+    end
+</code></pre>
+<h3 id="phase-2-login-server-discovery-ipfetch">Phase 2: Login Server Discovery (IPFetch)</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as Client.cs, GetLoginServerList()
+    participant API as api.fishmmo.com, (NGINX → IPFetch :8080)
+    participant DB as PostgreSQL
+    participant Cache as Client Cache, (55s TTL)
+
+    Note over Client: Triggered after &quot;Play&quot; click, or from login screen
+
+    alt Cache valid (&lt; 55s old)
+        Client-&gt;&gt;Cache: Return cached ports + token
+        Cache--&gt;&gt;Client: List&lt;ushort&gt; + connectionToken
+    else Cache expired / empty
+        Client-&gt;&gt;Client: ApiHostResolver.GetCandidates(), • Parse comma-separated hosts, • Random shuffle (Happy Eyeballs)
+
+        loop Staggered probes (0.25s apart)
+            Client-&gt;&gt;API: GET /loginserver, X-FishMMO-Client: v1.{ts}.{nonce}.{sig}, CertificateHandler: ClientSSLCertificateHandler
+            API-&gt;&gt;API: ClientGate HMAC verify
+            API-&gt;&gt;DB: SELECT active login servers
+            DB--&gt;&gt;API: Server rows
+            API-&gt;&gt;API: Generate one-time connection token, • SHA-256(random bytes), • Store in DB with TTL (60s)
+            API--&gt;&gt;Client: { ports: [7770], connectionToken: &quot;abc123...&quot; }
+        end
+
+        Client-&gt;&gt;Client: Cache result (55s TTL)
+        Client-&gt;&gt;Client: Pick random port, → ConnectToServer(7770)
+    end
+</code></pre>
+<h3 id="phase-3-quicwebtransport-connection">Phase 3: QUIC/WebTransport Connection</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as Unity Client, WebTransport + Multipass
+    participant NGINX as NGINX L4 Stream, UDP :7770
+    participant Server as LoginServer :7770, MsQuic C++ Server
+
+    Note over Client: ClientConnectionManager, ConnectToServer(&quot;game.fishmmo.com&quot;, 7770)
+
+    Client-&gt;&gt;Client: StopConnection() (if existing), Wait for Stopped state
+
+    Client-&gt;&gt;Client: StartConnection(&quot;game.fishmmo.com&quot;, 7770)
+    Client-&gt;&gt;Client: DNS resolve game.fishmmo.com, → Server IP
+
+    Client-&gt;&gt;NGINX: QUIC Initial packet, UDP → game.fishmmo.com:7770
+    Note over NGINX: NGINX L4 stream block — listens UDP 7770 — proxies to 127.0.0.1:7770
+
+    NGINX-&gt;&gt;Server: Forward UDP to loopback
+    Note over NGINX,Server: Source IP = 127.0.0.1, (proxy rewrites address)
+
+    Server-&gt;&gt;Server: MsQuic QUIC_CONNECTION_EVENT_CONNECTED, • TLS 1.3 handshake, • ALPN negotiation
+    Server-&gt;&gt;Server: QUIC_CONNECTION_EVENT_STREAM_STARTED, → on_stream_data callback
+
+    Client--&gt;&gt;Server: QUIC connection established
+    Note over Client,Server: Encrypted QUIC tunnel active, TLS terminated at game server, (NGINX never sees plaintext)
+</code></pre>
+<h3 id="phase-4-cryptographic-handshake-x25519-ecdh">Phase 4: Cryptographic Handshake (X25519 ECDH)</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as ClientAuthenticatorCore
+    participant Server as BaseAuthenticatorCore, (Login Server)
+
+    Note over Client,Server: Triggered by OnConnected()
+
+    Client-&gt;&gt;Client: Generate X25519 ephemeral keypair, • crypto_box_keypair()
+
+    Client-&gt;&gt;Server: ClientHandshake {,   PublicKey: client_x25519_pub,,   Cookie: null,,   ConnectionToken: &quot;abc123...&quot;,,   MinVersion: 1, MaxVersion: 1, }
+
+    Server-&gt;&gt;Server: Validate:, • PublicKey.Length == 32 ✓, • Not already authenticated ✓, • Validate small-order points ✓
+
+    Server-&gt;&gt;Server: Phase 1: Cookie Challenge, • Generate HMAC-SHA256 cookie,   bound to IP + pubkey + time bucket, • Cookie is STATELESS (no server-side storage)
+
+    Server--&gt;&gt;Client: ServerHandshake {,   PublicKey: null,,   Cookie: hmac_cookie_bytes, }
+
+    Client-&gt;&gt;Client: Echo cookie, • Guard: cookieEchoed = true, (duplicate prevention)
+
+    Client-&gt;&gt;Server: ClientHandshake {,   PublicKey: client_x25519_pub,,   Cookie: hmac_cookie_bytes,,   ConnectionToken: null, }
+
+    Server-&gt;&gt;Server: Phase 2: Cookie Verification, • HMAC-SHA256 verify with rollover,   (current + previous time bucket), • Per-IP rate limit check (250ms debounce), • Global rate limit check (500/sec)
+
+    Server-&gt;&gt;Server: X25519 ECDH Key Agreement, • Generate server ephemeral keypair, • Compute shared secret, • HKDF derive session keys:,   - ClientToServerKey (AES-256),   - ServerToClientKey (AES-256),   - ClientNoncePrefix,   - ServerNoncePrefix
+
+    Server-&gt;&gt;Server: TrackAuthStart(conn), • TTL = 15s (stale sweep), • Hard deadline = 60s
+
+    Server--&gt;&gt;Client: ServerHandshake {,   PublicKey: server_x25519_pub,,   AgreedVersion: 1, }
+
+    Client-&gt;&gt;Client: ECDH Key Agreement, • Compute shared secret from server pubkey, • HKDF derive same session keys, • Initialize GcmNonceContext (send + receive), • Dispose ephemeral keypair
+
+    Note over Client,Server: 🔐 AES-256-GCM encrypted channel established, All subsequent messages are encrypted with AAD
+</code></pre>
+<h3 id="phase-5-srp-6a-authentication">Phase 5: SRP-6a Authentication</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as ClientAuthenticatorCore
+    participant Server as SrpAuthenticatorCore, (Login Server)
+    participant DB as PostgreSQL
+    participant Worker as SRP Worker, (Async Channel)
+
+    Note over Client,Server: After ECDH handshake complete
+
+    alt Has stored auth token (reconnect)
+        Client-&gt;&gt;Server: TokenAuthBroadcast {,   Token: aes_gcm_encrypted_token, }
+        Note over Server: → TokenAuth path (see Phase 8)
+    else Fresh login
+        Client-&gt;&gt;Client: Generate SRP client ephemeral 'A', Encrypt username + 'A' under AES-GCM
+
+        Client-&gt;&gt;Server: SrpVerifyBroadcast {,   S: enc(username),,   PublicEphemeral: enc(client_ephemeral_A), }
+
+        Server-&gt;&gt;Server: Validate:, • Connection has encryption data ✓, • Not already in auth state ✓, • Duplicate SRP verify guard ✓
+
+        Server-&gt;&gt;Server: Decrypt username + client ephemeral
+        Server-&gt;&gt;Server: Per-account rate limit check, Resolve canonical username
+
+        Server-&gt;&gt;Worker: Enqueue SrpVerifyRequest, → bounded async channel
+
+        Worker-&gt;&gt;DB: FetchForLoginAsync(username)
+        DB--&gt;&gt;Worker: { salt, verifier, accessLevel,,   totpEnabled, verified }
+
+        Worker-&gt;&gt;Worker: SRP-6a server:, • Compute server ephemeral 'B', • Compute shared session key, • Generate server proof M2
+
+        Worker--&gt;&gt;Server: SrpVerifyResponse {,   enc(salt), enc(server_ephemeral_B), }
+
+        Server--&gt;&gt;Client: SrpVerifyBroadcast {,   S: enc(salt),,   PublicEphemeral: enc(server_ephemeral_B), }
+
+        Client-&gt;&gt;Client: Decrypt salt + server ephemeral, Compute client proof M1, Clear username/password from memory
+
+        Client-&gt;&gt;Server: SrpProofBroadcast {,   Proof: enc(client_proof_M1), }
+
+        Server-&gt;&gt;Server: Decrypt client proof
+
+        Server-&gt;&gt;Worker: Enqueue SrpProofRequest
+
+        Worker-&gt;&gt;Worker: Verify client proof M1, against server session key
+
+        alt Proof valid
+            Worker-&gt;&gt;Worker: Generate HMAC-SHA256 auth token, • Bind: username + accessLevel +,   loginServerId + expiration, • Encrypt under session AES-GCM
+
+            Worker-&gt;&gt;DB: PersistTokenHash(token_hash)
+
+            Worker--&gt;&gt;Server: SrpProofResponse {,   success, enc(server_proof_M2),,   enc(auth_token), }
+        else Proof invalid
+            Worker--&gt;&gt;Server: SrpProofResponse { failed }
+        end
+
+        Server--&gt;&gt;Client: SrpSuccessBroadcast {,   Proof: enc(server_proof_M2),,   Result: LoginSuccess,,   Token: enc(auth_token), }
+
+        Client-&gt;&gt;Client: Verify server proof M2, Decrypt and store auth token, Fire OnAuthResult(LoginSuccess)
+    end
+</code></pre>
+<h3 id="phase-6-totp-two-factor-authentication">Phase 6: TOTP Two-Factor Authentication</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as Client
+    participant Server as ServerAuthenticator
+    participant DB as PostgreSQL
+
+    Note over Client,Server: Only when account has TOTP enabled
+
+    Server--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: TwoFactorRequired, }
+
+    Client-&gt;&gt;Client: Show TOTP input field, User enters 6-digit code
+
+    Client-&gt;&gt;Server: TwoFactorVerifyBroadcast {,   Code: enc(totp_code), }
+
+    Server-&gt;&gt;Server: Decrypt TOTP code
+
+    Server-&gt;&gt;DB: FetchForLoginAsync(username)
+    DB--&gt;&gt;Server: { totpSecret (encrypted), lastTotpWindow }
+
+    Server-&gt;&gt;Server: Decrypt TOTP secret, via TotpMasterKey (AES-256)
+
+    alt Standard TOTP (6 digits)
+        Server-&gt;&gt;Server: CryptoHelper.VerifyTotpCode(), • ±1 window drift tolerance, • PersistLastTotpWindow on success
+    else Recovery Code (XXXXX-XXXXX hex)
+        Server-&gt;&gt;DB: FetchUnusedRecoveryCodes(username)
+        Server-&gt;&gt;Server: VerifyRecoveryCode(), • Constant-time HMAC compare, • ConsumeCode on success (single-use)
+    end
+
+    alt Code valid
+        Server--&gt;&gt;Client: SrpSuccessBroadcast {,   Result: LoginSuccess,,   Token: enc(auth_token), }
+    else Code invalid
+        Server--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: TwoFactorFailed, }
+        Note over Server: Per-username failure counter, Lockout after 5 failures (60 min)
+    end
+</code></pre>
+<h3 id="phase-7-token-issuance--character-select">Phase 7: Token Issuance &amp; Character Select</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as Client
+    participant Login as LoginServer
+    participant DB as PostgreSQL
+
+    Note over Client,Login: After successful SRP login
+
+    Login-&gt;&gt;DB: PersistTokenHash(token_hash, username,,   loginServerId, expiresAt)
+    Note over DB: Token stored as SHA-256 hash, Expiration: configurable (default 10 min)
+
+    Client-&gt;&gt;Client: OnAuthResult(LoginSuccess), • Store decrypted token in memory, • CurrentConnectionType = Login
+
+    Client-&gt;&gt;Login: RequestServerListBroadcast
+    Login-&gt;&gt;DB: FetchActiveWorldServers()
+    DB--&gt;&gt;Login: World server list
+    Login--&gt;&gt;Client: ServerListBroadcast { Servers: [...] }
+
+    Client-&gt;&gt;Client: Display character select screen
+    Client-&gt;&gt;Login: Character list / create / delete / select
+
+    Login-&gt;&gt;DB: Character CRUD operations, • Unit of Work transactions, • Ownership verification
+
+    alt Character selected
+        Login--&gt;&gt;Client: WorldSceneConnectBroadcast { Port: 7780 }
+        Note over Client: Triggers Phase 8
+    end
+</code></pre>
+<h3 id="phase-8-world-server-connection">Phase 8: World Server Connection</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as Client
+    participant NGINX as NGINX L4 Stream, UDP :7780
+    participant World as WorldServer :7780
+    participant DB as PostgreSQL
+
+    Note over Client: ClientConnectionManager, ConnectToServer(&quot;game.fishmmo.com&quot;, 7780, true)
+
+    Client-&gt;&gt;NGINX: QUIC connection → :7780
+    NGINX-&gt;&gt;World: UDP forward to :7780
+
+    Note over Client,World: Phase 4: X25519 ECDH handshake, (same cookie-challenge flow)
+
+    Client-&gt;&gt;World: ClientHandshake { PublicKey, Cookie, ... }
+
+    World-&gt;&gt;World: Cookie challenge → ECDH key agreement
+    World--&gt;&gt;Client: ServerHandshake { PublicKey, AgreedVersion }
+
+    Note over Client,World: AES-256-GCM channel established
+
+    Client-&gt;&gt;World: TokenAuthBroadcast {,   Token: enc(stored_auth_token), }
+
+    World-&gt;&gt;World: Decrypt token via session key, Parse: username, accessLevel,,   loginServerId, signingKeyId, expiration
+
+    World-&gt;&gt;DB: FetchSigningKeyAsync(loginServerId, signingKeyId)
+    DB--&gt;&gt;World: { hmacKey (AES-256-GCM wrapped) }
+
+    World-&gt;&gt;World: Unwrap signing key via KEK, Verify HMAC-SHA256(token)
+    World-&gt;&gt;DB: CheckTokenRevocationAsync(tokenHash)
+
+    alt Token valid + not revoked + not expired
+        World-&gt;&gt;World: WorldServerAuthenticator.TryLoginAsync(), • Per-account debounce (1s), • Server lock check, • Population cap check, • Verify character selection
+
+        World-&gt;&gt;World: IssueRenewalTokenCoreAsync(), • Mint fresh token with new expiration, • Persist hash → DB, • Send RenewTokenResponseBroadcast
+
+        World--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: WorldLoginSuccess, }
+        World--&gt;&gt;Client: RenewTokenResponseBroadcast {,   Token: enc(new_token), }
+
+        Client-&gt;&gt;Client: TryApplyRenewedToken(), • Decrypt new token, • Replace stored token, • OnAuthResult(WorldLoginSuccess)
+    else Token invalid/expired/revoked
+        World--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: TokenInvalid / TokenExpired / TokenRevoked, }
+        Client-&gt;&gt;Client: ClearAuthToken(), → Must re-login via LoginServer
+    end
+</code></pre>
+<h3 id="phase-9-scene-server-connection">Phase 9: Scene Server Connection</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as Client
+    participant World as WorldServer
+    participant Scene as SceneServer :7790
+    participant DB as PostgreSQL
+
+    Note over Client,World: After WorldLoginSuccess
+
+    World-&gt;&gt;World: Scene routing logic, • Select scene server, • Load scene via FishNet SceneManager
+
+    World--&gt;&gt;Client: WorldSceneConnectBroadcast { Port: 7790 }
+
+    Client-&gt;&gt;Client: ConnectToServer(7790), CurrentConnectionType = Scene
+
+    Note over Client,Scene: Phase 4: X25519 ECDH handshake, (same cookie-challenge flow)
+
+    Client-&gt;&gt;Scene: ClientHandshake → Cookie challenge → ECDH
+
+    Client-&gt;&gt;Scene: TokenAuthBroadcast {,   Token: enc(auth_token), }
+
+    Scene-&gt;&gt;Scene: TokenAuthenticatorCore, • Same verify flow as WorldServer, • SceneServerAuthenticator.TryLoginAsync(),   → SceneLoginSuccess (simple pass-through)
+
+    Scene-&gt;&gt;DB: FetchSigningKey + CheckRevocation
+
+    Scene--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: SceneLoginSuccess, }
+    Scene--&gt;&gt;Client: RenewTokenResponseBroadcast { Token }
+
+    Client-&gt;&gt;Client: OnAuthResult(SceneLoginSuccess), • CurrentConnectionType = Scene, • DismissLoadingScreen(true), • Fire OnEnterGameWorld
+
+    Client-&gt;&gt;Client: Character spawn → gameplay begins
+
+    Note over Client,Scene: 🎮 Gameplay active, • Prediction pipeline running, • Observer LOD system active, • All scene systems operational
+</code></pre>
+<h3 id="phase-10-token-renewal--revocation">Phase 10: Token Renewal &amp; Revocation</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as Client
+    participant World as WorldServer
+    participant Login as LoginServer
+    participant DB as PostgreSQL
+
+    Note over Client,World: Token renewal happens automatically, after each successful World/Scene auth
+
+    rect rgb(240, 255, 240)
+        Note over Client,World: TOKEN RENEWAL (Phase 8/9)
+        World-&gt;&gt;World: IssueRenewalTokenCoreAsync(), • Fetch current signing key from DB, • GenerateAndEncryptToken(),   - New expiration: now + 10min,   - Same username, accessLevel, loginServerId
+        World-&gt;&gt;DB: PersistTokenHash(new_token_hash)
+        World--&gt;&gt;Client: RenewTokenResponseBroadcast { Token }
+        Client-&gt;&gt;Client: TryApplyRenewedToken(), • Decrypt + store new token
+    end
+
+    rect rgb(255, 240, 240)
+        Note over Client,Login: TOKEN REVOCATION (logout)
+        Client-&gt;&gt;Client: RevokeAndClearAuthToken(), • TryConsumeStoredTokenForRevoke(),   - Defensive copy of raw token bytes,   - ZeroMemory original
+        Client-&gt;&gt;Login: RevokeTokenBroadcast { Token }, (3 retry attempts)
+        Login-&gt;&gt;Login: TokenService.HashToken(tokenCopy)
+        Login-&gt;&gt;DB: RevokeByHashAsync(tokenHash)
+        Login-&gt;&gt;Login: ZeroMemory(tokenCopy)
+        Note over Client: Local token already zeroed, Server revocation is best-effort
+    end
+
+    rect rgb(255, 255, 240)
+        Note over Client: APPLICATION LIFECYCLE
+        Client-&gt;&gt;Client: OnApplicationPause(true), → RevokeAndClearAuthToken()
+        Client-&gt;&gt;Client: OnApplicationQuit(), → RevokeAndClearAuthToken()
+    end
+</code></pre>
+<hr>
+<h2 id="protocol-layers">Protocol Layers</h2>
+<pre><code>┌─────────────────────────────────────────────┐
+│         APPLICATION LAYER                    │
+│  FishMMO Broadcasts (SRP, Token, Chat, etc.) │
+│  Serialized via FishNet BinarySerializer      │
+├─────────────────────────────────────────────┤
+│         ENCRYPTION LAYER                     │
+│  AES-256-GCM (per-message)                   │
+│  Authenticated Additional Data:              │
+│    • Protocol version                        │
+│    • Message type                            │
+│    • Sequence number                         │
+│  Nonce: 12 bytes (prefix || counter)         │
+├─────────────────────────────────────────────┤
+│         SESSION LAYER                        │
+│  QUIC Streams + Datagrams                    │
+│  Stream Manager (4096 concurrent streams)    │
+│  Reliable: Bidi stream + FIN                 │
+│  Unreliable: Datagram                        │
+├─────────────────────────────────────────────┤
+│         TRANSPORT LAYER                      │
+│  QUIC (RFC 9000) over UDP                    │
+│  TLS 1.3 (mandatory for QUIC)                │
+│  MsQuic C++ library (P/Invoke from C#)       │
+├─────────────────────────────────────────────┤
+│         NETWORK LAYER                        │
+│  UDP datagrams                               │
+│  NGINX L4 stream proxy (optional)            │
+└─────────────────────────────────────────────┘
+</code></pre>
+<hr>
+<h2 id="security-properties">Security Properties</h2>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Mechanism</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Password never sent to server</strong></td>
+<td>SRP-6a</td>
+<td>Client proves knowledge of password without transmitting it</td>
+</tr>
+<tr>
+<td><strong>Forward secrecy</strong></td>
+<td>X25519 ECDH</td>
+<td>Ephemeral keypairs regenerated each connection</td>
+</tr>
+<tr>
+<td><strong>Session encryption</strong></td>
+<td>AES-256-GCM</td>
+<td>All messages encrypted with per-session derived keys</td>
+</tr>
+<tr>
+<td><strong>Message authentication</strong></td>
+<td>GCM authentication tag</td>
+<td>Every message authenticated with AAD binding</td>
+</tr>
+<tr>
+<td><strong>Replay protection</strong></td>
+<td>Sequence numbers + GCM nonces</td>
+<td>Monotonic counters prevent message replay</td>
+</tr>
+<tr>
+<td><strong>Cookie challenge</strong></td>
+<td>HMAC-SHA256 stateless cookie</td>
+<td>Proof of IP reachability before expensive ECDH</td>
+</tr>
+<tr>
+<td><strong>Small-order point rejection</strong></td>
+<td>RFC 7748 §6.1 blacklist</td>
+<td>Prevents ECDH downgrade attacks</td>
+</tr>
+<tr>
+<td><strong>Token signing</strong></td>
+<td>HMAC-SHA256</td>
+<td>Tokens cryptographically signed by LoginServer</td>
+</tr>
+<tr>
+<td><strong>Token encryption</strong></td>
+<td>AES-256-GCM (KEK-wrapped)</td>
+<td>Signing keys stored encrypted in database</td>
+</tr>
+<tr>
+<td><strong>Constant-time comparison</strong></td>
+<td>Bitwise XOR loop</td>
+<td>Prevents timing side-channel on MAC/cert checks</td>
+</tr>
+<tr>
+<td><strong>Memory zeroization</strong></td>
+<td>CryptographicOperations.ZeroMemory</td>
+<td>Sensitive keys/credentials zeroed after use</td>
+</tr>
+<tr>
+<td><strong>TLS certificate pinning</strong></td>
+<td>SHA-256(SPKI) via BouncyCastle</td>
+<td>Prevents MITM on launcher API calls</td>
+</tr>
+<tr>
+<td><strong>API request signing</strong></td>
+<td>HMAC-SHA256 + timestamp + nonce</td>
+<td>Prevents replay of launcher API requests</td>
+</tr>
+<tr>
+<td><strong>TOTP secret encryption</strong></td>
+<td>AES-256 master key</td>
+<td>TOTP secrets encrypted at rest in DB</td>
+</tr>
+</tbody>
+</table>
+<h3 id="security-incident-response">Security Incident Response</h3>
+<p>Quick-reference playbooks for common security incidents. Each scenario assumes the on-call operator has access to the deployment's server configuration files, database credentials, and the <code>LoginServerSystem</code> management interface.</p>
+<h4 id="token-signing-key-compromise">Token Signing Key Compromise</h4>
+<p>Suspicion: a signing key used by LoginServer to HMAC-auth tokens has been exposed (e.g., leaked config file, compromised host).</p>
+<ol>
+<li><strong>Rotate the signing key</strong> via <code>LoginServerSystem.RotateSigningKey()</code> which generates a new HMAC key, wraps it with the KEK, and persists the new row in the <code>signing_keys</code> table.</li>
+<li><strong>Revoke all outstanding tokens</strong> by incrementing the deployment's key generation counter, or by calling <code>TokenService.RevokeAllForLoginServer(loginServerId)</code>. World/Scene servers will reject existing tokens at the next <code>CheckTokenRevocationAsync</code> lookup.</li>
+<li><strong>Force all connected clients to re-authenticate</strong> by restarting World and Scene servers after the rotation so in-memory caches of the old signing key are flushed.</li>
+</ol>
+<h4 id="ddos-attack">DDoS Attack</h4>
+<p>Suspicion: a flood of connection requests, handshake attempts, or API calls from distributed sources.</p>
+<ol>
+<li><strong>Verify NGINX rate limits are active</strong> — check <code>limit_req_zone</code> and <code>limit_conn_zone</code> counters via <code>nginx -s reopen</code> logs or live metrics. Confirm the zones are not exhausted by legitimate traffic.</li>
+<li><strong>Enable stricter limits</strong> — reduce <code>limit_req</code> to 5r/s (API) and 1r/s (patch), tighten <code>limit_conn</code> to 5 conn/IP. Apply at NGINX edge; no game-server restart required.</li>
+<li><strong>Check nonce cache pressure</strong> — if the <code>ClientGate</code> nonce LRU exceeds 20,000 entries, the <code>Array.Sort</code> on eviction causes CPU spikes. Consider restarting the IPFetch/Patcher processes to flush the cache.</li>
+<li><strong>If the attack targets QUIC game ports</strong>, the game server's per-IP handshake debounce (250ms) and global cap (500/sec) provide the last line of defense. Monitor <code>MaxPendingAuthConnections</code> (10,000) — if hit, legitimate clients are locked out.</li>
+</ol>
+<h4 id="account-takeover">Account Takeover</h4>
+<p>Suspicion: a user reports unauthorized access, or an anomaly detection alert fires on an account.</p>
+<ol>
+<li><strong>Revoke the account's tokens</strong> via <code>TokenService.RevokeByUsername(username)</code> — this forces all active sessions to re-authenticate.</li>
+<li><strong>Force a password reset</strong> by setting <code>password_change_required</code> on the account row, which the client will enforce on next login.</li>
+<li><strong>Check TOTP status</strong> — if TOTP was not enabled, or was recently disabled, re-enable it and generate new recovery codes via <code>CryptoHelper.TwoFactor.GenerateRecoveryCodes()</code>. Review <code>lastTotpWindow</code> for signs of code replay.</li>
+<li><strong>Audit the account's recent auth attempts</strong> via IPFetch or LoginServer logs to identify the source IP of the intrusion.</li>
+</ol>
+<h4 id="certificate-compromise">Certificate Compromise</h4>
+<p>Suspicion: the TLS private key for <code>game.fishmmo.com</code> (or <code>api.fishmmo.com</code>) has been exposed.</p>
+<ol>
+<li><strong>Renew certificates immediately</strong> — run <code>certbot renew --force-renewal</code> on the server hosting the affected domain. The certbot deploy hook (<code>certbot-fishmmo.sh</code>) copies new certs to <code>/etc/fishmmo/certs/</code>.</li>
+<li><strong>Restart all game servers</strong> that terminate QUIC/TLS (LoginServer, WorldServer, SceneServer) — each reads certificate paths from <code>.cfg</code> files (<code>CertificatePath</code> / <code>PrivateKeyPath</code>) at startup.</li>
+<li><strong>Reload NGINX</strong> with <code>nginx -t &amp;&amp; nginx -s reload</code> to pick up updated web server certificates.</li>
+<li><strong>Verify the new certificate</strong> — check <code>openssl x509 -in /etc/fishmmo/certs/fullchain.pem -noout -dates</code> and confirm the private key matches with <code>openssl pkey -in /etc/fishmmo/certs/privkey.pem -pubout</code>.</li>
+</ol>
+<hr>
+<h2 id="rate-limiting--ddos-protection">Rate Limiting &amp; DDoS Protection</h2>
+<pre><code>┌──────────────────────────────────────────────────────────────┐
+│                    DEFENSE IN DEPTH                          │
+│                                                              │
+│  LAYER 1: NGINX (Edge)                                       │
+│  ├─ limit_req_zone: 10r/s (API), 2r/s (patch), 30r/s (WebGL)│
+│  ├─ limit_conn_zone: 20 conn/IP (WebGL), 10 conn/IP (API)   │
+│  ├─ client_max_body_size: 1k (prevents oversized requests)  │
+│  └─ TLS 1.2+ only, strict ciphers                           │
+│                                                              │
+│  LAYER 2: ClientGate (API servers)                           │
+│  ├─ HMAC-SHA256 request signing                             │
+│  ├─ Timestamp ±300s window                                  │
+│  └─ Nonce LRU replay protection                             │
+│                                                              │
+│  LAYER 3: Game Server                                       │
+│  ├─ Global handshake cap: 500/sec                           │
+│  ├─ Per-IP handshake debounce: 250ms                        │
+│  ├─ Pending auth cap: 10,000                                │
+│  ├─ Auth TTL sweep: 15s stale, 60s hard deadline            │
+│  ├─ Per-account rate limit: 1s (SRP verify)                 │
+│  ├─ Per-IP account creation limit: configurable             │
+│  ├─ Global hourly account creation cap                      │
+│  ├─ TOTP failure lockout: 5 failures → 60 min               │
+│  ├─ Account verification brute-force protection              │
+│  ├─ IngressGuard: per-connection, per-operation debounce    │
+│  └─ Async worker backpressure + bounded channels            │
+└──────────────────────────────────────────────────────────────┘
+</code></pre>
+<hr>
+<h2 id="reconnection-flow">Reconnection Flow</h2>
+<pre><code class="lang-mermaid">stateDiagram-v2
+    [*] --&gt; Connected: Initial connection
+    Connected --&gt; Disconnected: Connection lost
+    Disconnected --&gt; Reconnecting: CanReconnect? (World/Scene only)
+    Disconnected --&gt; LoginScreen: Cannot reconnect (Login)
+    Reconnecting --&gt; Connected: Reconnect success
+    Reconnecting --&gt; Reconnecting: Attempt failed, (exponential backoff + jitter)
+    Reconnecting --&gt; LoginScreen: Max attempts (10) exhausted
+    LoginScreen --&gt; [*]: Full re-auth required
+
+    note right of Reconnecting
+        Backoff formula:
+        delay = base(5s) × 2^attempt × jitter(0.75-1.25)
+        Max delay capped at 60s
+        Max 10 attempts
+    end note
+</code></pre>
+<hr>
+<h2 id="platform-support-matrix">Platform Support Matrix</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Windows x64</th>
+<th>Linux x64</th>
+<th>macOS x64</th>
+<th>WebGL (Browser)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Native client</strong></td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td><strong>Server</strong></td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td><strong>WebTransport (QUIC)</strong></td>
+<td>✅ (via C++ lib)</td>
+<td>✅ (via C++ lib)</td>
+<td>❌ (binary missing)</td>
+<td>✅ (via browser WebTransport API + server HTTP/3)</td>
+</tr>
+<tr>
+<td><strong>TLS certificate pinning</strong></td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>N/A (browser handles)</td>
+</tr>
+<tr>
+<td><strong>API request signing</strong></td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>IL2CPP scripting</strong></td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅ (WASM)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>WebGL note:</strong> The C++ msquic server includes a full HTTP/3 WebTransport handshake implementation
+in <code>src/http3.cpp</code>. The server auto-detects browser clients by inspecting the first byte of the
+initial peer stream: <code>0x00</code> = HTTP/3 control stream (browser), any other byte = raw QUIC (native).
+Browser WebTransport clients connect via <code>new WebTransport(&quot;https://game.fishmmo.com:{port}&quot;)</code>
+and the server handles SETTINGS exchange, CONNECT validation with Origin CORS checking, and
+WebTransport session establishment transparently. The CSP headers on <code>play.fishmmo.com</code> are
+configured with <code>connect-src ... https://game.fishmmo.com:*</code> for cross-origin WebTransport.</p>
+</blockquote>
+<hr>
+<h2 id="port-reference">Port Reference</h2>
+<table>
+<thead>
+<tr>
+<th>Port</th>
+<th>Service</th>
+<th>Protocol</th>
+<th>Exposure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>80</td>
+<td>NGINX HTTP → HTTPS redirect</td>
+<td>TCP</td>
+<td>Public</td>
+</tr>
+<tr>
+<td>443</td>
+<td>NGINX HTTPS + WSS</td>
+<td>TCP</td>
+<td>Public</td>
+</tr>
+<tr>
+<td>5432</td>
+<td>PostgreSQL</td>
+<td>TCP</td>
+<td>Private (localhost)</td>
+</tr>
+<tr>
+<td>6432</td>
+<td>pgBouncer</td>
+<td>TCP</td>
+<td>Private (localhost)</td>
+</tr>
+<tr>
+<td>7770-7779</td>
+<td>LoginServer(s)</td>
+<td>UDP (QUIC)</td>
+<td>Public via NGINX L4</td>
+</tr>
+<tr>
+<td>7780-7789</td>
+<td>WorldServer(s)</td>
+<td>UDP (QUIC)</td>
+<td>Public via NGINX L4</td>
+</tr>
+<tr>
+<td>7790-7999</td>
+<td>SceneServer(s)</td>
+<td>UDP (QUIC)</td>
+<td>Public via NGINX L4</td>
+</tr>
+<tr>
+<td>8000</td>
+<td>WebGL Static Server</td>
+<td>TCP (HTTP)</td>
+<td>Private (behind NGINX)</td>
+</tr>
+<tr>
+<td>8080</td>
+<td>IPFetch Server</td>
+<td>TCP (HTTP)</td>
+<td>Private (behind NGINX)</td>
+</tr>
+<tr>
+<td>8090</td>
+<td>Patcher Server</td>
+<td>TCP (HTTP)</td>
+<td>Private (behind NGINX)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="server-initialization-order">Server Initialization Order</h2>
+<blockquote>
+<p><strong>Complete 5-phase server startup</strong> — from Unity scene load through bootstrap, launcher, server scene initialization, and runtime operation.
+Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER_INITIALIZATION_ORDER.md</code></a>.</p>
+</blockquote>
+<p>The FishMMO server follows a hierarchical 5-phase initialization sequence:</p>
+<h3 id="phase-1-mainbootstrap-scene-load">Phase 1: MainBootstrap Scene Load</h3>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.1</td>
+<td>Unity loads <code>MainBootstrap.unity</code> (first scene, <code>DontDestroyOnLoad</code>)</td>
+</tr>
+<tr>
+<td>1.2</td>
+<td><code>MainBootstrapSystem.Awake()</code> calls <code>StartBootstrap()</code></td>
+</tr>
+<tr>
+<td>1.3</td>
+<td><code>OnPreload()</code> loads version.txt, sets <code>GameVersion</code>, registers quit/play-mode handlers, initializes the <strong>Logging System</strong> (console logger factory, logging.json config), then enqueues the next scene (<code>ServerLauncher</code> for server builds, <code>ClientPreboot</code> otherwise)</td>
+</tr>
+<tr>
+<td>1.4</td>
+<td><code>AddressableLoadProcessor.BeginProcessQueue()</code> loads the ServerLauncher scene additively</td>
+</tr>
+<tr>
+<td>1.5</td>
+<td>On load completion, <code>OnCompleteProcessing()</code> finds <code>BootstrapSystem</code> components in loaded scenes and calls <code>StartBootstrap()</code> on each</td>
+</tr>
+</tbody>
+</table>
+<h3 id="phase-2-serverlauncher-scene-load">Phase 2: ServerLauncher Scene Load</h3>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.1</td>
+<td><code>ServerLauncher.unity</code> loaded additively by MainBootstrapSystem</td>
+</tr>
+<tr>
+<td>2.2</td>
+<td><code>ServerLauncher.StartBootstrap()</code> called by the bootstrap pipeline</td>
+</tr>
+<tr>
+<td>2.3</td>
+<td><code>OnPreload()</code> subscribes to addressable events, loads <code>TemplateTypeCache</code>, then determines which server scenes to load: <strong>Editor</strong> loads all from <code>BootList</code> (LoginServer, WorldServer, SceneServer); <strong>Standalone</strong> parses <code>args[1]</code> (&quot;LOGIN&quot; / &quot;WORLD&quot; / &quot;SCENE&quot;)</td>
+</tr>
+<tr>
+<td>2.4</td>
+<td>Server scenes are enqueued and loaded additively via <code>AddressableLoadProcessor</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="phase-3-server-scenes-load">Phase 3: Server Scene(s) Load</h3>
+<p>Each server scene (<code>LoginServer.unity</code>, <code>WorldServer.unity</code>, <code>SceneServer.unity</code>) contains a <code>NetworkManager</code>, a <code>Server</code> MonoBehaviour, and <code>ServerBehaviour</code> ScriptableObject assets.</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3.1</td>
+<td>Scene loaded additively by ServerLauncher</td>
+</tr>
+<tr>
+<td>3.2</td>
+<td><code>Server.Start()</code> finds <code>NetworkManager</code>, creates <code>FileServerConfiguration</code> + <code>ServerEvents</code> + <code>CoreServer</code> + <code>FishNetNetworkWrapper</code></td>
+</tr>
+<tr>
+<td>3.3</td>
+<td><code>StartCoroutine(NetHelper.FetchExternalIPAddress(...))</code> — async web request to discover the server's public IP</td>
+</tr>
+</tbody>
+</table>
+<h3 id="phase-4-server-finalize-setup-onfinalizesetup">Phase 4: Server Finalize Setup (<code>OnFinalizeSetup</code>)</h3>
+<p>This is the critical initialization phase, running after the external IP is fetched:</p>
+<ol>
+<li><strong>Core Initialization</strong> — <code>CoreServer.Initialize(remoteAddress, sceneName)</code>, creates <code>ServerAddressProvider</code></li>
+<li><strong>Network Configuration</strong> — <code>NetworkWrapper.ApplyTransportConfiguration()</code> sets FishNet transport addresses/ports; attaches authenticator and connection state handler</li>
+<li><strong>Account Management</strong> — <code>AccountManager = new AccountManager()</code></li>
+<li><strong>RuntimeDataContainer Discovery &amp; Creation</strong> — <code>DataContainerRegistry</code> scans <code>ServerBehaviours</code> for <code>[RequiresDataContainer]</code> attributes, deduplicates by type, groups by <code>InitializationPriority</code>, and creates container instances</li>
+<li><strong>DataContainer Initialization</strong> — <code>DataContainerRegistry.InitializeAll(this)</code> — sets Server/ServerManager references, calls <code>container.InitializeOnce()</code></li>
+<li><strong>ServerBehaviour Registration &amp; Initialization</strong> — <code>BehaviourRegistry.RegisterAllBehaviours()</code> — registers by concrete type and implemented interfaces, then calls <code>behaviour.InitializeOnce()</code> (behaviours can now access initialized containers, subscribe to broadcasts, register periodic callbacks)</li>
+<li><strong>Physics and Network Start</strong> — <code>KinematicCharacterSystem.EnsureCreation()</code>, <code>NetworkWrapper.StartServer()</code> (FishNet <code>ServerManager.StartConnection()</code>), logs &quot;Initialization Complete&quot;</li>
+</ol>
+<h3 id="phase-5-runtime-operation">Phase 5: Runtime Operation</h3>
+<ul>
+<li><strong><code>Server.LateUpdate()</code> every frame</strong>: calculates deltaTime, updates all initialized <code>ServerBehaviours</code> via <code>OnLateUpdate(deltaTime)</code>, processes periodic callbacks (decrement timer, invoke action when elapsed)</li>
+<li><strong>Client connections</strong>: authenticator validates, character spawning/loading begins, behaviours handle broadcasts, containers store mutable state</li>
+</ul>
+<h3 id="key-guarantees">Key Guarantees</h3>
+<table>
+<thead>
+<tr>
+<th>Guarantee</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Containers before behaviours</td>
+<td><code>RuntimeDataContainers</code> are always initialized before <code>ServerBehaviours</code> — no race conditions</td>
+</tr>
+<tr>
+<td>Attribute-based discovery</td>
+<td>Declare dependencies with <code>[RequiresDataContainer(typeof(...))]</code> — zero manual config, automatic deduplication</td>
+</tr>
+<tr>
+<td>Hierarchical bootstrap</td>
+<td>MainBootstrap triggers ServerLauncher triggers Server Scene(s) — graceful additive scene loading</td>
+</tr>
+<tr>
+<td>Build-specific behavior</td>
+<td>Editor loads all servers simultaneously; standalone uses command-line args; separate asset lists for WebGL</td>
+</tr>
+</tbody>
+</table>
+<h3 id="shutdown-sequence">Shutdown Sequence</h3>
+<pre><code>Application wants to quit
+  → MainBootstrapSystem defers quit
+  → Graphics cleanup (release addressables)
+  → Log.Shutdown() (flush logs)
+  → Server.OnDestroy()
+  → DeinitializeAllBehaviours() (reverse order)
+  → DeinitializeAllDataContainers() (reverse order)
+  → Application.Quit()
+</code></pre>
+<hr>
+<h2 id="key-constants">Key Constants</h2>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>APIHost</code></td>
+<td><code>https://api.fishmmo.com/</code></td>
+<td><code>Constants.cs</code></td>
+</tr>
+<tr>
+<td><code>GameHost</code></td>
+<td><code>game.fishmmo.com</code></td>
+<td><code>Constants.cs</code></td>
+</tr>
+<tr>
+<td><code>AuthStaleTtlSeconds</code></td>
+<td>15s</td>
+<td><code>BaseAuthenticatorCore.cs</code></td>
+</tr>
+<tr>
+<td><code>AuthHardDeadlineSeconds</code></td>
+<td>60s</td>
+<td><code>BaseAuthenticatorCore.cs</code></td>
+</tr>
+<tr>
+<td><code>MaxPendingAuthConnections</code></td>
+<td>10,000</td>
+<td><code>BaseAuthenticatorCore.cs</code></td>
+</tr>
+<tr>
+<td><code>HandshakeIpDebounceSeconds</code></td>
+<td>0.25s</td>
+<td><code>BaseAuthenticatorCore.cs</code></td>
+</tr>
+<tr>
+<td><code>MaxGlobalHandshakesPerSecond</code></td>
+<td>500</td>
+<td><code>BaseAuthenticatorCore.cs</code></td>
+</tr>
+<tr>
+<td><code>TokenExpirationMinutes</code></td>
+<td>10 (configurable)</td>
+<td><code>ServerAuthenticator.cs</code></td>
+</tr>
+<tr>
+<td><code>LoginServerCacheTtlSeconds</code></td>
+<td>55s</td>
+<td><code>Client.cs</code></td>
+</tr>
+<tr>
+<td><code>MaxReconnectAttempts</code></td>
+<td>10</td>
+<td><code>ClientConnectionManager.cs</code></td>
+</tr>
+<tr>
+<td><code>MaxReconnectDelay</code></td>
+<td>60s</td>
+<td><code>ClientConnectionManager.cs</code></td>
+</tr>
+<tr>
+<td><code>WT_MAX_STREAMS</code></td>
+<td>4096</td>
+<td><code>webtransport_internal.h</code></td>
+</tr>
+<tr>
+<td><code>WT_MAX_CLIENTS</code></td>
+<td>4000 (configurable)</td>
+<td><code>.cfg</code> files</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="operations">Operations</h2>
+<p>Common operational procedures for FishMMO game servers. These procedures assume ssh access to the deployment host and familiarity with the project's configuration and binary layout.</p>
+<h3 id="deploy-a-new-game-server">Deploy a New Game Server</h3>
+<ul>
+<li><strong>Build the server binary</strong> via the FishMMO Dashboard (Build → Server) targeting the desired platform and server type (Login/World/Scene).</li>
+<li><strong>Copy the binary and its <code>.cfg</code> file</strong> to the deployment host. Use the appropriate template from <code>FishMMO-Setup/Production/</code> (e.g., <code>SceneServer.cfg</code> for a new scene server).</li>
+<li><strong>Register the server</strong> in the database: insert a row into the <code>world_scenes</code> or <code>login_servers</code> table with the server's address, port, and metadata. The IPFetch/LoginServer discovery queries read these tables.</li>
+<li><strong>Add a new NGINX stream block</strong> via <code>gen-fishmmo-stream-config.sh</code> if the server uses a port that hasn't been opened yet, then reload NGINX with <code>nginx -t &amp;&amp; nginx -s reload</code>.</li>
+<li><strong>Verify</strong> by checking server logs for &quot;Initialization Complete&quot; and confirming client connections succeed.</li>
+</ul>
+<h3 id="rotate-certificates">Rotate Certificates</h3>
+<ul>
+<li><strong>Run certbot renewal</strong> with <code>certbot renew</code> on the host that manages TLS certificates. The deploy hook at <code>FishMMO-Setup/deploy-hooks/certbot-fishmmo.sh</code> copies renewed certs to <code>/etc/fishmmo/certs/</code>.</li>
+<li><strong>Reload NGINX</strong> with <code>nginx -t &amp;&amp; nginx -s reload</code> to pick up new web server certificates.</li>
+<li><strong>Restart game servers</strong> (LoginServer, WorldServer, SceneServer) one at a time to minimize downtime. Each reads <code>CertificatePath</code> and <code>PrivateKeyPath</code> from its <code>.cfg</code> file at startup.</li>
+<li><strong>Verify</strong> certs with <code>openssl x509 -in /etc/fishmmo/certs/fullchain.pem -noout -dates</code> and check the private key matches via modulus comparison.</li>
+</ul>
+<h3 id="handle-a-ddos-attack">Handle a DDoS Attack</h3>
+<ul>
+<li><strong>Enable NGINX edge rate limits</strong> immediately: drop <code>limit_req</code> to 5r/s (API), 1r/s (patch), and <code>limit_conn</code> to 5 conn/IP. No server restart required; NGINX reloads limits on config change.</li>
+<li><strong>Verify game-server defenses</strong> are active: the handshake global cap (500/sec), per-IP debounce (250ms), and pending auth cap (10,000) are compiled-in constants that cannot be changed at runtime — if overwhelmed, consider adding additional NGINX stream proxy nodes.</li>
+<li><strong>Check nonce cache pressure</strong> in <code>ClientGate</code>: if the LRU exceeds 20,000 entries, the eviction sort causes CPU spikes. Restart IPFetch/Patcher processes to flush the cache.</li>
+<li><strong>Scale horizontally</strong> by adding NGINX proxy instances behind a load balancer, then distributing game server ports across them.</li>
+</ul>
+<h3 id="add-a-new-scene-server">Add a New Scene Server</h3>
+<ul>
+<li><strong>Create a new SceneServer.cfg</strong> based on the Production template, assigning a unique port in the 7790-7999 range.</li>
+<li><strong>Deploy the SceneServer binary</strong> with the new config to the target host or container.</li>
+<li><strong>Register the scene</strong> in the database via <code>world_scenes</code> table: set the scene's <code>WorldServerID</code>, <code>Handle</code>, <code>Name</code>, <code>Address</code>, and <code>Port</code>. The WorldServer discovers scene servers through this table.</li>
+<li><strong>Add an NGINX stream block</strong> for the new UDP port if not already open, then reload NGINX.</li>
+<li><strong>Restart the WorldServer</strong> so it picks up the new scene registration (or wait for the next heartbeat cycle if runtime discovery is implemented).</li>
+</ul>
+<h3 id="common-troubleshooting">Common Troubleshooting</h3>
+<ul>
+<li><strong>Server fails to start (&quot;Initialization Complete&quot; not logged):</strong> Check the <code>.cfg</code> file path and format. Verify <code>CertificatePath</code> and <code>PrivateKeyPath</code> exist and are readable. Ensure <code>Address</code>/<code>Port</code> are not already in use.</li>
+<li><strong>Client gets &quot;Token Invalid&quot; on World/Scene connect:</strong> The auth token has expired (default 10 min lifetime) or the signing key was rotated. The client must re-authenticate through the LoginServer. Verify that a <code>signing_key_kek</code> row exists in the <code>deployment_secrets</code> database table -- all servers load the KEK from the database at startup via <code>IDeploymentSecretService</code>.</li>
+<li><strong>WebGL client cannot connect:</strong> Verify the browser supports WebTransport (Chromium 97+). Check that CSP headers on <code>play.fishmmo.com</code> include <code>connect-src https://game.fishmmo.com:*</code>. The server must be compiled with HTTP/3 support enabled.</li>
+<li><strong>TLS handshake fails between client and game server:</strong> Ensure the server's certificate is valid for the <code>game.fishmmo.com</code> hostname. If using a self-signed cert for development, the client must skip certificate validation (not supported in production builds due to TLS certificate pinning).</li>
+<li><strong>Database connection errors:</strong> Verify PostgreSQL is running on <code>localhost:5432</code> and pgBouncer on <code>localhost:6432</code>. Check the <code>FISHMMO_DB_HOST</code>/<code>FISHMMO_DB_PASSWORD</code> environment variables or <code>/etc/fishmmo/db-secrets.env</code> file, and verify the database connection string in the server configuration.</li>
+</ul>
+<hr>
+<h2 id="configuration-reference">Configuration Reference</h2>
+<p>All FishMMO servers read configuration from <code>.cfg</code> files in the working directory (e.g., <code>LoginServer.cfg</code>, <code>WorldServer.cfg</code>, <code>SceneServer.cfg</code>). The file format is <code>Key=Value</code> with <code>#</code>/<code>;</code> comments. Keys are case-insensitive. Environment variable overrides follow the pattern <code>FISHMMO_CONFIG_{KEY}</code> (where dots, colons, and dashes are replaced with underscores and the name is upper-cased).</p>
+<h3 id="common-keys-all-server-types">Common Keys (all server types)</h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Servers</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ServerName</code></td>
+<td>string</td>
+<td><code>&quot;TestName&quot;</code></td>
+<td>All</td>
+<td>Human-readable server instance name shown in logs and window title.</td>
+</tr>
+<tr>
+<td><code>MaximumClients</code></td>
+<td>int</td>
+<td><code>4000</code></td>
+<td>All</td>
+<td>Maximum concurrent client connections. Overrides the FishNet transport default of 100.</td>
+</tr>
+<tr>
+<td><code>Address</code></td>
+<td>string</td>
+<td><code>&quot;127.0.0.1&quot;</code></td>
+<td>All</td>
+<td>Bind address. <code>127.0.0.1</code> = loopback (traffic through NGINX proxy). <code>0.0.0.0</code> = all interfaces.</td>
+</tr>
+<tr>
+<td><code>Port</code></td>
+<td>ushort</td>
+<td><code>7777</code></td>
+<td>All</td>
+<td>Network port. Defaults: Login=7770, World=7780, Scene=7781 (code default) / 7790 (file default).</td>
+</tr>
+<tr>
+<td><code>StaleSceneTimeout</code></td>
+<td>int</td>
+<td><code>5</code></td>
+<td>All</td>
+<td>Minutes before an unresponsive scene is considered stale and eligible for cleanup.</td>
+</tr>
+<tr>
+<td><code>CertificatePath</code></td>
+<td>string</td>
+<td>platform-specific</td>
+<td>All</td>
+<td>PEM certificate path for QUIC/TLS termination. Platform defaults: Linux=<code>/etc/fishmmo/certs/fullchain.pem</code>, Windows=<code>C:\ProgramData\FishMMO\certs\fullchain.pem</code>, macOS=<code>/usr/local/share/fishmmo/certs/fullchain.pem</code>.</td>
+</tr>
+<tr>
+<td><code>PrivateKeyPath</code></td>
+<td>string</td>
+<td>platform-specific</td>
+<td>All</td>
+<td>PEM private key path for QUIC/TLS termination. Same platform-specific pattern as <code>CertificatePath</code> with <code>privkey.pem</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="loginserver-only-keys">LoginServer-Only Keys</h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Servers</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AutoVerifyAccounts</code></td>
+<td>bool (string)</td>
+<td><code>true</code> (dev), <code>false</code> (prod)</td>
+<td>Login</td>
+<td>When <code>true</code>, new accounts are automatically verified without email confirmation. Must be <code>false</code> in production. Only effective in <code>UNITY_EDITOR</code> or <code>DEVELOPMENT_BUILD</code> builds.</td>
+</tr>
+<tr>
+<td><code>Smtp:Host</code></td>
+<td>string</td>
+<td><code>&quot;localhost&quot;</code></td>
+<td>Login</td>
+<td>SMTP server hostname for sending verification emails. Overridable via <code>FISHMMO_SMTP_HOST</code> env var.</td>
+</tr>
+<tr>
+<td><code>Smtp:Port</code></td>
+<td>int</td>
+<td><code>587</code></td>
+<td>Login</td>
+<td>SMTP server port. Production typically uses 465 (implicit TLS). Overridable via <code>FISHMMO_SMTP_PORT</code> env var.</td>
+</tr>
+<tr>
+<td><code>Smtp:Username</code></td>
+<td>string</td>
+<td><code>&quot;&quot;</code></td>
+<td>Login</td>
+<td>SMTP authentication username. Overridable via <code>FISHMMO_SMTP_USERNAME</code> env var.</td>
+</tr>
+<tr>
+<td><code>Smtp:Password</code></td>
+<td>string</td>
+<td><code>&quot;&quot;</code></td>
+<td>Login</td>
+<td>SMTP authentication password. Overridable via <code>FISHMMO_SMTP_PASSWORD</code> env var.</td>
+</tr>
+<tr>
+<td><code>Smtp:FromAddress</code></td>
+<td>string</td>
+<td><code>&quot;noreply@fishmmo.com&quot;</code></td>
+<td>Login</td>
+<td>Email From address for outgoing verification emails. Overridable via <code>FISHMMO_SMTP_FROM_ADDRESS</code> env var.</td>
+</tr>
+<tr>
+<td><code>Smtp:FromName</code></td>
+<td>string</td>
+<td><code>&quot;FishMMO&quot;</code></td>
+<td>Login</td>
+<td>Display name for the From address. Overridable via <code>FISHMMO_SMTP_FROM_NAME</code> env var.</td>
+</tr>
+<tr>
+<td><code>Smtp:UseSsl</code></td>
+<td>bool (string)</td>
+<td><code>true</code></td>
+<td>Login</td>
+<td>Enable SSL/TLS for SMTP. Production must be <code>true</code>. Overridable via <code>FISHMMO_SMTP_USE_SSL</code> env var.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="secret-keys-not-stored-in-cfg-files">Secret Keys (not stored in .cfg files)</h3>
+<p>These keys are stored in the database and loaded by each server at startup. They must never be committed to version control or stored in <code>.cfg</code> files.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>DB Table / Key</th>
+<th>Type</th>
+<th>Servers</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GateSecret</code></td>
+<td><code>deployment_secrets</code> / <code>client_gate_secret</code></td>
+<td>string (base64)</td>
+<td>IPFetch, Patcher</td>
+<td>HMAC-SHA256 shared secret for <code>X-FishMMO-Client</code> API request signing. Must decode to at least 32 bytes. Loaded at startup via <code>IDeploymentSecretService</code>.</td>
+</tr>
+<tr>
+<td><code>SigningKeyKekBase64</code></td>
+<td><code>deployment_secrets</code> / <code>signing_key_kek</code></td>
+<td>string (base64)</td>
+<td>Login, World, Scene</td>
+<td>32-byte AES-256 key encryption key (KEK) used to wrap per-LoginServer HMAC signing keys at rest. Must decode to exactly 32 bytes. All servers load it from the database at startup.</td>
+</tr>
+<tr>
+<td><code>ConnectionTokenHmacKey</code></td>
+<td><code>connection_token_keys</code> / key_id=<code>shared</code></td>
+<td>string (base64)</td>
+<td>IPFetch, Login</td>
+<td>Shared HMAC key for one-time connection tokens that bridge the real client IP from the HTTP layer into the QUIC/WebTransport layer. Loaded via <code>IConnectionTokenKeyService</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="configuration-precedence">Configuration Precedence</h3>
+<p>Values are resolved in the following priority order (highest wins):</p>
+<ol>
+<li><strong>Specific environment variable</strong> (e.g., <code>FISHMMO_SMTP_HOST</code> for SMTP settings, <code>FISHMMO_DB_PASSWORD</code> for database credentials)</li>
+<li><strong>Generic environment variable</strong> (<code>FISHMMO_CONFIG_{KEY}</code> where key separators become underscores, e.g., <code>FISHMMO_CONFIG_SMTP_HOST</code>)</li>
+<li><strong><code>.cfg</code> file value</strong> from the server's config file in the working directory</li>
+<li><strong>Code-level default</strong> (hardcoded in <code>CoreServer.cs</code>, <code>FishNetNetworkWrapper.cs</code>, <code>SmtpService.cs</code>, etc.)</li>
+</ol>
+<blockquote>
+<p><strong>Application secrets (gate secret, KEK, connection token HMAC key) are NOT resolved through this precedence chain.</strong> They are loaded exclusively from the database via <code>IDeploymentSecretService</code> / <code>IConnectionTokenKeyService</code> at startup. See <a href="README.html#fishmmo-auth--signing-keys--kek">FishMMO README -- FishMMO-Auth -- Signing Keys &amp; KEK</a> and <a href="README.html#clientgate-middleware">FishMMO README -- ClientGate Middleware</a>.</p>
+</blockquote>
+<hr>
+<p><em>End of FishMMO Connection Pipeline documentation.</em></p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/CONNECTION_PIPELINE.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Character Select System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Character Select System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/CharacterSelect/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="character-select-system">Character Select System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/CharacterSelect/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Login-server subsystem that handles character listing, deletion, and selection for authenticated player accounts, with per-connection in-flight gating, async database operations, and main-thread response marshalling.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Character Select system manages the character list, delete, and select workflows on the login server. It keeps the network handler path lightweight by queuing database-heavy work onto <code>AsyncWorkerData</code>, then marshals all FishNet broadcast responses back onto the Unity main thread through a dedicated main-thread queue container (<code>CharacterSelectSystemMainThreadQueueData</code>).</p>
+<p>Per-connection in-flight gating prevents a single client from queuing multiple concurrent list/select/delete operations, and a post-release cooldown (<code>RequestCooldownMilliseconds = 2000</code>) prevents rapid sequential spam. Bounded main-thread response draining (<code>maxMainThreadResponsesPerFrame</code>) avoids frame spikes.</p>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Network / Main</td>
+<td>Broadcast receive, fast validation, enqueue async work</td>
+</tr>
+<tr>
+<td>Async Workers</td>
+<td>Database fetch / delete / select operations</td>
+</tr>
+<tr>
+<td>Main Thread</td>
+<td>FishNet <code>Broadcast</code> and <code>Kick</code> operations via queued actions</td>
+</tr>
+</tbody>
+</table>
+<p><code>OnUpdate</code> drains queued main-thread actions every frame, capped by <code>maxMainThreadResponsesPerFrame</code>. <code>OnDeinitialize</code> drains all remaining actions so clients receive final messages.</p>
+<h3 id="broadcast-protocol">Broadcast Protocol</h3>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Direction</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CharacterRequestListBroadcast</code></td>
+<td>Client → Server</td>
+<td>Request list of characters for the authenticated account</td>
+</tr>
+<tr>
+<td><code>CharacterListBroadcast</code></td>
+<td>Server → Client</td>
+<td>Response containing <code>List&lt;CharacterDetails&gt;</code></td>
+</tr>
+<tr>
+<td><code>CharacterDeleteBroadcast</code></td>
+<td>Client → Server</td>
+<td>Request deletion of a named character</td>
+</tr>
+<tr>
+<td><code>CharacterDeleteBroadcast</code></td>
+<td>Server → Client</td>
+<td>Echo confirming deletion (character name) or failure (empty name)</td>
+</tr>
+<tr>
+<td><code>CharacterSelectBroadcast</code></td>
+<td>Client → Server</td>
+<td>Request selection of a named character</td>
+</tr>
+<tr>
+<td><code>ServerListBroadcast</code></td>
+<td>Server → Client</td>
+<td>Response containing <code>List&lt;WorldServerDetails&gt;</code> of active world servers</td>
+</tr>
+</tbody>
+</table>
+<h3 id="failure-response-behaviour">Failure Response Behaviour</h3>
+<p>All request flows guarantee a response to the client, even on failure, to prevent indefinite client hangs:</p>
+<ul>
+<li><strong>Character List:</strong> On DB service unavailability or fetch failure, an empty <code>CharacterListBroadcast</code> is sent.</li>
+<li><strong>Character Select:</strong> On any failure (service unavailability, UoW failure, ownership mismatch, commit failure, or world server fetch failure), an empty <code>ServerListBroadcast</code> is sent. If the character does not exist or belongs to another account, the connection is kicked with <code>KickReason.UnusualActivity</code>.</li>
+<li><strong>Character Delete:</strong> On failure, a <code>CharacterDeleteBroadcast</code> with an empty <code>CharacterName</code> is sent. The in-flight guard releases so the user can retry.</li>
+</ul>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only subsystem</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Engine:</strong> Unity 6.3 LTS
+<strong>Scripting Backend:</strong> IL2CPP</p>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Character list retrieval</strong> — async database fetch via <code>ICharacterService.FetchManyAsync</code>, maps <code>CharacterData</code> rows to <code>CharacterDetails</code> (name, scene, race template ID)</li>
+<li><strong>Character deletion</strong> — atomic Unit of Work transaction covering sub-entity cleanup and soft-delete of the character row</li>
+<li><strong>Character selection</strong> — atomic Unit of Work transaction with defense-in-depth ownership verification and <code>SetSelectedAsync</code></li>
+<li><strong>World server routing</strong> — after successful selection, fetches active world servers via <code>IWorldServerService.FetchActiveAsync</code> and sends <code>ServerListBroadcast</code></li>
+<li><strong>Per-connection in-flight gating</strong> — <code>ConcurrentDictionary&lt;int, byte&gt;</code> prevents duplicate concurrent operations per connection</li>
+<li><strong>Post-release cooldown</strong> — 2-second gap between successive requests enforced via <code>NextAllowedRequestUtc</code></li>
+<li><strong>Bounded main-thread draining</strong> — configurable <code>maxMainThreadResponsesPerFrame</code> to time-slice response dispatch</li>
+<li><strong>Character name validation</strong> — <code>Authentication.IsAllowedCharacterName</code> check on delete and select before any async work</li>
+<li><strong>Disconnect cleanup</strong> — <code>OnRemoteConnectionStopped</code> removes in-flight and cooldown entries for disconnected clients</li>
+<li><strong>Configurable deletion retention</strong> — <code>KeepDeleteData</code> toggle controls whether sub-entity rows are preserved or purged</li>
+<li><strong>Sub-entity deletion</strong> — when <code>KeepDeleteData</code> is false, deletes abilities, achievements, attributes, bank, buffs, equipment, factions, friends, hotkeys, inventory, known abilities, and pets (guild/party memberships handled by <code>CharacterService.DeleteAsync</code>)</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>FishMMO server framework with <code>ServerBehaviour</code> base class</li>
+<li>FishNet networking library</li>
+<li>PostgreSQL database with Npgsql services implementing:
+<ul>
+<li><code>ICharacterService</code></li>
+<li><code>IWorldServerService</code></li>
+<li><code>IUnitOfWorkService</code></li>
+<li><code>ICharacterAbilityService</code>, <code>ICharacterAchievementService</code>, <code>ICharacterAttributeService</code>, <code>ICharacterBankService</code>, <code>ICharacterBuffService</code>, <code>ICharacterEquipmentService</code>, <code>ICharacterFactionService</code>, <code>ICharacterFriendService</code>, <code>ICharacterHotkeyService</code>, <code>ICharacterInventoryService</code>, <code>ICharacterKnownAbilityService</code>, <code>ICharacterPetService</code></li>
+</ul>
+</li>
+<li><code>AccountManager</code> for connection-to-account mapping</li>
+<li><code>AsyncWorkerData</code> runtime data container for background task dispatch</li>
+<li><code>DataContainerRegistry</code> with required containers registered</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO server framework. No separate installation is required.</p>
+<ol>
+<li>The <code>CharacterSelectSystem</code> ScriptableObject is created via <strong>Assets → Create → FishMMO → Server → LoginServer → Character Select System</strong>.</li>
+<li>Add the created asset to the login server's <code>ServerBehaviour</code> list.</li>
+<li>The <code>DataContainerRegistry</code> automatically creates required runtime data containers declared via <code>[RequiresDataContainer]</code> attributes.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="server-operator">Server Operator</h3>
+<ol>
+<li>Create the <code>CharacterSelectSystem</code> ScriptableObject asset via the Unity menu.</li>
+<li>Assign it to the login server behaviour list.</li>
+<li>Configure inspector fields (see <a href="#configuration">Configuration</a>).</li>
+<li>Start the login server — the system registers broadcast handlers on <code>InitializeOnce</code>.</li>
+<li>Authenticated clients can now request character lists, delete characters, and select characters.</li>
+</ol>
+<h3 id="developer">Developer</h3>
+<ol>
+<li><code>CharacterSelectSystem</code> extends <code>ServerBehaviour</code> and implements <code>ICharacterSelectSystem</code>.</li>
+<li>Broadcast handlers are registered in <code>InitializeOnce</code> and unregistered in <code>OnDeinitialize</code>.</li>
+<li>All async database work is dispatched via <code>TryEnqueueAsyncWork</code> onto <code>AsyncWorkerData</code>.</li>
+<li>All FishNet broadcasts are marshalled back to the main thread via <code>TryEnqueueMainThread&lt;ICharacterSelectSystemMainThreadQueueData&gt;</code>.</li>
+<li>Per-connection state is stored in <code>CharacterSelectSystemRuntimeData</code> — always release in-flight gates in <code>finally</code> blocks.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-fields-characterselectsystem">Inspector Fields (<code>CharacterSelectSystem</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadResponsesPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Maximum queued main-thread response actions processed per frame. Clamped to minimum of 1 on initialization.</td>
+</tr>
+<tr>
+<td><code>keepDeleteData</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>If true, deleted character sub-entity rows are preserved in the database for recovery or auditing. If false, all sub-entity data is purged before soft-deleting the character row.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="constants">Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RequestCooldownMilliseconds</code></td>
+<td><code>2000</code></td>
+<td>Minimum interval in milliseconds between successive character-select requests from the same connection.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runtime-data-characterselectsystemruntimedata">Runtime Data: <code>CharacterSelectSystemRuntimeData</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InFlightRequests</code></td>
+<td><code>ConcurrentDictionary&lt;int, byte&gt;</code></td>
+<td>Per-connection in-flight gate preventing duplicate concurrent list/select/delete operations</td>
+</tr>
+<tr>
+<td><code>NextAllowedRequestUtc</code></td>
+<td><code>ConcurrentDictionary&lt;int, DateTime&gt;</code></td>
+<td>Per-connection post-release cooldown timestamp; enforces <code>RequestCooldownMilliseconds</code> gap between successive requests</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Thread Safety:</strong> <code>ConcurrentDictionary</code> allows safe access from both network and worker threads.</p>
+<p><strong>Lifecycle:</strong></p>
+<ul>
+<li><code>InitializeOnce()</code> — creates empty dictionaries.</li>
+<li><code>Clear()</code> — clears dictionary entries.</li>
+<li><code>OnDeinitialize()</code> — clears and nulls references.</li>
+</ul>
+<h3 id="runtime-data-dependencies">Runtime Data Dependencies</h3>
+<p><code>CharacterSelectSystem</code> declares three required containers via attributes:</p>
+<table>
+<thead>
+<tr>
+<th>Container</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CharacterSelectSystemRuntimeData</code></td>
+<td>Per-connection in-flight gate and cooldown for list/select/delete request deduplication</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code></td>
+<td>Executes database operations in background worker threads</td>
+</tr>
+<tr>
+<td><code>CharacterSelectSystemMainThreadQueueData</code></td>
+<td>Marshals network-safe response actions to the main thread</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="character-list-request-client--server--client">Character List Request (Client → Server → Client)</h3>
+<pre><code>Client sends: CharacterRequestListBroadcast { }
+Server validates account, fetches characters from DB
+Server sends: CharacterListBroadcast { Characters = [ { CharacterName, SceneName, RaceTemplateID }, ... ] }
+</code></pre>
+<h3 id="character-delete-request-client--server--client">Character Delete Request (Client → Server → Client)</h3>
+<pre><code>Client sends: CharacterDeleteBroadcast { CharacterName = &quot;MyHero&quot; }
+Server validates account + ownership, runs atomic delete transaction
+Server sends: CharacterDeleteBroadcast { CharacterName = &quot;MyHero&quot; }   // success
+Server sends: CharacterDeleteBroadcast { CharacterName = &quot;&quot; }         // failure
+</code></pre>
+<h3 id="character-select-request-client--server--client">Character Select Request (Client → Server → Client)</h3>
+<pre><code>Client sends: CharacterSelectBroadcast { CharacterName = &quot;MyHero&quot; }
+Server validates account + ownership, sets selected, fetches world servers
+Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port, CharacterCount, Locked }, ... ] }
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System initializes</td>
+<td>Login server startup logs</td>
+<td><code>&quot;CharacterSelectSystem: Initialized&quot;</code> in debug log</td>
+</tr>
+<tr>
+<td>Character list works</td>
+<td>Authenticate and request character list</td>
+<td>Client receives <code>CharacterListBroadcast</code> with character entries</td>
+</tr>
+<tr>
+<td>Character deletion works</td>
+<td>Delete a character from the selection screen</td>
+<td>Client receives <code>CharacterDeleteBroadcast</code> echo with character name</td>
+</tr>
+<tr>
+<td>Character selection works</td>
+<td>Select a character</td>
+<td>Client receives <code>ServerListBroadcast</code> with active world servers</td>
+</tr>
+<tr>
+<td>In-flight gating</td>
+<td>Rapid-fire requests from same connection</td>
+<td>Only one request processed at a time; subsequent requests silently dropped</td>
+</tr>
+<tr>
+<td>Cooldown enforcement</td>
+<td>Send request immediately after previous completes</td>
+<td>Request rejected until 2-second cooldown expires</td>
+</tr>
+<tr>
+<td>Ownership verification</td>
+<td>Attempt to select/delete another account's character</td>
+<td>Connection kicked with <code>KickReason.UnusualActivity</code> (select) or failure response (delete)</td>
+</tr>
+<tr>
+<td>Disconnect cleanup</td>
+<td>Client disconnects mid-flow</td>
+<td>In-flight and cooldown entries removed for that connection</td>
+</tr>
+<tr>
+<td>Failure responses</td>
+<td>DB service unavailable or query failure</td>
+<td>Client receives empty list response (never hangs)</td>
+</tr>
+<tr>
+<td>KeepDeleteData=false</td>
+<td>Delete character with retention disabled</td>
+<td>All sub-entity rows purged before character soft-delete</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|RequestCharacterList| Sys[CharacterSelectSystem]
+    Sys --&gt;|query by account| DB[(PostgreSQL Characters)]
+    DB --&gt; Sys
+    Sys --&gt;|character list| Client
+    Client --&gt;|SelectCharacter| Sys
+    Sys --&gt;|set last selected| DB
+    Sys --&gt;|hand off to WorldServer| World[WorldServer]
+</code></pre>
+<h3 id="character-list-flow">Character List Flow</h3>
+<pre><code>Client                    LoginServer                        Database
+  |                           |                                 |
+  |-- CharacterRequestList --&gt;|                                 |
+  |                           |-- Validate account ------------&gt;|
+  |                           |-- Enqueue async work            |
+  |                           |       |                         |
+  |                           |       |-- FetchManyAsync ------&gt;|
+  |                           |       |&lt;-- CharacterData[] -----|
+  |                           |       |                         |
+  |                           |&lt;- Enqueue main-thread response  |
+  |&lt;-- CharacterListBroadcast |                                 |
+</code></pre>
+<h3 id="character-delete-flow">Character Delete Flow</h3>
+<pre><code>Client                    LoginServer                        Database
+  |                           |                                 |
+  |-- CharacterDelete -------&gt;|                                 |
+  |                           |-- Validate account + name       |
+  |                           |-- Acquire in-flight gate        |
+  |                           |-- Enqueue async work            |
+  |                           |       |                         |
+  |                           |       |-- BeginAsync (UoW) ----&gt;|
+  |                           |       |-- FetchAsync ----------&gt;|
+  |                           |       |&lt;-- CharacterData -------|
+  |                           |       |-- Verify ownership      |
+  |                           |       |-- Delete sub-entities*-&gt;|
+  |                           |       |-- DeleteAsync ---------&gt;|
+  |                           |       |-- CommitAsync ---------&gt;|
+  |                           |       |                         |
+  |                           |&lt;- Enqueue main-thread response  |
+  |&lt;-- CharacterDeleteBroadcast (echo)                          |
+  |                           |-- Release in-flight gate        |
+
+* Sub-entity deletion only when KeepDeleteData == false.
+  Deletes: abilities, achievements, attributes, bank, buffs,
+  equipment, factions, friends, hotkeys, inventory,
+  known abilities, pets. Guild/party handled by CharacterService.
+</code></pre>
+<h3 id="character-select-flow">Character Select Flow</h3>
+<pre><code>Client                    LoginServer                        Database
+  |                           |                                 |
+  |-- CharacterSelect -------&gt;|                                 |
+  |                           |-- Validate account + name       |
+  |                           |-- Acquire in-flight gate        |
+  |                           |-- Enqueue async work            |
+  |                           |       |                         |
+  |                           |       |-- BeginAsync (UoW) ----&gt;|
+  |                           |       |-- FetchAsync ----------&gt;|
+  |                           |       |&lt;-- CharacterData -------|
+  |                           |       |-- Verify ownership      |
+  |                           |       |-- SetSelectedAsync ----&gt;|
+  |                           |       |-- FetchByAccountAsync -&gt;|
+  |                           |       |   (defense-in-depth)    |
+  |                           |       |-- CommitAsync ---------&gt;|
+  |                           |       |                         |
+  |                           |       |-- FetchActiveAsync ----&gt;|
+  |                           |       |&lt;-- WorldServerData[] ---|
+  |                           |       |                         |
+  |                           |&lt;- Enqueue main-thread response  |
+  |&lt;-- ServerListBroadcast    |                                 |
+  |                           |-- Release in-flight gate        |
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Server/Implementation/LoginServer/CharacterSelect/
+├── CharacterSelectSystem.cs                    # Login-server character list/delete/select behaviour
+├── CharacterSelectSystemRuntimeData.cs         # Per-connection in-flight gate and cooldown container
+├── CharacterSelectSystemMainThreadQueueData.cs # Per-system main-thread action queue container
+└── README.md
+
+Server/Core/LoginServer/CharacterSelect/
+├── ICharacterSelectSystem.cs                   # Engine-agnostic public API interface
+└── ICharacterSelectSystemMainThreadQueueData.cs # Main-thread queue data interface
+
+Shared/Implementation/Network/CharacterSelect/
+├── CharacterSelectBroadcasts.cs                # Network broadcast structs (request list, list, delete, select)
+└── CharacterDetails.cs                         # Serializable character details (name, scene, race template ID)
+
+Shared/Implementation/Network/
+├── WorldServerDetails.cs                       # Serializable world server details (name, address, port, etc.)
+└── ServerSelect/ServerSelectBroadcasts.cs      # ServerListBroadcast struct
+</code></pre>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<h4 id="behaviour">Behaviour</h4>
+<pre><code>ServerBehaviour
+└── CharacterSelectSystem : ICharacterSelectSystem
+</code></pre>
+<h4 id="runtime-data-containers">Runtime Data Containers</h4>
+<pre><code>RuntimeDataContainer
+├── CharacterSelectSystemRuntimeData
+└── MainThreadQueueData (abstract)
+    └── SystemMainThreadQueueData (abstract)
+        └── CharacterSelectSystemMainThreadQueueData : ICharacterSelectSystemMainThreadQueueData
+</code></pre>
+<h4 id="broadcast-structs">Broadcast Structs</h4>
+<pre><code>IBroadcast
+├── CharacterRequestListBroadcast
+├── CharacterListBroadcast          → List&lt;CharacterDetails&gt;
+├── CharacterDeleteBroadcast        → string CharacterName
+├── CharacterSelectBroadcast        → string CharacterName
+└── ServerListBroadcast             → List&lt;WorldServerDetails&gt;
+</code></pre>
+<h4 id="shared-data-classes">Shared Data Classes</h4>
+<pre><code>CharacterDetails
+├── CharacterName   : string
+├── SceneName       : string
+└── RaceTemplateID  : int
+
+WorldServerDetails
+├── Name            : string
+├── LastPulse       : DateTime
+├── Address         : string
+├── Port            : ushort
+├── CharacterCount  : int
+└── Locked          : bool
+</code></pre>
+<h3 id="external-integration-points">External Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AccountManager</code></td>
+<td>Validates connection ownership via <code>GetAccountNameByConnection</code></td>
+</tr>
+<tr>
+<td><code>Database Service Registry</code></td>
+<td>Resolves all character / world / unit-of-work services</td>
+</tr>
+<tr>
+<td><code>ICharacterService</code></td>
+<td>Fetch list, fetch by name, fetch by account, set selected, delete character</td>
+</tr>
+<tr>
+<td><code>IWorldServerService</code></td>
+<td>Supplies active world server list after successful selection</td>
+</tr>
+<tr>
+<td><code>IUnitOfWorkService</code></td>
+<td>Provides atomic transaction boundaries for delete and select operations</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code></td>
+<td>Centralized background task queue for async database work</td>
+</tr>
+<tr>
+<td><code>CharacterSelectSystemMainThreadQueueData</code></td>
+<td>Guarantees main-thread-safe network dispatch</td>
+</tr>
+<tr>
+<td><code>Authentication</code></td>
+<td>Character name validation via <code>IsAllowedCharacterName</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/CharacterSelect/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

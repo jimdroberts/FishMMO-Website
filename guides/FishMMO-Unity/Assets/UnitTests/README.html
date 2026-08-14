@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO Auth Unit Tests | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO Auth Unit Tests | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/UnitTests/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../index.html">
+            <img id="logo" class="svg" src="../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-auth-unit-tests">FishMMO Auth Unit Tests</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/UnitTests/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p>EditMode unit tests for the FishMMO authentication stack. The harness pairs
+<code>ClientAuthenticatorCore</code> and <code>SrpAuthenticatorCore&lt;TConnection&gt;</code> from the
+<code>FishMMO-Auth</code> DLLs in-process and routes all <code>Send*</code> / <code>Broadcast*</code> calls
+synchronously, completely bypassing FishNet and the network transport. This
+gives deterministic, fast (sub-second) coverage of the full SRP-6a + X25519
+ECDH handshake, TOTP enrollment, account-locking, and kick-request flows
+without spinning up servers or network sockets.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#fishmmo-auth-unit-tests">Description</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#key-components">Key Components</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#running">Running</a></li>
+<li><a href="#layout">Layout</a></li>
+<li><a href="#test-inventory">Test inventory</a></li>
+<li><a href="#state-machine-driven-by-each-login-test">State machine driven by each login test</a></li>
+<li><a href="#inmemoryaccountstore-api"><code>InMemoryAccountStore</code> API</a></li>
+<li><a href="#extending">Extending</a></li>
+<li><a href="#known-limitations">Known limitations</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+</ul>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unity Editor on Windows / Linux / macOS</td>
+<td>Supported</td>
+<td>Run via Test Runner (EditMode) or <code>FishMMO / Unit Tests</code> menu.</td>
+</tr>
+<tr>
+<td>CI (Unity batch mode)</td>
+<td>Supported</td>
+<td><code>-runTests -testPlatform EditMode -testCategory FishMMO.UnitTests</code>.</td>
+</tr>
+<tr>
+<td>Player builds</td>
+<td>Not applicable</td>
+<td>EditMode tests are excluded from player builds.</td>
+</tr>
+</tbody>
+</table>
+<p>Requirements: Unity 6.3 LTS, the <code>FishMMO-Auth</code> DLLs present in <code>Assets/Dependencies/</code>, and the Unity Test Framework package.</p>
+<h2 id="architecture">Architecture</h2>
+<pre><code>Assets/UnitTests/
+├── FishMMO.UnitTests.asmdef         # EditMode-only assembly definition
+├── Auth/
+│   ├── AuthHarness.cs               # Pairs ClientAuthenticatorCore + SrpAuthenticatorCore in-process
+│   ├── InMemoryAccountStore.cs      # IAccountStore double (no DB)
+│   ├── FakeConnection.cs            # FishNet-free connection stub
+│   ├── LoginTests.cs                # Happy / unhappy login paths
+│   ├── TotpTests.cs                 # TOTP enrollment + 2FA login
+│   ├── HandshakeTests.cs            # X25519 + SRP-6a handshake invariants
+│   └── KickTests.cs                 # Server-initiated disconnect paths
+└── README.md                        # This document
+</code></pre>
+<p>Tests do not touch PostgreSQL, FishNet, sockets, or any singleton state — each
+test instantiates a fresh harness and account store.</p>
+<h2 id="key-components">Key Components</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AuthHarness</code></td>
+<td>Constructs a paired client / server authenticator, wires <code>Send*</code> and <code>Broadcast*</code> to direct in-process calls, drives the test scenario.</td>
+</tr>
+<tr>
+<td><code>InMemoryAccountStore</code></td>
+<td>Implements the same surface as the production account store, but keeps state in dictionaries — see <a href="#inmemoryaccountstore-api"><code>InMemoryAccountStore</code> API</a>.</td>
+</tr>
+<tr>
+<td><code>FakeConnection</code></td>
+<td>Replaces FishNet's <code>NetworkConnection</code> so the server authenticator can talk to a virtual client.</td>
+</tr>
+<tr>
+<td>Test classes</td>
+<td>Cover login, TOTP, handshake, and kick scenarios — see <a href="#test-inventory">Test inventory</a>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration">Configuration</h2>
+<p>These tests are configuration-free: no environment variables, <code>appsettings</code>,
+or external services are read. Verbose logging is toggled via the
+<code>FishMMO / Unit Tests / Run All EditMode Tests (Verbose)</code> menu, which sets
+the <code>FISHMMO_TEST_VERBOSE</code> define for the run.</p>
+<hr>
+<h2 id="running">Running</h2>
+<ol>
+<li>Open the project in Unity.</li>
+<li><code>Window &gt; General &gt; Test Runner</code>.</li>
+<li>Select the <strong>EditMode</strong> tab.</li>
+<li>Run the <code>FishMMO.UnitTests</code> assembly.</li>
+</ol>
+<p>Or use the Unity menu shortcuts:</p>
+<table>
+<thead>
+<tr>
+<th>Menu item</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FishMMO / Unit Tests / Open Test Runner</code></td>
+<td>Opens the Test Runner window</td>
+</tr>
+<tr>
+<td><code>FishMMO / Unit Tests / Run All EditMode Tests</code></td>
+<td>Runs all tests (quiet)</td>
+</tr>
+<tr>
+<td><code>FishMMO / Unit Tests / Run All EditMode Tests (Verbose)</code></td>
+<td>Runs all tests with per-step trace logging</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="layout">Layout</h2>
+<h3 id="test-files">Test files</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Tests</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LoginTests.cs</code></td>
+<td>5</td>
+<td>Full client↔server SRP login flow</td>
+</tr>
+<tr>
+<td><code>RegisterTests.cs</code></td>
+<td>5</td>
+<td>Client-side registration validation + <code>CreateAccount</code> emission</td>
+</tr>
+<tr>
+<td><code>TokenLoginTests.cs</code></td>
+<td>8</td>
+<td>Token-based authentication: lifecycle, edge cases, failure modes</td>
+</tr>
+<tr>
+<td><code>SecurityTests.cs</code></td>
+<td>19 methods (25+ cases)</td>
+<td>Adversarial SRP, handshake attacks, ZK, input validation</td>
+</tr>
+<tr>
+<td><code>AttackAndFailureScenariosTests.cs</code></td>
+<td>7</td>
+<td>Brute-force, ban, 2FA, online-check, dropped-message attacks</td>
+</tr>
+<tr>
+<td><code>ServerAuthenticatorIntegrationTests.cs</code></td>
+<td>2</td>
+<td>End-to-end SRP→token integration and token lifecycle</td>
+</tr>
+<tr>
+<td><code>TestAssemblySetup.cs</code></td>
+<td>—</td>
+<td><code>[SetUpFixture]</code> — initialises <code>FishMMO.Logging.Log</code> once for the assembly</td>
+</tr>
+</tbody>
+</table>
+<h3 id="harness-files-harness">Harness files (<code>Harness/</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AuthTestHarness.cs</code></td>
+<td><code>IDisposable</code> wrapper that owns the paired <code>Client</code>, <code>Server</code>, and <code>Store</code></td>
+</tr>
+<tr>
+<td><code>TestServerCore.cs</code></td>
+<td><code>SrpAuthenticatorCore&lt;int&gt;</code> subclass — routes broadcasts to the client; adds ban-check via <code>TryLoginAsync</code></td>
+</tr>
+<tr>
+<td><code>TestClientCore.cs</code></td>
+<td><code>ClientAuthenticatorCore</code> subclass — captures payloads; exposes <code>SetToken</code>, <code>AttemptLogin</code>, <code>AttemptTokenLogin</code>, <code>SrpProofInterceptor</code>, <code>SrpVerifyInterceptor</code></td>
+</tr>
+<tr>
+<td><code>InMemoryAccountStore.cs</code></td>
+<td>Concurrent in-memory account DB + token store</td>
+</tr>
+<tr>
+<td><code>AuthTestTrace.cs</code></td>
+<td>Trace gateway used by all tests; controlled by <code>AuthTestTrace.Verbose</code></td>
+</tr>
+<tr>
+<td><code>LogAssert.cs</code></td>
+<td>NUnit assertion wrappers that log pass/fail via <code>AuthTestTrace</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="test-inventory">Test inventory</h2>
+<h3 id="logintestscs"><code>LoginTests.cs</code></h3>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Login_CorrectCredentials_ReturnsSuccess</code></td>
+<td><code>LoginSuccess</code></td>
+</tr>
+<tr>
+<td><code>Login_WrongPassword_ReturnsInvalidUsernameOrPassword</code></td>
+<td><code>InvalidUsernameOrPassword</code></td>
+</tr>
+<tr>
+<td><code>Login_UnknownUser_ReturnsInvalidUsernameOrPasswordWithoutEnumeration</code></td>
+<td><code>InvalidUsernameOrPassword</code> (same as wrong pw — anti-enumeration)</td>
+</tr>
+<tr>
+<td><code>Login_UnverifiedAccount_ReturnsAccountUnverifiedAfterCorrectProof</code></td>
+<td><code>AccountUnverified</code></td>
+</tr>
+<tr>
+<td><code>Login_TwoSequentialAttempts_BothComplete</code></td>
+<td>Both <code>LoginSuccess</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="registertestscs"><code>RegisterTests.cs</code></h3>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Register_HappyPath_SendsEncryptedCreateAccountBroadcast</code></td>
+<td>Encrypted <code>CreateAccount</code> payload emitted</td>
+</tr>
+<tr>
+<td><code>Register_EmptyEmail_DisconnectsBeforeCreateAccount</code></td>
+<td>No <code>CreateAccount</code> emitted</td>
+</tr>
+<tr>
+<td><code>Register_InvalidUsername_RejectedByClient</code></td>
+<td><code>SetLoginCredentials</code> returns <code>false</code></td>
+</tr>
+<tr>
+<td><code>Register_InvalidPassword_RejectedByClient</code></td>
+<td><code>SetLoginCredentials</code> returns <code>false</code></td>
+</tr>
+<tr>
+<td><code>Register_DifferentCredentials_ProduceDifferentEncryptedPayloads</code></td>
+<td>Ciphertexts are pairwise distinct</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tokenlogintestscs"><code>TokenLoginTests.cs</code></h3>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TokenLogin_ValidToken_ReturnsSuccess</code></td>
+<td><code>LoginSuccess</code></td>
+</tr>
+<tr>
+<td><code>TokenLogin_ExpiredToken_ReturnsTokenExpired</code></td>
+<td><code>TokenExpired</code></td>
+</tr>
+<tr>
+<td><code>TokenLogin_RevokedToken_ReturnsTokenRevoked</code></td>
+<td><code>TokenRevoked</code></td>
+</tr>
+<tr>
+<td><code>TokenLogin_InvalidToken_ReturnsInvalidToken</code></td>
+<td><code>TokenInvalid</code></td>
+</tr>
+<tr>
+<td><code>TokenLogin_ServerBusy_ReturnsServerBusy</code></td>
+<td><code>ServerBusy</code> (DB error simulated before login)</td>
+</tr>
+<tr>
+<td><code>TokenLogin_EmptyToken_SetTokenReturnsFalse</code></td>
+<td><code>SetToken(&quot;&quot;)</code> returns <code>false</code>; no connection started</td>
+</tr>
+<tr>
+<td><code>TokenLogin_RenewedToken_IsValid</code></td>
+<td>Renewed token → <code>LoginSuccess</code></td>
+</tr>
+<tr>
+<td><code>TokenLogin_RevokingOneToken_DoesNotAffectOtherValidTokens</code></td>
+<td>Revoking token A leaves token B valid</td>
+</tr>
+</tbody>
+</table>
+<h3 id="securitytestscs"><code>SecurityTests.cs</code></h3>
+<h4 id="zero-knowledge--anti-enumeration">Zero-knowledge / anti-enumeration</h4>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Security_AntiEnumeration_UnknownAndWrongPassword_AreIndistinguishable</code></td>
+<td>Unknown-user and wrong-password produce identical responses</td>
+</tr>
+<tr>
+<td><code>Security_Password_NeverAppearsInAnyWirePayload</code></td>
+<td>Cleartext password absent from all captured encrypted payloads</td>
+</tr>
+<tr>
+<td><code>Security_Username_NeverAppearsInAnyEncryptedPayload</code></td>
+<td>Cleartext username absent from all captured encrypted payloads</td>
+</tr>
+</tbody>
+</table>
+<h4 id="non-determinism--replay-protection">Non-determinism &amp; replay protection</h4>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Security_SameCredentialsTwoSessions_ProduceDifferentSrpVerifyCiphertexts</code></td>
+<td>Fresh per-session ephemerals; IV/nonce reuse impossible</td>
+</tr>
+<tr>
+<td><code>Security_TamperedSrpProof_IsRejectedAndDisconnects</code></td>
+<td>Bit-flipped M1 ciphertext → rejected + disconnect</td>
+</tr>
+<tr>
+<td><code>Security_ReplayedSrpProofAcrossSessions_IsRejected</code></td>
+<td>M1 from session 1 replayed in session 2 → rejected</td>
+</tr>
+<tr>
+<td><code>Security_SuccessfulSessions_ProduceUniquePerSessionMaterial</code></td>
+<td>N sessions: server pubkeys, cookies, and ciphertexts all pairwise distinct</td>
+</tr>
+</tbody>
+</table>
+<h4 id="protocol--lifecycle">Protocol &amp; lifecycle</h4>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Security_UnsupportedProtocolVersion_HandshakeIsRefused</code></td>
+<td>Future-only version range → handshake refused without SRP traffic</td>
+</tr>
+<tr>
+<td><code>Security_DisposedClient_ClearsSessionSecrets</code></td>
+<td><code>Dispose</code> zeroes GCM nonce contexts and ephemeral keypair</td>
+</tr>
+<tr>
+<td><code>Security_AuthTypes_ResolveToPrecompiledDependencyDlls</code></td>
+<td>Auth types resolve to DLLs under <code>Assets/Dependencies/</code>, not in-project sources</td>
+</tr>
+</tbody>
+</table>
+<h4 id="handshake-layer-attacks">Handshake-layer attacks</h4>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Security_MalformedHandshakePublicKey_IsRejected</code> ×4</td>
+<td>Lengths 0, 31, 33, 64 → disconnected; no cookie issued</td>
+</tr>
+<tr>
+<td><code>Security_ForgedCookieOnPhase2Handshake_IsRejected</code></td>
+<td>Random/never-issued cookie → disconnected; no server-handshake sent</td>
+</tr>
+<tr>
+<td><code>Security_HandshakeCookie_IsBoundToPublicKey</code></td>
+<td>Cookie bound to key A → rejected with key B</td>
+</tr>
+</tbody>
+</table>
+<h4 id="message-ordering-attacks">Message-ordering attacks</h4>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Security_SrpProofBeforeVerify_IsIgnored</code></td>
+<td>Proof arrives before SrpVerify → ignored/rejected</td>
+</tr>
+<tr>
+<td><code>Security_SrpVerifyBeforeHandshake_IsRejected</code></td>
+<td>SrpVerify before ECDH complete → rejected</td>
+</tr>
+</tbody>
+</table>
+<h4 id="payload-validation">Payload validation</h4>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Security_OversizedSrpVerifyPayload_IsRejected</code></td>
+<td>Oversized SrpVerify → rejected before SRP math</td>
+</tr>
+<tr>
+<td><code>Security_TamperedSrpVerifyCiphertext_IsRejected</code></td>
+<td>Bit-flipped SrpVerify ciphertext → rejected</td>
+</tr>
+</tbody>
+</table>
+<h4 id="input-validation">Input validation</h4>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Cases</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Security_InvalidCredentials_RejectedAtClientValidator</code></td>
+<td><code>null</code>/<code>&quot;&quot;</code>/too-short username or password — 6 <code>[TestCase]</code> entries</td>
+</tr>
+<tr>
+<td><code>Security_OversizedUsername_RejectedAtValidator</code></td>
+<td>1 MiB username → client rejects before any SRP math</td>
+</tr>
+</tbody>
+</table>
+<h3 id="attackandfailurescenariostestscs"><code>AttackAndFailureScenariosTests.cs</code></h3>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Register_DuplicateUsernameOrEmail_Rejected</code></td>
+<td><code>SetLoginCredentials</code> returns <code>false</code> for duplicate</td>
+</tr>
+<tr>
+<td><code>Register_InvalidEmailOrUnderage_Rejected</code></td>
+<td><code>SetLoginCredentials</code> returns <code>false</code> for bad email; age &lt; min</td>
+</tr>
+<tr>
+<td><code>Login_BannedOrLockedAccount_Rejected</code></td>
+<td><code>Banned</code></td>
+</tr>
+<tr>
+<td><code>BruteForce_RepeatedWrongPasswords_AllReturnInvalidCredentials</code></td>
+<td>3 independent attempts, all <code>InvalidUsernameOrPassword</code></td>
+</tr>
+<tr>
+<td><code>SrpProof_Dropped_NoSuccessDelivered</code></td>
+<td>Login times out; <code>ReceivedSuccess</code> remains <code>false</code></td>
+</tr>
+<tr>
+<td><code>Login_AlreadyOnline_ReturnsAlreadyOnline</code></td>
+<td><code>AlreadyOnline</code></td>
+</tr>
+<tr>
+<td><code>TwoFactor_AccountRequires2FA_ReturnsTwoFactorRequired</code></td>
+<td><code>TwoFactorRequired</code> after correct SRP proof on TOTP-enabled account</td>
+</tr>
+</tbody>
+</table>
+<h3 id="serverauthenticatorintegrationtestscs"><code>ServerAuthenticatorIntegrationTests.cs</code></h3>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FullLoginFlow_SRPAndTokenAuthenticators_Success</code></td>
+<td>SRP login then token login on the same account both return <code>LoginSuccess</code></td>
+</tr>
+<tr>
+<td><code>TokenIssuanceRenewalRevocation_ErrorHandling</code></td>
+<td>Issue → renew → revoke returns <code>TokenRevoked</code>; simulated DB error returns <code>ServerBusy</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="state-machine-driven-by-each-login-test">State machine driven by each login test</h2>
+<ol>
+<li><code>Client.OnConnected()</code> → X25519 keypair generated + <code>SendClientHandshake</code> (phase 1)</li>
+<li>Server cookie challenge → client echoes cookie + public key (phase 2)</li>
+<li>Server ECDH agreement → <code>BroadcastServerHandshake</code> with server public key + agreed version</li>
+<li>Client derives directional AES-GCM keys → <code>SendSrpVerify</code> (encrypted username + client ephemeral)</li>
+<li>Server async worker → <code>BroadcastSrpVerifyResponse</code> (encrypted salt + server ephemeral)</li>
+<li>Client computes SRP-6a M1 → <code>SendSrpProof</code> (encrypted M1)</li>
+<li>Server async worker → <code>BroadcastSrpSuccess</code> (encrypted M2 + token) or <code>BroadcastAuthResult</code> on failure</li>
+<li>Client decrypts M2, stores token → <code>OnAuthResultCallback</code> → <code>TaskCompletionSource</code> resolved</li>
+</ol>
+<p>For token auth the ECDH handshake (steps 1–3) completes normally; step 4 diverges to <code>SendTokenAuth</code> instead of <code>SendSrpVerify</code>. In the test harness this path is bypassed: <code>TestClientCore.SendTokenAuth</code> validates the pending token directly against <code>InMemoryAccountStore.ValidateToken</code> without real crypto decryption.</p>
+<hr>
+<h2 id="inmemoryaccountstore-api"><code>InMemoryAccountStore</code> API</h2>
+<pre><code class="lang-csharp">// Account setup
+void SeedAccount(string username, string password,
+    bool isVerified = true, bool totpEnabled = false,
+    string? totpSecret = null, string? email = null, bool isBanned = false)
+void SetVerified(string username, bool value)
+void SetOnline(string username, bool value)
+void SetPendingKick(string username, bool value)
+
+// Token lifecycle
+string  IssueValidToken(string username)     // → valid token ID
+string  IssueExpiredToken(string username)   // → expired token ID
+string  IssueRevokedToken(string username)   // → revoked token ID
+string? RenewToken(string token)             // → new valid token ID (original unchanged)
+void    RevokeToken(string token)
+void    SimulateDbError()                    // one-shot: next ValidateToken returns ServerBusy
+ClientAuthenticationResult ValidateToken(string token)
+
+// Inspection
+bool    ContainsAccount(string username)
+string? GetLastTokenHash(string username)
+void    PersistTokenHash(string username, string hash, int expirationMinutes)
+</code></pre>
+<hr>
+<h2 id="extending">Extending</h2>
+<p>Minimal test skeleton:</p>
+<pre><code class="lang-csharp">[Test]
+public async Task MyFeature_SomeCondition_ExpectedOutcome()
+{
+    using AuthTestHarness h = new AuthTestHarness();
+    h.Store.SeedAccount(&quot;user&quot;, &quot;pass&quot;);
+    ClientAuthenticationResult result = await h.Client.AttemptLogin(&quot;user&quot;, &quot;pass&quot;);
+    LogAssert.AreEqual(ClientAuthenticationResult.LoginSuccess, result);
+}
+</code></pre>
+<p>For token auth:</p>
+<pre><code class="lang-csharp">string token = h.Store.IssueValidToken(&quot;user&quot;);
+ClientAuthenticationResult result = await h.Client.AttemptTokenLogin(token);
+</code></pre>
+<p>To intercept / tamper with SRP proof before it reaches the server:</p>
+<pre><code class="lang-csharp">h.Client.SrpProofInterceptor = original =&gt;
+{
+    byte[] tampered = (byte[])original.Clone();
+    tampered[tampered.Length / 2] ^= 0xFF;
+    return tampered;   // return null to drop the message entirely
+};
+</code></pre>
+<hr>
+<h2 id="known-limitations">Known limitations</h2>
+<ul>
+<li><strong>Account creation is not exercised server-side.</strong> <code>SrpAuthenticatorCore</code> does not handle <code>CreateAccount</code> broadcasts — that logic lives in the Unity-side <code>AccountCreationSystem</code>. <code>RegisterTests</code> therefore stops after asserting the client emitted a well-formed encrypted <code>CreateAccount</code> payload.</li>
+<li><strong>Token auth bypasses real decryption.</strong> <code>TestClientCore.SendTokenAuth</code> validates the pending token string directly against <code>InMemoryAccountStore.ValidateToken</code> rather than decrypting it with the session key. This exercises token-state logic without needing a full <code>TokenAuthenticatorCore</code> worker setup.</li>
+<li><strong>Single connection per harness.</strong> <code>AuthTestHarness</code> uses a fixed connection ID (<code>1</code>). Consecutive <code>AttemptLogin</code> / <code>AttemptTokenLogin</code> calls on the same harness will fail if the previous attempt left the server's <code>SrpAccountManager</code> in a non-<code>None</code> state (e.g. after a disconnect). Use a fresh <code>AuthTestHarness</code> per attempt when testing failure-recovery sequences.</li>
+</ul>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart LR
+    Test[Test method] --&gt; Harness[AuthHarness]
+    Harness --&gt; Client[ClientAuthenticatorCore]
+    Harness --&gt; Server[SrpAuthenticatorCore]
+    Server --&gt; Store[InMemoryAccountStore]
+    Client -- Send/Broadcast --&gt; Server
+    Server -- Send/Broadcast --&gt; Client
+    Server --&gt; Conn[FakeConnection]
+    Harness --&gt; Assertions[NUnit assertions]
+    Assertions --&gt;|pass / fail| Test
+</code></pre>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/UnitTests/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Server Select System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Server Select System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="server-select-system">Server Select System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Login-server subsystem that serves the world server list to authenticated clients by querying active servers from the database with an idle-timeout filter, mapping rows into network payloads, and dispatching responses on the main thread with per-connection in-flight gating and bounded draining.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Server Select system manages the world server list workflow on the login server. When an authenticated client sends a <code>RequestServerListBroadcast</code>, the system validates the connection, applies per-connection in-flight gating and cooldown checks, then offloads the database query onto <code>AsyncWorkerData</code> to keep the network handler non-blocking. Active world servers are fetched via <code>IWorldServerService.FetchActiveAsync</code> with an <code>IdleTimeout</code> filter (default 60 seconds), mapped from <code>WorldServerData</code> rows into <code>WorldServerDetails</code> DTOs, and the <code>ServerListBroadcast</code> response is marshalled back to the main thread through a dedicated queue container (<code>ServerSelectSystemMainThreadQueueData</code>).</p>
+<p>Bounded main-thread response draining (<code>maxMainThreadResponsesPerFrame</code>) prevents frame spikes, while per-connection in-flight gating and a post-release cooldown (<code>serverListCooldownMilliseconds = 1000</code>) prevent concurrent and rapid sequential request spam.</p>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main / Network thread</td>
+<td>Broadcast receive, fast validation, enqueue worker task</td>
+</tr>
+<tr>
+<td>Async worker thread</td>
+<td>Database fetch via <code>IWorldServerService</code> and DTO mapping</td>
+</tr>
+<tr>
+<td>Main thread</td>
+<td>FishNet <code>Broadcast</code> dispatch (thread-safe marshalling via queue)</td>
+</tr>
+</tbody>
+</table>
+<p><code>OnUpdate</code> drains queued main-thread actions every frame, capped by <code>maxMainThreadResponsesPerFrame</code>. <code>OnDeinitialize</code> drains all remaining actions so clients receive final messages.</p>
+<h3 id="broadcast-protocol">Broadcast Protocol</h3>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Direction</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RequestServerListBroadcast</code></td>
+<td>Client → Server</td>
+<td>Request the list of active world servers</td>
+</tr>
+<tr>
+<td><code>ServerListBroadcast</code></td>
+<td>Server → Client</td>
+<td>Response containing <code>List&lt;WorldServerDetails&gt;</code> of active world servers</td>
+</tr>
+<tr>
+<td><code>WorldSceneConnectBroadcast</code></td>
+<td>Server → Client</td>
+<td>Provides address and port for connecting to a specific world scene server</td>
+</tr>
+</tbody>
+</table>
+<h3 id="failure-response-behaviour">Failure Response Behaviour</h3>
+<p>All request flows guarantee a response to the client, even on failure, to prevent indefinite client hangs:</p>
+<ul>
+<li><strong>World Server Service Unavailable:</strong> An empty <code>ServerListBroadcast</code> is sent and a warning is logged.</li>
+<li><strong>Database Fetch Failure:</strong> An empty <code>ServerListBroadcast</code> is sent with the error message logged.</li>
+<li><strong>Async Enqueue Failure:</strong> The in-flight gate is released immediately and a warning is logged.</li>
+<li><strong>Unexpected Exception:</strong> Caught in the <code>ProcessServerListRequestAsync</code> catch block, logged, and the in-flight gate is released in the <code>finally</code> block.</li>
+</ul>
+<h3 id="authentication-check">Authentication Check</h3>
+<p>Before processing any <code>RequestServerListBroadcast</code>, the system verifies the connection is authenticated via <code>Server.AccountManager.GetAccountNameByConnection</code>. Unauthenticated connections are immediately kicked with <code>KickReason.UnusualActivity</code>.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only subsystem</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Engine:</strong> Unity 6.3 LTS
+<strong>Scripting Backend:</strong> IL2CPP</p>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Active world server list</strong> — async database fetch via <code>IWorldServerService.FetchActiveAsync</code>, filtered by configurable <code>idleTimeout</code> (default 60s)</li>
+<li><strong>DTO mapping</strong> — maps <code>WorldServerData</code> rows to <code>WorldServerDetails</code> (Name, LastPulse, Address, Port, CharacterCount, Locked)</li>
+<li><strong>Per-connection in-flight gating</strong> — <code>ConcurrentDictionary&lt;int, byte&gt;</code> prevents duplicate concurrent server-list requests per connection</li>
+<li><strong>Post-release cooldown</strong> — configurable <code>serverListCooldownMilliseconds</code> (default 1000ms) gap between successive requests enforced via <code>NextAllowedRequestUtcByClientId</code></li>
+<li><strong>Bounded main-thread draining</strong> — configurable <code>maxMainThreadResponsesPerFrame</code> to time-slice response dispatch and avoid frame spikes</li>
+<li><strong>Authentication enforcement</strong> — verifies connection ownership via <code>AccountManager.GetAccountNameByConnection</code> before processing; kicks unauthenticated connections</li>
+<li><strong>Guaranteed client response</strong> — on any failure (service unavailability, DB error, exception), an empty <code>ServerListBroadcast</code> is sent to prevent client hangs</li>
+<li><strong>Disconnect cleanup</strong> — <code>OnRemoteConnectionStopped</code> removes in-flight and cooldown entries for disconnected clients</li>
+<li><strong>Idle-timeout server filtering</strong> — servers whose last pulse exceeds <code>idleTimeout</code> seconds are excluded by the database query</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>FishMMO server framework with <code>ServerBehaviour</code> base class</li>
+<li>FishNet networking library</li>
+<li>PostgreSQL database with Npgsql services implementing:
+<ul>
+<li><code>IWorldServerService</code> (provides <code>FetchActiveAsync</code>)</li>
+</ul>
+</li>
+<li><code>AccountManager</code> for connection-to-account authentication mapping</li>
+<li><code>AsyncWorkerData</code> runtime data container for background task dispatch</li>
+<li><code>DataContainerRegistry</code> with required containers registered</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO server framework. No separate installation is required.</p>
+<ol>
+<li>The <code>ServerSelectSystem</code> ScriptableObject is created via <strong>Assets → Create → FishMMO → Server → LoginServer → Server Select System</strong>.</li>
+<li>Add the created asset to the login server's <code>ServerBehaviour</code> list.</li>
+<li>The <code>DataContainerRegistry</code> automatically creates required runtime data containers declared via <code>[RequiresDataContainer]</code> attributes.</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="server-operator">Server Operator</h3>
+<ol>
+<li>Create the <code>ServerSelectSystem</code> ScriptableObject asset via the Unity menu.</li>
+<li>Assign it to the login server behaviour list.</li>
+<li>Configure inspector fields (see <a href="#configuration">Configuration</a>).</li>
+<li>Start the login server — the system registers the <code>RequestServerListBroadcast</code> handler on <code>InitializeOnce</code>.</li>
+<li>Authenticated clients can now request the world server list.</li>
+</ol>
+<h3 id="developer">Developer</h3>
+<ol>
+<li><code>ServerSelectSystem</code> extends <code>ServerBehaviour</code> and implements <code>IServerSelectSystem</code>.</li>
+<li>The broadcast handler is registered in <code>InitializeOnce</code> and unregistered in <code>OnDeinitialize</code>.</li>
+<li>All async database work is dispatched via <code>TryEnqueueAsyncWork</code> onto <code>AsyncWorkerData</code>.</li>
+<li>All FishNet broadcasts are marshalled back to the main thread via <code>TryEnqueueMainThread&lt;IServerSelectSystemMainThreadQueueData&gt;</code>.</li>
+<li>Per-connection state is stored in <code>ServerSelectSystemRuntimeData</code> — always release in-flight gates in <code>finally</code> blocks.</li>
+<li><code>OnUpdate</code> calls <code>DrainMainThreadQueue(drainAll: false)</code> every frame; <code>OnDeinitialize</code> calls <code>DrainMainThreadQueue(drainAll: true)</code>.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-fields-serverselectsystem">Inspector Fields (<code>ServerSelectSystem</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadResponsesPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Maximum queued main-thread response actions processed per frame. Clamped to minimum of 1 on initialization.</td>
+</tr>
+<tr>
+<td><code>idleTimeout</code></td>
+<td><code>float</code></td>
+<td><code>60</code></td>
+<td>Idle timeout in seconds for world servers to be considered active. Servers whose last pulse exceeds this value are excluded. Minimum value of 1 enforced via <code>[Min(1f)]</code>.</td>
+</tr>
+<tr>
+<td><code>serverListCooldownMilliseconds</code></td>
+<td><code>int</code></td>
+<td><code>1000</code></td>
+<td>Minimum interval in milliseconds between successive server-list requests from the same connection. Prevents sequential spam after each request completes.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runtime-data-serverselectsystemruntimedata">Runtime Data: <code>ServerSelectSystemRuntimeData</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InFlightRequests</code></td>
+<td><code>ConcurrentDictionary&lt;int, byte&gt;</code></td>
+<td>Per-connection in-flight gate preventing duplicate concurrent server-list requests</td>
+</tr>
+<tr>
+<td><code>NextAllowedRequestUtcByClientId</code></td>
+<td><code>ConcurrentDictionary&lt;int, DateTime&gt;</code></td>
+<td>Per-connection post-release cooldown timestamp; enforces <code>serverListCooldownMilliseconds</code> gap between successive requests</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Thread Safety:</strong> <code>ConcurrentDictionary</code> allows safe access from both network and worker threads.</p>
+<p><strong>Lifecycle:</strong></p>
+<ul>
+<li><code>InitializeOnce()</code> — creates empty <code>ConcurrentDictionary</code> instances.</li>
+<li><code>Clear()</code> — clears dictionary entries.</li>
+<li><code>OnDeinitialize()</code> — clears and nulls references.</li>
+</ul>
+<h3 id="runtime-data-dependencies">Runtime Data Dependencies</h3>
+<p><code>ServerSelectSystem</code> declares three required containers via attributes:</p>
+<table>
+<thead>
+<tr>
+<th>Container</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ServerSelectSystemRuntimeData</code></td>
+<td>Per-connection in-flight gate and cooldown for server-list request deduplication</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code></td>
+<td>Executes database operations in background worker threads</td>
+</tr>
+<tr>
+<td><code>ServerSelectSystemMainThreadQueueData</code></td>
+<td>Marshals network-safe response actions to the main thread</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="server-list-request-client--server--client">Server List Request (Client → Server → Client)</h3>
+<pre><code>Client sends: RequestServerListBroadcast { }
+Server validates authentication, checks in-flight gate and cooldown
+Server enqueues async work → fetches active servers from DB (filtered by idleTimeout)
+Server maps WorldServerData rows to WorldServerDetails DTOs
+Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port, CharacterCount, Locked }, ... ] }
+</code></pre>
+<h3 id="server-list-request--failure-service-unavailable">Server List Request — Failure (Service Unavailable)</h3>
+<pre><code>Client sends: RequestServerListBroadcast { }
+Server validates authentication, acquires in-flight gate
+Server enqueues async work → IWorldServerService unavailable
+Server sends: ServerListBroadcast { Servers = [] }    // empty list, client does not hang
+Server releases in-flight gate
+</code></pre>
+<h3 id="server-list-request--cooldown-rejection">Server List Request — Cooldown Rejection</h3>
+<pre><code>Client sends: RequestServerListBroadcast { }
+Server checks NextAllowedRequestUtcByClientId → cooldown not expired
+Request silently dropped (client must wait for cooldown to expire)
+</code></pre>
+<h3 id="server-list-request--unauthenticated">Server List Request — Unauthenticated</h3>
+<pre><code>Client sends: RequestServerListBroadcast { }
+Server checks AccountManager → connection not authenticated
+Server kicks connection with KickReason.UnusualActivity
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System initializes</td>
+<td>Login server startup logs</td>
+<td><code>&quot;ServerSelectSystem: Initialized (idleTimeout=60s)&quot;</code> in debug log</td>
+</tr>
+<tr>
+<td>Server list works</td>
+<td>Authenticate and request server list</td>
+<td>Client receives <code>ServerListBroadcast</code> with active world server entries</td>
+</tr>
+<tr>
+<td>Idle timeout filtering</td>
+<td>Set <code>idleTimeout</code> low, stop a world server</td>
+<td>Stopped server excluded from list after timeout expires</td>
+</tr>
+<tr>
+<td>In-flight gating</td>
+<td>Rapid-fire requests from same connection</td>
+<td>Only one request processed at a time; subsequent requests silently dropped</td>
+</tr>
+<tr>
+<td>Cooldown enforcement</td>
+<td>Send request immediately after previous completes</td>
+<td>Request rejected until 1-second cooldown expires</td>
+</tr>
+<tr>
+<td>Authentication enforcement</td>
+<td>Send request without authenticating</td>
+<td>Connection kicked with <code>KickReason.UnusualActivity</code></td>
+</tr>
+<tr>
+<td>Disconnect cleanup</td>
+<td>Client disconnects mid-flow</td>
+<td>In-flight and cooldown entries removed for that connection</td>
+</tr>
+<tr>
+<td>Failure responses</td>
+<td>DB service unavailable or query failure</td>
+<td>Client receives empty <code>ServerListBroadcast</code> (never hangs)</td>
+</tr>
+<tr>
+<td>Deinitialize drain</td>
+<td>Shut down login server with pending responses</td>
+<td>All queued responses dispatched before shutdown completes</td>
+</tr>
+<tr>
+<td>Locked server display</td>
+<td>Lock a world server in the database</td>
+<td>Server appears in list with <code>Locked = true</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|RequestServerList| Sys[ServerSelectSystem]
+    Sys --&gt;|active world servers| DB[(PostgreSQL WorldServers)]
+    Sys --&gt;|server list + load| Client
+    Client --&gt;|SelectServer| Sys
+    Sys --&gt;|connection ticket| World[WorldServer]
+</code></pre>
+<h3 id="server-list-request-flow">Server List Request Flow</h3>
+<pre><code>Client                    LoginServer                        Database
+  |                           |                                 |
+  |-- RequestServerList -----&gt;|                                 |
+  |                           |-- Validate authentication       |
+  |                           |-- Check cooldown                |
+  |                           |-- Acquire in-flight gate        |
+  |                           |-- Enqueue async work            |
+  |                           |       |                         |
+  |                           |       |-- FetchActiveAsync ----&gt;|
+  |                           |       |   (idleTimeout filter)  |
+  |                           |       |&lt;-- WorldServerData[] ---|
+  |                           |       |                         |
+  |                           |       |-- Map to DTOs           |
+  |                           |       |   WorldServerDetails[]  |
+  |                           |       |                         |
+  |                           |&lt;- Enqueue main-thread response  |
+  |&lt;-- ServerListBroadcast    |                                 |
+  |                           |-- Release in-flight gate        |
+  |                           |-- Set cooldown timestamp        |
+</code></pre>
+<h3 id="failure-flow">Failure Flow</h3>
+<pre><code>Client                    LoginServer                        Database
+  |                           |                                 |
+  |-- RequestServerList -----&gt;|                                 |
+  |                           |-- Validate authentication       |
+  |                           |-- Check cooldown                |
+  |                           |-- Acquire in-flight gate        |
+  |                           |-- Enqueue async work            |
+  |                           |       |                         |
+  |                           |       |-- FetchActiveAsync ----&gt;|
+  |                           |       |&lt;-- Error / null --------|
+  |                           |       |                         |
+  |                           |&lt;- Enqueue empty response        |
+  |&lt;-- ServerListBroadcast    |   (Servers = [])                |
+  |                           |-- Release in-flight gate        |
+  |                           |-- Set cooldown timestamp        |
+</code></pre>
+<h3 id="main-thread-drain-cycle">Main-Thread Drain Cycle</h3>
+<pre><code>OnUpdate (every frame)
+  |
+  |-- DrainMainThreadQueue(drainAll: false)
+  |       |
+  |       |-- Dequeue up to maxMainThreadResponsesPerFrame actions
+  |       |-- Execute each action (FishNet Broadcast calls)
+  |
+OnDeinitialize
+  |
+  |-- DrainMainThreadQueue(drainAll: true)
+  |       |
+  |       |-- Dequeue ALL remaining actions
+  |       |-- Execute each action (final client messages)
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Server/Implementation/LoginServer/ServerSelect/
+├── ServerSelectSystem.cs                    # Login-server behaviour for world server list requests
+├── ServerSelectSystemRuntimeData.cs         # Per-connection in-flight gate and cooldown container
+├── ServerSelectSystemMainThreadQueueData.cs # Per-system main-thread action queue container
+└── README.md
+
+Server/Core/LoginServer/ServerSelect/
+├── IServerSelectSystem.cs                   # Engine-agnostic public API interface
+└── IServerSelectSystemMainThreadQueueData.cs # Main-thread queue data interface
+
+Shared/Implementation/Network/ServerSelect/
+├── ServerSelectBroadcasts.cs                # Network broadcast structs (RequestServerListBroadcast, ServerListBroadcast, WorldSceneConnectBroadcast)
+└── ServerAddress.cs                         # Serializable server address with HTTPS formatting
+
+Shared/Implementation/Network/
+└── WorldServerDetails.cs                    # Serializable world server details DTO
+</code></pre>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<h4 id="behaviour">Behaviour</h4>
+<pre><code>ServerBehaviour
+└── ServerSelectSystem : IServerSelectSystem
+</code></pre>
+<h4 id="runtime-data-containers">Runtime Data Containers</h4>
+<pre><code>RuntimeDataContainer
+├── ServerSelectSystemRuntimeData
+└── MainThreadQueueData (abstract)
+    └── SystemMainThreadQueueData (abstract)
+        └── ServerSelectSystemMainThreadQueueData : IServerSelectSystemMainThreadQueueData
+</code></pre>
+<h4 id="broadcast-structs">Broadcast Structs</h4>
+<pre><code>IBroadcast
+├── RequestServerListBroadcast      → (empty, no fields)
+├── ServerListBroadcast             → List&lt;WorldServerDetails&gt;
+└── WorldSceneConnectBroadcast      → string Address, ushort Port
+</code></pre>
+<h4 id="shared-data-classes">Shared Data Classes</h4>
+<pre><code>WorldServerDetails
+├── Name            : string
+├── LastPulse       : DateTime
+├── Address         : string
+├── Port            : ushort
+├── CharacterCount  : int
+└── Locked          : bool
+
+ServerAddress
+├── Address         : string
+├── Port            : ushort
+└── HTTPSAddress()  : string    // formats as https://Address:Port/
+
+ServerAddresses
+└── Addresses       : List&lt;ServerAddress&gt;
+</code></pre>
+<h3 id="external-integration-points">External Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AccountManager</code></td>
+<td>Validates connection authentication via <code>GetAccountNameByConnection</code></td>
+</tr>
+<tr>
+<td><code>Database Service Registry</code></td>
+<td>Resolves <code>IWorldServerService</code></td>
+</tr>
+<tr>
+<td><code>IWorldServerService</code></td>
+<td>Provides active world server rows filtered by pulse age (<code>FetchActiveAsync</code>)</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code></td>
+<td>Centralized bounded background work execution queue</td>
+</tr>
+<tr>
+<td><code>ServerSelectSystemMainThreadQueueData</code></td>
+<td>Guarantees main-thread-safe network dispatch</td>
+</tr>
+<tr>
+<td><code>FishNet NetworkWrapper</code></td>
+<td>Receives <code>RequestServerListBroadcast</code> and sends <code>ServerListBroadcast</code> responses</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

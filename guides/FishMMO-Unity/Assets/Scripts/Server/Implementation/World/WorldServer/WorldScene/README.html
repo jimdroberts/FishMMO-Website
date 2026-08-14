@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>World Scene System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="World Scene System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/WorldScene/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="world-scene-system">World Scene System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/WorldScene/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> WorldServer subsystem that routes authenticated players into the correct open-world or instanced scene endpoint, managing waiting queues, scene-server address resolution, connection counting, write-through TTL caching, request debounce, and queue-TTL hardening with all database work async and all FishNet/Unity state mutations marshalled onto the main thread.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The World Scene system routes authenticated world-server players into the correct scene endpoint. It supports both open-world and instance scene flows, maintains waiting queues while scenes are loading, coordinates scene-server assignment, and keeps a live connection-count metric used by world admission logic. Database work is asynchronous; all FishNet/Unity state mutations are marshalled onto the main thread through a dedicated queue container.</p>
+<p>The implementation uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> queue/map mutations, FishNet broadcasts, kicks, event callbacks, waiting-queue TTL purge sweeps, debounce cleanup, and scene cache sweeps.</li>
+<li><strong>Async worker:</strong> DB fetch/update/persist operations, queue orchestration, batch character loading, batch scene-server address resolution, and connection count aggregation via <code>TryEnqueueAsyncWork</code>.</li>
+<li><strong>Main-thread queue:</strong> marshalling async completion actions back to Unity/FishNet-safe context via <code>IWorldSceneSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>A runtime-data processing gate (<code>Interlocked.CompareExchange</code>) prevents overlapping queue-processing cycles. Snapshot-before-async design removes connections from waiting maps before going async, preventing re-processing and stale routing during the async window. The system includes request-debounce, queue-TTL hardening, and a write-through TTL cache layer to reduce database flood risk and prevent stale queue memory growth.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Open-world scene routing with preferred <code>SceneHandle</code> support (channel switching via <code>SceneChannelSystem</code>) and capacity-based fallback assignment using an <code>InstanceCapacityHeap</code></li>
+<li>Instance scene routing with status-aware handling: <code>Ready</code> scenes broadcast connect endpoints, <code>Pending</code>/<code>Loading</code> scenes re-queue, and unknown/terminal statuses fall back to world scene</li>
+<li>Bidirectional queue maps (<code>WaitingOpenWorldConnections</code> ↔ <code>OpenWorldConnectionScenes</code>, <code>WaitingInstanceConnections</code> ↔ <code>InstanceConnectionScenes</code>) enabling O(1) add/remove and fast cleanup on disconnect</li>
+<li>Authentication handoff via <code>WorldServerAuthenticator.OnClientAuthenticationResult</code> triggering the instance routing flow</li>
+<li>Connection disconnect cleanup via <code>ServerManager.OnRemoteConnectionState</code> subscription removing connections from all queues</li>
+<li>Per-account instance-lookup debounce (<code>ExpiringKeyTracker&lt;string&gt;</code>) preventing DB flood from rapid reconnect attempts</li>
+<li>Waiting queue TTL purge sweeps removing stale connections that exceed <code>waitingQueueTtlSeconds</code>, kicking active stale waiters and silently cleaning inactive entries</li>
+<li>Defense-in-depth queue size cap (<code>MAX_WAITING_QUEUE_SIZE = 2500</code> per queue type) preventing unbounded memory growth</li>
+<li>Write-through TTL cache for scene-instance query results (<code>AvailableSceneCache</code>, default 5 s) and scene-server addresses (<code>SceneServerAddressCache</code>, default 10 s) with failure-triggered invalidation</li>
+<li>Cache-aware <code>FetchAvailableScenesAsync</code> and <code>FetchSceneServerAddressAsync</code> wrappers with bypass when TTL is set to 0</li>
+<li>Bounded cache expiry sweeps (<code>SweepSceneCaches</code>: max 64 scan, 32 remove per cycle)</li>
+<li>Batch DB integration eliminating N+1 query overhead: <code>FetchSelectedCharactersByAccountsAsync</code> for character data, <code>FetchSceneServersByIDsAsync</code> for cache-miss server addresses</li>
+<li>Two-pass open-world routing: Pass 1 assigns preferred handles via O(1) dictionary lookup; Pass 2 assigns fallback handles via capacity heap (O(log N) per connection)</li>
+<li>Race guard on all <code>WorldSceneConnectBroadcast</code> dispatches: skips broadcast if connection was re-queued during async processing</li>
+<li>Connection count aggregation combining DB scene character totals with waiting open-world and instance queue counts, with cached scene character count TTL</li>
+<li><code>CleanupAndEnqueueNewSceneIfNeededAsync</code> requesting new scene-load when connections remain waiting after routing</li>
+<li>Scene-server stale entry cleanup: unreachable scene servers trigger <code>DeleteByHandleAsync</code> and instance flag clearing before world-scene fallback</li>
+<li>Instance flag management: <code>ClearInstanceFlagAndFallbackAsync</code> clears <code>CharacterFlags.IsInInstance</code>, bumps version, persists updated record, and falls back to world scene</li>
+<li>Per-system main-thread queue isolation with configurable drain cap per frame (<code>maxMainThreadActionsPerFrame</code>)</li>
+<li><code>RunOnMainThreadAsync</code> returning <code>Task&lt;bool&gt;</code> with immediate false completion on enqueue failure, preventing async callers from hanging on unfulfilled <code>TaskCompletionSource</code></li>
+<li>Graceful shutdown: drains pending main-thread actions, clears all caches and trackers, unsubscribes events, and deletes world-scene DB rows for this world server with a 5-second timeout</li>
+<li>Async worker backpressure via <code>TryEnqueueAsyncWork</code> (rejects when queue unavailable/full, releases processing gate on failure)</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>FishMMO server framework with <code>ServerBehaviour</code> base class and <code>DataContainerRegistry</code></li>
+<li>FishNet networking library (provides <code>NetworkConnection</code>, <code>ServerManager</code>)</li>
+<li><code>WorldServerAuthenticator</code> component present in the scene</li>
+<li>Database with <code>ISceneService</code>, <code>ISceneServerService</code>, and <code>ICharacterService</code> service implementations registered</li>
+<li><code>WorldSceneDetailsCache</code> ScriptableObject asset configured with per-scene max client metadata</li>
+<li><code>AsyncWorkerData</code> data container registered for bounded background task execution</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO server framework. No separate installation is required. It is included automatically when building or running the WorldServer.</p>
+<p>To configure, assign the <code>WorldSceneSystem</code> ScriptableObject asset via the Unity Inspector and ensure all required data containers are registered in the <code>DataContainerRegistry</code>:</p>
+<ul>
+<li><code>WorldSceneSystemRuntimeData</code></li>
+<li><code>WorldSceneMappingData</code></li>
+<li><code>WorldSceneSystemMainThreadQueueData</code></li>
+<li><code>AsyncWorkerData</code></li>
+</ul>
+<p>The asset is created via the Unity menu: <strong>Assets → Create → FishMMO → Server → WorldServer → World Scene System</strong>.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="server-operator">Server Operator</h3>
+<ol>
+<li>Ensure the <code>WorldServerAuthenticator</code> component is in the world server scene.</li>
+<li>Create a <code>WorldSceneSystem</code> ScriptableObject via <strong>Assets → Create → FishMMO → Server → WorldServer → World Scene System</strong>.</li>
+<li>Assign the <code>WorldSceneDetailsCache</code> reference in the inspector.</li>
+<li>Configure inspector fields (see <a href="#configuration">Configuration</a>) or use defaults.</li>
+<li>Register the system with the server's <code>ServerBehaviour</code> pipeline.</li>
+<li>Start the world server — the system automatically subscribes to auth and connection events.</li>
+</ol>
+<h3 id="during-operation">During Operation</h3>
+<ul>
+<li>Authenticated clients are automatically routed: instance-flagged characters go through instance routing; others enter the open-world queue.</li>
+<li>Monitor <code>ConnectionCount</code> on <code>WorldSceneMappingData</code> for live admission metrics.</li>
+<li>If scene servers go down, cached addresses auto-expire (default 10 s) and stale scene entries are cleaned on next routing attempt.</li>
+<li>Waiting queue TTL (default 45 s) automatically purges ghost connections.</li>
+</ul>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-fields">Inspector Fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Clamp</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>≥ 1</td>
+<td>Max world-scene actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>instanceLookupDebounceSeconds</code></td>
+<td><code>float</code></td>
+<td><code>3.0</code></td>
+<td>≥ 0.1</td>
+<td>Minimum seconds between instance DB routing lookups for the same account</td>
+</tr>
+<tr>
+<td><code>waitingQueueTtlSeconds</code></td>
+<td><code>float</code></td>
+<td><code>45.0</code></td>
+<td>≥ 5.0</td>
+<td>Maximum seconds a connection may remain in waiting queues before being purged</td>
+</tr>
+<tr>
+<td><code>waitingQueueSweepIntervalSeconds</code></td>
+<td><code>float</code></td>
+<td><code>5.0</code></td>
+<td>≥ 1.0</td>
+<td>Seconds between stale waiting-queue purge sweeps</td>
+</tr>
+<tr>
+<td><code>debounceCleanupIntervalSeconds</code></td>
+<td><code>float</code></td>
+<td><code>60.0</code></td>
+<td>≥ 5.0</td>
+<td>Seconds between stale debounce-entry cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>debounceCleanupMaxScanPerSweep</code></td>
+<td><code>int</code></td>
+<td><code>256</code></td>
+<td>≥ 1</td>
+<td>Max account debounce entries scanned per cleanup sweep</td>
+</tr>
+<tr>
+<td><code>debounceCleanupMaxRemovalsPerSweep</code></td>
+<td><code>int</code></td>
+<td><code>128</code></td>
+<td>≥ 1</td>
+<td>Max account debounce entries removed per cleanup sweep</td>
+</tr>
+<tr>
+<td><code>waitingQueuePurgeMaxPerSweep</code></td>
+<td><code>int</code></td>
+<td><code>128</code></td>
+<td>≥ 1</td>
+<td>Max stale queued connections purged per waiting-queue sweep</td>
+</tr>
+<tr>
+<td><code>sceneInstanceCacheTtlSeconds</code></td>
+<td><code>float</code></td>
+<td><code>5.0</code></td>
+<td>≥ 0.0</td>
+<td>Seconds before cached scene-instance query results expire (0 disables caching)</td>
+</tr>
+<tr>
+<td><code>sceneServerCacheTtlSeconds</code></td>
+<td><code>float</code></td>
+<td><code>10.0</code></td>
+<td>≥ 0.0</td>
+<td>Seconds before cached scene-server address results expire (0 disables caching)</td>
+</tr>
+<tr>
+<td><code>worldSceneDetailsCache</code></td>
+<td><code>WorldSceneDetailsCache</code></td>
+<td>—</td>
+<td>—</td>
+<td>ScriptableObject with per-scene max client metadata</td>
+</tr>
+</tbody>
+</table>
+<h3 id="constants">Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MAX_CLIENTS_PER_INSTANCE</code></td>
+<td><code>500</code></td>
+<td>Hard cap on clients per scene instance; <code>GetMaxClients</code> clamps to <code>[1, MAX_CLIENTS_PER_INSTANCE]</code></td>
+</tr>
+<tr>
+<td><code>MAX_WAITING_QUEUE_SIZE</code></td>
+<td><code>2500</code></td>
+<td>Per-queue-type cap preventing unbounded memory growth; effective global limit is 5000 (2 × 2500)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runtime-data-defaults">Runtime Data Defaults</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WaitQueueRateSeconds</code></td>
+<td><code>2.0</code> (clamped ≥ 0.5)</td>
+<td>Queue tick interval in seconds</td>
+</tr>
+<tr>
+<td><code>NextWaitingQueueSweep</code></td>
+<td>Set to <code>waitingQueueSweepIntervalSeconds</code></td>
+<td>Countdown until first stale-queue purge</td>
+</tr>
+<tr>
+<td><code>NextDebounceCleanup</code></td>
+<td>Set to <code>debounceCleanupIntervalSeconds</code></td>
+<td>Countdown until first debounce cleanup</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="authentication-routing-entry-point">Authentication Routing Entry Point</h3>
+<p>When a client authenticates, <code>Authenticator_OnClientAuthenticationResult</code> fires:</p>
+<pre><code class="lang-csharp">// 1. Resolve account name from connection
+Server.AccountManager.GetAccountNameByConnection(conn, out string accountName);
+
+// 2. Debounce check — prevents DB flood from rapid reconnects
+TryBeginInstanceLookup(accountName);
+
+// 3. Enqueue async instance routing
+TryEnqueueAsyncWork(() =&gt; ProcessInstanceConnectionAsync(conn, skipDebounce: true));
+</code></pre>
+<h3 id="open-world-queue-processing">Open-World Queue Processing</h3>
+<p>Each tick, <code>OnUpdate</code> snapshots current open-world scene keys and enqueues <code>ProcessQueuesAsync</code>:</p>
+<pre><code class="lang-csharp">// Snapshot waiting scene names before going async
+List&lt;string&gt; openWorldSceneNames = new List&lt;string&gt;(mappingData.WaitingOpenWorldConnections.Count);
+openWorldSceneNames.AddRange(mappingData.WaitingOpenWorldConnections.Keys);
+
+// Acquire processing gate and enqueue
+if (runtimeData.TryBeginProcessing())
+{
+    TryEnqueueAsyncWork(() =&gt; ProcessQueuesAsync(openWorldSceneNames, instanceConns));
+}
+</code></pre>
+<h3 id="preferred-handle-channel-switching">Preferred Handle Channel Switching</h3>
+<p><code>SceneChannelSystem</code> sets the target <code>SceneHandle</code> before disconnect. During open-world routing, the system honours that preference:</p>
+<pre><code class="lang-csharp">int preferredHandle = charData.SceneHandle;
+if (preferredHandle &gt; 0 &amp;&amp;
+    capacityByHandle.TryGetValue(preferredHandle, out int prefRemaining) &amp;&amp;
+    prefRemaining &gt; 0)
+{
+    // Route to preferred channel — no DB update needed
+    capacityByHandle[preferredHandle] = prefRemaining - 1;
+    BroadcastSceneConnect(conn, prefServer);
+}
+</code></pre>
+<h3 id="fallback-to-world-scene">Fallback to World Scene</h3>
+<p>When instance routing fails (stale instance, invalid flag), the system falls back:</p>
+<pre><code class="lang-csharp">// Clear instance flag and persist
+characterFlags.DisableBit(CharacterFlags.IsInInstance);
+var updatedChar = charData.WithFlagsVersionAndTimestamp(characterFlags, charData.Version + 1, DateTime.UtcNow);
+await charService.PersistAsync(updatedChar);
+
+// Re-queue into open-world waiting maps
+await FallbackToWorldSceneAsync(conn, accountName);
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Command / Metric</th>
+<th>Expected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System initialized</td>
+<td>Log output contains <code>&quot;Initialized (WaitQueueRate=...&quot;</code></td>
+<td>Appears once at startup</td>
+</tr>
+<tr>
+<td>Connection count</td>
+<td><code>WorldSceneMappingData.ConnectionCount</code></td>
+<td>Sum of DB scene characters + open-world waiting + instance waiting</td>
+</tr>
+<tr>
+<td>Queue processing active</td>
+<td><code>WorldSceneSystemRuntimeData.TryBeginProcessing()</code> returns <code>false</code> when busy</td>
+<td>Gate prevents overlapping cycles</td>
+</tr>
+<tr>
+<td>Debounce active</td>
+<td>Rapid same-account reconnects within <code>instanceLookupDebounceSeconds</code></td>
+<td>Second attempt is silently dropped</td>
+</tr>
+<tr>
+<td>TTL purge active</td>
+<td>Connection in queue &gt; <code>waitingQueueTtlSeconds</code></td>
+<td>Connection kicked with &quot;Waiting queue TTL exceeded&quot;</td>
+</tr>
+<tr>
+<td>Queue cap enforced</td>
+<td>Queue size reaches <code>MAX_WAITING_QUEUE_SIZE</code></td>
+<td>New connections kicked with &quot;Waiting queue capacity exceeded&quot;</td>
+</tr>
+<tr>
+<td>Scene cache hit</td>
+<td>Repeat <code>FetchAvailableScenesAsync</code> within TTL</td>
+<td>Returns cached result, no DB call</td>
+</tr>
+<tr>
+<td>Server cache invalidation</td>
+<td>Scene server fetch fails</td>
+<td>Cache entry invalidated, next call re-fetches</td>
+</tr>
+<tr>
+<td>Shutdown cleanup</td>
+<td>Server shuts down</td>
+<td>Log shows <code>&quot;Deinitializing: Deleting world scenes&quot;</code>, DB rows removed</td>
+</tr>
+<tr>
+<td>Race guard</td>
+<td>Connection re-queued during async</td>
+<td>Broadcast skipped, connection processes on next cycle</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|enter zone| World[WorldServer]
+    World --&gt; WS[WorldSceneSystem]
+    WS --&gt;|find/spawn scene host| Reg[(SceneServer Registry)]
+    Reg --&gt; WS
+    WS --&gt;|hand-off ticket| Client
+    Client --&gt;|connect| Scene[SceneServer]
+</code></pre>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                        AUTHENTICATION                               │
+│  Client authenticates → Authenticator_OnClientAuthenticationResult  │
+│                              │                                      │
+│              ┌───────────────┼───────────────┐                      │
+│              │ Debounce      │               │                      │
+│              │ Check         ▼               │                      │
+│              │     TryBeginInstanceLookup     │                      │
+│              │         │                     │                      │
+│              │    Pass │    Fail → Kick       │                      │
+│              │         ▼                     │                      │
+│              │  ProcessInstanceConnectionAsync│                      │
+│              └───────────────────────────────┘                      │
+└─────────────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+   ┌──────────────────┐           ┌───────────────────────┐
+   │ IsInInstance=true │           │ IsInInstance=false     │
+   │                  │           │                       │
+   │ Fetch instance   │           │ FallbackToWorldScene  │
+   │ scene from DB    │           │ Async                 │
+   │       │          │           │     │                 │
+   │  ┌────┴─────┐    │           │     ▼                 │
+   │  ▼          ▼    │           │ AddToQueue (open-     │
+   │ Ready    Pending/│           │ world waiting maps)   │
+   │  │      Loading  │           └───────────────────────┘
+   │  │         │     │                       │
+   │  ▼         ▼     │                       ▼
+   │ Fetch   Re-add   │           ┌───────────────────────┐
+   │ scene   to inst.  │           │  OnUpdate (per tick)  │
+   │ server  queue    │           │                       │
+   │  │               │           │ 1. Drain main-thread  │
+   │  ▼               │           │    queue               │
+   │ Broadcast        │           │ 2. TTL purge sweep    │
+   │ WorldScene       │           │ 3. Debounce cleanup   │
+   │ Connect          │           │ 4. Cache sweep        │
+   │                  │           │ 5. Queue tick →       │
+   │ (race guard)     │           │    ProcessQueuesAsync  │
+   └──────────────────┘           └───────────┬───────────┘
+                                              │
+                                              ▼
+                                  ┌───────────────────────┐
+                                  │ ProcessOpenWorldQueue  │
+                                  │ Async(sceneName)       │
+                                  │                       │
+                                  │ 1. FetchAvailable     │
+                                  │    ScenesAsync (cache) │
+                                  │ 2. Resolve server     │
+                                  │    addresses (batch)   │
+                                  │ 3. Snapshot &amp; dequeue │
+                                  │    waiting conns      │
+                                  │ 4. Batch fetch char   │
+                                  │    data               │
+                                  │ 5. Pass 1: preferred  │
+                                  │    handle (O(1))      │
+                                  │ 6. Pass 2: fallback   │
+                                  │    heap (O(log N))    │
+                                  │ 7. Re-queue if no     │
+                                  │    capacity           │
+                                  │ 8. Enqueue new scene  │
+                                  │    if still waiting   │
+                                  └───────────────────────┘
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>WorldScene/
+├── WorldSceneSystem.cs                    # Queue orchestration, scene routing, DB coordination
+├── WorldSceneMappingData.cs               # Runtime queue/state maps for open-world and instance routing
+├── WorldSceneSystemRuntimeData.cs         # Runtime state (authenticator, timers, processing gate, caches)
+├── WorldSceneSystemMainThreadQueueData.cs # Per-system main-thread action queue container
+└── README.md
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/WorldServer/WorldScene/IWorldSceneSystem.cs</code></li>
+<li><code>Server/Core/World/WorldServer/WorldScene/IWorldSceneMappingData.cs</code></li>
+<li><code>Server/Core/World/WorldServer/WorldScene/IWorldSceneSystemRuntimeData.cs</code></li>
+<li><code>Server/Core/World/WorldServer/WorldScene/IWorldSceneSystemMainThreadQueueData.cs</code></li>
+<li><code>Server/Core/RuntimeData/IAsyncWorkerData.cs</code></li>
+<li><code>Server/Core/RuntimeData/IMainThreadQueueData.cs</code></li>
+<li><code>Server/Core/Collections/ExpiringKeyTracker.cs</code></li>
+<li><code>Server/Core/Collections/TimedCache.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<h4 id="behaviour">Behaviour</h4>
+<pre><code>ServerBehaviour
+└── WorldSceneSystem : IWorldSceneSystem
+</code></pre>
+<h4 id="runtime-data-containers">Runtime Data Containers</h4>
+<pre><code>RuntimeDataContainer
+├── WorldSceneMappingData          : IWorldSceneMappingData&lt;NetworkConnection&gt;
+├── WorldSceneSystemRuntimeData    : IWorldSceneSystemRuntimeData
+└── MainThreadQueueData (abstract)
+    └── SystemMainThreadQueueData (abstract)
+        └── WorldSceneSystemMainThreadQueueData : IWorldSceneSystemMainThreadQueueData
+</code></pre>
+<h3 id="required-data-container-attributes">Required Data Container Attributes</h3>
+<p><code>WorldSceneSystem</code> declares four required containers:</p>
+<ul>
+<li><code>[RequiresDataContainer(typeof(WorldSceneSystemRuntimeData))]</code></li>
+<li><code>[RequiresDataContainer(typeof(WorldSceneMappingData))]</code></li>
+<li><code>[RequiresDataContainer(typeof(WorldSceneSystemMainThreadQueueData))]</code></li>
+<li><code>[RequiresDataContainer(typeof(AsyncWorkerData))]</code></li>
+</ul>
+<h3 id="runtime-data-container-details">Runtime Data Container Details</h3>
+<h4 id="worldscenemappingdata">WorldSceneMappingData</h4>
+<p>Bidirectional queue maps for open-world and instance connection routing. Implements <code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WaitingOpenWorldConnections</code></td>
+<td><code>Dictionary&lt;string, HashSet&lt;NetworkConnection&gt;&gt;</code></td>
+<td>Connections waiting for an open-world scene, keyed by scene name</td>
+</tr>
+<tr>
+<td><code>OpenWorldConnectionScenes</code></td>
+<td><code>Dictionary&lt;NetworkConnection, string&gt;</code></td>
+<td>Reverse index: connection → open-world scene name</td>
+</tr>
+<tr>
+<td><code>WaitingInstanceConnections</code></td>
+<td><code>Dictionary&lt;long, HashSet&lt;NetworkConnection&gt;&gt;</code></td>
+<td>Connections waiting for an instance scene, keyed by instance ID</td>
+</tr>
+<tr>
+<td><code>InstanceConnectionScenes</code></td>
+<td><code>Dictionary&lt;NetworkConnection, long&gt;</code></td>
+<td>Reverse index: connection → instance ID</td>
+</tr>
+<tr>
+<td><code>ConnectionCount</code></td>
+<td><code>int</code></td>
+<td>Total managed connections (DB scene population + waiting queues)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lifecycle:</strong> <code>InitializeOnce()</code> creates empty dictionaries and zeros connection count. <code>Clear()</code> clears all dictionaries and resets count. <code>OnDeinitialize()</code> delegates to <code>Clear()</code>.</p>
+<h4 id="worldscenesystemruntimedata">WorldSceneSystemRuntimeData</h4>
+<p>Mutable runtime state for queue processing, debounce, caching, and authenticator references. Implements <code>IWorldSceneSystemRuntimeData</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>isProcessingQueue</code></td>
+<td><code>int</code> (via <code>Interlocked</code>)</td>
+<td>Processing gate preventing overlapping queue-processing cycles</td>
+</tr>
+<tr>
+<td><code>WaitQueueRateSeconds</code></td>
+<td><code>float</code></td>
+<td>Queue tick interval in seconds (default 2.0, clamped ≥ 0.5)</td>
+</tr>
+<tr>
+<td><code>NextWaitingQueueSweep</code></td>
+<td><code>float</code></td>
+<td>Countdown until stale waiting-queue purge sweep</td>
+</tr>
+<tr>
+<td><code>NextDebounceCleanup</code></td>
+<td><code>float</code></td>
+<td>Countdown until debounce cleanup sweep</td>
+</tr>
+<tr>
+<td><code>InstanceLookupDebounce</code></td>
+<td><code>ExpiringKeyTracker&lt;string&gt;</code></td>
+<td>Per-account debounce tracker preventing DB flood from rapid instance lookups</td>
+</tr>
+<tr>
+<td><code>WaitingQueueEnteredUtcByClientId</code></td>
+<td><code>Dictionary&lt;int, DateTime&gt;</code></td>
+<td>Timestamps tracking when each client entered a waiting queue (for TTL purge)</td>
+</tr>
+<tr>
+<td><code>AvailableSceneCache</code></td>
+<td><code>TimedCache&lt;string, IReadOnlyList&lt;SceneData&gt;&gt;</code></td>
+<td>Write-through TTL cache of <code>FetchAvailableAsync</code> results keyed by scene name</td>
+</tr>
+<tr>
+<td><code>SceneServerAddressCache</code></td>
+<td><code>TimedCache&lt;long, (string, ushort)&gt;</code></td>
+<td>Write-through TTL cache of scene server addresses keyed by scene server ID</td>
+</tr>
+<tr>
+<td><code>CachedSceneCharacterCount</code></td>
+<td><code>int</code></td>
+<td>Cached total character count across all scenes for connection count aggregation</td>
+</tr>
+<tr>
+<td><code>CachedSceneCharacterCountUtc</code></td>
+<td><code>DateTime</code></td>
+<td>UTC timestamp of the last <code>CachedSceneCharacterCount</code> update</td>
+</tr>
+<tr>
+<td><code>LoginAuthenticator</code></td>
+<td><code>WorldServerAuthenticator</code></td>
+<td>Reference to the world server authenticator for auth event subscription</td>
+</tr>
+<tr>
+<td><code>NextWaitQueueUpdate</code></td>
+<td><code>float</code></td>
+<td>Timer countdown until next wait-queue processing tick</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lifecycle:</strong> <code>InitializeOnce()</code> creates <code>ExpiringKeyTracker</code> with <code>OrdinalIgnoreCase</code> comparer, empty timestamp dictionary, and both <code>TimedCache</code> instances (scene cache uses <code>OrdinalIgnoreCase</code> comparer). <code>Clear()</code> nulls authenticator, resets all timers, clears tracker, timestamps, and both caches. <code>OnDeinitialize()</code> clears and nulls tracker, timestamp dictionary, and both caches.</p>
+<h4 id="worldscenesystemmainthreadqueuedata">WorldSceneSystemMainThreadQueueData</h4>
+<p>Per-system main-thread action queue. Inherits from <code>SystemMainThreadQueueData</code> (which inherits from <code>MainThreadQueueData</code>). Implements <code>IWorldSceneSystemMainThreadQueueData</code>.</p>
+<p>Provides <code>Enqueue(Action)</code> and <code>Drain(int)</code> methods for marshalling async worker responses back to the Unity main thread.</p>
+<p><strong>Why a separate concrete type?</strong> The <code>DataContainerRegistry</code> creates independent instances per concrete type, ensuring each system gets its own isolated main-thread queue.</p>
+<h3 id="external-integration-points">External Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Integration</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WorldServerAuthenticator</code></td>
+<td>Auth success trigger for scene routing</td>
+</tr>
+<tr>
+<td><code>ISceneService</code></td>
+<td>Scene lookup, available instance fetch, enqueue new scene, delete by handle</td>
+</tr>
+<tr>
+<td><code>ISceneServerService</code></td>
+<td>Single and batch scene server address resolution</td>
+</tr>
+<tr>
+<td><code>ICharacterService</code></td>
+<td>Single and batch character fetch, scene handle persistence, flag updates</td>
+</tr>
+<tr>
+<td><code>WorldServerSystemRuntimeData</code></td>
+<td>World server ID context for DB scene queries</td>
+</tr>
+<tr>
+<td><code>WorldSceneDetailsCache</code></td>
+<td>Per-scene max client metadata</td>
+</tr>
+<tr>
+<td><code>AsyncWorkerData</code></td>
+<td>Bounded background execution with enqueue backpressure</td>
+</tr>
+<tr>
+<td><code>ExpiringKeyTracker</code></td>
+<td>Per-account debounce with bounded head-first expiry sweeps</td>
+</tr>
+<tr>
+<td><code>TimedCache</code></td>
+<td>Write-through TTL cache reducing scene-instance and scene-server-address DB polling</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/WorldScene/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

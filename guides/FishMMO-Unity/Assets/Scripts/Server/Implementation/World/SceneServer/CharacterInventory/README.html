@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Character Inventory System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Character Inventory System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/CharacterInventory/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="character-inventory-system">Character Inventory System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/CharacterInventory/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> SceneServer authority for item movement across player inventory, equipment, and bank containers, validating incoming client broadcasts, applying runtime container mutations, persisting state through async database services, and echoing successful operations back to the originating client.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Character Inventory system is the SceneServer authority for item movement across player inventory, equipment, and bank containers. It validates incoming client broadcasts, applies runtime container mutations, persists resulting state through database services, and echoes successful operations back to the originating client.</p>
+<blockquote>
+<p><strong>Note:</strong> <code>EquipmentController</code> is now part of the prediction pipeline (<code>IPredictableController</code> at Order 93). Equipment state is reconciled via <code>CharacterReconcileData</code>. The broadcast path (<code>EquipmentEquipItemBroadcast</code>/<code>EquipmentUnequipItemBroadcast</code>) handles client→server requests and echoes; attribute application is handled by the reconcile path. The legacy <code>EquipmentSetItemBroadcast</code> and <code>EquipmentSetMultipleItemsBroadcast</code> have been removed.</p>
+</blockquote>
+<p>The system is designed to keep item state deterministic by:</p>
+<ul>
+<li>Executing container mutations on the main thread.</li>
+<li>Building DTO snapshots immediately after mutation.</li>
+<li>Enqueueing persistence work through the centralized async worker.</li>
+<li>Using optimistic concurrency versions on item and attribute records.</li>
+</ul>
+<p>A per-connection ingress guard provides debounce, global rate limiting, and in-flight tracking to prevent duplicate or rapid-fire mutation requests. Stale guard entries are swept periodically via <code>OnUpdate</code>.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Server-authoritative inventory, equipment, and bank item management</li>
+<li>Same-container slot swaps via <code>SwapItemSlots</code> with affected-item tracking</li>
+<li>Cross-container item moves/swaps between inventory, equipment, and bank with atomic rollback on failure</li>
+<li>Inventory item removal with async database slot deletion</li>
+<li>Equipment equip from inventory or bank with attribute persistence</li>
+<li>Equipment unequip to inventory or bank with attribute persistence</li>
+<li>Bank item removal with banker proximity validation</li>
+<li>Bank slot swaps (within bank, or between bank and inventory) with banker proximity validation</li>
+<li>Per-operation ingress debounce via configurable <code>ingressDebounceMilliseconds</code></li>
+<li>Global per-connection rate limit (<code>GlobalPerConnectionRateMilliseconds</code> = 15 ms) across all inventory operations</li>
+<li>Bounded ingress guard sweep with configurable interval, TTL, and max removals per pass</li>
+<li>In-flight guard keys prevent concurrent processing of the same operation for the same connection</li>
+<li>Slot bounds validation before any container mutation</li>
+<li>Equipment slot enum validation (<code>ItemSlot</code>) before equip/unequip</li>
+<li>Banker scene object validation: existence check, scene match, interaction range, and banker type confirmation</li>
+<li>Optimistic concurrency via <code>Version</code> increments on all item and attribute DTOs</li>
+<li>Async persistence via <code>TryEnqueueAsyncWork</code> with per-character ordered processing (<code>entityKey = characterID</code>)</li>
+<li>Backpressure handling: persistence enqueue returns <code>false</code> when queue is unavailable or full, with logged warnings</li>
+<li>Equipment/attribute coupling: equip and unequip operations persist both item movement and character attribute snapshots</li>
+<li>Cross-container swap rollback: if an exception occurs during a cross-container move, both containers are restored to their original state</li>
+<li><code>CreateAssetMenu</code> integration for ScriptableObject creation in the Unity Editor</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>ICharacterInventorySystem</code>, <code>ICharacterInventorySystemRuntimeData</code>, <code>IngressGuard</code>, <code>AsyncWorkerData</code>, broadcast types, and container interfaces</li>
+<li><strong>FishMMO Shared</strong> — provides <code>IPlayerCharacter</code>, <code>IInventoryController</code>, <code>IEquipmentController</code>, <code>IBankController</code>, <code>ICharacterAttributeController</code>, <code>IItemContainer</code>, <code>Item</code>, <code>ItemSlot</code>, <code>InventoryType</code>, <code>ISceneObject</code>, <code>IInteractable</code>, <code>Banker</code></li>
+<li><strong>FishMMO Database</strong> — provides <code>ICharacterInventoryService</code>, <code>ICharacterBankService</code>, <code>ICharacterEquipmentService</code>, <code>ICharacterAttributeService</code>, and DTO types (<code>CharacterInventoryData</code>, <code>CharacterBankData</code>, <code>CharacterEquipmentData</code>, <code>CharacterAttributeData</code>)</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Create the <code>CharacterInventorySystem</code> ScriptableObject asset via <strong>Assets → Create → FishMMO → Server → SceneServer → Character Inventory System</strong>.</li>
+<li>Ensure the asset is assigned to the scene server's system list so <code>InitializeOnce()</code> is invoked at startup.</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>CharacterInventorySystemRuntimeData</code> → <code>ICharacterInventorySystemRuntimeData</code></li>
+<li><code>AsyncWorkerData</code> (shared async work queue)</li>
+</ul>
+</li>
+<li>Verify the following database services are registered in <code>Server.Database.ServiceRegistry</code>:
+<ul>
+<li><code>ICharacterInventoryService</code></li>
+<li><code>ICharacterBankService</code></li>
+<li><code>ICharacterEquipmentService</code></li>
+<li><code>ICharacterAttributeService</code></li>
+</ul>
+</li>
+<li>On initialize, <code>CharacterInventorySystem</code> validates all dependencies and registers broadcast handlers for inventory, equipment, and bank operations.</li>
+<li>On deinitialize, it unregisters all broadcast handlers and clears the ingress guard.</li>
+<li>Clients send the appropriate broadcast (e.g., <code>InventorySwapItemSlotsBroadcast</code>, <code>EquipmentEquipItemBroadcast</code>) and receive the same broadcast back on success.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td>int</td>
+<td>60</td>
+<td>Minimum milliseconds between identical inventory requests from the same connection</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>Seconds between bounded ingress guard cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Seconds before stale ingress guard entries are removed</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum stale ingress guard entries removed per sweep</td>
+</tr>
+</tbody>
+</table>
+<h3 id="internal-constants">Internal Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GlobalPerConnectionRateMilliseconds</code></td>
+<td>15</td>
+<td>Global per-connection rate limit in milliseconds across all inventory operations</td>
+</tr>
+</tbody>
+</table>
+<h3 id="clamped-minimums">Clamped Minimums</h3>
+<p>On initialization, inspector values are clamped to safe minimums:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td>0</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td>0.25</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ingress-operation-codes">Ingress Operation Codes</h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Value</th>
+<th>Operation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InventoryRemove</code></td>
+<td>1</td>
+<td>Remove item from inventory</td>
+</tr>
+<tr>
+<td><code>InventorySwap</code></td>
+<td>2</td>
+<td>Swap inventory slots (or cross-container with bank)</td>
+</tr>
+<tr>
+<td><code>EquipmentEquip</code></td>
+<td>3</td>
+<td>Equip item from inventory or bank</td>
+</tr>
+<tr>
+<td><code>EquipmentUnequip</code></td>
+<td>4</td>
+<td>Unequip item to inventory or bank</td>
+</tr>
+<tr>
+<td><code>BankRemove</code></td>
+<td>5</td>
+<td>Remove item from bank</td>
+</tr>
+<tr>
+<td><code>BankSwap</code></td>
+<td>6</td>
+<td>Swap bank slots (or cross-container with inventory)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, ingress guard checks, container mutations, DTO building, broadcast dispatch, ingress guard sweep</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Database persistence and deletion (<code>PersistInventoryItemsAsync</code>, <code>PersistBankItemsAsync</code>, <code>PersistEquipmentItemAsync</code>, <code>PersistAttributesAsync</code>, <code>DeleteInventorySlotAsync</code>, <code>DeleteBankSlotAsync</code>, <code>DeleteEquipmentSlotAsync</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-handlers">Broadcast Handlers</h3>
+<p><code>CharacterInventorySystem</code> registers the following server-side broadcast handlers on initialize:</p>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InventoryRemoveItemBroadcast</code></td>
+<td><code>OnServerInventoryRemoveItemBroadcastReceived</code></td>
+<td>Remove an item from inventory</td>
+</tr>
+<tr>
+<td><code>InventorySwapItemSlotsBroadcast</code></td>
+<td><code>OnServerInventorySwapItemSlotsBroadcastReceived</code></td>
+<td>Swap inventory slots or move bank → inventory</td>
+</tr>
+<tr>
+<td><code>EquipmentEquipItemBroadcast</code></td>
+<td><code>OnServerEquipmentEquipItemBroadcastReceived</code></td>
+<td>Equip item from inventory or bank</td>
+</tr>
+<tr>
+<td><code>EquipmentUnequipItemBroadcast</code></td>
+<td><code>OnServerEquipmentUnequipItemBroadcastReceived</code></td>
+<td>Unequip item to inventory or bank</td>
+</tr>
+<tr>
+<td><code>BankRemoveItemBroadcast</code></td>
+<td><code>OnServerBankRemoveItemBroadcastReceived</code></td>
+<td>Remove an item from bank</td>
+</tr>
+<tr>
+<td><code>BankSwapItemSlotsBroadcast</code></td>
+<td><code>OnServerBankSwapItemSlotsBroadcastReceived</code></td>
+<td>Swap bank slots or move inventory → bank</td>
+</tr>
+</tbody>
+</table>
+<h3 id="inventory-remove-path">Inventory Remove Path</h3>
+<p><code>OnServerInventoryRemoveItemBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection and spawned player object.</li>
+<li>Acquires ingress guard for <code>InventoryRemove</code>.</li>
+<li>Validates character exists and is not teleporting.</li>
+<li>Resolves <code>IInventoryController</code>.</li>
+<li>Validates slot bounds via <code>IsValidSlot(msg.Slot)</code>.</li>
+<li>Calls <code>RemoveItem(msg.Slot)</code> on the inventory controller.</li>
+<li>Increments item <code>Version</code> and enqueues async <code>DeleteInventorySlotAsync</code>.</li>
+<li>Broadcasts success back to client.</li>
+</ol>
+<h3 id="inventory-swap-path">Inventory Swap Path</h3>
+<p><code>OnServerInventorySwapItemSlotsBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, spawned player, character, and <code>IInventoryController</code>.</li>
+<li>Acquires ingress guard for <code>InventorySwap</code>.</li>
+<li>Switches on <code>msg.FromInventory</code>:
+<ul>
+<li><strong>Inventory → Inventory:</strong> Validates both slot bounds, calls <code>SwapContainerItems(inventoryController, from, to)</code>, persists affected items.</li>
+<li><strong>Bank → Inventory:</strong> Validates banker scene object, validates slot bounds, calls <code>SwapContainerItems(bankController, inventoryController, from, to)</code>, persists bank items, deletes vacated bank slots, persists inventory items.</li>
+<li><strong>Equipment → Inventory:</strong> Not handled (no-op).</li>
+</ul>
+</li>
+<li>Broadcasts success back to client.</li>
+</ol>
+<h3 id="equipment-equip-path">Equipment Equip Path</h3>
+<p><code>OnServerEquipmentEquipItemBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, spawned player, character, and <code>IEquipmentController</code>.</li>
+<li>Acquires ingress guard for <code>EquipmentEquip</code>.</li>
+<li>Validates <code>msg.Slot</code> is a defined <code>ItemSlot</code> enum value.</li>
+<li>Switches on <code>msg.FromInventory</code>:
+<ul>
+<li><strong>Inventory → Equipment:</strong> Validates slot bounds, retrieves item, calls <code>equipmentController.Equip(...)</code>. If replacing an existing equipped item, persists the swapped-back inventory item; otherwise deletes the vacated inventory slot. Persists the new equipment slot and character attributes.</li>
+<li><strong>Bank → Equipment:</strong> Validates banker scene object, validates slot bounds, follows same logic as inventory equip but against the bank controller.</li>
+<li><strong>Equipment → Equipment:</strong> Not handled (returns).</li>
+</ul>
+</li>
+<li>Broadcasts success back to client.</li>
+</ol>
+<h3 id="equipment-unequip-path">Equipment Unequip Path</h3>
+<p><code>OnServerEquipmentUnequipItemBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, spawned player, character, and <code>IEquipmentController</code>.</li>
+<li>Acquires ingress guard for <code>EquipmentUnequip</code>.</li>
+<li>Validates <code>msg.Slot</code> is a defined <code>ItemSlot</code> enum value.</li>
+<li>Switches on <code>msg.ToInventory</code>:
+<ul>
+<li><strong>Equipment → Inventory:</strong> Retrieves equipped item, calls <code>equipmentController.Unequip(inventoryController, ...)</code>, persists modified inventory slots, deletes old equipment slot, persists character attributes.</li>
+<li><strong>Equipment → Bank:</strong> Validates banker scene object, follows same logic as inventory unequip but against the bank controller.</li>
+<li><strong>Equipment → Equipment:</strong> Not handled (no-op).</li>
+</ul>
+</li>
+<li>Broadcasts success back to client.</li>
+</ol>
+<h3 id="bank-remove-path">Bank Remove Path</h3>
+<p><code>OnServerBankRemoveItemBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, spawned player, character, and <code>IBankController</code>.</li>
+<li>Acquires ingress guard for <code>BankRemove</code>.</li>
+<li>Validates banker scene object via <code>ValidateBankerSceneObject</code>.</li>
+<li>Validates slot bounds via <code>IsValidSlot(msg.Slot)</code>.</li>
+<li>Calls <code>RemoveItem(msg.Slot)</code> on the bank controller.</li>
+<li>Increments item <code>Version</code> and enqueues async <code>DeleteBankSlotAsync</code>.</li>
+<li>Broadcasts success back to client.</li>
+</ol>
+<h3 id="bank-swap-path">Bank Swap Path</h3>
+<p><code>OnServerBankSwapItemSlotsBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, spawned player, character, and <code>IBankController</code>.</li>
+<li>Acquires ingress guard for <code>BankSwap</code>.</li>
+<li>Validates banker scene object.</li>
+<li>Switches on <code>msg.FromInventory</code>:
+<ul>
+<li><strong>Inventory → Bank:</strong> Validates both slot bounds, calls <code>SwapContainerItems(inventoryController, bankController, from, to)</code>, persists inventory items, deletes vacated inventory slots, persists bank items.</li>
+<li><strong>Bank → Bank:</strong> Validates both slot bounds, calls <code>SwapContainerItems(bankController, from, to)</code>, persists affected bank items.</li>
+<li><strong>Equipment → Bank:</strong> Not handled (no-op).</li>
+</ul>
+</li>
+<li>Broadcasts success back to client.</li>
+</ol>
+<h3 id="public-swap-methods">Public Swap Methods</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Parameters</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SwapContainerItems</code></td>
+<td><code>(IItemContainer container, int fromIndex, int toIndex, out List&lt;Item&gt; affectedItems)</code></td>
+<td>Same-container swap; returns affected items</td>
+</tr>
+<tr>
+<td><code>SwapContainerItems</code></td>
+<td><code>(IItemContainer from, IItemContainer to, int fromIndex, int toIndex, out List&lt;Item&gt; affectedFromItems, out List&lt;long&gt; deletedFromSlots, out List&lt;Item&gt; affectedToItems)</code></td>
+<td>Cross-container swap with rollback; returns affected items and deleted slot indices</td>
+</tr>
+</tbody>
+</table>
+<h3 id="banker-validation">Banker Validation</h3>
+<p><code>ValidateBankerSceneObject(sceneObjectID, character)</code> performs four checks:</p>
+<ol>
+<li>Scene object exists in <code>SceneObject.Objects</code>.</li>
+<li>Banker is in the same scene as the character (<code>scene.handle</code> match).</li>
+<li>Character is within interaction range (<code>IInteractable.InRange</code>).</li>
+<li>Interactable is a <code>Banker</code> instance.</li>
+</ol>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Validation failures: no state change, no broadcast.</li>
+<li>Mutation success: client receives the original success broadcast payload.</li>
+<li>Cross-container swap exceptions: both containers are rolled back to their original state.</li>
+<li>Persistence enqueue/service failures: logged for operational visibility.</li>
+<li>Runtime state remains authoritative in-memory; persistence failures are observable through logs and should be monitored operationally.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>CharacterInventorySystem</code> logs &quot;Initialized&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>ICharacterInventorySystemRuntimeData</code> and <code>AsyncWorkerData</code> resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Database services available</td>
+<td>Verify <code>ICharacterInventoryService</code>, <code>ICharacterBankService</code>, <code>ICharacterEquipmentService</code>, and <code>ICharacterAttributeService</code> resolve from <code>Server.Database.ServiceRegistry</code></td>
+</tr>
+<tr>
+<td>Inventory remove</td>
+<td>Remove an inventory item; confirm client receives <code>InventoryRemoveItemBroadcast</code> back and slot is deleted from database</td>
+</tr>
+<tr>
+<td>Inventory swap (same container)</td>
+<td>Swap two inventory slots; confirm client receives <code>InventorySwapItemSlotsBroadcast</code> back and both slots are persisted</td>
+</tr>
+<tr>
+<td>Bank → inventory swap</td>
+<td>Swap a bank item to inventory while near a banker; confirm both containers updated and persisted</td>
+</tr>
+<tr>
+<td>Inventory → bank swap</td>
+<td>Swap an inventory item to bank while near a banker; confirm both containers updated and persisted</td>
+</tr>
+<tr>
+<td>Equip from inventory</td>
+<td>Equip an item from inventory; confirm equipment slot persisted, inventory slot deleted or swapped, and attributes persisted</td>
+</tr>
+<tr>
+<td>Equip from bank</td>
+<td>Equip an item from bank while near a banker; confirm equipment slot persisted, bank slot deleted or swapped, and attributes persisted</td>
+</tr>
+<tr>
+<td>Unequip to inventory</td>
+<td>Unequip an item to inventory; confirm inventory slots persisted, equipment slot deleted, and attributes persisted</td>
+</tr>
+<tr>
+<td>Unequip to bank</td>
+<td>Unequip an item to bank while near a banker; confirm bank slots persisted, equipment slot deleted, and attributes persisted</td>
+</tr>
+<tr>
+<td>Bank remove</td>
+<td>Remove a bank item while near a banker; confirm client receives <code>BankRemoveItemBroadcast</code> back and slot is deleted from database</td>
+</tr>
+<tr>
+<td>Bank swap (same container)</td>
+<td>Swap two bank slots while near a banker; confirm client receives <code>BankSwapItemSlotsBroadcast</code> back and both slots are persisted</td>
+</tr>
+<tr>
+<td>Banker validation failure</td>
+<td>Attempt a bank operation without a valid banker in range; confirm request is silently dropped</td>
+</tr>
+<tr>
+<td>Slot bounds validation</td>
+<td>Send a broadcast with an out-of-bounds slot index; confirm request is silently dropped</td>
+</tr>
+<tr>
+<td>Equipment slot validation</td>
+<td>Send an equip broadcast with an undefined <code>ItemSlot</code> value; confirm request is silently dropped</td>
+</tr>
+<tr>
+<td>Teleporting rejection</td>
+<td>Attempt any inventory operation while character is teleporting; confirm request is silently dropped</td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid consecutive requests from the same connection for the same operation; confirm excess requests are dropped</td>
+</tr>
+<tr>
+<td>Global rate limit</td>
+<td>Send different operations faster than 15 ms apart from the same connection; confirm excess requests are dropped</td>
+</tr>
+<tr>
+<td>Ingress guard sweep</td>
+<td>Wait for sweep interval; confirm stale guard entries are removed without errors</td>
+</tr>
+<tr>
+<td>Cross-container rollback</td>
+<td>Trigger an exception during a cross-container swap (e.g., corrupted container); confirm both containers revert to original state</td>
+</tr>
+<tr>
+<td>Persistence backpressure</td>
+<td>Saturate the async work queue; confirm new persistence tasks are rejected and a warning is logged</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm broadcast handlers are unregistered and ingress guard is cleared</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|inventory ops| Sys[CharacterInventorySystem]
+    Sys --&gt;|validate| Items[Item registry]
+    Sys --&gt;|persist| DB[(PostgreSQL Inventory)]
+    Sys --&gt;|broadcast| Client
+    Sys --&gt;|equip changes| Char[CharacterSystem]
+</code></pre>
+<h3 id="inventory-remove">Inventory Remove</h3>
+<pre><code>OnServerInventoryRemoveItemBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (InventoryRemove)
+├─ 3. Validate character exists + not teleporting
+├─ 4. Resolve IInventoryController
+├─ 5. Validate slot bounds
+├─ 6. RemoveItem(msg.Slot)
+├─ 7. Version++ → TryEnqueueAsyncWork(DeleteInventorySlotAsync)
+└─ 8. Broadcast success to client
+</code></pre>
+<h3 id="inventory-swap-with-cross-container-support">Inventory Swap (with cross-container support)</h3>
+<pre><code>OnServerInventorySwapItemSlotsBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (InventorySwap)
+├─ 3. Validate character + IInventoryController
+│
+├─ FromInventory = Inventory:
+│  ├─ 4a. Validate both slot bounds
+│  ├─ 5a. SwapContainerItems(inventory, from, to)
+│  ├─ 6a. BuildInventoryItemDataList → TryEnqueueAsyncWork(PersistInventoryItemsAsync)
+│  └─ 7a. Broadcast success
+│
+├─ FromInventory = Bank:
+│  ├─ 4b. Resolve IBankController
+│  ├─ 5b. ValidateBankerSceneObject
+│  ├─ 6b. Validate slot bounds
+│  ├─ 7b. SwapContainerItems(bank → inventory)
+│  ├─ 8b. Persist bank items / delete vacated bank slots / persist inventory items
+│  └─ 9b. Broadcast success
+│
+└─ FromInventory = Equipment: no-op
+</code></pre>
+<h3 id="equipment-equip">Equipment Equip</h3>
+<pre><code>OnServerEquipmentEquipItemBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (EquipmentEquip)
+├─ 3. Validate character + IEquipmentController
+├─ 4. Validate ItemSlot enum
+│
+├─ FromInventory = Inventory:
+│  ├─ 5a. Resolve IInventoryController + validate slot + get item
+│  ├─ 6a. equipmentController.Equip(...)
+│  ├─ 7a. Persist swapped-back inventory item OR delete vacated inventory slot
+│  ├─ 8a. Persist equipment slot
+│  ├─ 9a. BuildAttributeDataList → PersistAttributesAsync
+│  └─ 10a. Broadcast success
+│
+├─ FromInventory = Bank:
+│  ├─ 5b. Resolve IBankController + ValidateBankerSceneObject
+│  ├─ 6b. Validate slot + get item
+│  ├─ 7b. equipmentController.Equip(...)
+│  ├─ 8b. Persist swapped-back bank item OR delete vacated bank slot
+│  ├─ 9b. Persist equipment slot
+│  ├─ 10b. BuildAttributeDataList → PersistAttributesAsync
+│  └─ 11b. Broadcast success
+│
+└─ FromInventory = Equipment: returns
+</code></pre>
+<h3 id="equipment-unequip">Equipment Unequip</h3>
+<pre><code>OnServerEquipmentUnequipItemBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (EquipmentUnequip)
+├─ 3. Validate character + IEquipmentController
+├─ 4. Validate ItemSlot enum
+│
+├─ ToInventory = Inventory:
+│  ├─ 5a. Resolve IInventoryController + get equipped item
+│  ├─ 6a. equipmentController.Unequip(inventoryController, ...)
+│  ├─ 7a. Persist modified inventory slots
+│  ├─ 8a. Delete old equipment slot
+│  ├─ 9a. BuildAttributeDataList → PersistAttributesAsync
+│  └─ 10a. Broadcast success
+│
+├─ ToInventory = Bank:
+│  ├─ 5b. Resolve IBankController + ValidateBankerSceneObject
+│  ├─ 6b. Get equipped item
+│  ├─ 7b. equipmentController.Unequip(bankController, ...)
+│  ├─ 8b. Persist modified bank slots
+│  ├─ 9b. Delete old equipment slot
+│  ├─ 10b. BuildAttributeDataList → PersistAttributesAsync
+│  └─ 11b. Broadcast success
+│
+└─ ToInventory = Equipment: no-op
+</code></pre>
+<h3 id="bank-remove">Bank Remove</h3>
+<pre><code>OnServerBankRemoveItemBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (BankRemove)
+├─ 3. Validate character exists + not teleporting
+├─ 4. Resolve IBankController
+├─ 5. ValidateBankerSceneObject
+├─ 6. Validate slot bounds
+├─ 7. RemoveItem(msg.Slot)
+├─ 8. Version++ → TryEnqueueAsyncWork(DeleteBankSlotAsync)
+└─ 9. Broadcast success to client
+</code></pre>
+<h3 id="bank-swap-with-cross-container-support">Bank Swap (with cross-container support)</h3>
+<pre><code>OnServerBankSwapItemSlotsBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (BankSwap)
+├─ 3. Validate character + IBankController
+├─ 4. ValidateBankerSceneObject
+│
+├─ FromInventory = Inventory:
+│  ├─ 5a. Resolve IInventoryController + validate both slot bounds
+│  ├─ 6a. SwapContainerItems(inventory → bank)
+│  ├─ 7a. Persist inventory items / delete vacated inventory slots / persist bank items
+│  └─ 8a. Broadcast success
+│
+├─ FromInventory = Bank:
+│  ├─ 5b. Validate both slot bounds
+│  ├─ 6b. SwapContainerItems(bank, from, to)
+│  ├─ 7b. BuildBankItemDataList → TryEnqueueAsyncWork(PersistBankItemsAsync)
+│  └─ 8b. Broadcast success
+│
+└─ FromInventory = Equipment: no-op
+</code></pre>
+<h3 id="ingress-guard-sweep-onupdate">Ingress Guard Sweep (OnUpdate)</h3>
+<pre><code>OnUpdate(deltaTime)
+│
+└─ Resolve ICharacterInventorySystemRuntimeData
+   └─ IngressGuard.Sweep(ingressSweepIntervalSeconds, ingressEntryTtlSeconds, ingressSweepMaxRemovals)
+</code></pre>
+<h3 id="cross-container-swap-internal">Cross-Container Swap (internal)</h3>
+<pre><code>SwapContainerItems(from, to, fromIndex, toIndex)
+│
+├─ Same container? → SwapItemSlots(fromIndex, toIndex)
+│
+├─ Get source item from 'from' container
+│  ├─ Destination occupied:
+│  │  ├─ Move destination item back → from.SetItemSlot(toItem, fromIndex)
+│  │  └─ Track as affectedFromItem
+│  └─ Destination empty:
+│     ├─ Clear source → from.SetItemSlot(null, fromIndex)
+│     └─ Track as deletedFromSlot
+│
+├─ Place source item in destination → to.SetItemSlot(fromItem, toIndex)
+│  └─ Track as affectedToItem
+│
+└─ On exception → rollback both containers to original state
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>CharacterInventory/
+├── CharacterInventorySystem.cs              # SceneServer implementation: broadcast handlers, validation,
+│                                            #   container mutations, DTO building, async persistence orchestration
+├── CharacterInventorySystemRuntimeData.cs   # Runtime data container for ingress guard state
+└── README.md
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/CharacterInventory/ICharacterInventorySystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/CharacterInventory/ICharacterInventorySystemRuntimeData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── CharacterInventorySystem : ICharacterInventorySystem
+
+RuntimeDataContainer
+└── CharacterInventorySystemRuntimeData : ICharacterInventorySystemRuntimeData
+</code></pre>
+<h3 id="dto-types-used">DTO Types Used</h3>
+<pre><code>CharacterInventoryData   ← inventory item persistence
+CharacterBankData        ← bank item persistence
+CharacterEquipmentData   ← equipment item persistence
+CharacterAttributeData   ← character attribute persistence
+</code></pre>
+<h3 id="database-services">Database Services</h3>
+<pre><code>ICharacterInventoryService   ← PersistAsync / DeleteAsync for inventory slots
+ICharacterBankService        ← PersistAsync / DeleteAsync for bank slots
+ICharacterEquipmentService   ← PersistAsync / DeleteAsync for equipment slots
+ICharacterAttributeService   ← PersistAsync for character attributes
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/CharacterInventory/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

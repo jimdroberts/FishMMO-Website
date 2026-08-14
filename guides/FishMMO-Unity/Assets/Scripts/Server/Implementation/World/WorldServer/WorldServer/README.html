@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>World Server System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="World Server System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/WorldServer/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="world-server-system">World Server System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/WorldServer/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> WorldServer subsystem responsible for registering the running world server instance in the database and maintaining its liveness and population state through periodic heartbeat pulses.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The WorldServer system is responsible for registering the running world server instance in the database and keeping its liveness/population state up to date through periodic heartbeat pulses. It persists world endpoint metadata (name, address, port), tracks server identity (<code>ServerId</code>) in runtime data, and sends pulse updates with current character counts gathered from world-scene mapping.</p>
+<p>The implementation uses a split execution model:</p>
+<ul>
+<li><strong>Main thread / periodic callback:</strong> dependency validation, registration call orchestration, pulse scheduling, and connection count reads from <code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code>.</li>
+<li><strong>Async worker:</strong> non-blocking database pulse updates dispatched via <code>TryEnqueueAsyncWork</code> onto <code>AsyncWorkerData</code>.</li>
+<li><strong>Startup registration:</strong> executed through <code>Task.Run(...).GetAwaiter().GetResult()</code> to avoid deadlocking Unity's synchronization context while guaranteeing registration completes before startup continues.</li>
+</ul>
+<p>This separation avoids blocking frame/update loops during normal operation while still guaranteeing deterministic registration at startup.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>World server registration in the database on startup with endpoint metadata (name, address, port) and initial character count</li>
+<li>Periodic heartbeat (pulse) updates to the database with live character count from <code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code></li>
+<li>Configurable pulse interval via inspector field <code>PulseRate</code> (default 5 seconds)</li>
+<li>Runtime data container (<code>WorldServerSystemRuntimeData</code>) storing mutable server ID and admission lock state independently from system logic</li>
+<li>Async worker integration for non-blocking database writes during pulse cycles</li>
+<li>Orderly shutdown cleanup that deletes the world server DB row with a 5-second timeout, preventing ghost records</li>
+<li><code>CreateAssetMenu</code> support for ScriptableObject-based instantiation (<code>FishMMO/Server/WorldServer/World Server System</code>)</li>
+<li>Explicit dependency validation at initialization for <code>Server</code>, <code>Database.ServiceRegistry</code>, <code>IWorldServerService</code>, <code>ServerName</code> config, and <code>IWorldSceneSystem</code></li>
+<li>Admission lock flag (<code>IsLocked</code>) persisted with each registration, usable by world authentication gates</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Unity 6.3 LTS (or later)</li>
+<li>FishNet networking framework</li>
+<li>FishMMO Server Core assemblies (<code>FishMMO.Server.Core</code>)</li>
+<li>FishMMO Database layer with Npgsql services (<code>FishMMO.Database</code>, <code>FishMMO.Database.Npgsql</code>)</li>
+<li>A running PostgreSQL instance with the FishMMO schema (world server table)</li>
+<li><code>IWorldServerService</code> registered in the database service registry</li>
+<li><code>IWorldSceneSystem</code> registered in the server behaviour registry</li>
+<li><code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code> registered in the data container registry</li>
+<li><code>IPeriodicUpdateSystem</code> implemented by the server (for heartbeat scheduling)</li>
+<li><code>AsyncWorkerData</code> data container available for async work dispatch</li>
+<li><code>ServerName</code> configured in the server configuration</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO project. No separate installation is required.</p>
+<ol>
+<li>Ensure the FishMMO Unity project is set up with all server-side assemblies.</li>
+<li>The <code>WorldServerSystem</code> ScriptableObject can be created via the Unity menu: <strong>Assets → Create → FishMMO → Server → WorldServer → World Server System</strong>.</li>
+<li>Attach the created asset to the server's behaviour registry so it is initialized during server startup.</li>
+<li>Ensure <code>WorldServerSystemRuntimeData</code> is registered as a data container (enforced by the <code>[RequiresDataContainer]</code> attribute).</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="minimal-server-setup">Minimal Server Setup</h3>
+<ol>
+<li>Create a <code>WorldServerSystem</code> ScriptableObject asset from the Unity menu.</li>
+<li>Configure <code>ServerName</code> in the server configuration file or provider.</li>
+<li>Set the <code>PulseRate</code> field in the inspector (default: <code>5.0</code> seconds).</li>
+<li>Ensure the database connection string points to a valid PostgreSQL instance with the FishMMO schema.</li>
+<li>Start the world server — <code>InitializeOnce()</code> will register the server in the database and begin periodic heartbeat pulses.</li>
+</ol>
+<h3 id="verifying-registration">Verifying Registration</h3>
+<ol>
+<li>Start the world server and check the console for <code>Initialized (PulseRate=5s)</code>.</li>
+<li>Query the world server table in the database to confirm a row exists with the expected name, address, and port.</li>
+<li>Wait one pulse interval and verify the <code>LastPulse</code> or character count column is updating.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Source</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pulseRate</code></td>
+<td><code>float</code></td>
+<td><code>5.0f</code></td>
+<td><code>[SerializeField]</code> inspector</td>
+<td>Interval in seconds between heartbeat pulses to the database</td>
+</tr>
+<tr>
+<td><code>ServerName</code></td>
+<td><code>string</code></td>
+<td><em>(required)</em></td>
+<td><code>IServerConfiguration</code></td>
+<td>Human-readable name persisted with the world server record</td>
+</tr>
+<tr>
+<td>Server address/port</td>
+<td><code>string</code> / <code>ushort</code></td>
+<td><em>(auto-resolved)</em></td>
+<td><code>IServerAddressProvider</code></td>
+<td>Public endpoint metadata stored in the database</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runtime-data-properties">Runtime Data Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ID</code></td>
+<td><code>long</code></td>
+<td><code>0</code></td>
+<td>Database identifier for this world server instance, set after registration</td>
+</tr>
+<tr>
+<td><code>IsLocked</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Admission lock flag used by world authentication gates to reject new connections</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="programmatic-registration">Programmatic Registration</h3>
+<pre><code class="lang-csharp">// WorldServerSystem.Register is called automatically during InitializeOnce(),
+// but can also be invoked directly through the IWorldServerSystem interface:
+if (server.BehaviourRegistry.TryGet(out IWorldServerSystem worldServer))
+{
+    worldServer.Register(&quot;192.168.1.100&quot;, 7770, 0);
+}
+</code></pre>
+<h3 id="manual-pulse-trigger">Manual Pulse Trigger</h3>
+<pre><code class="lang-csharp">// Pulses are sent automatically on the periodic callback, but can be triggered manually:
+if (server.BehaviourRegistry.TryGet(out IWorldServerSystem worldServer))
+{
+    int currentPlayers = GetCurrentCharacterCount();
+    worldServer.Pulse(currentPlayers);
+}
+</code></pre>
+<h3 id="checking-runtime-state">Checking Runtime State</h3>
+<pre><code class="lang-csharp">if (server.DataContainerRegistry.TryGet(out IWorldServerSystemRuntimeData runtimeData))
+{
+    long serverId = runtimeData.ID;       // Database ID assigned after registration
+    bool locked = runtimeData.IsLocked;   // Admission lock state
+}
+</code></pre>
+<h3 id="locking-the-server">Locking the Server</h3>
+<pre><code class="lang-csharp">// Set the lock flag before the next registration or pulse persists it:
+if (server.DataContainerRegistry.TryGet(out IWorldServerSystemRuntimeData runtimeData))
+{
+    runtimeData.IsLocked = true;
+}
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Method</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server registered in DB</td>
+<td>Query world server table after startup</td>
+<td>Row exists with correct name, address, port</td>
+</tr>
+<tr>
+<td>Heartbeat updating</td>
+<td>Query world server table after one <code>PulseRate</code> interval</td>
+<td>Character count and/or timestamp updated</td>
+</tr>
+<tr>
+<td>Console initialization log</td>
+<td>Check server console output</td>
+<td><code>Initialized (PulseRate=5s)</code> message present</td>
+</tr>
+<tr>
+<td>Shutdown cleanup</td>
+<td>Stop server and query world server table</td>
+<td>Row deleted within 5 seconds</td>
+</tr>
+<tr>
+<td>Missing <code>ServerName</code> config</td>
+<td>Omit <code>ServerName</code> from configuration</td>
+<td><code>InitializeOnce</code> returns <code>FailedToFindRequiredDependency</code></td>
+</tr>
+<tr>
+<td>Missing <code>IWorldServerService</code></td>
+<td>Remove service from DB registry</td>
+<td><code>InitializeOnce</code> returns <code>FailedToGetDbContext</code></td>
+</tr>
+<tr>
+<td>Pulse backpressure</td>
+<td>Flood async worker queue</td>
+<td>Warning log: <code>Failed to enqueue world server pulse work item.</code></td>
+</tr>
+<tr>
+<td>Runtime data reset on shutdown</td>
+<td>Inspect <code>IWorldServerSystemRuntimeData.ID</code> after stop</td>
+<td>Value is <code>0</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Login[LoginServer] --&gt;|client hand-off| World[WorldServerSystem]
+    World --&gt; Auth[WorldServer.Authentication]
+    World --&gt; WS[WorldScene routing]
+    WS --&gt; Scenes[SceneServer pool]
+    Scenes --&gt;|state sync| World
+    World --&gt; Login
+</code></pre>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                        SERVER STARTUP                               │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+                 ┌─────────────────────────────┐
+                 │     InitializeOnce()         │
+                 │  1. Validate Server, DB,     │
+                 │     IWorldServerService,     │
+                 │     ServerName config        │
+                 │  2. Resolve address/port     │
+                 │     via AddressProvider      │
+                 │  3. Read initial connection  │
+                 │     count from scene mapping │
+                 │  4. Call Register(...)        │
+                 │  5. Register periodic pulse  │
+                 │     callback (PulseRate)     │
+                 └──────────────┬──────────────┘
+                                │
+                ┌───────────────┴───────────────┐
+                │                               │
+                ▼                               ▼
+  ┌───────────────────────┐      ┌──────────────────────────────┐
+  │   Register(addr,      │      │ IPeriodicUpdateSystem        │
+  │         port, count)  │      │ registers OnPeriodicPulse    │
+  │                       │      │ at PulseRate interval        │
+  │  Task.Run → DB        │      └──────────────┬───────────────┘
+  │  PersistAsync(...)    │                      │
+  │  → runtimeData.ID =  │                      │  every PulseRate seconds
+  │    result.ServerId    │                      ▼
+  └───────────────────────┘      ┌──────────────────────────────┐
+                                 │   OnPeriodicPulse(deltaTime) │
+                                 │  1. Guard: Initialized,      │
+                                 │     Started, Server != null  │
+                                 │  2. Read ConnectionCount     │
+                                 │     from scene mapping data  │
+                                 │  3. Call Pulse(count)         │
+                                 └──────────────┬───────────────┘
+                                                │
+                                                ▼
+                                 ┌──────────────────────────────┐
+                                 │   Pulse(characterCount)      │
+                                 │  TryEnqueueAsyncWork(        │
+                                 │    PulseAsync(serverId,      │
+                                 │              count))         │
+                                 └──────────────┬───────────────┘
+                                                │
+                                                ▼
+                                 ┌──────────────────────────────┐
+                                 │  AsyncWorkerData (bg thread) │
+                                 │  PulseAsync(serverId, count) │
+                                 │  → IWorldServerService       │
+                                 │    .PulseAsync(id, count)    │
+                                 └──────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                       SERVER SHUTDOWN                                │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+                 ┌─────────────────────────────┐
+                 │      OnDeinitialize()        │
+                 │  1. Unregister periodic      │
+                 │     pulse callback           │
+                 │  2. Delete world server DB   │
+                 │     row (5s timeout)         │
+                 │  3. Reset runtimeData.ID = 0 │
+                 └─────────────────────────────┘
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>WorldServer/WorldServer/
+├── WorldServerSystem.cs              # World server registration + heartbeat orchestration
+├── WorldServerSystemRuntimeData.cs   # Runtime world server ID + lock state container
+└── README.md                         # This file
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<pre><code>Server/Core/World/WorldServer/WorldServer/
+├── IWorldServerSystem.cs             # Core-facing interface: Register(), Pulse()
+└── IWorldServerSystemRuntimeData.cs  # Core-facing interface: ID, IsLocked
+</code></pre>
+<h3 id="related-data-containers">Related Data Containers</h3>
+<pre><code>Server/Core/RuntimeData/
+└── IAsyncWorkerData.cs               # Async worker queue for background DB operations
+</code></pre>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<p><strong>Behaviour</strong></p>
+<pre><code>ServerBehaviour
+└── WorldServerSystem : IWorldServerSystem
+</code></pre>
+<p><strong>Runtime Data</strong></p>
+<pre><code>RuntimeDataContainer
+└── WorldServerSystemRuntimeData : IWorldServerSystemRuntimeData
+</code></pre>
+<h3 id="external-integration-points">External Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Interface</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Address Provider</td>
+<td><code>IServerAddressProvider</code></td>
+<td>Resolves public endpoint for registration</td>
+</tr>
+<tr>
+<td>Configuration</td>
+<td><code>IServerConfiguration</code></td>
+<td>Supplies <code>ServerName</code></td>
+</tr>
+<tr>
+<td>World Scene Mapping</td>
+<td><code>IWorldSceneMappingData&lt;NetworkConnection&gt;</code></td>
+<td>Supplies live character count via <code>ConnectionCount</code></td>
+</tr>
+<tr>
+<td>World Server Service</td>
+<td><code>IWorldServerService</code></td>
+<td>Persists world record, pulse updates, and deletion</td>
+</tr>
+<tr>
+<td>Periodic Update System</td>
+<td><code>IPeriodicUpdateSystem</code></td>
+<td>Drives pulse cadence at <code>PulseRate</code> interval</td>
+</tr>
+<tr>
+<td>Async Worker Data</td>
+<td><code>AsyncWorkerData</code></td>
+<td>Executes pulse DB writes asynchronously with bounded queueing</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/WorldServer/WorldServer/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

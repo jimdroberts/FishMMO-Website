@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Guild System | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Guild System | FishMMO ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="guild-system">Guild System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> SceneServer social subsystem for guild lifecycle and membership management, handling guild creation, invitations, acceptance/decline, member leave/remove, rank changes, achievement tracking, and periodic cross-server guild membership synchronization with asynchronous database persistence.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Guild system is the SceneServer social subsystem for guild lifecycle and membership management. It handles guild creation, invitations, invite acceptance/decline, member leave/remove flows, rank changes, and periodic guild membership synchronization across servers.</p>
+<p>The subsystem uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> validation, in-memory controller state changes, tracker updates, achievement increments, and network broadcasts.</li>
+<li><strong>Async worker:</strong> database reads/writes and cross-server guild update markers via <code>TryEnqueueAsyncWork</code>.</li>
+<li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe execution via <code>IGuildSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>All mutating guild flows trigger guild-update persistence so other servers can reconcile member lists. Pending invitations are stored in a <code>LastSeenCacheTracker</code> with configurable TTL and bounded periodic sweeps. Per-connection ingress guards use debounce + in-flight semantics keyed by connection and operation type, with guard release deferred until async completion on async-backed handlers (<code>Create</code>, <code>Invite</code>, <code>AcceptInvite</code>, <code>Leave</code>, <code>Remove</code>, <code>ChangeRank</code>).</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.3 LTS</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Guild creation with name validation (<code>Authentication.IsAllowedGuildName</code>), uniqueness checks, and async database persistence</li>
+<li>Guild invitation flow: leader/officer sends invite, target receives pending invite tracked with TTL-based expiration</li>
+<li>Invite acceptance with guild capacity verification, membership persistence, and guild-update marker propagation</li>
+<li>Invite decline clears the pending invitation immediately</li>
+<li>Guild leave with automatic leadership transfer (random officer, then random member) or guild deletion when no members remain</li>
+<li>Guild member removal by officers/leaders with rank-based permission checks (cannot remove equal or higher rank)</li>
+<li>Guild rank changes (leader-only, assignable range: Member or Officer)</li>
+<li>Periodic guild update synchronization pump: fetches update rows from database, computes removed members, broadcasts leave/add to local members</li>
+<li>Per-guild online character tracking (<code>GuildCharacterTracker</code>) and cached member tracking (<code>GuildMemberTracker</code>) with automatic cleanup when no local members remain</li>
+<li>Chat command integration (<code>/gi</code>, <code>/ginvite</code>) for in-game guild invitations by character name</li>
+<li>Achievement integration for guild creation (<code>GuildCreateAchievementTemplate</code>) and guild joining (<code>GuildJoinAchievementTemplate</code>)</li>
+<li>Per-connection ingress debounce and in-flight guards to prevent overlapping requests</li>
+<li>Bounded TTL sweep for pending invitation expiration</li>
+<li>Bounded periodic sweep for stale ingress guard entries</li>
+<li>Async DB tasks queued through <code>TryEnqueueAsyncWork</code> with backpressure (rejects when queue unavailable/full, logs warning)</li>
+<li>Entity-keyed ordering for per-character/per-guild sequencing on async work</li>
+<li>Optimistic concurrency via version-based sequencing on guild member persistence</li>
+<li>Character connect/disconnect hooks that persist guild member location (&quot;Offline&quot; on disconnect) and trigger guild-update markers</li>
+<li>Graceful failure semantics: invalid requests ignored safely, permission/rank/capacity checks fail closed, async failures logged without blocking main thread, main-thread completion paths revalidate connection/object/controller state</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IGuildSystem</code>, <code>IGuildSystemRuntimeData</code>, <code>IGuildSystemMainThreadQueueData</code>, <code>IGuildCharacterMappingData</code>, broadcast types (<code>GuildCreateBroadcast</code>, <code>GuildInviteBroadcast</code>, <code>GuildAcceptInviteBroadcast</code>, <code>GuildDeclineInviteBroadcast</code>, <code>GuildLeaveBroadcast</code>, <code>GuildRemoveBroadcast</code>, <code>GuildChangeRankBroadcast</code>, <code>GuildAddBroadcast</code>, <code>GuildAddMultipleBroadcast</code>, <code>GuildResultBroadcast</code>), <code>AsyncWorkerData</code>, <code>IngressGuard</code>, <code>MainThreadQueueHelper</code>, and <code>ChatHelper</code></li>
+<li><strong>FishMMO Database</strong> — provides <code>IGuildService</code>, <code>ICharacterGuildService</code>, <code>IGuildUpdateService</code>, and <code>DatabaseResult&lt;T&gt;</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>GuildSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>IGuildSystem&lt;NetworkConnection&gt;</code>). The ScriptableObject is created via <code>Create &gt; FishMMO &gt; Server &gt; SceneServer &gt; Guild System</code>.</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>GuildSystemRuntimeData</code> → <code>IGuildSystemRuntimeData</code></li>
+<li><code>GuildCharacterMappingData</code> → <code>IGuildCharacterMappingData</code></li>
+<li><code>GuildSystemMainThreadQueueData</code> → <code>IGuildSystemMainThreadQueueData</code></li>
+<li><code>AsyncWorkerData</code> (shared async work queue)</li>
+</ul>
+</li>
+<li>On initialize, <code>GuildSystem</code> validates all data containers, registers chat commands (<code>/gi</code>, <code>/ginvite</code>), registers broadcast handlers, subscribes to character connect/disconnect hooks, and registers the periodic guild update callback.</li>
+<li>On deinitialize, it drains the remaining main-thread queue, unregisters broadcast handlers, unsubscribes character hooks, and unregisters the periodic callback.</li>
+<li>Clients send guild broadcasts (<code>GuildCreateBroadcast</code>, <code>GuildInviteBroadcast</code>, etc.); the server validates, performs async DB work, and replies with result broadcasts. Other servers pick up changes via the periodic guild update synchronization pump.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>int</td>
+<td>100</td>
+<td>Max guild-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>maxGuildSize</code></td>
+<td>int</td>
+<td>100</td>
+<td>Maximum number of members allowed per guild</td>
+</tr>
+<tr>
+<td><code>updatePumpRate</code></td>
+<td>float</td>
+<td>1.0</td>
+<td>Periodic guild update polling interval in seconds</td>
+</tr>
+<tr>
+<td><code>invitationTtlSeconds</code></td>
+<td>float</td>
+<td>45.0</td>
+<td>Invitation lifetime in seconds before automatic expiration</td>
+</tr>
+<tr>
+<td><code>invitationSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>1.0</td>
+<td>Seconds between bounded invitation cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>invitationSweepMaxScan</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum invitation entries scanned per cleanup sweep</td>
+</tr>
+<tr>
+<td><code>invitationSweepMaxRemove</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum invitation entries removed per cleanup sweep</td>
+</tr>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td>int</td>
+<td>100</td>
+<td>Minimum milliseconds between guild requests per connection and operation</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>Seconds between bounded ingress guard cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Seconds before stale ingress guard entries are removed</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum stale ingress guard entries removed per sweep</td>
+</tr>
+<tr>
+<td><code>GuildCreateAchievementTemplate</code></td>
+<td>AchievementTemplate</td>
+<td>—</td>
+<td>Achievement to increment when a player creates a guild</td>
+</tr>
+<tr>
+<td><code>GuildJoinAchievementTemplate</code></td>
+<td>AchievementTemplate</td>
+<td>—</td>
+<td>Achievement to increment when a player joins a guild</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ingress-operations">Ingress Operations</h3>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Key</th>
+<th>Guard Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Create</td>
+<td>1</td>
+<td>Debounce + in-flight, deferred release on async completion</td>
+</tr>
+<tr>
+<td>Invite</td>
+<td>2</td>
+<td>Debounce + in-flight, deferred release on async completion</td>
+</tr>
+<tr>
+<td>AcceptInvite</td>
+<td>3</td>
+<td>Debounce + in-flight, deferred release on async completion</td>
+</tr>
+<tr>
+<td>DeclineInvite</td>
+<td>4</td>
+<td>Debounce only, immediate release</td>
+</tr>
+<tr>
+<td>Leave</td>
+<td>5</td>
+<td>Debounce + in-flight, deferred release on async completion</td>
+</tr>
+<tr>
+<td>Remove</td>
+<td>6</td>
+<td>Debounce + in-flight, deferred release on async completion</td>
+</tr>
+<tr>
+<td>ChangeRank</td>
+<td>7</td>
+<td>Debounce + in-flight, deferred release on async completion</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, ingress guard checks, in-memory controller state changes, tracker updates, achievement increments, network broadcasts, queue drain, invitation sweep, ingress sweep</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Database reads/writes (<code>CreateGuildAsync</code>, <code>InviteToGuildAsync</code>, <code>AcceptGuildInviteAsync</code>, <code>LeaveGuildAsync</code>, <code>RemoveGuildMemberAsync</code>, <code>ChangeGuildRankAsync</code>, <code>PersistGuildMemberAsync</code>, <code>FetchAndProcessGuildUpdatesAsync</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="chat-commands">Chat Commands</h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/gi &lt;name&gt;</code></td>
+<td><code>OnGuildInvite</code></td>
+<td>Invite a character by name to the sender's guild</td>
+</tr>
+<tr>
+<td><code>/ginvite &lt;name&gt;</code></td>
+<td><code>OnGuildInvite</code></td>
+<td>Alias for <code>/gi</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="broadcast-handlers">Broadcast Handlers</h3>
+<p><code>GuildSystem</code> registers the following server-side broadcast handlers on initialize:</p>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GuildCreateBroadcast</code></td>
+<td><code>OnServerGuildCreateBroadcastReceived</code></td>
+<td>Create a new guild</td>
+</tr>
+<tr>
+<td><code>GuildInviteBroadcast</code></td>
+<td><code>OnServerGuildInviteBroadcastReceived</code></td>
+<td>Invite a character to a guild</td>
+</tr>
+<tr>
+<td><code>GuildAcceptInviteBroadcast</code></td>
+<td><code>OnServerGuildAcceptInviteBroadcastReceived</code></td>
+<td>Accept a pending guild invitation</td>
+</tr>
+<tr>
+<td><code>GuildDeclineInviteBroadcast</code></td>
+<td><code>OnServerGuildDeclineInviteBroadcastReceived</code></td>
+<td>Decline a pending guild invitation</td>
+</tr>
+<tr>
+<td><code>GuildLeaveBroadcast</code></td>
+<td><code>OnServerGuildLeaveBroadcastReceived</code></td>
+<td>Leave current guild</td>
+</tr>
+<tr>
+<td><code>GuildRemoveBroadcast</code></td>
+<td><code>OnServerGuildRemoveBroadcastReceived</code></td>
+<td>Remove a member from a guild</td>
+</tr>
+<tr>
+<td><code>GuildChangeRankBroadcast</code></td>
+<td><code>OnServerGuildChangeRankBroadcastReceived</code></td>
+<td>Change a guild member's rank</td>
+</tr>
+</tbody>
+</table>
+<h3 id="create-guild-path">Create Guild Path</h3>
+<p><code>OnServerGuildCreateBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection and spawned player object.</li>
+<li>Acquires ingress guard (Create).</li>
+<li>Validates character is not already in a guild; sends <code>GuildResultType.AlreadyInGuild</code> if so.</li>
+<li>Trims and validates guild name via <code>Authentication.IsAllowedGuildName</code>; sends <code>GuildResultType.InvalidGuildName</code> if invalid.</li>
+<li>Enqueues async work: <code>CreateGuildAsync</code>.
+<ul>
+<li>Checks guild name uniqueness via <code>IGuildService.ExistsAsync</code>; sends <code>GuildResultType.NameAlreadyExists</code> if taken.</li>
+<li>Creates guild via <code>IGuildService.PersistAsync</code> (returns new guild ID).</li>
+<li>Persists creator as leader via <code>ICharacterGuildService.PersistAsync</code>.</li>
+<li>Marshals to main thread: sets controller ID/Rank, adds tracker, broadcasts <code>GuildAddBroadcast</code>, increments <code>GuildCreateAchievementTemplate</code>.</li>
+</ul>
+</li>
+</ol>
+<h3 id="invite--accept--decline-path">Invite / Accept / Decline Path</h3>
+<p><strong>Invite:</strong> <code>OnServerGuildInviteBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates inviter is leader or officer, not self-inviting.</li>
+<li>Enqueues async work: <code>InviteToGuildAsync</code>.
+<ul>
+<li>Checks guild capacity via <code>ICharacterGuildService.CountAsync</code>.</li>
+<li>Marshals to main thread: adds pending invitation (<code>TryAddPendingInvitation</code>), validates target not in a guild, sends <code>GuildInviteBroadcast</code> to target.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Accept:</strong> <code>OnServerGuildAcceptInviteBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates character not already in a guild.</li>
+<li>Validates pending invitation exists via <code>TryGetPendingInvitation</code>.</li>
+<li>Enqueues async work: <code>AcceptGuildInviteAsync</code>.
+<ul>
+<li>Re-checks guild capacity.</li>
+<li>Persists membership as <code>GuildRank.Member</code>.</li>
+<li>Triggers guild-update marker via <code>IGuildUpdateService.PersistAsync</code>.</li>
+<li>Marshals to main thread: sets controller, removes pending invitation, adds tracker, broadcasts <code>GuildAddBroadcast</code>, increments <code>GuildJoinAchievementTemplate</code>.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Decline:</strong> <code>OnServerGuildDeclineInviteBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection and character; removes pending invitation immediately.</li>
+</ol>
+<h3 id="leave--remove--rank-change-path">Leave / Remove / Rank Change Path</h3>
+<p><strong>Leave:</strong> <code>OnServerGuildLeaveBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates character is in a guild.</li>
+<li>Enqueues async work: <code>LeaveGuildAsync</code>.
+<ul>
+<li>Fetches current members for leadership transfer.</li>
+<li>If leader and remaining members exist: transfers leadership to a random officer (or random member if no officers).</li>
+<li>Deletes leaving member via <code>ICharacterGuildService.DeleteAsync</code>.</li>
+<li>If no remaining members: deletes guild (<code>IGuildService.DeleteAsync</code>) and update marker.</li>
+<li>Otherwise: triggers guild-update marker.</li>
+<li>Marshals to main thread: resets controller, removes tracker, broadcasts <code>GuildLeaveBroadcast</code>.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Remove:</strong> <code>OnServerGuildRemoveBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates requester is officer or leader, target is not self.</li>
+<li>Enqueues async work: <code>RemoveGuildMemberAsync</code>.
+<ul>
+<li>Fetches target member, verifies same guild.</li>
+<li>Rank permission check: cannot remove equal or higher rank.</li>
+<li>Deletes target member.</li>
+<li>Triggers guild-update marker.</li>
+<li>Marshals to main thread: removes tracker for removed member.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Rank Change:</strong> <code>OnServerGuildChangeRankBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates requester is leader, target is not self.</li>
+<li>Validates new rank is within assignable range (Member or Officer).</li>
+<li>Enqueues async work: <code>ChangeGuildRankAsync</code>.
+<ul>
+<li>Fetches member version for optimistic concurrency.</li>
+<li>Updates rank via <code>ICharacterGuildService.UpdateRankAsync</code>.</li>
+<li>Triggers guild-update marker on success.</li>
+</ul>
+</li>
+</ol>
+<h3 id="periodic-synchronization-pump">Periodic Synchronization Pump</h3>
+<p><code>OnPeriodicUpdate(deltaTime)</code>:</p>
+<ol>
+<li>Guards against re-entrance via <code>TryBeginUpdatePump</code>.</li>
+<li>Snapshots tracked guild IDs and last fetch time on main thread.</li>
+<li>Enqueues async work: <code>FetchAndProcessGuildUpdatesAsync</code>.
+<ul>
+<li>Fetches guild update rows since <code>lastFetch</code> via <code>IGuildUpdateService.FetchAsync</code>.</li>
+<li>For each updated guild, fetches current member rows via <code>ICharacterGuildService.FetchManyAsync</code>.</li>
+<li>Marshals to main thread:
+<ul>
+<li>Updates <code>LastFetchTime</code> to <code>DateTime.UtcNow</code>.</li>
+<li>Computes removed members (in previous cache but not in current) and sends <code>GuildLeaveBroadcast</code> where applicable.</li>
+<li>Refreshes <code>GuildMemberTracker</code> cache.</li>
+<li>Broadcasts <code>GuildAddMultipleBroadcast</code> (full member snapshots) to all local online guild members.</li>
+<li>Updates server-side <code>IGuildController.Rank</code> for each member with latest DB value.</li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Null/invalid requests return early (silent no-op).</li>
+<li>Permission/rank/guild-capacity checks fail closed.</li>
+<li>Async failures are logged and do not block main thread.</li>
+<li>Main-thread completion paths revalidate connection/object/controller state before mutating or broadcasting.</li>
+<li><code>TryEnqueueAsyncWork</code> returns <code>false</code> when the queue is unavailable or full; a warning is logged.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>GuildSystem</code> logs &quot;Initialized (MaxGuildSize=100, UpdatePumpRate=1s)&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>IGuildSystemRuntimeData</code>, <code>IGuildCharacterMappingData</code>, and <code>IGuildSystemMainThreadQueueData</code> all resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Guild creation</td>
+<td>Send <code>GuildCreateBroadcast</code> with a valid name; confirm <code>GuildAddBroadcast</code> reply with leader rank and new guild ID</td>
+</tr>
+<tr>
+<td>Duplicate guild name</td>
+<td>Send <code>GuildCreateBroadcast</code> with an existing name; confirm <code>GuildResultType.NameAlreadyExists</code> response</td>
+</tr>
+<tr>
+<td>Invalid guild name</td>
+<td>Send <code>GuildCreateBroadcast</code> with whitespace or forbidden characters; confirm <code>GuildResultType.InvalidGuildName</code> response</td>
+</tr>
+<tr>
+<td>Already in guild</td>
+<td>Send <code>GuildCreateBroadcast</code> while already in a guild; confirm <code>GuildResultType.AlreadyInGuild</code> response</td>
+</tr>
+<tr>
+<td>Guild invite (chat)</td>
+<td>Type <code>/gi &lt;name&gt;</code> or <code>/ginvite &lt;name&gt;</code> in chat; confirm <code>GuildInviteBroadcast</code> sent to target</td>
+</tr>
+<tr>
+<td>Guild invite (broadcast)</td>
+<td>Send <code>GuildInviteBroadcast</code> as leader/officer; confirm target receives the invitation</td>
+</tr>
+<tr>
+<td>Invite capacity check</td>
+<td>Fill guild to <code>maxGuildSize</code>; confirm subsequent invites are silently rejected</td>
+</tr>
+<tr>
+<td>Accept invite</td>
+<td>Send <code>GuildAcceptInviteBroadcast</code> after receiving an invite; confirm <code>GuildAddBroadcast</code> reply with member rank</td>
+</tr>
+<tr>
+<td>Decline invite</td>
+<td>Send <code>GuildDeclineInviteBroadcast</code>; confirm pending invitation is removed</td>
+</tr>
+<tr>
+<td>Invitation TTL expiry</td>
+<td>Wait past <code>invitationTtlSeconds</code> without accepting; confirm invitation is swept and accept fails</td>
+</tr>
+<tr>
+<td>Guild leave (member)</td>
+<td>Send <code>GuildLeaveBroadcast</code> as member; confirm <code>GuildLeaveBroadcast</code> reply and controller reset</td>
+</tr>
+<tr>
+<td>Guild leave (leader transfer)</td>
+<td>Send <code>GuildLeaveBroadcast</code> as leader with remaining members; confirm leadership transferred to random officer or member</td>
+</tr>
+<tr>
+<td>Guild leave (last member)</td>
+<td>Send <code>GuildLeaveBroadcast</code> as sole member; confirm guild is deleted</td>
+</tr>
+<tr>
+<td>Guild remove</td>
+<td>Send <code>GuildRemoveBroadcast</code> as officer/leader targeting a lower-rank member; confirm member is removed and guild-update marker triggered</td>
+</tr>
+<tr>
+<td>Remove rank constraint</td>
+<td>Send <code>GuildRemoveBroadcast</code> targeting an equal or higher rank; confirm request is silently rejected</td>
+</tr>
+<tr>
+<td>Rank change</td>
+<td>Send <code>GuildChangeRankBroadcast</code> as leader; confirm target rank updated and guild-update marker triggered</td>
+</tr>
+<tr>
+<td>Rank change self-protection</td>
+<td>Send <code>GuildChangeRankBroadcast</code> targeting self; confirm request is silently rejected</td>
+</tr>
+<tr>
+<td>Periodic sync pump</td>
+<td>Confirm guild updates are fetched at <code>updatePumpRate</code> interval and local members receive <code>GuildAddMultipleBroadcast</code></td>
+</tr>
+<tr>
+<td>Removed member sync</td>
+<td>Remove a member on another server; confirm sync pump detects removal and sends <code>GuildLeaveBroadcast</code> to the removed member locally</td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid consecutive guild requests from the same connection; confirm excess requests are dropped</td>
+</tr>
+<tr>
+<td>Ingress in-flight guard</td>
+<td>Send overlapping async-backed guild requests; confirm only the first is processed</td>
+</tr>
+<tr>
+<td>Character connect hook</td>
+<td>Connect a character in a guild; confirm tracker is updated and guild member location persisted</td>
+</tr>
+<tr>
+<td>Character disconnect hook</td>
+<td>Disconnect a character in a guild; confirm tracker is removed and &quot;Offline&quot; location persisted</td>
+</tr>
+<tr>
+<td>Tracker cleanup</td>
+<td>Disconnect all local members of a guild; confirm both <code>GuildCharacterTracker</code> and <code>GuildMemberTracker</code> entries are removed</td>
+</tr>
+<tr>
+<td>Achievement: create</td>
+<td>Create a guild with <code>GuildCreateAchievementTemplate</code> assigned; confirm achievement is incremented</td>
+</tr>
+<tr>
+<td>Achievement: join</td>
+<td>Accept a guild invite with <code>GuildJoinAchievementTemplate</code> assigned; confirm achievement is incremented</td>
+</tr>
+<tr>
+<td>Main-thread queue drain</td>
+<td>Confirm queued async results are dispatched on the main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm broadcast handlers are unregistered, character hooks unsubscribed, periodic callback unregistered, and main-thread queue is drained</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|guild op| Sys[GuildSystem]
+    Sys --&gt;|persist roster + roles| DB[(PostgreSQL Guilds)]
+    Sys --&gt;|cross-scene broadcast| World[WorldServer]
+    World --&gt;|fan-out| Scenes[Other SceneServers]
+    Sys --&gt;|UI events| Client
+</code></pre>
+<h3 id="guild-creation">Guild Creation</h3>
+<pre><code>OnServerGuildCreateBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (Create)
+├─ 3. Validate not already in a guild
+│     └── Fail → GuildResultBroadcast(AlreadyInGuild)
+├─ 4. Trim + validate guild name
+│     └── Fail → GuildResultBroadcast(InvalidGuildName)
+└─ 5. TryEnqueueIngressWork → CreateGuildAsync
+       │
+       ├─ Async: Check name uniqueness (IGuildService.ExistsAsync)
+       │  └── Exists → TryEnqueueMainThread → GuildResultBroadcast(NameAlreadyExists)
+       ├─ Async: Create guild (IGuildService.PersistAsync → new guild ID)
+       ├─ Async: Persist creator as leader (ICharacterGuildService.PersistAsync)
+       └─ TryEnqueueMainThread
+          ├── Set controller ID + Rank (Leader)
+          ├── AddGuildCharacterTracker
+          ├── Broadcast GuildAddBroadcast
+          └── Increment GuildCreateAchievementTemplate
+</code></pre>
+<h3 id="guild-invite--accept--decline">Guild Invite → Accept / Decline</h3>
+<pre><code>OnServerGuildInviteBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned object
+├─ 2. Acquire ingress guard (Invite)
+├─ 3. Validate inviter is leader or officer, not self-targeting
+└─ 4. TryEnqueueIngressWork → InviteToGuildAsync
+       │
+       ├─ Async: Check guild capacity (ICharacterGuildService.CountAsync)
+       │  └── Full → abort
+       └─ TryEnqueueMainThread
+          ├── TryAddPendingInvitation(targetCharacterID, guildID)
+          ├── Validate target is not already in a guild
+          │   └── In guild → send error chat, RemovePendingInvitation
+          └── Broadcast GuildInviteBroadcast to target
+
+OnServerGuildAcceptInviteBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + not in a guild
+├─ 2. Acquire ingress guard (AcceptInvite)
+├─ 3. TryGetPendingInvitation → pendingGuildID
+└─ 4. TryEnqueueIngressWork → AcceptGuildInviteAsync
+       │
+       ├─ Async: Re-check guild capacity
+       ├─ Async: Persist membership as Member
+       ├─ Async: Trigger guild-update marker
+       └─ TryEnqueueMainThread
+          ├── Set controller ID + Rank (Member)
+          ├── RemovePendingInvitation
+          ├── AddGuildCharacterTracker
+          ├── Broadcast GuildAddBroadcast
+          └── Increment GuildJoinAchievementTemplate
+
+OnServerGuildDeclineInviteBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection
+├─ 2. Acquire ingress guard (DeclineInvite)
+└─ 3. RemovePendingInvitation(character.ID)
+</code></pre>
+<h3 id="guild-leave">Guild Leave</h3>
+<pre><code>OnServerGuildLeaveBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + in a guild
+├─ 2. Acquire ingress guard (Leave)
+└─ 3. TryEnqueueIngressWork → LeaveGuildAsync
+       │
+       ├─ Async: Fetch current members (ICharacterGuildService.FetchManyAsync)
+       ├─ If leader + remaining members:
+       │  ├── Collect officers and remaining members
+       │  ├── Pick random officer (or random member) as new leader
+       │  └── UpdateRankAsync(newLeader, Leader)
+       ├─ Async: Delete leaving member (ICharacterGuildService.DeleteAsync)
+       ├─ If no remaining members:
+       │  ├── Delete guild (IGuildService.DeleteAsync)
+       │  └── Delete update marker (IGuildUpdateService.DeleteAsync)
+       ├─ Else: Trigger guild-update marker
+       └─ TryEnqueueMainThread
+          ├── Reset controller ID=0, Rank=None
+          ├── RemoveGuildCharacterTracker
+          └── Broadcast GuildLeaveBroadcast
+</code></pre>
+<h3 id="guild-remove--rank-change">Guild Remove / Rank Change</h3>
+<pre><code>OnServerGuildRemoveBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate requester is officer/leader, target is not self
+├─ 2. Acquire ingress guard (Remove)
+└─ 3. TryEnqueueIngressWork → RemoveGuildMemberAsync
+       │
+       ├─ Async: Fetch target member (ICharacterGuildService.FetchAsync)
+       ├─ Verify same guild + rank permission (cannot remove equal/higher)
+       ├─ Async: Delete member (ICharacterGuildService.DeleteAsync)
+       ├─ Async: Trigger guild-update marker
+       └─ TryEnqueueMainThread
+          └── RemoveGuildCharacterTracker(guildID, memberID)
+
+OnServerGuildChangeRankBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate requester is leader, target is not self
+├─ 2. Validate new rank in range [Member, Officer]
+├─ 3. Acquire ingress guard (ChangeRank)
+└─ 4. TryEnqueueIngressWork → ChangeGuildRankAsync
+       │
+       ├─ Async: Fetch member version (optimistic concurrency)
+       ├─ Async: UpdateRankAsync(memberID, guildID, newRank)
+       └─ On success: Trigger guild-update marker
+</code></pre>
+<h3 id="periodic-synchronization-pump-1">Periodic Synchronization Pump</h3>
+<pre><code>OnPeriodicUpdate(deltaTime)
+│
+├─ 1. Check Initialized + ServerState == Started
+├─ 2. TryBeginUpdatePump (re-entrance guard)
+├─ 3. Snapshot GuildCharacterTracker keys + LastFetchTime on main thread
+├─ 4. TryEnqueueAsyncWork → FetchAndProcessGuildUpdatesAsync
+│     │
+│     ├─ Async: Fetch guild update rows since lastFetch (IGuildUpdateService.FetchAsync)
+│     ├─ For each updated guild: fetch current members (ICharacterGuildService.FetchManyAsync)
+│     └─ TryEnqueueMainThread
+│        ├── Update LastFetchTime = DateTime.UtcNow
+│        ├── For each guild:
+│        │   ├── Compute removed members (previous cache − current DB members)
+│        │   ├── For removed local members: reset controller, broadcast GuildLeaveBroadcast
+│        │   ├── Refresh GuildMemberTracker cache
+│        │   ├── Build GuildAddMultipleBroadcast from current members
+│        │   └── Broadcast to all local online guild members + update controller ranks
+│        └── EndUpdatePump (finally)
+│
+└─ On failure / empty: EndUpdatePump
+
+OnUpdate(deltaTime)
+│
+├─ 1. DrainMainThreadQueue (up to maxMainThreadActionsPerFrame)
+├─ 2. SweepPendingInvitations (bounded TTL sweep)
+└─ 3. SweepIngressGuards (bounded TTL sweep)
+</code></pre>
+<h3 id="character-connect--disconnect">Character Connect / Disconnect</h3>
+<pre><code>CharacterSystem_OnConnect(conn, character)
+│
+├─ 1. Validate character has IGuildController with ID &gt; 0
+├─ 2. AddGuildCharacterTracker(guildID, characterID)
+└─ 3. TryEnqueueAsyncWork → PersistGuildMemberAsync(characterID, guildID, rank, sceneName)
+       ├─ Fetch existing version (optimistic concurrency)
+       ├─ Persist member data
+       └─ Trigger guild-update marker
+
+CharacterSystem_OnDisconnect(conn, character)
+│
+├─ 1. RemovePendingInvitation(character.ID)
+├─ 2. Validate character has IGuildController with ID &gt; 0
+├─ 3. RemoveGuildCharacterTracker(guildID, characterID)
+└─ 4. TryEnqueueAsyncWork → PersistGuildMemberAsync(characterID, guildID, rank, &quot;Offline&quot;)
+       ├─ Fetch existing version (optimistic concurrency)
+       ├─ Persist member data with &quot;Offline&quot; location
+       └─ Trigger guild-update marker
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Guild/
+├── GuildSystem.cs                     # Core guild orchestration, handlers, async persistence, and sync pump
+├── GuildSystemRuntimeData.cs          # Pending invitation map, last guild-update fetch timestamp, ingress guard
+├── GuildSystemMainThreadQueueData.cs  # Per-system main-thread action queue container
+├── GuildCharacterMappingData.cs       # Guild-to-membership tracking for online/local and known members
+└── README.md                          # System documentation
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/Guild/IGuildSystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Guild/IGuildSystemRuntimeData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Guild/IGuildSystemMainThreadQueueData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Guild/IGuildCharacterMappingData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── GuildSystem : IGuildSystem&lt;NetworkConnection&gt;
+
+RuntimeDataContainer
+├── GuildSystemRuntimeData : IGuildSystemRuntimeData
+└── GuildCharacterMappingData : IGuildCharacterMappingData
+
+SystemMainThreadQueueData
+└── GuildSystemMainThreadQueueData : IGuildSystemMainThreadQueueData
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/README.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
