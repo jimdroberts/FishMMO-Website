@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Class SrpAuthenticatorCore&lt;TConnection&gt; | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Class SrpAuthenticatorCore&lt;TConnection&gt; | FishMMO ">
+      
+      <meta name="description" content="Engine-independent SRP-6a authenticator core for LoginServer use. Extends  with bounded-channel SRP verify/proof workers, TOTP two-factor authentication, kick-request tracking, and per-IP/per-account rate limiting — with no dependency on Unity, FishNet, or any game-engine type.  Subclasses provide transport-specific callbacks for broadcasting auth results, disconnecting connections, resolving IP addresses, and performing database operations.">
+      <link rel="icon" href="../../favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/new/dev/apiSpec/new?filename=FishMMO_Auth_Implementation_SrpAuthenticatorCore_1.md&amp;value=---%0Auid%3A%20FishMMO.Auth.Implementation.SrpAuthenticatorCore%601%0Asummary%3A%20&#39;*You%20can%20override%20summary%20for%20the%20API%20here%20using%20*MARKDOWN*%20syntax&#39;%0A---%0A%0A*Please%20type%20below%20more%20information%20about%20this%20API%3A*%0A%0A">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="ManagedReference">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1">
+
+
+
+  <h1 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1" class="text-break">
+Class SrpAuthenticatorCore&lt;TConnection&gt;  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L25"><i class="bi bi-code-slash"></i></a>
+  </h1>
+
+  <div class="facts text-secondary">
+    <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Auth.html">Auth</a>.<a class="xref" href="FishMMO.Auth.Implementation.html">Implementation</a></dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO-ServerAuth.dll</dd></dl>
+  </div>
+
+  <div class="markdown summary"><p>Engine-independent SRP-6a authenticator core for LoginServer use.
+Extends <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html">BaseAuthenticatorCore&lt;TConnection&gt;</a> with bounded-channel SRP
+verify/proof workers, TOTP two-factor authentication, kick-request tracking, and
+per-IP/per-account rate limiting — with no dependency on Unity, FishNet, or any
+game-engine type.</p>
+<p>
+Subclasses provide transport-specific callbacks for broadcasting auth results,
+disconnecting connections, resolving IP addresses, and performing database operations.
+</p>
+</div>
+  <div class="markdown conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public abstract class SrpAuthenticatorCore&lt;TConnection&gt; : BaseAuthenticatorCore&lt;TConnection&gt;</code></pre>
+  </div>
+
+
+
+  <h4 class="section">Type Parameters</h4>
+  <dl class="parameters">
+    <dt><code>TConnection</code></dt>
+    <dd><p>The type representing a network connection.</p>
+</dd>
+  </dl>
+
+  <dl class="typelist inheritance">
+    <dt>Inheritance</dt>
+    <dd>
+      <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object">object</a></div>
+      <div><a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html">BaseAuthenticatorCore</a>&lt;TConnection&gt;</div>
+      <div><span class="xref">SrpAuthenticatorCore&lt;TConnection&gt;</span></div>
+    </dd>
+  </dl>
+
+
+
+  <dl class="typelist inheritedMembers">
+    <dt>Inherited Members</dt>
+    <dd>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthStaleTtlSeconds">BaseAuthenticatorCore&lt;TConnection&gt;.AuthStaleTtlSeconds</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthHardDeadlineSeconds">BaseAuthenticatorCore&lt;TConnection&gt;.AuthHardDeadlineSeconds</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxPendingAuthConnections">BaseAuthenticatorCore&lt;TConnection&gt;.MaxPendingAuthConnections</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandshakeIpWindowSeconds">BaseAuthenticatorCore&lt;TConnection&gt;.HandshakeIpWindowSeconds</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandshakeIpBurstLimit">BaseAuthenticatorCore&lt;TConnection&gt;.HandshakeIpBurstLimit</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxGlobalHandshakesPerSecond">BaseAuthenticatorCore&lt;TConnection&gt;.MaxGlobalHandshakesPerSecond</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthSweepMaxScan">BaseAuthenticatorCore&lt;TConnection&gt;.AuthSweepMaxScan</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthSweepMaxRemovals">BaseAuthenticatorCore&lt;TConnection&gt;.AuthSweepMaxRemovals</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandshakeRateLimitSweepMaxScan">BaseAuthenticatorCore&lt;TConnection&gt;.HandshakeRateLimitSweepMaxScan</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandshakeRateLimitSweepMaxRemovals">BaseAuthenticatorCore&lt;TConnection&gt;.HandshakeRateLimitSweepMaxRemovals</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AccountManager">BaseAuthenticatorCore&lt;TConnection&gt;.AccountManager</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ExpectedGameVersion">BaseAuthenticatorCore&lt;TConnection&gt;.ExpectedGameVersion</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_LogPrefix">BaseAuthenticatorCore&lt;TConnection&gt;.LogPrefix</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_InitializeWorkers_System_Threading_CancellationToken_">BaseAuthenticatorCore&lt;TConnection&gt;.InitializeWorkers(CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ShutdownWorkers">BaseAuthenticatorCore&lt;TConnection&gt;.ShutdownWorkers()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_Tick">BaseAuthenticatorCore&lt;TConnection&gt;.Tick()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnTick">BaseAuthenticatorCore&lt;TConnection&gt;.OnTick()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnHandshakeDeferred__0_">BaseAuthenticatorCore&lt;TConnection&gt;.OnHandshakeDeferred(TConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnHandshakeReceived__0_System_Byte___System_Byte___System_String_System_UInt16_System_UInt16_System_String_">BaseAuthenticatorCore&lt;TConnection&gt;.OnHandshakeReceived(TConnection, byte[], byte[], string, ushort, ushort, string)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TrackAuthStart__0_">BaseAuthenticatorCore&lt;TConnection&gt;.TrackAuthStart(TConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_RefreshAuthTtl__0_">BaseAuthenticatorCore&lt;TConnection&gt;.RefreshAuthTtl(TConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ClearTransientAuthState_System_Int32_">BaseAuthenticatorCore&lt;TConnection&gt;.ClearTransientAuthState(int)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_PurgeConnectionAuthState__0_System_Boolean_">BaseAuthenticatorCore&lt;TConnection&gt;.PurgeConnectionAuthState(TConnection, bool)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandleConnectionStopped__0_">BaseAuthenticatorCore&lt;TConnection&gt;.HandleConnectionStopped(TConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ResolveRateLimitKey__0_">BaseAuthenticatorCore&lt;TConnection&gt;.ResolveRateLimitKey(TConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_IsConnectionAuthenticated__0_">BaseAuthenticatorCore&lt;TConnection&gt;.IsConnectionAuthenticated(TConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_GetConnectionAddress__0_">BaseAuthenticatorCore&lt;TConnection&gt;.GetConnectionAddress(TConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_GetConnectionClientId__0_">BaseAuthenticatorCore&lt;TConnection&gt;.GetConnectionClientId(TConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BroadcastCookieChallenge__0_System_Byte___">BaseAuthenticatorCore&lt;TConnection&gt;.BroadcastCookieChallenge(TConnection, byte[])</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BroadcastServerHandshake__0_System_Byte___System_UInt16_">BaseAuthenticatorCore&lt;TConnection&gt;.BroadcastServerHandshake(TConnection, byte[], ushort)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_DisconnectConnection__0_System_Boolean_">BaseAuthenticatorCore&lt;TConnection&gt;.DisconnectConnection(TConnection, bool)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_EnqueueMainThread__0_System_Action_">BaseAuthenticatorCore&lt;TConnection&gt;.EnqueueMainThread(TConnection, Action)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BroadcastAuthResult__0_FishMMO_Auth_Core_ClientAuthenticationResult_System_Boolean_">BaseAuthenticatorCore&lt;TConnection&gt;.BroadcastAuthResult(TConnection, ClientAuthenticationResult, bool)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object)">object.Equals(object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object-system-object)">object.Equals(object, object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gethashcode">object.GetHashCode()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gettype">object.GetType()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.memberwiseclone">object.MemberwiseClone()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.referenceequals">object.ReferenceEquals(object, object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.tostring">object.ToString()</a>
+    </div>
+  </dd></dl>
+
+
+
+
+
+
+  <h2 class="section" id="constructors">Constructors
+</h2>
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1__ctor_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.#ctor*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1__ctor_FishMMO_Auth_Core_ISrpAccountManager__0__" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.#ctor(FishMMO.Auth.Core.ISrpAccountManager{`0})">
+  SrpAuthenticatorCore(ISrpAccountManager&lt;TConnection&gt;)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L169"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Initializes the SRP authenticator core.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected SrpAuthenticatorCore(ISrpAccountManager&lt;TConnection&gt; accountManager)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountManager</code> <a class="xref" href="FishMMO.Auth.Core.ISrpAccountManager-1.html">ISrpAccountManager</a>&lt;TConnection&gt;</dt>
+    <dd><p>SRP account manager instance.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <h2 class="section" id="properties">Properties
+</h2>
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_AccountVerifyDebounceSeconds_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.AccountVerifyDebounceSeconds*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_AccountVerifyDebounceSeconds" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.AccountVerifyDebounceSeconds">
+  AccountVerifyDebounceSeconds
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L49"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Minimum seconds between account-verify debounce entries for the same identifier.
+Override to 0 in test subclasses to disable per-username rate limiting between sessions.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected virtual float AccountVerifyDebounceSeconds { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_IsWorkerIdle_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.IsWorkerIdle*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_IsWorkerIdle" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.IsWorkerIdle">
+  IsWorkerIdle
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L406"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Sweeps the kick-request debounce and auth rate-limit trackers.
+Call from the hosting environment's per-tick update alongside <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_Tick">Tick()</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override bool IsWorkerIdle { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_LoginServerId_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.LoginServerId*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_LoginServerId" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.LoginServerId">
+  LoginServerId
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L149"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>LoginServer database ID, embedded in issued tokens.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public long LoginServerId { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_MaxConcurrentTotpVerifications_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.MaxConcurrentTotpVerifications*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_MaxConcurrentTotpVerifications" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.MaxConcurrentTotpVerifications">
+  MaxConcurrentTotpVerifications
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L62"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Default maximum number of TOTP code verifications running concurrently. Configurable via .cfg SrpMaxConcurrentTotp.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int MaxConcurrentTotpVerifications { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_ProofChannelCapacity_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.ProofChannelCapacity*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_ProofChannelCapacity" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.ProofChannelCapacity">
+  ProofChannelCapacity
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L36"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Default maximum pending SRP proof requests in the bounded channel. Configurable via .cfg SrpProofChannelCapacity.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int ProofChannelCapacity { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_ProofWorkerCount_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.ProofWorkerCount*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_ProofWorkerCount" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.ProofWorkerCount">
+  ProofWorkerCount
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L32"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Default number of concurrent SRP proof worker tasks. Configurable via .cfg SrpProofWorkers.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int ProofWorkerCount { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TokenExpirationMinutes_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TokenExpirationMinutes*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TokenExpirationMinutes" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TokenExpirationMinutes">
+  TokenExpirationMinutes
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L159"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Token validity duration in minutes.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public float TokenExpirationMinutes { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TokenSigningKey_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TokenSigningKey*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TokenSigningKey" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TokenSigningKey">
+  TokenSigningKey
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L130"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>HMAC signing key for token generation. Set by the server system on startup.
+If null, token issuance is disabled.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public byte[]? TokenSigningKey { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TokenSigningKeyId_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TokenSigningKeyId*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TokenSigningKeyId" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TokenSigningKeyId">
+  TokenSigningKeyId
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L154"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Database ID of the HMAC signing key used for token generation.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public long TokenSigningKeyId { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TotpMasterKey_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TotpMasterKey*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TotpMasterKey" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TotpMasterKey">
+  TotpMasterKey
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L140"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>AES-256 master key for decrypting TOTP secrets from the database during login.
+Must match the key used by AccountCreationSystem.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public byte[]? TotpMasterKey { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_VerifyChannelCapacity_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.VerifyChannelCapacity*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_VerifyChannelCapacity" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.VerifyChannelCapacity">
+  VerifyChannelCapacity
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L34"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Default maximum pending SRP verify requests in the bounded channel. Configurable via .cfg SrpVerifyChannelCapacity.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int VerifyChannelCapacity { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_VerifyWorkerCount_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.VerifyWorkerCount*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_VerifyWorkerCount" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.VerifyWorkerCount">
+  VerifyWorkerCount
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L30"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Default number of concurrent SRP verify worker tasks. Configurable via .cfg SrpVerifyWorkers.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int VerifyWorkerCount { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h2 class="section" id="methods">Methods
+</h2>
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_BroadcastSrpSuccess_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.BroadcastSrpSuccess*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_BroadcastSrpSuccess__0_System_Byte___FishMMO_Auth_Core_ClientAuthenticationResult_System_Byte___" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.BroadcastSrpSuccess(`0,System.Byte[],FishMMO.Auth.Core.ClientAuthenticationResult,System.Byte[])">
+  BroadcastSrpSuccess(TConnection, byte[], ClientAuthenticationResult, byte[]?)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1399"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Broadcasts the SRP success response (encrypted server proof + result + optional token) to the client.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract void BroadcastSrpSuccess(TConnection conn, byte[] encryptedServerProof, ClientAuthenticationResult result, byte[]? encryptedToken)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>Target connection.</p>
+</dd>
+    <dt><code>encryptedServerProof</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>AES-GCM encrypted server proof bytes.</p>
+</dd>
+    <dt><code>result</code> <a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationResult.html">ClientAuthenticationResult</a></dt>
+    <dd><p>Auth result code accompanying the proof.</p>
+</dd>
+    <dt><code>encryptedToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>AES-GCM encrypted auth token, or <code>null</code> if login was not successful.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_BroadcastSrpVerifyResponse_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.BroadcastSrpVerifyResponse*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_BroadcastSrpVerifyResponse__0_System_Byte___System_Byte___" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.BroadcastSrpVerifyResponse(`0,System.Byte[],System.Byte[])">
+  BroadcastSrpVerifyResponse(TConnection, byte[], byte[])
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1390"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Broadcasts a generic auth result to the client.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract void BroadcastSrpVerifyResponse(TConnection conn, byte[] encryptedSalt, byte[] encryptedPublicServerEphemeral)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>Target connection.</p>
+</dd>
+    <dt><code>encryptedSalt</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>AES-GCM encrypted SRP salt.</p>
+</dd>
+    <dt><code>encryptedPublicServerEphemeral</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>AES-GCM encrypted server public ephemeral.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_CheckHasPendingKickAsync_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.CheckHasPendingKickAsync*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_CheckHasPendingKickAsync_System_String_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.CheckHasPendingKickAsync(System.String)">
+  CheckHasPendingKickAsync(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1461"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Checks whether a pending kick request exists for the given account name.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract Task&lt;bool&gt; CheckHasPendingKickAsync(string username)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account name to check.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p><code>true</code> if a pending kick is recorded; otherwise, <code>false</code>.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_CheckIsOnlineAsync_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.CheckIsOnlineAsync*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_CheckIsOnlineAsync_System_String_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.CheckIsOnlineAsync(System.String)">
+  CheckIsOnlineAsync(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1454"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Checks whether any character for the given account name is currently online.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract Task&lt;bool&gt; CheckIsOnlineAsync(string username)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account name to check.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p><code>true</code> if any session for this account is active; otherwise, <code>false</code>.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_FetchAccountForLoginAsync_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.FetchAccountForLoginAsync*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_FetchAccountForLoginAsync_System_String_System_Boolean_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.FetchAccountForLoginAsync(System.String,System.Boolean)">
+  FetchAccountForLoginAsync(string, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1447"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Fetches account data for SRP login (by username or email).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract Task&lt;SrpAuthenticatorCore&lt;TConnection&gt;.SrpAccountLookupResult&gt; FetchAccountForLoginAsync(string identifier, bool isEmail)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>identifier</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Username or email address.</p>
+</dd>
+    <dt><code>isEmail</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if <code class="paramref">identifier</code> is an email address.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Auth.Implementation.SrpAuthenticatorCore-1.html">SrpAuthenticatorCore</a>&lt;TConnection&gt;.<a class="xref" href="FishMMO.Auth.Implementation.SrpAuthenticatorCore-1.SrpAccountLookupResult.html">SrpAccountLookupResult</a>&gt;</dt>
+    <dd><p>An <a class="xref" href="FishMMO.Auth.Implementation.SrpAuthenticatorCore-1.SrpAccountLookupResult.html">SrpAuthenticatorCore&lt;TConnection&gt;.SrpAccountLookupResult</a> with account data if found.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_InitializeWorkersCore_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.InitializeWorkersCore*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_InitializeWorkersCore_System_Threading_CancellationToken_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.InitializeWorkersCore(System.Threading.CancellationToken)">
+  InitializeWorkersCore(CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L180"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Subclass-specific worker initialization: create channels and start worker tasks.
+Called after the base generates the cookie key.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void InitializeWorkersCore(CancellationToken cancellationToken)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Token for signalling worker shutdown.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_IsAllowedEmailUsername_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.IsAllowedEmailUsername*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_IsAllowedEmailUsername_System_String_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.IsAllowedEmailUsername(System.String)">
+  IsAllowedEmailUsername(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1415"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Validates an email-format username against the allowed email username rules.
+Delegates to <code>Authentication.IsAllowedEmailUsername</code> (FishMMO-SharedUtility).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract bool IsAllowedEmailUsername(string username)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The email address to validate.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> if the email is a valid login identifier; otherwise, <code>false</code>.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_IsAllowedUsername_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.IsAllowedUsername*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_IsAllowedUsername_System_String_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.IsAllowedUsername(System.String)">
+  IsAllowedUsername(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1407"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Validates a username against the allowed username rules.
+Delegates to <code>Authentication.IsAllowedUsername</code> (FishMMO-SharedUtility).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract bool IsAllowedUsername(string username)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The username string to validate.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> if the username is allowed; otherwise, <code>false</code>.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_IsConnectionActive_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.IsConnectionActive*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_IsConnectionActive__0_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.IsConnectionActive(`0)">
+  IsConnectionActive(TConnection)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1379"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Returns whether a connection is currently active (connected and not disposed).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract bool IsConnectionActive(TConnection conn)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The connection to check.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> if the connection is still active; otherwise, <code>false</code>.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnAuthSweep_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnAuthSweep*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnAuthSweep" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnAuthSweep">
+  OnAuthSweep()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L332"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Override for subclass-specific logic that runs alongside the stale-auth sweep.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAuthSweep()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnAuthenticationResult_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnAuthenticationResult*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnAuthenticationResult__0_System_Boolean_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnAuthenticationResult(`0,System.Boolean)">
+  OnAuthenticationResult(TConnection, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1372"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Called when an authentication result (success or failure) must be reported for a connection.
+Implementations should call OnAuthenticationResult event, FishNet's PassAuthentication/FailAuthentication, etc.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract void OnAuthenticationResult(TConnection conn, bool authenticated)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The authenticated (or rejected) connection.</p>
+</dd>
+    <dt><code>authenticated</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if authentication succeeded.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnPurgeConnectionState_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnPurgeConnectionState*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnPurgeConnectionState__0_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnPurgeConnectionState(`0)">
+  OnPurgeConnectionState(TConnection)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L428"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Override for subclass-specific cleanup during connection purge.
+Called before <code>AccountManager.RemoveConnectionAccount</code> but after
+<a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ClearTransientAuthState_System_Int32_">ClearTransientAuthState(int)</a> has removed TTL tracking.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnPurgeConnectionState(TConnection conn)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The connection being purged.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnSrpProofReceived_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnSrpProofReceived*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnSrpProofReceived__0_System_Byte___System_UInt32_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnSrpProofReceived(`0,System.Byte[],System.UInt32)">
+  OnSrpProofReceived(TConnection, byte[], uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L497"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Gate for an incoming SRP proof request. Validates connection state and enqueues for async processing.
+No decryption or SRP math occurs here.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnSrpProofReceived(TConnection conn, byte[] encryptedProof, uint seq)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The network connection.</p>
+</dd>
+    <dt><code>encryptedProof</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>Encrypted proof bytes.</p>
+</dd>
+    <dt><code>seq</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>Broadcast sequence number.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnSrpVerifyReceived_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnSrpVerifyReceived*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnSrpVerifyReceived__0_System_Byte___System_Byte___System_UInt32_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnSrpVerifyReceived(`0,System.Byte[],System.Byte[],System.UInt32)">
+  OnSrpVerifyReceived(TConnection, byte[], byte[], uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L449"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Gate for an incoming SRP verify request. Validates connection state, applies rate limits,
+and enqueues for async processing. No decryption or database work occurs here.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnSrpVerifyReceived(TConnection conn, byte[] encryptedUsername, byte[] encryptedPublicEphemeral, uint seq)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The network connection.</p>
+</dd>
+    <dt><code>encryptedUsername</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>Encrypted username bytes.</p>
+</dd>
+    <dt><code>encryptedPublicEphemeral</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>Encrypted public ephemeral bytes.</p>
+</dd>
+    <dt><code>seq</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>Broadcast sequence number.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnTwoFactorVerifyReceived_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnTwoFactorVerifyReceived*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_OnTwoFactorVerifyReceived__0_System_Byte___System_UInt32_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.OnTwoFactorVerifyReceived(`0,System.Byte[],System.UInt32)">
+  OnTwoFactorVerifyReceived(TConnection, byte[], uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L542"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Gate for an incoming TOTP verification code. Validates state, applies rate limits,
+and dispatches async processing.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnTwoFactorVerifyReceived(TConnection conn, byte[] encryptedCode, uint seq)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The network connection.</p>
+</dd>
+    <dt><code>encryptedCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>Encrypted TOTP code bytes.</p>
+</dd>
+    <dt><code>seq</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>Broadcast sequence number.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_PersistKickRequestAsync_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.PersistKickRequestAsync*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_PersistKickRequestAsync_System_String_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.PersistKickRequestAsync(System.String)">
+  PersistKickRequestAsync(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1467"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Persists a kick request for the given account name to the database.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract Task PersistKickRequestAsync(string username)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account name to kick.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task">Task</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_PersistTokenHashAsync_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.PersistTokenHashAsync*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_PersistTokenHashAsync_System_String_System_String_System_Int32_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.PersistTokenHashAsync(System.String,System.String,System.Int32)">
+  PersistTokenHashAsync(string, string, int)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1475"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Persists the hashed token for the given account to the database (for revocation tracking).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract Task PersistTokenHashAsync(string username, string tokenHash, int expirationMinutes)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account name.</p>
+</dd>
+    <dt><code>tokenHash</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>SHA-256 hex hash of the raw token.</p>
+</dd>
+    <dt><code>expirationMinutes</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>Token validity duration.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task">Task</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_ResolveClientRealIp_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.ResolveClientRealIp*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_ResolveClientRealIp__0_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.ResolveClientRealIp(`0)">
+  ResolveClientRealIp(TConnection)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1430"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Attempts to complete login and returns the final auth result.
+Override to apply server-type-specific login logic (e.g., WorldServer player limit checks).
+Default: returns <code class="paramref">defaultResult</code> unchanged.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected virtual string? ResolveClientRealIp(TConnection conn)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The final <a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationResult.html">ClientAuthenticationResult</a> to send to the client.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_ShutdownWorkersCore_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.ShutdownWorkersCore*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_ShutdownWorkersCore" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.ShutdownWorkersCore">
+  ShutdownWorkersCore()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L290"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Subclass-specific worker shutdown: complete channel writers, null channel references,
+and clear subclass-specific state. Called BEFORE the base zeroes the cookie key.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void ShutdownWorkersCore()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TickRateLimits_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TickRateLimits*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TickRateLimits" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TickRateLimits">
+  TickRateLimits()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L414"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Sweeps the kick-request debounce and auth rate-limit trackers.
+Call from the hosting environment's per-tick update alongside <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_Tick">Tick()</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void TickRateLimits()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TryLoginAsync_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TryLoginAsync*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TryLoginAsync_FishMMO_Auth_Core_ClientAuthenticationResult_System_String_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TryLoginAsync(FishMMO.Auth.Core.ClientAuthenticationResult,System.String)">
+  TryLoginAsync(ClientAuthenticationResult, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1436"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Attempts to complete login authentication. Override in subclasses for
+server-type-specific logic (e.g., WorldServer checks player limit).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected virtual Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(ClientAuthenticationResult defaultResult, string username)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>defaultResult</code> <a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationResult.html">ClientAuthenticationResult</a></dt>
+    <dd></dd>
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationResult.html">ClientAuthenticationResult</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TryResendVerificationEmailIfExpiredAsync_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TryResendVerificationEmailIfExpiredAsync*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_TryResendVerificationEmailIfExpiredAsync_System_String_System_Nullable_System_DateTime__" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.TryResendVerificationEmailIfExpiredAsync(System.String,System.Nullable{System.DateTime})">
+  TryResendVerificationEmailIfExpiredAsync(string, DateTime?)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1495"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Called when an unverified account attempts login. The implementation should
+check whether the verification code has expired and, if so, generate a new
+code and enqueue a fresh verification email. No-op when the code is still
+valid or when the email has not yet been sent (VerificationEmailSentAt is null).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract Task&lt;bool&gt; TryResendVerificationEmailIfExpiredAsync(string username, DateTime? verifyCodeExpiresUtc)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The account username.</p>
+</dd>
+    <dt><code>verifyCodeExpiresUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>?</dt>
+    <dd><p>UTC expiry of the current code, or null.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p>True if a new code was generated and the email was enqueued.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_VerifyTotpCodeAsync_" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.VerifyTotpCodeAsync*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_SrpAuthenticatorCore_1_VerifyTotpCodeAsync_System_String_System_String_System_Byte___" data-uid="FishMMO.Auth.Implementation.SrpAuthenticatorCore`1.VerifyTotpCodeAsync(System.String,System.String,System.Byte[])">
+  VerifyTotpCodeAsync(string, string, byte[])
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L1484"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Verifies a TOTP code for the given username against the database-stored secret.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected abstract Task&lt;bool&gt; VerifyTotpCodeAsync(string username, string totpCode, byte[] totpMasterKey)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>username</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account name.</p>
+</dd>
+    <dt><code>totpCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>6-digit TOTP code (plaintext).</p>
+</dd>
+    <dt><code>totpMasterKey</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>[]</dt>
+    <dd><p>AES-256 key for decrypting the stored TOTP secret.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p>True if the code is valid; false otherwise.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/SrpAuthenticatorCore.cs/#L25" class="edit-link">Edit this page</a>
+        </div>
+
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

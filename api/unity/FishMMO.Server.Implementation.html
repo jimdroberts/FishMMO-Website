@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Namespace FishMMO.Server.Implementation | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Namespace FishMMO.Server.Implementation | FishMMO ">
+      
+      
+      <link rel="icon" href="../../favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="ManagedReference">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="FishMMO.Server.Implementation">
+
+  <h1 id="FishMMO_Server_Implementation" data-uid="FishMMO.Server.Implementation" class="text-break">Namespace FishMMO.Server.Implementation</h1>
+  <div class="markdown level0 summary"></div>
+  <div class="markdown level0 conceptual"></div>
+  <div class="markdown level0 remarks"></div>
+
+    <h3 id="classes">
+Classes
+</h3>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.AccountManager.html">AccountManager</a></dt>
+      <dd><p>Unity/FishNet concrete account manager for <span class="xref">FishNet.Connection.NetworkConnection</span>.
+All logic lives in <a class="xref" href="../auth/FishMMO.Auth.Implementation.AccountManager-1.html">AccountManager&lt;TConnection&gt;</a> in FishMMO-Auth.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.AsyncWorkerData.html">AsyncWorkerData</a></dt>
+      <dd><p>Centralized async work queue backed by System.Threading.Channels.</p>
+<p>Replaces fire-and-forget <code>_ = SomeAsync(...)</code> across all server systems with
+a bounded, backpressure-aware work queue processed by a fixed number of worker loops.</p>
+<p>Design:</p>
+<ul><li>Multiple channels: one per worker for entity-keyed ordering via consistent hashing.</li><li>Bounded capacity with DropWrite full-mode returns false on Enqueue (backpressure).</li><li>Workers are long-lived async loops consuming from their assigned channel.</li><li>Graceful shutdown via CancellationToken; workers drain remaining items on cancel.</li></ul>
+<p>Usage:</p>
+<pre><code class="lang-csharp">// Simple (round-robin to any worker):
+asyncWorkerData.Enqueue(() =&gt; PersistInventoryAsync(dto));
+
+// Entity-keyed (same characterID always goes to the same worker):
+asyncWorkerData.Enqueue(() =&gt; SaveCharacterAsync(charData), characterID);</code></pre>
+<p>Systems declare dependency via:
+<code>[RequiresDataContainer(typeof(AsyncWorkerData))]</code></p>
+<p><b>Pool isolation:</b> Total capacity = workerCount × channelCapacity.
+Default 8 × 2048 = 16,384 slots. A single saturated system cannot starve
+others because entity-keyed enqueues are hash-routed to specific workers
+and round-robin enqueues are distributed evenly. Increase workerCount for
+high-load deployments; increase channelCapacity to absorb bursts.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.BaseServerAuthenticator.html">BaseServerAuthenticator</a></dt>
+      <dd><p>Abstract base MonoBehaviour authenticator that routes FishNet transport callbacks
+to an engine-independent <a class="xref" href="../auth/FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html">BaseAuthenticatorCore&lt;TConnection&gt;</a> instance.
+All handshake, TTL, rate-limit, and worker logic lives in the core; this class
+bridges FishNet lifecycle events (broadcasts, connection state) to the core.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.FishNetNetworkWrapper.html">FishNetNetworkWrapper</a></dt>
+      <dd><p>Wraps FishNet NetworkManager with a clean abstraction for server orchestration.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.KickRequestSystem.html">KickRequestSystem</a></dt>
+      <dd><p>System for processing kick requests from the database and disconnecting accounts as needed.
+Periodically polls the database for new kick requests and processes them asynchronously.
+Kick/Disconnect calls are marshalled back to the main thread via a RuntimeDataContainer queue.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.KickRequestSystemMainThreadQueueData.html">KickRequestSystemMainThreadQueueData</a></dt>
+      <dd><p>Main-thread queue data container for KickRequestSystem.
+Separate concrete type ensures the DataContainerRegistry creates
+an independent instance for this system.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.KickRequestSystemQueueData.html">KickRequestSystemQueueData</a></dt>
+      <dd><p>Runtime data container for kick request processing state.
+Manages kick request database polling state separately from KickRequestSystem logic.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.MainThreadQueueData.html">MainThreadQueueData</a></dt>
+      <dd><p>Base runtime data container providing a thread-safe main-thread action queue.
+Async worker threads enqueue actions via Enqueue(), and the main thread
+drains them via Drain() each frame (typically in OnLateUpdate).</p>
+<p>Each system that needs main-thread marshalling should have its own concrete
+subclass so the DataContainerRegistry creates separate instances per system.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.MainThreadQueueHelper.html">MainThreadQueueHelper</a></dt>
+      <dd><p>Shared utility for main-thread queue drain and enqueue operations.
+Eliminates copy-paste boilerplate across server systems (D1).</p>
+<p><b>Back-pressure observability:</b> the underlying
+<a class="xref" href="FishMMO.Server.Implementation.MainThreadQueueData.html">MainThreadQueueData</a> enforces a hard capacity cap (currently
+10,000 pending actions) and returns <code>false</code> from <code>TryEnqueue</code>
+when full. Most call sites discard that bool because there is no useful
+off-thread fallback — the response broadcast is already on the main
+thread by contract. To keep the loss visible to operators, every
+rejected enqueue is counted here in a per-queue-type drop counter and
+surfaced through a rate-limited warning. A sustained non-zero drop rate
+indicates the main thread is stalling long enough for async DB workers
+to saturate the queue (10K * 16 ms drain budget ≈ several seconds of
+hang) and is a stronger DoS / GC-pause signal than any individual
+client time-out.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.PeriodicCallbackData.html">PeriodicCallbackData</a></dt>
+      <dd><p>Internal data structure for tracking periodic callback state.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.PhysicsTicker.html">PhysicsTicker</a></dt>
+      <dd><p>Handles ticking the physics simulation for a specific PhysicsScene using FishNet's TimeManager events.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.RuntimeDataContainer.html">RuntimeDataContainer</a></dt>
+      <dd><p>Base class for all runtime data containers in the FishMMO server architecture.
+Provides registration, initialization, and lifecycle management for server data storage.
+Data containers store mutable state separate from ServerBehaviour logic.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.RuntimeDataContainerFactory.html">RuntimeDataContainerFactory</a></dt>
+      <dd><p>Factory for creating RuntimeDataContainer instances via reflection.
+Validates container types and instantiates them using parameterless constructors.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.RuntimeDataContainerRegistry.html">RuntimeDataContainerRegistry</a></dt>
+      <dd><p>Handles registration, lookup, and initialization of <a class="xref" href="FishMMO.Server.Core.IRuntimeDataContainer.html">IRuntimeDataContainer</a> instances.
+Provides global access and lifecycle management for runtime data containers.
+Extends the generic ServerComponentRegistry to provide container-specific initialization.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.Server.html">Server</a></dt>
+      <dd><p>Composition root: orchestrates Core and Implementation into a running server.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerAddressProvider.html">ServerAddressProvider</a></dt>
+      <dd><p>Provides various IP address formats by interacting with the FishNet transport layer and server overrides.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerAuthenticator.html">ServerAuthenticator</a></dt>
+      <dd><p>SRP-6a server authenticator. Delegates all handshake, channel, worker, and protocol logic
+to <a class="xref" href="../auth/FishMMO.Auth.Implementation.SrpAuthenticatorCore-1.html">SrpAuthenticatorCore&lt;TConnection&gt;</a> in FishMMO-Auth.
+This class bridges FishNet broadcast events to the core and provides Unity/DB callbacks.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html">ServerBehaviour</a></dt>
+      <dd><p>Base class for all server-side behaviours in the FishMMO server architecture.
+Provides registration, initialization, and lifecycle management for server behaviours.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerBehaviourRegistry.html">ServerBehaviourRegistry</a></dt>
+      <dd><p>Handles registration, lookup, and initialization of <a class="xref" href="FishMMO.Server.Core.IServerBehaviour.html">IServerBehaviour</a> instances.
+Provides global access and lifecycle management for server-side behaviours.
+Extends the generic ServerComponentRegistry to provide behaviour-specific initialization.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerComponentRegistry-3.html">ServerComponentRegistry&lt;TNetworkManager, TConnection, TServerComponent&gt;</a></dt>
+      <dd><p>Generic base implementation for server component registries.
+Handles registration, lookup, and lifecycle management of server components.
+Can be extended for specific component types (behaviours, data containers, etc.).</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerLauncher.html">ServerLauncher</a></dt>
+      <dd><p>Launches the server by preloading required scenes and handling addressable asset events.
+Supports command-line arguments for selecting server type.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerWindowTitleUpdater.html">ServerWindowTitleUpdater</a></dt>
+      <dd><p>Updates the server window or console title to reflect current server status, including transport type, connection state, and client count.
+Supports Windows, Linux, and OSX platforms.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerWindowTitleUpdaterRuntimeData.html">ServerWindowTitleUpdaterRuntimeData</a></dt>
+      <dd><p>Runtime data container for ServerWindowTitleUpdater mutable state.
+Stores the transient window title string and countdown timer
+separate from the ServerBehaviour configuration.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.html">SigningKeyKekProvider</a></dt>
+      <dd><p>Loads the deployment-shared 32-byte AES-256 KEK used by <a class="xref" href="../auth/FishMMO.Auth.Implementation.KeyEnvelope.html">KeyEnvelope</a> to wrap
+per-LoginServer HMAC signing keys at rest. The KEK MUST be identical across the LoginServer
+process (which writes wrapped blobs) and every World/Scene server (which unwraps them) for
+a given deployment.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.SrpAccountManager.html">SrpAccountManager</a></dt>
+      <dd><p>Unity/FishNet concrete SRP account manager for <span class="xref">FishNet.Connection.NetworkConnection</span>.
+All logic lives in <a class="xref" href="../auth/FishMMO.Auth.Implementation.SrpAccountManager-1.html">SrpAccountManager&lt;TConnection&gt;</a> in FishMMO-Auth.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.SystemMainThreadQueueData.html">SystemMainThreadQueueData</a></dt>
+      <dd><p>Shared base class for per-system main-thread queue runtime containers.
+Concrete system queue containers should inherit this type to keep declarations minimal.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.TokenAccountManager.html">TokenAccountManager</a></dt>
+      <dd><p>Unity/FishNet concrete token account manager for <span class="xref">FishNet.Connection.NetworkConnection</span>.
+All logic lives in <a class="xref" href="../auth/FishMMO.Auth.Implementation.TokenAccountManager-1.html">TokenAccountManager&lt;TConnection&gt;</a> in FishMMO-Auth.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.TokenServerAuthenticator.html">TokenServerAuthenticator</a></dt>
+      <dd><p>Token-based server authenticator for World and Scene servers.
+Delegates all handshake, channel, worker, and protocol logic to
+<a class="xref" href="../auth/FishMMO.Auth.Implementation.TokenAuthenticatorCore-1.html">TokenAuthenticatorCore&lt;TConnection&gt;</a> in FishMMO-Auth.
+This class bridges FishNet broadcast events to the core and provides Unity/DB callbacks.</p>
+</dd>
+    </dl>
+    <h3 id="interfaces">
+Interfaces
+</h3>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.INetworkManagerWrapper.html">INetworkManagerWrapper</a></dt>
+      <dd><p>Interface for network-related operations, decoupling the Server class
+from the concrete FishNet implementation.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.IServerAuthenticator.html">IServerAuthenticator</a></dt>
+      <dd><p>Common interface for server authenticators (both SRP-based and token-based).
+Provides the Server reference and worker lifecycle methods needed by
+<a class="xref" href="FishMMO.Server.Implementation.FishNetNetworkWrapper.html#FishMMO_Server_Implementation_FishNetNetworkWrapper_AttachLoginAuthenticator_FishMMO_Server_Core_IServer_FishMMO_Server_Implementation_INetworkManagerWrapper_FishNet_Connection_NetworkConnection_FishMMO_Server_Core_IServerBehaviour__">AttachLoginAuthenticator(IServer&lt;INetworkManagerWrapper, NetworkConnection, IServerBehaviour&gt;)</a>.</p>
+</dd>
+    </dl>
+
+
+</article>
+
+        <div class="contribution d-print-none">
+        </div>
+
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
