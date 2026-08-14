@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Struct ServerHandshake | FishMMO ">
       
-      <meta name="description" content="Broadcast sent by the server to complete the handshake, containing encryption key and IV.">
+      <meta name="description" content="Broadcast sent by the server to complete the handshake, containing the server&#39;s X25519 public key for ECDH key agreement and the negotiated protocol version.">
       <link rel="icon" href="../favicon.ico">
       <link rel="stylesheet" href="../public/docfx.min.css">
       <link rel="stylesheet" href="../public/main.css">
@@ -89,15 +89,16 @@
 
 
   <h1 id="FishMMO_Shared_ServerHandshake" data-uid="FishMMO.Shared.ServerHandshake" class="text-break">
-Struct ServerHandshake  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Network/Authentication/AuthenticationBroadcasts.cs/#L30"><i class="bi bi-code-slash"></i></a>
+Struct ServerHandshake  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Authentication/AuthenticationBroadcasts.cs/#L203"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
     <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Shared.html">Shared</a></dd></dl>
-  <dl><dt>Assembly</dt><dd>Assembly-CSharp.dll</dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Broadcast sent by the server to complete the handshake, containing encryption key and IV.</p>
+  <div class="markdown summary"><p>Broadcast sent by the server to complete the handshake, containing the server's
+X25519 public key for ECDH key agreement and the negotiated protocol version.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -143,6 +144,15 @@ Struct ServerHandshake  <a class="header-action link-secondary" title="View sour
 
 
 
+  <h2 id="FishMMO_Shared_ServerHandshake_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p><a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_PublicKey">PublicKey</a> and <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_Cookie">Cookie</a> are mutually exclusive:
+<ul><li>A cookie challenge has <code>PublicKey == null</code> and <code>Cookie != null</code>.
+Use <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_IsChallenge">IsChallenge</a> to test for this.</li><li>The final handshake response has <code>PublicKey != null</code> and <code>Cookie == null</code>.
+Use <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_IsHandshakeResponse">IsHandshakeResponse</a> to test for this.</li></ul>
+<p>Consumers MUST use the helper properties instead of null-checking directly,
+so that any future wire-format changes remain isolated to this struct.</p>
+
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -150,17 +160,52 @@ Struct ServerHandshake  <a class="header-action link-secondary" title="View sour
 
 
 
-  <h3 id="FishMMO_Shared_ServerHandshake_IV" data-uid="FishMMO.Shared.ServerHandshake.IV">
-  IV
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Network/Authentication/AuthenticationBroadcasts.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_ServerHandshake_AgreedVersion" data-uid="FishMMO.Shared.ServerHandshake.AgreedVersion">
+  AgreedVersion
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Authentication/AuthenticationBroadcasts.cs/#L224"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Server's initialization vector for encryption.</p>
+  <div class="markdown level1 summary"><p>Negotiated protocol version agreed during handshake.
+Both sides use this version in AAD and HKDF labels for all subsequent messages.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public byte[] IV</code></pre>
+    <pre><code class="lang-csharp hljs">public ushort AgreedVersion</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint16">ushort</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_ServerHandshake_Cookie" data-uid="FishMMO.Shared.ServerHandshake.Cookie">
+  Cookie
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Authentication/AuthenticationBroadcasts.cs/#L218"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Stateless HMAC challenge cookie. The client must echo this in a subsequent
+<a class="xref" href="FishMMO.Shared.ClientHandshake.html">ClientHandshake</a> to prove it can receive replies from the server.
+Null when this message contains the final handshake response.
+Use <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_IsChallenge">IsChallenge</a> or <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_IsHandshakeResponse">IsHandshakeResponse</a> to discriminate.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public byte[] Cookie</code></pre>
   </div>
 
 
@@ -181,17 +226,19 @@ Struct ServerHandshake  <a class="header-action link-secondary" title="View sour
 
 
 
-  <h3 id="FishMMO_Shared_ServerHandshake_Key" data-uid="FishMMO.Shared.ServerHandshake.Key">
-  Key
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Network/Authentication/AuthenticationBroadcasts.cs/#L33"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_ServerHandshake_PublicKey" data-uid="FishMMO.Shared.ServerHandshake.PublicKey">
+  PublicKey
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Authentication/AuthenticationBroadcasts.cs/#L210"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Server's encryption key.</p>
+  <div class="markdown level1 summary"><p>Server's ephemeral X25519 public key (32 bytes).
+Null when this message is a cookie challenge (proof-of-reachability).
+Use <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_IsChallenge">IsChallenge</a> or <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_IsHandshakeResponse">IsHandshakeResponse</a> to discriminate.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public byte[] Key</code></pre>
+    <pre><code class="lang-csharp hljs">public byte[] PublicKey</code></pre>
   </div>
 
 
@@ -203,6 +250,76 @@ Struct ServerHandshake  <a class="header-action link-secondary" title="View sour
     <dd></dd>
   </dl>
 
+
+
+
+
+
+
+
+
+  <h2 class="section" id="properties">Properties
+</h2>
+
+
+  <a id="FishMMO_Shared_ServerHandshake_IsChallenge_" data-uid="FishMMO.Shared.ServerHandshake.IsChallenge*"></a>
+
+  <h3 id="FishMMO_Shared_ServerHandshake_IsChallenge" data-uid="FishMMO.Shared.ServerHandshake.IsChallenge">
+  IsChallenge
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Authentication/AuthenticationBroadcasts.cs/#L230"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Gets whether this message is a cookie challenge (proof-of-reachability).
+Mutually exclusive with <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_IsHandshakeResponse">IsHandshakeResponse</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool IsChallenge { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_ServerHandshake_IsHandshakeResponse_" data-uid="FishMMO.Shared.ServerHandshake.IsHandshakeResponse*"></a>
+
+  <h3 id="FishMMO_Shared_ServerHandshake_IsHandshakeResponse" data-uid="FishMMO.Shared.ServerHandshake.IsHandshakeResponse">
+  IsHandshakeResponse
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Authentication/AuthenticationBroadcasts.cs/#L236"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Gets whether this message is the final handshake response (ECDH key exchange).
+Mutually exclusive with <a class="xref" href="FishMMO.Shared.ServerHandshake.html#FishMMO_Shared_ServerHandshake_IsChallenge">IsChallenge</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool IsHandshakeResponse { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
 
 
 
@@ -215,7 +332,7 @@ Struct ServerHandshake  <a class="header-action link-secondary" title="View sour
 </article>
 
         <div class="contribution d-print-none">
-          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Network/Authentication/AuthenticationBroadcasts.cs/#L30" class="edit-link">Edit this page</a>
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Authentication/AuthenticationBroadcasts.cs/#L203" class="edit-link">Edit this page</a>
         </div>
 
 

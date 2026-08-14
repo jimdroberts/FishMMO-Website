@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class Buff | FishMMO ">
       
-      <meta name="description" content="Represents a single instance of a buff applied to a character, tracking time, stacks, and template.">
+      <meta name="description" content="Represents a single instance of a buff applied to a character, tracking time, stacks, and template. All state is deterministic — timing is tick-based (, ) rather than float-second accumulators, eliminating floating-point drift across prediction ticks.">
       <link rel="icon" href="../favicon.ico">
       <link rel="stylesheet" href="../public/docfx.min.css">
       <link rel="stylesheet" href="../public/main.css">
@@ -89,15 +89,18 @@
 
 
   <h1 id="FishMMO_Shared_Buff" data-uid="FishMMO.Shared.Buff" class="text-break">
-Class Buff  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L8"><i class="bi bi-code-slash"></i></a>
+Class Buff  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L14"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
     <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Shared.html">Shared</a></dd></dl>
-  <dl><dt>Assembly</dt><dd>Assembly-CSharp.dll</dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Represents a single instance of a buff applied to a character, tracking time, stacks, and template.</p>
+  <div class="markdown summary"><p>Represents a single instance of a buff applied to a character, tracking time, stacks, and template.
+All state is deterministic — timing is tick-based (<a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_ExpiryTick">ExpiryTick</a>,
+<a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_NextTickTick">NextTickTick</a>) rather than float-second accumulators, eliminating
+floating-point drift across prediction ticks.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -155,17 +158,20 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <a id="FishMMO_Shared_Buff__ctor_" data-uid="FishMMO.Shared.Buff.#ctor*"></a>
 
-  <h3 id="FishMMO_Shared_Buff__ctor_System_Int32_" data-uid="FishMMO.Shared.Buff.#ctor(System.Int32)">
-  Buff(int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L34"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_Buff__ctor_System_Int32_System_UInt32_System_Single_System_Int32_System_Int32_" data-uid="FishMMO.Shared.Buff.#ctor(System.Int32,System.UInt32,System.Single,System.Int32,System.Int32)">
+  Buff(int, uint, float, int, int)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L100"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Creates a new buff instance from a template ID, using the template's default duration and tick rate.</p>
+  <div class="markdown level1 summary"><p>Creates a new buff instance from a fresh application.
+<a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_ExpiryTick">ExpiryTick</a> and <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_NextTickTick">NextTickTick</a> are computed from
+the template's duration and tick-rate via <code>ceil(seconds / tickDelta)</code>,
+matching <a class="xref" href="FishMMO.Shared.CooldownInstance.html">CooldownInstance</a>'s convention.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Buff(int templateID)</code></pre>
+    <pre><code class="lang-csharp hljs">public Buff(int templateID, uint currentTick, float tickDelta, int stacks = 0, int tickCount = 0)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -173,83 +179,66 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
     <dt><code>templateID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd><p>The template ID for the buff.</p>
 </dd>
-  </dl>
-
-
-
-
-
-
-
-
-
-
-
-
-  <a id="FishMMO_Shared_Buff__ctor_" data-uid="FishMMO.Shared.Buff.#ctor*"></a>
-
-  <h3 id="FishMMO_Shared_Buff__ctor_System_Int32_System_Single_" data-uid="FishMMO.Shared.Buff.#ctor(System.Int32,System.Single)">
-  Buff(int, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L46"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Creates a new buff instance from a template ID and a specific remaining time.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Buff(int templateID, float remainingTime)</code></pre>
-  </div>
-
-  <h4 class="section">Parameters</h4>
-  <dl class="parameters">
-    <dt><code>templateID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>The template ID for the buff.</p>
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>The network tick at the moment of application.</p>
 </dd>
-    <dt><code>remainingTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The remaining time for the buff.</p>
-</dd>
-  </dl>
-
-
-
-
-
-
-
-
-
-
-
-
-  <a id="FishMMO_Shared_Buff__ctor_" data-uid="FishMMO.Shared.Buff.#ctor*"></a>
-
-  <h3 id="FishMMO_Shared_Buff__ctor_System_Int32_System_Single_System_Single_System_Int32_" data-uid="FishMMO.Shared.Buff.#ctor(System.Int32,System.Single,System.Single,System.Int32)">
-  Buff(int, float, float, int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L60"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Creates a new buff instance from a template ID, remaining time, tick time, and stack count.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Buff(int templateID, float remainingTime, float tickTime, int stacks)</code></pre>
-  </div>
-
-  <h4 class="section">Parameters</h4>
-  <dl class="parameters">
-    <dt><code>templateID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>The template ID for the buff.</p>
-</dd>
-    <dt><code>remainingTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The remaining time for the buff.</p>
-</dd>
-    <dt><code>tickTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The remaining time until the next tick.</p>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Fixed seconds-per-tick for the active session.</p>
 </dd>
     <dt><code>stacks</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>The number of stacks for the buff.</p>
+    <dd><p>The initial stack count.</p>
+</dd>
+    <dt><code>tickCount</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The number of ticks that have already fired (for restoration).</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_Buff__ctor_" data-uid="FishMMO.Shared.Buff.#ctor*"></a>
+
+  <h3 id="FishMMO_Shared_Buff__ctor_System_Int32_System_UInt32_System_UInt32_System_Single_System_Int32_System_Int32_" data-uid="FishMMO.Shared.Buff.#ctor(System.Int32,System.UInt32,System.UInt32,System.Single,System.Int32,System.Int32)">
+  Buff(int, uint, uint, float, int, int)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L138"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Restores a buff from serialized absolute-tick values (reconcile / payload restore).
+Does not recompute tick values from the template — uses the provided values directly.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Buff(int templateID, uint expiryTick, uint nextTickTick, float tickDelta, int stacks, int tickCount)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>templateID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The template ID for the buff.</p>
+</dd>
+    <dt><code>expiryTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>Absolute tick at which the buff expires.</p>
+</dd>
+    <dt><code>nextTickTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>Absolute tick at which the next OnTick fires.</p>
+</dd>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Fixed seconds-per-tick (for <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_RemainingSeconds_System_UInt32_">RemainingSeconds(uint)</a> UI conversion).</p>
+</dd>
+    <dt><code>stacks</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The current stack count.</p>
+</dd>
+    <dt><code>tickCount</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The number of ticks that have already fired.</p>
 </dd>
   </dl>
 
@@ -269,17 +258,23 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
 
 
-  <h3 id="FishMMO_Shared_Buff_RemainingTime" data-uid="FishMMO.Shared.Buff.RemainingTime">
-  RemainingTime
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L13"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_Buff_CumulativeTickMultiplier" data-uid="FishMMO.Shared.Buff.CumulativeTickMultiplier">
+  CumulativeTickMultiplier
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L58"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The remaining duration of the buff in seconds.</p>
+  <div class="markdown level1 summary"><p>Running sum of <code>(1 + Stacks)</code> for every tick that has fired on this buff instance.
+Tracks the exact cumulative multiplier applied by templates such as
+<a class="xref" href="FishMMO.Shared.AttributeTickBuffTemplate.html">AttributeTickBuffTemplate</a> so that <code>OnRemove</code> can reverse
+the precise total modifier regardless of how many times <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_Stacks">Stacks</a>
+changed between tick firings. Reconciled via
+<a class="xref" href="FishMMO.Shared.BuffReconcileEntry.html#FishMMO_Shared_BuffReconcileEntry_CumulativeTickMultiplier">CumulativeTickMultiplier</a> so rollback replay
+and post-reconcile removal both produce correct reversal.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public float RemainingTime</code></pre>
+    <pre><code class="lang-csharp hljs">public int CumulativeTickMultiplier</code></pre>
   </div>
 
 
@@ -287,7 +282,73 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <h4 class="section">Field Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_Buff_ExpiryTick" data-uid="FishMMO.Shared.Buff.ExpiryTick">
+  ExpiryTick
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L28"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The absolute network tick at which this buff expires.
+A buff has expired when <code>(int)(currentTick - ExpiryTick) &gt;= 0</code>.
+Permanent buffs use <span class="xref">FishNet.Managing.Timing.TimeManager.UNSET_TICK</span>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public uint ExpiryTick</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_Buff_NextTickTick" data-uid="FishMMO.Shared.Buff.NextTickTick">
+  NextTickTick
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The absolute network tick at which the next <a class="xref" href="FishMMO.Shared.BaseBuffTemplate.html#FishMMO_Shared_BaseBuffTemplate_OnTick_FishMMO_Shared_Buff_FishMMO_Shared_Core_ICharacter_">OnTick(Buff, ICharacter)</a>
+should fire. Advances by one tick-rate interval after each fire so missed
+intervals catch up without drifting the cadence to the late current tick.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public uint NextTickTick</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
     <dd></dd>
   </dl>
 
@@ -302,7 +363,7 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <h3 id="FishMMO_Shared_Buff_Stacks" data-uid="FishMMO.Shared.Buff.Stacks">
   Stacks
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L23"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L40"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The current number of stacks of this buff.</p>
@@ -331,17 +392,19 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
 
 
-  <h3 id="FishMMO_Shared_Buff_TickTime" data-uid="FishMMO.Shared.Buff.TickTime">
-  TickTime
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L18"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_Buff_TickCount" data-uid="FishMMO.Shared.Buff.TickCount">
+  TickCount
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L47"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The remaining time until the next tick in seconds.</p>
+  <div class="markdown level1 summary"><p>The number of ticks that have fired for this buff instance.
+Used by cumulative tick templates to track total applied modifiers for clean reversal.
+Serialized in payload for deterministic restoration.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public float TickTime</code></pre>
+    <pre><code class="lang-csharp hljs">public int TickCount</code></pre>
   </div>
 
 
@@ -349,7 +412,40 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <h4 class="section">Field Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_Buff_Version" data-uid="FishMMO.Shared.Buff.Version">
+  Version
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L21"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Version number for this buff instance, used for database state-driven safety on updates.
+Incremented whenever the buff's state changes in a way that requires persistence
+(e.g., stacks added/removed, remaining time checkpointed).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public long Version</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
     <dd></dd>
   </dl>
 
@@ -369,7 +465,7 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <h3 id="FishMMO_Shared_Buff_Template" data-uid="FishMMO.Shared.Buff.Template">
   Template
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L28"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L63"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The template that defines this buff's behavior and properties.</p>
@@ -403,9 +499,9 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <a id="FishMMO_Shared_Buff_AddStack_" data-uid="FishMMO.Shared.Buff.AddStack*"></a>
 
-  <h3 id="FishMMO_Shared_Buff_AddStack_FishMMO_Shared_ICharacter_" data-uid="FishMMO.Shared.Buff.AddStack(FishMMO.Shared.ICharacter)">
+  <h3 id="FishMMO_Shared_Buff_AddStack_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.AddStack(FishMMO.Shared.Core.ICharacter)">
   AddStack(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L164"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L320"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Adds a stack to the buff and applies stack effects to the target.</p>
@@ -418,74 +514,8 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.ICharacter.html">ICharacter</a></dt>
+    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.Core.ICharacter.html">ICharacter</a></dt>
     <dd><p>The character receiving the stack.</p>
-</dd>
-  </dl>
-
-
-
-
-
-
-
-
-
-
-
-
-  <a id="FishMMO_Shared_Buff_AddTickTime_" data-uid="FishMMO.Shared.Buff.AddTickTime*"></a>
-
-  <h3 id="FishMMO_Shared_Buff_AddTickTime_System_Single_" data-uid="FishMMO.Shared.Buff.AddTickTime(System.Single)">
-  AddTickTime(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L102"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Adds time to the remaining tick time for the buff.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void AddTickTime(float time)</code></pre>
-  </div>
-
-  <h4 class="section">Parameters</h4>
-  <dl class="parameters">
-    <dt><code>time</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The amount of time to add (seconds).</p>
-</dd>
-  </dl>
-
-
-
-
-
-
-
-
-
-
-
-
-  <a id="FishMMO_Shared_Buff_AddTime_" data-uid="FishMMO.Shared.Buff.AddTime*"></a>
-
-  <h3 id="FishMMO_Shared_Buff_AddTime_System_Single_" data-uid="FishMMO.Shared.Buff.AddTime(System.Single)">
-  AddTime(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L82"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Adds time to the remaining duration of the buff.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void AddTime(float time)</code></pre>
-  </div>
-
-  <h4 class="section">Parameters</h4>
-  <dl class="parameters">
-    <dt><code>time</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The amount of time to add (seconds).</p>
 </dd>
   </dl>
 
@@ -502,9 +532,9 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <a id="FishMMO_Shared_Buff_Apply_" data-uid="FishMMO.Shared.Buff.Apply*"></a>
 
-  <h3 id="FishMMO_Shared_Buff_Apply_FishMMO_Shared_ICharacter_" data-uid="FishMMO.Shared.Buff.Apply(FishMMO.Shared.ICharacter)">
+  <h3 id="FishMMO_Shared_Buff_Apply_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.Apply(FishMMO.Shared.Core.ICharacter)">
   Apply(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L144"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L300"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Applies the buff's effects to the target character.</p>
@@ -517,7 +547,7 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.ICharacter.html">ICharacter</a></dt>
+    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.Core.ICharacter.html">ICharacter</a></dt>
     <dd><p>The character receiving the buff.</p>
 </dd>
   </dl>
@@ -533,11 +563,88 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
 
 
+  <a id="FishMMO_Shared_Buff_HasExpired_" data-uid="FishMMO.Shared.Buff.HasExpired*"></a>
+
+  <h3 id="FishMMO_Shared_Buff_HasExpired_System_UInt32_" data-uid="FishMMO.Shared.Buff.HasExpired(System.UInt32)">
+  HasExpired(uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L160"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Returns true when this buff has expired at the given tick.
+Uses a signed cast for overflow-safe wrap-around comparison; safe for any
+duration &lt; 2^31 ticks (~810 days at 30 tps).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool HasExpired(uint currentTick)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_Buff_RemainingSeconds_" data-uid="FishMMO.Shared.Buff.RemainingSeconds*"></a>
+
+  <h3 id="FishMMO_Shared_Buff_RemainingSeconds_System_UInt32_" data-uid="FishMMO.Shared.Buff.RemainingSeconds(System.UInt32)">
+  RemainingSeconds(uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L168"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Computes the remaining buff duration in seconds for the given tick.
+Returns zero if the buff has already expired. Used by the UI duration slider.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public float RemainingSeconds(uint currentTick)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Shared_Buff_Remove_" data-uid="FishMMO.Shared.Buff.Remove*"></a>
 
-  <h3 id="FishMMO_Shared_Buff_Remove_FishMMO_Shared_ICharacter_" data-uid="FishMMO.Shared.Buff.Remove(FishMMO.Shared.ICharacter)">
+  <h3 id="FishMMO_Shared_Buff_Remove_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.Remove(FishMMO.Shared.Core.ICharacter)">
   Remove(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L154"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L310"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes the buff's effects from the target character.</p>
@@ -550,7 +657,7 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.ICharacter.html">ICharacter</a></dt>
+    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.Core.ICharacter.html">ICharacter</a></dt>
     <dd><p>The character losing the buff.</p>
 </dd>
   </dl>
@@ -568,9 +675,9 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <a id="FishMMO_Shared_Buff_RemoveStack_" data-uid="FishMMO.Shared.Buff.RemoveStack*"></a>
 
-  <h3 id="FishMMO_Shared_Buff_RemoveStack_FishMMO_Shared_ICharacter_" data-uid="FishMMO.Shared.Buff.RemoveStack(FishMMO.Shared.ICharacter)">
+  <h3 id="FishMMO_Shared_Buff_RemoveStack_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.RemoveStack(FishMMO.Shared.Core.ICharacter)">
   RemoveStack(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L175"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L331"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes a stack from the buff and removes stack effects from the target.</p>
@@ -583,7 +690,7 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.ICharacter.html">ICharacter</a></dt>
+    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.Core.ICharacter.html">ICharacter</a></dt>
     <dd><p>The character losing the stack.</p>
 </dd>
   </dl>
@@ -601,19 +708,26 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <a id="FishMMO_Shared_Buff_ResetDuration_" data-uid="FishMMO.Shared.Buff.ResetDuration*"></a>
 
-  <h3 id="FishMMO_Shared_Buff_ResetDuration" data-uid="FishMMO.Shared.Buff.ResetDuration">
-  ResetDuration()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L125"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_Buff_ResetDuration_System_UInt32_System_Single_" data-uid="FishMMO.Shared.Buff.ResetDuration(System.UInt32,System.Single)">
+  ResetDuration(uint, float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L240"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Resets the remaining duration to the template's default duration.</p>
+  <div class="markdown level1 summary"><p>Resets the expiry to <code>currentTick + durationTicks</code>, refreshing the buff's lifetime.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void ResetDuration()</code></pre>
+    <pre><code class="lang-csharp hljs">public void ResetDuration(uint currentTick, float tickDelta)</code></pre>
   </div>
 
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd></dd>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
 
 
 
@@ -628,51 +742,25 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <a id="FishMMO_Shared_Buff_ResetTickTime_" data-uid="FishMMO.Shared.Buff.ResetTickTime*"></a>
 
-  <h3 id="FishMMO_Shared_Buff_ResetTickTime" data-uid="FishMMO.Shared.Buff.ResetTickTime">
-  ResetTickTime()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L134"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_Buff_ResetTickTime_System_UInt32_System_Single_" data-uid="FishMMO.Shared.Buff.ResetTickTime(System.UInt32,System.Single)">
+  ResetTickTime(uint, float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L249"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Resets the tick timer to the template's default tick rate.</p>
+  <div class="markdown level1 summary"><p>Resets <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_NextTickTick">NextTickTick</a> to <code>currentTick + tickRateTicks</code>.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void ResetTickTime()</code></pre>
-  </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-  <a id="FishMMO_Shared_Buff_SubtractTickTime_" data-uid="FishMMO.Shared.Buff.SubtractTickTime*"></a>
-
-  <h3 id="FishMMO_Shared_Buff_SubtractTickTime_System_Single_" data-uid="FishMMO.Shared.Buff.SubtractTickTime(System.Single)">
-  SubtractTickTime(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L92"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Subtracts time from the remaining tick time for the buff.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void SubtractTickTime(float time)</code></pre>
+    <pre><code class="lang-csharp hljs">public void ResetTickTime(uint currentTick, float tickDelta)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>time</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The amount of time to subtract (seconds).</p>
-</dd>
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd></dd>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
   </dl>
 
 
@@ -686,26 +774,28 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
 
 
-  <a id="FishMMO_Shared_Buff_SubtractTime_" data-uid="FishMMO.Shared.Buff.SubtractTime*"></a>
+  <a id="FishMMO_Shared_Buff_SetTickDelta_" data-uid="FishMMO.Shared.Buff.SetTickDelta*"></a>
 
-  <h3 id="FishMMO_Shared_Buff_SubtractTime_System_Single_" data-uid="FishMMO.Shared.Buff.SubtractTime(System.Single)">
-  SubtractTime(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L72"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_Buff_SetTickDelta_System_Single_" data-uid="FishMMO.Shared.Buff.SetTickDelta(System.Single)">
+  SetTickDelta(float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L80"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Subtracts time from the remaining duration of the buff.</p>
+  <div class="markdown level1 summary"><p>Updates the cached tick-delta used by <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_RemainingSeconds_System_UInt32_">RemainingSeconds(uint)</a>. Called by
+<a class="xref" href="FishMMO.Shared.BuffController.html#FishMMO_Shared_BuffController_Tick_System_UInt32_">Tick(uint)</a> every tick so UI duration bars never get stuck
+reporting 0 when a buff was constructed before TimeManager became available.
+Ignores non-positive values to preserve the last good delta.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void SubtractTime(float time)</code></pre>
+    <pre><code class="lang-csharp hljs">public void SetTickDelta(float tickDelta)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>time</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The amount of time to subtract (seconds).</p>
-</dd>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
   </dl>
 
 
@@ -721,26 +811,39 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 
   <a id="FishMMO_Shared_Buff_TryTick_" data-uid="FishMMO.Shared.Buff.TryTick*"></a>
 
-  <h3 id="FishMMO_Shared_Buff_TryTick_FishMMO_Shared_ICharacter_" data-uid="FishMMO.Shared.Buff.TryTick(FishMMO.Shared.ICharacter)">
-  TryTick(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L112"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_Buff_TryTick_FishMMO_Shared_Core_ICharacter_System_UInt32_System_Single_" data-uid="FishMMO.Shared.Buff.TryTick(FishMMO.Shared.Core.ICharacter,System.UInt32,System.Single)">
+  TryTick(ICharacter, uint, float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L192"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Tries to trigger a tick for the buff if the tick timer has expired.</p>
+  <div class="markdown level1 summary"><p>Tries to trigger a tick for the buff if <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_NextTickTick">NextTickTick</a> has been reached,
+then advances <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_NextTickTick">NextTickTick</a> by the template tick-rate in ticks.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void TryTick(ICharacter target)</code></pre>
+    <pre><code class="lang-csharp hljs">public bool TryTick(ICharacter target, uint currentTick, float tickDelta)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.ICharacter.html">ICharacter</a></dt>
+    <dt><code>target</code> <a class="xref" href="FishMMO.Shared.Core.ICharacter.html">ICharacter</a></dt>
     <dd><p>The character affected by the buff.</p>
+</dd>
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>The current network tick.</p>
+</dd>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Fixed seconds-per-tick of the active session.</p>
 </dd>
   </dl>
 
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if tick state changed (snapshot must be marked dirty).</p>
+</dd>
+  </dl>
 
 
 
@@ -756,7 +859,7 @@ Class Buff  <a class="header-action link-secondary" title="View source" href="ht
 </article>
 
         <div class="contribution d-print-none">
-          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Buff/Buff.cs/#L8" class="edit-link">Edit this page</a>
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L14" class="edit-link">Edit this page</a>
         </div>
 
 

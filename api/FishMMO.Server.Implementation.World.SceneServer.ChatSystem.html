@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Class ChatSystem | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Class ChatSystem | FishMMO ">
+      
+      <meta name="description" content="Manages all chat functionality including public, party, guild, whisper, and system messages with rate limiting and spam protection. Game logic and Broadcasts run synchronously on the main thread. Database operations are fire-and-forget async to avoid blocking the main thread. Results from async DB queries that require main-thread Broadcasts are marshalled via IChatSystemMainThreadQueueData.">
+      <link rel="icon" href="../favicon.ico">
+      <link rel="stylesheet" href="../public/docfx.min.css">
+      <link rel="stylesheet" href="../public/main.css">
+      <meta name="docfx:navrel" content="../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/new/dev/apiSpec/new?filename=FishMMO_Server_Implementation_World_SceneServer_ChatSystem.md&amp;value=---%0Auid%3A%20FishMMO.Server.Implementation.World.SceneServer.ChatSystem%0Asummary%3A%20&#39;*You%20can%20override%20summary%20for%20the%20API%20here%20using%20*MARKDOWN*%20syntax&#39;%0A---%0A%0A*Please%20type%20below%20more%20information%20about%20this%20API%3A*%0A%0A">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="ManagedReference">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../index.html">
+            <img id="logo" class="svg" src="../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem">
+
+
+
+  <h1 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem" class="text-break">
+Class ChatSystem  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.GroupChat.cs/#L17"><i class="bi bi-code-slash"></i></a>
+  </h1>
+
+  <div class="facts text-secondary">
+    <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Server.html">Server</a>.<a class="xref" href="FishMMO.Server.Implementation.html">Implementation</a>.<a class="xref" href="FishMMO.Server.Implementation.World.html">World</a>.<a class="xref" href="FishMMO.Server.Implementation.World.SceneServer.html">SceneServer</a></dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO.Server.dll</dd></dl>
+  </div>
+
+  <div class="markdown summary"><p>Manages all chat functionality including public, party, guild, whisper, and system messages with rate limiting and spam protection.
+Game logic and Broadcasts run synchronously on the main thread.
+Database operations are fire-and-forget async to avoid blocking the main thread.
+Results from async DB queries that require main-thread Broadcasts are marshalled via IChatSystemMainThreadQueueData.</p>
+</div>
+  <div class="markdown conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[CreateAssetMenu(fileName = &quot;ChatSystem&quot;, menuName = &quot;FishMMO/Server/SceneServer/Chat System&quot;, order = 1)]
+[RequiresDataContainer(typeof(ChatSystemRuntimeData))]
+[RequiresDataContainer(typeof(ChatSystemMainThreadQueueData))]
+[RequiresDataContainer(typeof(AsyncWorkerData))]
+public class ChatSystem : ServerBehaviour, IServerBehaviour&lt;INetworkManagerWrapper, ServerManager, NetworkConnection, IServerBehaviour&gt;, IServerComponent&lt;INetworkManagerWrapper, ServerManager, NetworkConnection, IServerBehaviour&gt;, IChatSystem, IServerBehaviour, IServerComponent, IChatHelper</code></pre>
+  </div>
+
+
+
+
+  <dl class="typelist inheritance">
+    <dt>Inheritance</dt>
+    <dd>
+      <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object">object</a></div>
+      <div><span class="xref">Object</span></div>
+      <div><span class="xref">ScriptableObject</span></div>
+      <div><a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html">ServerBehaviour</a></div>
+      <div><span class="xref">ChatSystem</span></div>
+    </dd>
+  </dl>
+
+  <dl class="typelist implements">
+    <dt>Implements</dt>
+    <dd>
+      <div><a class="xref" href="FishMMO.Server.Core.IServerBehaviour-4.html">IServerBehaviour</a>&lt;<a class="xref" href="FishMMO.Server.Implementation.INetworkManagerWrapper.html">INetworkManagerWrapper</a>, <span class="xref">ServerManager</span>, <span class="xref">NetworkConnection</span>, <a class="xref" href="FishMMO.Server.Core.IServerBehaviour.html">IServerBehaviour</a>&gt;</div>
+      <div><a class="xref" href="FishMMO.Server.Core.IServerComponent-4.html">IServerComponent</a>&lt;<a class="xref" href="FishMMO.Server.Implementation.INetworkManagerWrapper.html">INetworkManagerWrapper</a>, <span class="xref">ServerManager</span>, <span class="xref">NetworkConnection</span>, <a class="xref" href="FishMMO.Server.Core.IServerBehaviour.html">IServerBehaviour</a>&gt;</div>
+      <div><a class="xref" href="FishMMO.Server.Core.World.SceneServer.IChatSystem.html">IChatSystem</a></div>
+      <div><a class="xref" href="FishMMO.Server.Core.IServerBehaviour.html">IServerBehaviour</a></div>
+      <div><a class="xref" href="FishMMO.Server.Core.IServerComponent.html">IServerComponent</a></div>
+      <div><a class="xref" href="FishMMO.Shared.Core.IChatHelper.html">IChatHelper</a></div>
+    </dd>
+  </dl>
+
+
+  <dl class="typelist inheritedMembers">
+    <dt>Inherited Members</dt>
+    <dd>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_Initialized">ServerBehaviour.Initialized</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_Server">ServerBehaviour.Server</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_ServerManager">ServerBehaviour.ServerManager</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_OnLateUpdate_System_Single_">ServerBehaviour.OnLateUpdate(float)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_DrainMainThreadQueue__1_System_Int32_System_Boolean_">ServerBehaviour.DrainMainThreadQueue&lt;TQueue&gt;(int, bool)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryEnqueueMainThread__1_System_Action_">ServerBehaviour.TryEnqueueMainThread&lt;TQueue&gt;(Action)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryGetDbService__1___0__">ServerBehaviour.TryGetDbService&lt;T&gt;(out T)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_SendServerBusy_FishNet_Connection_NetworkConnection_">ServerBehaviour.SendServerBusy(NetworkConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryEnqueueAsyncWork_System_Func_System_Threading_Tasks_Task__System_Int64_System_String_">ServerBehaviour.TryEnqueueAsyncWork(Func&lt;Task&gt;, long, string)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryEnqueueAsyncWork_System_Func_System_Threading_Tasks_Task__FishNet_Connection_NetworkConnection_System_Int64_System_String_">ServerBehaviour.TryEnqueueAsyncWork(Func&lt;Task&gt;, NetworkConnection, long, string)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_EnqueuePersistence_System_Func_System_Threading_Tasks_Task__System_Int64_System_String_">ServerBehaviour.EnqueuePersistence(Func&lt;Task&gt;, long, string)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryBeginInFlightRequest__1_FishNet_Connection_NetworkConnection_System_Func___0_System_Boolean__">ServerBehaviour.TryBeginInFlightRequest&lt;TRuntime&gt;(NetworkConnection, Func&lt;TRuntime, bool&gt;)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_EndInFlightRequest__1_FishNet_Connection_NetworkConnection_System_Action___0__">ServerBehaviour.EndInFlightRequest&lt;TRuntime&gt;(NetworkConnection, Action&lt;TRuntime&gt;)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryEnqueueGuardedAsyncWork_System_Func_System_Threading_Tasks_Task__System_Action_System_Int64__System_Int64_System_Int64_System_String_">ServerBehaviour.TryEnqueueGuardedAsyncWork(Func&lt;Task&gt;, Action&lt;long&gt;, long, long, string)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_OnRemoteConnectionStopped_FishNet_Connection_NetworkConnection_">ServerBehaviour.OnRemoteConnectionStopped(NetworkConnection)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_SubscribeToConnectionEvents">ServerBehaviour.SubscribeToConnectionEvents()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_UnsubscribeFromConnectionEvents">ServerBehaviour.UnsubscribeFromConnectionEvents()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_Deinitialize">ServerBehaviour.Deinitialize()</a>
+    </div>
+    <div>
+      <span class="xref">ScriptableObject.SetDirty()</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">ScriptableObject.CreateInstance(string)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">ScriptableObject.CreateInstance(Type)</a>
+    </div>
+    <div>
+      <span class="xref">ScriptableObject.CreateInstance&lt;T&gt;()</span>
+    </div>
+    <div>
+      <span class="xref">Object.GetEntityId()</span>
+    </div>
+    <div>
+      <span class="xref">Object.GetInstanceID()</span>
+    </div>
+    <div>
+      <span class="xref">Object.GetHashCode()</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object">Object.Equals(object)</a>
+    </div>
+    <div>
+      <span class="xref">Object.InstantiateAsync&lt;T&gt;(T)</span>
+    </div>
+    <div>
+      <span class="xref">Object.InstantiateAsync&lt;T&gt;(T, Transform)</span>
+    </div>
+    <div>
+      <span class="xref">Object.InstantiateAsync&lt;T&gt;(T, Vector3, Quaternion)</span>
+    </div>
+    <div>
+      <span class="xref">Object.InstantiateAsync&lt;T&gt;(T, Transform, Vector3, Quaternion)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Transform)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Vector3, Quaternion)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, ReadOnlySpan&lt;Vector3&gt;, ReadOnlySpan&lt;Quaternion&gt;)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Transform, Vector3, Quaternion)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Transform, Vector3, Quaternion, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Transform, ReadOnlySpan&lt;Vector3&gt;, ReadOnlySpan&lt;Quaternion&gt;)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Transform, ReadOnlySpan&lt;Vector3&gt;, ReadOnlySpan&lt;Quaternion&gt;, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">Object.InstantiateAsync&lt;T&gt;(T, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">Object.InstantiateAsync&lt;T&gt;(T, Vector3, Quaternion, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Vector3, Quaternion, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, ReadOnlySpan&lt;Vector3&gt;, ReadOnlySpan&lt;Quaternion&gt;, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate(Object, Vector3, Quaternion)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate(Object, Vector3, Quaternion, Transform)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate(Object)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate(Object, Scene)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate&lt;T&gt;(T, InstantiateParameters)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate&lt;T&gt;(T, Vector3, Quaternion, InstantiateParameters)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate(Object, Transform)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">Object.Instantiate(Object, Transform, bool)</a>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate&lt;T&gt;(T)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate&lt;T&gt;(T, Vector3, Quaternion)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate&lt;T&gt;(T, Vector3, Quaternion, Transform)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate&lt;T&gt;(T, Transform)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">Object.Instantiate&lt;T&gt;(T, Transform, bool)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">Object.Destroy(Object, float)</a>
+    </div>
+    <div>
+      <span class="xref">Object.Destroy(Object)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">Object.DestroyImmediate(Object, bool)</a>
+    </div>
+    <div>
+      <span class="xref">Object.DestroyImmediate(Object)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsOfType(Type)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsOfType(Type, bool)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsByType(Type, FindObjectsSortMode)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsByType(Type, FindObjectsInactive, FindObjectsSortMode)</a>
+    </div>
+    <div>
+      <span class="xref">Object.DontDestroyOnLoad(Object)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">Object.DestroyObject(Object, float)</a>
+    </div>
+    <div>
+      <span class="xref">Object.DestroyObject(Object)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindSceneObjectsOfType(Type)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsOfTypeIncludingAssets(Type)</a>
+    </div>
+    <div>
+      <span class="xref">Object.FindObjectsOfType&lt;T&gt;()</span>
+    </div>
+    <div>
+      <span class="xref">Object.FindObjectsByType&lt;T&gt;(FindObjectsSortMode)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">Object.FindObjectsOfType&lt;T&gt;(bool)</a>
+    </div>
+    <div>
+      <span class="xref">Object.FindObjectsByType&lt;T&gt;(FindObjectsInactive, FindObjectsSortMode)</span>
+    </div>
+    <div>
+      <span class="xref">Object.FindObjectOfType&lt;T&gt;()</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">Object.FindObjectOfType&lt;T&gt;(bool)</a>
+    </div>
+    <div>
+      <span class="xref">Object.FindFirstObjectByType&lt;T&gt;()</span>
+    </div>
+    <div>
+      <span class="xref">Object.FindAnyObjectByType&lt;T&gt;()</span>
+    </div>
+    <div>
+      <span class="xref">Object.FindFirstObjectByType&lt;T&gt;(FindObjectsInactive)</span>
+    </div>
+    <div>
+      <span class="xref">Object.FindAnyObjectByType&lt;T&gt;(FindObjectsInactive)</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsOfTypeAll(Type)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectOfType(Type)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindFirstObjectByType(Type)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindAnyObjectByType(Type)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectOfType(Type, bool)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindFirstObjectByType(Type, FindObjectsInactive)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindAnyObjectByType(Type, FindObjectsInactive)</a>
+    </div>
+    <div>
+      <span class="xref">Object.ToString()</span>
+    </div>
+    <div>
+      <span class="xref">Object.name</span>
+    </div>
+    <div>
+      <span class="xref">Object.hideFlags</span>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object-system-object)">object.Equals(object, object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gettype">object.GetType()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.memberwiseclone">object.MemberwiseClone()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.referenceequals">object.ReferenceEquals(object, object)</a>
+    </div>
+  </dd></dl>
+
+
+
+
+
+
+  <h2 class="section" id="properties">Properties
+</h2>
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_AllowRepeatMessages_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.AllowRepeatMessages*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_AllowRepeatMessages" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.AllowRepeatMessages">
+  AllowRepeatMessages
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L152"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>If true, allows repeat messages from clients without spam filtering.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool AllowRepeatMessages { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_MaxMessageLength_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.MaxMessageLength*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_MaxMessageLength" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.MaxMessageLength">
+  MaxMessageLength
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L139"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Maximum allowed chat message length.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int MaxMessageLength { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_MessageFetchCount_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.MessageFetchCount*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_MessageFetchCount" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.MessageFetchCount">
+  MessageFetchCount
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L160"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Number of chat messages to fetch per database poll.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int MessageFetchCount { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_MessagePumpRate_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.MessagePumpRate*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_MessagePumpRate" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.MessagePumpRate">
+  MessagePumpRate
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L156"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The server chat message pump rate limit in seconds.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public float MessagePumpRate { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_MessageRateLimit_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.MessageRateLimit*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_MessageRateLimit" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.MessageRateLimit">
+  MessageRateLimit
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L135"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The server chat rate limit in milliseconds. Should match the client's UIChat.messageRateLimit.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public float MessageRateLimit { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h2 class="section" id="methods">Methods
+</h2>
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_GetChannelCommand_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.GetChannelCommand*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_GetChannelCommand_FishMMO_Shared_ChatChannel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.GetChannelCommand(FishMMO.Shared.ChatChannel)">
+  GetChannelCommand(ChatChannel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L499"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Gets the chat command handler for a specific chat channel.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public ChatCommand GetChannelCommand(ChatChannel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>channel</code> <a class="xref" href="FishMMO.Shared.ChatChannel.html">ChatChannel</a></dt>
+    <dd><p>Chat channel to get the command for.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Shared.ChatCommand.html">ChatCommand</a></dt>
+    <dd><p>Chat command delegate for the channel.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_InitializeOnce_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.InitializeOnce*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_InitializeOnce" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.InitializeOnce">
+  InitializeOnce()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L165"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Initializes the chat system, registering broadcast handlers and chat helper commands.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override ServerComponentInitializationStatus InitializeOnce()</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Server.Core.ServerComponentInitializationStatus.html">ServerComponentInitializationStatus</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnDeinitialize_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnDeinitialize*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnDeinitialize" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnDeinitialize">
+  OnDeinitialize()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L229"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Cleans up the chat system, unregistering broadcast handlers and chat helper commands.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnDeinitialize()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnGuildChat_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnGuildChat*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnGuildChat_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_ChatBroadcast_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnGuildChat(FishMMO.Shared.Core.IPlayerCharacter,FishMMO.Shared.ChatBroadcast)">
+  OnGuildChat(IPlayerCharacter, ChatBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.GroupChat.cs/#L134"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles guild chat messages, querying guild members asynchronously from the database
+and marshalling Broadcasts back to the main thread. Returns false to suppress the
+synchronous DB save — the async path handles persistence when broadcast succeeds.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool OnGuildChat(IPlayerCharacter sender, ChatBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sender</code> <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a></dt>
+    <dd><p>Player character sending the message.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.ChatBroadcast.html">ChatBroadcast</a></dt>
+    <dd><p>Chat broadcast message.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>False — persistence is handled inside the async path.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnPartyChat_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnPartyChat*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnPartyChat_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_ChatBroadcast_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnPartyChat(FishMMO.Shared.Core.IPlayerCharacter,FishMMO.Shared.ChatBroadcast)">
+  OnPartyChat(IPlayerCharacter, ChatBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.GroupChat.cs/#L27"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles party chat messages, querying party members asynchronously from the database
+and marshalling Broadcasts back to the main thread. Returns false to suppress the
+synchronous DB save — the async path handles persistence when broadcast succeeds.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool OnPartyChat(IPlayerCharacter sender, ChatBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sender</code> <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a></dt>
+    <dd><p>Player character sending the message.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.ChatBroadcast.html">ChatBroadcast</a></dt>
+    <dd><p>Chat broadcast message.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>False — persistence is handled inside the async path.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnRegionChat_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnRegionChat*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnRegionChat_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_ChatBroadcast_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnRegionChat(FishMMO.Shared.Core.IPlayerCharacter,FishMMO.Shared.ChatBroadcast)">
+  OnRegionChat(IPlayerCharacter, ChatBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.LocalChat.cs/#L19"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles region chat messages, broadcasting to all connections in the sender's scene.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool OnRegionChat(IPlayerCharacter sender, ChatBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sender</code> <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a></dt>
+    <dd><p>Player character sending the message.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.ChatBroadcast.html">ChatBroadcast</a></dt>
+    <dd><p>Chat broadcast message.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>False to prevent message from being written to the database.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnSayChat_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnSayChat*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnSayChat_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_ChatBroadcast_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnSayChat(FishMMO.Shared.Core.IPlayerCharacter,FishMMO.Shared.ChatBroadcast)">
+  OnSayChat(IPlayerCharacter, ChatBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.LocalChat.cs/#L57"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles say (local) chat messages, broadcasting to all observers of the sender.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool OnSayChat(IPlayerCharacter sender, ChatBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sender</code> <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a></dt>
+    <dd><p>Player character sending the message.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.ChatBroadcast.html">ChatBroadcast</a></dt>
+    <dd><p>Chat broadcast message.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>False to prevent message from being written to the database.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnSendDiscordMessage_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnSendDiscordMessage*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnSendDiscordMessage_System_Int64_System_Int64_System_String_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnSendDiscordMessage(System.Int64,System.Int64,System.String)">
+  OnSendDiscordMessage(long, long, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L992"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Allows the server to send Discord messages to a specific world server.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnSendDiscordMessage(long worldServerID, long sceneServerID, string message)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>worldServerID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>World server ID to send the message to.</p>
+</dd>
+    <dt><code>sceneServerID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>Scene server ID (for context).</p>
+</dd>
+    <dt><code>message</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Discord message text.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnSendSystemMessage_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnSendSystemMessage*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnSendSystemMessage_FishNet_Connection_NetworkConnection_System_String_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnSendSystemMessage(FishNet.Connection.NetworkConnection,System.String)">
+  OnSendSystemMessage(NetworkConnection, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L972"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Allows the server to send system messages to the connection.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnSendSystemMessage(NetworkConnection conn, string message)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>Network connection to send the system message to.</p>
+</dd>
+    <dt><code>message</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>System message text.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnTellChat_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnTellChat*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnTellChat_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_ChatBroadcast_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnTellChat(FishMMO.Shared.Core.IPlayerCharacter,FishMMO.Shared.ChatBroadcast)">
+  OnTellChat(IPlayerCharacter, ChatBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.TellChat.cs/#L26"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles tell (private) chat messages. Queries the target character asynchronously from the database,
+marshals Broadcasts to the main thread, and persists the message on success.
+Returns false to suppress the synchronous DB save — the async path handles persistence.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool OnTellChat(IPlayerCharacter sender, ChatBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sender</code> <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a></dt>
+    <dd><p>Player character sending the message.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.ChatBroadcast.html">ChatBroadcast</a></dt>
+    <dd><p>Chat broadcast message.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>False — persistence is handled inside the async path.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnTradeChat_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnTradeChat*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnTradeChat_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_ChatBroadcast_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnTradeChat(FishMMO.Shared.Core.IPlayerCharacter,FishMMO.Shared.ChatBroadcast)">
+  OnTradeChat(IPlayerCharacter, ChatBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.WorldChat.cs/#L78"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles trade chat messages.
+Live messages are buffered per-world for batched delivery.
+Pump-sourced messages (sender == null) are broadcast immediately.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool OnTradeChat(IPlayerCharacter sender, ChatBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sender</code> <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a></dt>
+    <dd><p>Player character sending the message, or null for pump-sourced.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.ChatBroadcast.html">ChatBroadcast</a></dt>
+    <dd><p>Chat broadcast message.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if message was accepted (live sender), false otherwise.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnUpdate_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnUpdate*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnUpdate_System_Single_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnUpdate(System.Single)">
+  OnUpdate(float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.cs/#L299"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Each frame: drain the lock-free incoming chat queue, then the main-thread action queue.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnUpdate(float deltaTime)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>deltaTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnWorldChat_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnWorldChat*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_ChatSystem_OnWorldChat_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_ChatBroadcast_" data-uid="FishMMO.Server.Implementation.World.SceneServer.ChatSystem.OnWorldChat(FishMMO.Shared.Core.IPlayerCharacter,FishMMO.Shared.ChatBroadcast)">
+  OnWorldChat(IPlayerCharacter, ChatBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.WorldChat.cs/#L25"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles world chat messages.
+Live messages are buffered per-world for batched delivery.
+Pump-sourced messages (sender == null) are broadcast immediately.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool OnWorldChat(IPlayerCharacter sender, ChatBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sender</code> <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a></dt>
+    <dd><p>Player character sending the message, or null for pump-sourced.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.ChatBroadcast.html">ChatBroadcast</a></dt>
+    <dd><p>Chat broadcast message.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if message was accepted (live sender), false otherwise.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/ChatSystem.GroupChat.cs/#L17" class="edit-link">Edit this page</a>
+        </div>
+
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

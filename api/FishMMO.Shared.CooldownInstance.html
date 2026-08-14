@@ -2,11 +2,11 @@
 <html>
   <head>
     <meta charset="utf-8">
-      <title>Class CooldownInstance | FishMMO </title>
+      <title>Struct CooldownInstance | FishMMO </title>
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="title" content="Class CooldownInstance | FishMMO ">
+      <meta name="title" content="Struct CooldownInstance | FishMMO ">
       
-      <meta name="description" content="Represents a single cooldown instance for an ability.">
+      <meta name="description" content="Immutable cooldown instance using  + . Remaining time is computed as DurationTicks - (currentTick - StartTick), which is perfectly deterministic across client and server with zero float drift. No per-tick mutation is needed — cooldowns auto-expire via integer comparison.">
       <link rel="icon" href="../favicon.ico">
       <link rel="stylesheet" href="../public/docfx.min.css">
       <link rel="stylesheet" href="../public/main.css">
@@ -89,32 +89,28 @@
 
 
   <h1 id="FishMMO_Shared_CooldownInstance" data-uid="FishMMO.Shared.CooldownInstance" class="text-break">
-Class CooldownInstance  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L8"><i class="bi bi-code-slash"></i></a>
+Struct CooldownInstance  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L17"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
     <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Shared.html">Shared</a></dd></dl>
-  <dl><dt>Assembly</dt><dd>Assembly-CSharp.dll</dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Represents a single cooldown instance for an ability.</p>
+  <div class="markdown summary"><p>Immutable cooldown instance using <a class="xref" href="FishMMO.Shared.CooldownInstance.html#FishMMO_Shared_CooldownInstance_StartTick">StartTick</a> + <a class="xref" href="FishMMO.Shared.CooldownInstance.html#FishMMO_Shared_CooldownInstance_DurationTicks">DurationTicks</a>.
+Remaining time is computed as <code>DurationTicks - (currentTick - StartTick)</code>,
+which is perfectly deterministic across client and server with zero float drift.
+No per-tick mutation is needed — cooldowns auto-expire via integer comparison.</p>
 </div>
   <div class="markdown conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public class CooldownInstance</code></pre>
+    <pre><code class="lang-csharp hljs">public readonly struct CooldownInstance</code></pre>
   </div>
 
 
 
 
-  <dl class="typelist inheritance">
-    <dt>Inheritance</dt>
-    <dd>
-      <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object">object</a></div>
-      <div><span class="xref">CooldownInstance</span></div>
-    </dd>
-  </dl>
 
 
 
@@ -122,31 +118,34 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
     <dt>Inherited Members</dt>
     <dd>
     <div>
-      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object)">object.Equals(object)</a>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetype.equals">ValueType.Equals(object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetype.gethashcode">ValueType.GetHashCode()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetype.tostring">ValueType.ToString()</a>
     </div>
     <div>
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object-system-object)">object.Equals(object, object)</a>
     </div>
     <div>
-      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gethashcode">object.GetHashCode()</a>
-    </div>
-    <div>
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gettype">object.GetType()</a>
     </div>
     <div>
-      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.memberwiseclone">object.MemberwiseClone()</a>
-    </div>
-    <div>
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.referenceequals">object.ReferenceEquals(object, object)</a>
-    </div>
-    <div>
-      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.tostring">object.ToString()</a>
     </div>
   </dd></dl>
 
 
 
 
+  <h2 id="FishMMO_Shared_CooldownInstance_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>This replaces the previous SubtractTick() model. Because the struct is immutable
+after construction, it is safe during reconcile replay — the Replicate loop does
+not need to tick cooldowns at all, eliminating the double-subtract risk entirely.
+Reconcile only needs to transmit (StartTick, DurationTicks) which never change.</p>
+</div>
 
 
   <h2 class="section" id="constructors">Constructors
@@ -155,23 +154,30 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 
   <a id="FishMMO_Shared_CooldownInstance__ctor_" data-uid="FishMMO.Shared.CooldownInstance.#ctor*"></a>
 
-  <h3 id="FishMMO_Shared_CooldownInstance__ctor_System_Single_" data-uid="FishMMO.Shared.CooldownInstance.#ctor(System.Single)">
-  CooldownInstance(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L38"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CooldownInstance__ctor_System_UInt32_System_Single_System_Single_" data-uid="FishMMO.Shared.CooldownInstance.#ctor(System.UInt32,System.Single,System.Single)">
+  CooldownInstance(uint, float, float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L83"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Initializes a new cooldown instance with the same total and remaining time.</p>
+  <div class="markdown level1 summary"><p>Initializes a cooldown starting at the given tick with a duration in seconds.
+Duration is converted to ticks via <code>ceil(duration / tickDelta)</code>.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public CooldownInstance(float remainingTime)</code></pre>
+    <pre><code class="lang-csharp hljs">public CooldownInstance(uint startTick, float durationSeconds, float tickDelta)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>remainingTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The cooldown time.</p>
+    <dt><code>startTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>The network tick at which the cooldown begins.</p>
+</dd>
+    <dt><code>durationSeconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Cooldown duration in seconds.</p>
+</dd>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Fixed time step per tick.</p>
 </dd>
   </dl>
 
@@ -188,26 +194,29 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 
   <a id="FishMMO_Shared_CooldownInstance__ctor_" data-uid="FishMMO.Shared.CooldownInstance.#ctor*"></a>
 
-  <h3 id="FishMMO_Shared_CooldownInstance__ctor_System_Single_System_Single_" data-uid="FishMMO.Shared.CooldownInstance.#ctor(System.Single,System.Single)">
-  CooldownInstance(float, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L49"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CooldownInstance__ctor_System_UInt32_System_UInt32_System_Single_" data-uid="FishMMO.Shared.CooldownInstance.#ctor(System.UInt32,System.UInt32,System.Single)">
+  CooldownInstance(uint, uint, float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L96"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Initializes a new cooldown instance with specified total and remaining time.</p>
+  <div class="markdown level1 summary"><p>Initializes a cooldown from pre-computed tick values (deserialization / reconcile).</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public CooldownInstance(float totalTime, float remainingTime)</code></pre>
+    <pre><code class="lang-csharp hljs">public CooldownInstance(uint startTick, uint durationTicks, float tickDelta)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>totalTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>Total cooldown time.</p>
+    <dt><code>startTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>The tick at which the cooldown began.</p>
 </dd>
-    <dt><code>remainingTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>Remaining cooldown time.</p>
+    <dt><code>durationTicks</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>Total duration in ticks.</p>
+</dd>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Fixed time step per tick (for UI conversion).</p>
 </dd>
   </dl>
 
@@ -226,19 +235,19 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 </h2>
 
 
-  <a id="FishMMO_Shared_CooldownInstance_IsOnCooldown_" data-uid="FishMMO.Shared.CooldownInstance.IsOnCooldown*"></a>
+  <a id="FishMMO_Shared_CooldownInstance_DurationTicks_" data-uid="FishMMO.Shared.CooldownInstance.DurationTicks*"></a>
 
-  <h3 id="FishMMO_Shared_CooldownInstance_IsOnCooldown" data-uid="FishMMO.Shared.CooldownInstance.IsOnCooldown">
-  IsOnCooldown
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L26"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CooldownInstance_DurationTicks" data-uid="FishMMO.Shared.CooldownInstance.DurationTicks">
+  DurationTicks
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L27"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Gets whether the cooldown is still active.</p>
+  <div class="markdown level1 summary"><p>The cooldown duration in ticks. Immutable after construction.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public bool IsOnCooldown { get; }</code></pre>
+    <pre><code class="lang-csharp hljs">public uint DurationTicks { get; }</code></pre>
   </div>
 
 
@@ -247,7 +256,7 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 
   <h4 class="section">Property Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
     <dd></dd>
   </dl>
 
@@ -258,19 +267,19 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 
 
 
-  <a id="FishMMO_Shared_CooldownInstance_RemainingTime_" data-uid="FishMMO.Shared.CooldownInstance.RemainingTime*"></a>
+  <a id="FishMMO_Shared_CooldownInstance_StartTick_" data-uid="FishMMO.Shared.CooldownInstance.StartTick*"></a>
 
-  <h3 id="FishMMO_Shared_CooldownInstance_RemainingTime" data-uid="FishMMO.Shared.CooldownInstance.RemainingTime">
-  RemainingTime
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L21"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CooldownInstance_StartTick" data-uid="FishMMO.Shared.CooldownInstance.StartTick">
+  StartTick
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L22"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The remaining cooldown time.</p>
+  <div class="markdown level1 summary"><p>The network tick at which this cooldown was started.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public float RemainingTime { get; }</code></pre>
+    <pre><code class="lang-csharp hljs">public uint StartTick { get; }</code></pre>
   </div>
 
 
@@ -279,7 +288,7 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 
   <h4 class="section">Property Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
     <dd></dd>
   </dl>
 
@@ -294,10 +303,10 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 
   <h3 id="FishMMO_Shared_CooldownInstance_TotalTime" data-uid="FishMMO.Shared.CooldownInstance.TotalTime">
   TotalTime
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L16"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L37"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The total cooldown time.</p>
+  <div class="markdown level1 summary"><p>The total cooldown duration in seconds, for UI display.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -326,25 +335,45 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 </h2>
 
 
-  <a id="FishMMO_Shared_CooldownInstance_AddTime_" data-uid="FishMMO.Shared.CooldownInstance.AddTime*"></a>
+  <a id="FishMMO_Shared_CooldownInstance_FromRemainingSeconds_" data-uid="FishMMO.Shared.CooldownInstance.FromRemainingSeconds*"></a>
 
-  <h3 id="FishMMO_Shared_CooldownInstance_AddTime_System_Single_" data-uid="FishMMO.Shared.CooldownInstance.AddTime(System.Single)">
-  AddTime(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L69"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CooldownInstance_FromRemainingSeconds_System_UInt32_System_Single_System_Single_System_Single_" data-uid="FishMMO.Shared.CooldownInstance.FromRemainingSeconds(System.UInt32,System.Single,System.Single,System.Single)">
+  FromRemainingSeconds(uint, float, float, float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L115"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Adds time to the remaining cooldown.</p>
+  <div class="markdown level1 summary"><p>Creates a cooldown from total and remaining durations in seconds.
+Computes <a class="xref" href="FishMMO.Shared.CooldownInstance.html#FishMMO_Shared_CooldownInstance_StartTick">StartTick</a> backwards from <code class="paramref">currentTick</code>
+so that <code>RemainingTicks(currentTick)</code> equals the expected remaining value.
+Used when restoring cooldown state from database or network payloads that store
+seconds rather than ticks.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void AddTime(float time)</code></pre>
+    <pre><code class="lang-csharp hljs">public static CooldownInstance FromRemainingSeconds(uint currentTick, float totalDurationSeconds, float remainingDurationSeconds, float tickDelta)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>time</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>Time to add.</p>
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>The current network tick.</p>
+</dd>
+    <dt><code>totalDurationSeconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Total cooldown duration in seconds.</p>
+</dd>
+    <dt><code>remainingDurationSeconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Remaining cooldown duration in seconds.</p>
+</dd>
+    <dt><code>tickDelta</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Fixed time step per tick.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Shared.CooldownInstance.html">CooldownInstance</a></dt>
+    <dd><p>A cooldown instance with <a class="xref" href="FishMMO.Shared.CooldownInstance.html#FishMMO_Shared_CooldownInstance_StartTick">StartTick</a> derived so remaining time is correct.</p>
 </dd>
   </dl>
 
@@ -358,29 +387,114 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 
 
 
+  <a id="FishMMO_Shared_CooldownInstance_IsOnCooldown_" data-uid="FishMMO.Shared.CooldownInstance.IsOnCooldown*"></a>
 
-  <a id="FishMMO_Shared_CooldownInstance_SubtractTime_" data-uid="FishMMO.Shared.CooldownInstance.SubtractTime*"></a>
-
-  <h3 id="FishMMO_Shared_CooldownInstance_SubtractTime_System_Single_" data-uid="FishMMO.Shared.CooldownInstance.SubtractTime(System.Single)">
-  SubtractTime(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L59"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CooldownInstance_IsOnCooldown_System_UInt32_" data-uid="FishMMO.Shared.CooldownInstance.IsOnCooldown(System.UInt32)">
+  IsOnCooldown(uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L70"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Subtracts time from the remaining cooldown.</p>
+  <div class="markdown level1 summary"><p>Whether the cooldown is still active at the given tick.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void SubtractTime(float time)</code></pre>
+    <pre><code class="lang-csharp hljs">public bool IsOnCooldown(uint currentTick)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>time</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>Time to subtract.</p>
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>The current network tick.</p>
 </dd>
   </dl>
 
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if the cooldown has not yet expired.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_CooldownInstance_RemainingTicks_" data-uid="FishMMO.Shared.CooldownInstance.RemainingTicks*"></a>
+
+  <h3 id="FishMMO_Shared_CooldownInstance_RemainingTicks_System_UInt32_" data-uid="FishMMO.Shared.CooldownInstance.RemainingTicks(System.UInt32)">
+  RemainingTicks(uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L58"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Computes remaining ticks for the given current tick.
+Returns 0 if the cooldown has expired.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public uint RemainingTicks(uint currentTick)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>The current network tick.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>Remaining cooldown in ticks, clamped to zero.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_CooldownInstance_RemainingTime_" data-uid="FishMMO.Shared.CooldownInstance.RemainingTime*"></a>
+
+  <h3 id="FishMMO_Shared_CooldownInstance_RemainingTime_System_UInt32_" data-uid="FishMMO.Shared.CooldownInstance.RemainingTime(System.UInt32)">
+  RemainingTime(uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L45"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Computes remaining time in seconds for the given current tick.
+Returns 0 if the cooldown has expired.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public float RemainingTime(uint currentTick)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>currentTick</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>The current network tick.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Remaining cooldown time in seconds, clamped to zero.</p>
+</dd>
+  </dl>
 
 
 
@@ -396,7 +510,7 @@ Class CooldownInstance  <a class="header-action link-secondary" title="View sour
 </article>
 
         <div class="contribution d-print-none">
-          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Entity/Ability/Cooldown/CooldownInstance.cs/#L8" class="edit-link">Edit this page</a>
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/Cooldown/CooldownInstance.cs/#L17" class="edit-link">Edit this page</a>
         </div>
 
 

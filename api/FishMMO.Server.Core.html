@@ -96,7 +96,7 @@ Classes
 </h3>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.CoreServer.html">CoreServer</a></dt>
-      <dd><p>Core, engine-agnostic server logic: configuration and database initialization.</p>
+      <dd><p>Core, engine-agnostic server logic: configuration and lifecycle event dispatching.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -106,18 +106,107 @@ the application's configuration settings from files.</p>
 </dd>
     </dl>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IngressGuard.html">IngressGuard</a></dt>
+      <dd><p>Reusable per-connection, per-operation debounce and in-flight guard.
+Eliminates duplicated ingress-guard boilerplate across server systems.
+Thread-safe: backed by ConcurrentDictionary for cross-thread access.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.RequiresDataContainerAttribute.html">RequiresDataContainerAttribute</a></dt>
+      <dd><p>Declares that a ServerBehaviour requires a specific RuntimeDataContainer type.
+The container will be automatically instantiated and registered before
+the behaviour is initialized. Multiple systems can declare the same container type,
+and only one instance will be created.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.ServerEvents.html">ServerEvents</a></dt>
       <dd><p>A concrete implementation of <a class="xref" href="FishMMO.Server.Core.IServerEvents.html">IServerEvents</a>.
-Implements the event pattern, allowing other components to subscribe to server initialization events.</p>
+Provides Action delegates for server lifecycle events. The <code>Action</code> properties
+use <code>get; set;</code> rather than the <code>event</code> keyword to allow invocation from
+external types. Callers MUST use <code>+=</code>/<code>-=</code> — direct assignment (<code>=</code>)
+replaces all existing subscribers and is reserved for initialization only.</p>
 </dd>
     </dl>
     <h3 id="interfaces">
 Interfaces
 </h3>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IAsyncWorkerData.html">IAsyncWorkerData</a></dt>
+      <dd><p>Runtime data container interface for a centralized async work queue.
+Provides bounded, backpressure-aware enqueueing of async work items
+that are processed by a configurable number of worker loops.</p>
+<p>Systems use this instead of fire-and-forget <code>_ = SomeAsync(...)</code>
+to control thread pool utilization and provide ordering guarantees
+for entity-keyed work.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.ICoreServer.html">ICoreServer</a></dt>
       <dd><p>Represents the core, engine-agnostic server logic.
 Defines the contract for initializing and accessing core server data.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IKickRequestSystem.html">IKickRequestSystem</a></dt>
+      <dd><p>Engine-agnostic public API for the kick request processing system on a world server.
+Provides configuration surface and allows other systems to query or modify
+runtime pump parameters without referencing the implementation.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IKickRequestSystemMainThreadQueueData.html">IKickRequestSystemMainThreadQueueData</a></dt>
+      <dd><p>Main-thread queue data interface for KickRequestSystem.
+Separate interface ensures the DataContainerRegistry maps this
+independently from other systems' main-thread queues.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IKickRequestSystemQueueData.html">IKickRequestSystemQueueData</a></dt>
+      <dd><p>Runtime data container for kick request processing state.
+Tracks database polling position for kick request processing.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IMainThreadQueueData.html">IMainThreadQueueData</a></dt>
+      <dd><p>Runtime data container interface for a thread-safe main-thread action queue.
+Systems use this to marshal network operations (Broadcast, Kick, Disconnect)
+from async worker threads back to the main Unity thread.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IPeriodicUpdateSystem.html">IPeriodicUpdateSystem</a></dt>
+      <dd><p>Provides periodic callback registration and dispatch functionality.
+Allows components to register callbacks that execute at specified intervals.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IRuntimeDataContainer.html">IRuntimeDataContainer</a></dt>
+      <dd><p>Non-generic marker interface for runtime data containers.
+Use this when declaring engine-agnostic data container interfaces so the implementation
+registry can discover and register containers by their interface types.
+Extends IServerComponent to participate in the unified component registry system.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IRuntimeDataContainerFactory.html">IRuntimeDataContainerFactory</a></dt>
+      <dd><p>Engine-agnostic factory for creating RuntimeDataContainer instances.
+Enables testability and decouples container creation from discovery.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IRuntimeDataContainerRegistry-3.html">IRuntimeDataContainerRegistry&lt;TNetworkManager, TConnection, TDataContainer&gt;</a></dt>
+      <dd><p>Engine-agnostic interface for the runtime data container registry.
+Defines the contract for registering, retrieving, and managing runtime data containers.
+Extends IServerComponentRegistry for unified component management.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IRuntimeDataContainer-4.html">IRuntimeDataContainer&lt;TNetworkManager, TServerManager, TConnection, TDataContainer&gt;</a></dt>
+      <dd><p>Generic interface for runtime data containers that store mutable server state.
+Data containers are managed by Server.cs and provide type-safe access to runtime data
+without coupling data storage to behaviour logic.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -134,22 +223,45 @@ Removes the responsibility from the Server class itself.</p>
     </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.IServerBehaviour.html">IServerBehaviour</a></dt>
-      <dd><p>Public interface representing the public API surface of server-side behaviours.
-Typical implementations are MonoBehaviour-derived types that register with the server
-and perform server-side logic (for example <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html">ServerBehaviour</a>).</p>
+      <dd><p>Non-generic marker interface for server behaviours.
+Use this when declaring engine-agnostic server behaviour interfaces so the implementation
+registry can discover and register behaviours by their interface types.
+Extends IServerComponent to participate in the unified component registry system.</p>
 </dd>
     </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.IServerBehaviourRegistry-3.html">IServerBehaviourRegistry&lt;TNetworkManager, TConnection, TBehaviour&gt;</a></dt>
       <dd><p>Engine-agnostic interface for the server behaviour registry.
-Defines the contract for registering, retrieving, and managing server-side behaviours.</p>
+Defines the contract for registering, retrieving, and managing server-side behaviours.
+Extends IServerComponentRegistry for unified component management.</p>
 </dd>
     </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.IServerBehaviour-4.html">IServerBehaviour&lt;TNetworkManager, TServerManager, TConnection, TServerBehaviour&gt;</a></dt>
       <dd><p>Public interface representing the public API surface of server-side behaviours.
-Typical implementations are MonoBehaviour-derived types that register with the server
-and perform server-side logic (for example <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html">ServerBehaviour</a>).</p>
+Typical implementations are ScriptableObject-derived types that register with the server
+and perform server-side logic (for example FishMMO.Server.Implementation.ServerBehaviour).
+Extends IServerComponent to participate in the unified component initialization lifecycle.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IServerComponent.html">IServerComponent</a></dt>
+      <dd><p>Base marker interface for all server components (behaviours, data containers, etc.).
+Use this when declaring engine-agnostic component interfaces so the implementation
+registry can discover and register components by their interface types.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IServerComponentRegistry-3.html">IServerComponentRegistry&lt;TNetworkManager, TConnection, TServerComponent&gt;</a></dt>
+      <dd><p>Generic interface for server component registries.
+Defines the contract for registering, retrieving, and managing server components
+(behaviours, data containers, etc.).</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.IServerComponent-4.html">IServerComponent&lt;TNetworkManager, TServerManager, TConnection, TServerComponent&gt;</a></dt>
+      <dd><p>Generic interface for server components that require initialization and lifecycle management.
+This is the base interface for all server components including behaviours and data containers.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -160,7 +272,14 @@ Provides methods to retrieve and save configuration values for different server 
     </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.IServerEvents.html">IServerEvents</a></dt>
-      <dd></dd>
+      <dd><p>Interface for a service that raises server lifecycle events.
+Provides event delegates for subscription. The <code>Action</code> properties use
+<code>get; set;</code> rather than the <code>event</code> keyword to allow invocation
+from external types (e.g., <code>CoreServer</code>). Callers MUST use <code>+=</code>/<code>-=</code>
+for subscription management — direct assignment (<code>=</code>) will replace all
+existing subscribers and should never be used outside of the implementing
+<code>ServerEvents</code> class initialization.</p>
+</dd>
     </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.IServer-3.html">IServer&lt;TNetworkManager, TConnection, TServerBehaviour&gt;</a></dt>
@@ -171,6 +290,17 @@ This surface represents the instance-level public API of a server MonoBehaviour 
     <h3 id="enums">
 Enums
 </h3>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.ConnectionState.html">ConnectionState</a></dt>
+      <dd><p>Connection states the server can be in.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Core.ServerComponentInitializationStatus.html">ServerComponentInitializationStatus</a></dt>
+      <dd><p>Enumeration representing the initialization status of server components (behaviours, data containers, etc.).
+Generic status enum used across all server component types.</p>
+</dd>
+    </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Core.ServerType.html">ServerType</a></dt>
       <dd><p>Represents the type of server being launched.

@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class DynamicAddressableLoadPathSystem | FishMMO ">
       
-      <meta name="description" content="Dynamically overrides the Addressables remote load path at runtime. Useful for changing asset server URLs based on runtime configuration (e.g., IP discovery).">
+      <meta name="description" content="Dynamically overrides the Addressables remote load path at runtime. Registers a persistent InternalIdTransformFunc on the Addressables ResourceManager that rewrites remote asset URLs to use RuntimeBaseUrl. Only one instance should exist in the scene — the last one to Awake wins.  Client builds with an empty or loopback RuntimeBaseUrl do not register a rewrite: Addressables.RuntimePath already resolves correctly (including WebGL, where StreamingAssets is an absolute http(s) URL derived from the page origin, e.g. https://fishmmo.com/test/StreamingAssets/aa). Rewriting those IDs to a hardcoded host (or prefixing file://) breaks loads when the game is served from a different domain or subpath.">
       <link rel="icon" href="../favicon.ico">
       <link rel="stylesheet" href="../public/docfx.min.css">
       <link rel="stylesheet" href="../public/main.css">
@@ -89,16 +89,26 @@
 
 
   <h1 id="FishMMO_Shared_DynamicAddressableLoadPathSystem" data-uid="FishMMO.Shared.DynamicAddressableLoadPathSystem" class="text-break">
-Class DynamicAddressableLoadPathSystem  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Bootstrap/DynamicAddressableLoadPathSystem.cs/#L11"><i class="bi bi-code-slash"></i></a>
+Class DynamicAddressableLoadPathSystem  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/DynamicAddressableLoadPathSystem.cs/#L22"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
     <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Shared.html">Shared</a></dd></dl>
-  <dl><dt>Assembly</dt><dd>Assembly-CSharp.dll</dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
   <div class="markdown summary"><p>Dynamically overrides the Addressables remote load path at runtime.
-Useful for changing asset server URLs based on runtime configuration (e.g., IP discovery).</p>
+Registers a persistent InternalIdTransformFunc on the Addressables ResourceManager
+that rewrites remote asset URLs to use RuntimeBaseUrl. Only one instance should
+exist in the scene — the last one to Awake wins.</p>
+<p>
+Client builds with an empty or loopback RuntimeBaseUrl do not register a rewrite:
+Addressables.RuntimePath already resolves correctly (including WebGL, where
+StreamingAssets is an absolute http(s) URL derived from the page origin, e.g.
+https://fishmmo.com/test/StreamingAssets/aa). Rewriting those IDs to a
+hardcoded host (or prefixing file://) breaks loads when the game is served from
+a different domain or subpath.
+</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -325,10 +335,16 @@ Useful for changing asset server URLs based on runtime configuration (e.g., IP d
       <span class="xref">Component.transform</span>
     </div>
     <div>
+      <span class="xref">Component.transformHandle</span>
+    </div>
+    <div>
       <span class="xref">Component.gameObject</span>
     </div>
     <div>
       <span class="xref">Component.tag</span>
+    </div>
+    <div>
+      <span class="xref">Object.GetEntityId()</span>
     </div>
     <div>
       <span class="xref">Object.GetInstanceID()</span>
@@ -376,6 +392,21 @@ Useful for changing asset server URLs based on runtime configuration (e.g., IP d
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Transform, ReadOnlySpan&lt;Vector3&gt;, ReadOnlySpan&lt;Quaternion&gt;, CancellationToken)</a>
     </div>
     <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">Object.InstantiateAsync&lt;T&gt;(T, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">Object.InstantiateAsync&lt;T&gt;(T, Vector3, Quaternion, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, Vector3, Quaternion, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">Object.InstantiateAsync&lt;T&gt;(T, int, ReadOnlySpan&lt;Vector3&gt;, ReadOnlySpan&lt;Quaternion&gt;, InstantiateParameters, CancellationToken)</a>
+    </div>
+    <div>
       <span class="xref">Object.Instantiate(Object, Vector3, Quaternion)</span>
     </div>
     <div>
@@ -386,6 +417,12 @@ Useful for changing asset server URLs based on runtime configuration (e.g., IP d
     </div>
     <div>
       <span class="xref">Object.Instantiate(Object, Scene)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate&lt;T&gt;(T, InstantiateParameters)</span>
+    </div>
+    <div>
+      <span class="xref">Object.Instantiate&lt;T&gt;(T, Vector3, Quaternion, InstantiateParameters)</span>
     </div>
     <div>
       <span class="xref">Object.Instantiate(Object, Transform)</span>
@@ -526,28 +563,117 @@ Useful for changing asset server URLs based on runtime configuration (e.g., IP d
 
 
 
-  <h2 class="section" id="fields">Fields
+  <h2 class="section" id="properties">Properties
 </h2>
 
 
+  <a id="FishMMO_Shared_DynamicAddressableLoadPathSystem_RuntimeBaseUrl_" data-uid="FishMMO.Shared.DynamicAddressableLoadPathSystem.RuntimeBaseUrl*"></a>
 
   <h3 id="FishMMO_Shared_DynamicAddressableLoadPathSystem_RuntimeBaseUrl" data-uid="FishMMO.Shared.DynamicAddressableLoadPathSystem.RuntimeBaseUrl">
   RuntimeBaseUrl
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Bootstrap/DynamicAddressableLoadPathSystem.cs/#L16"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/DynamicAddressableLoadPathSystem.cs/#L40"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The base URL to use for remote Addressables asset loading at runtime.</p>
+  <div class="markdown level1 summary"><p>The base URL to use for remote Addressables asset loading at runtime.
+When set to a real CDN URL on client builds, overrides the profile's remote load path.
+When left empty (or set to a loopback placeholder), client builds keep Addressables'
+default local StreamingAssets resolution and do not rewrite http(s) IDs.
+Trailing slash is normalized automatically on set.
+Cannot be set to null or empty after the transform is registered.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public string RuntimeBaseUrl</code></pre>
+    <pre><code class="lang-csharp hljs">public string RuntimeBaseUrl { get; set; }</code></pre>
   </div>
 
 
 
 
-  <h4 class="section">Field Value</h4>
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h2 class="section" id="methods">Methods
+</h2>
+
+
+  <a id="FishMMO_Shared_DynamicAddressableLoadPathSystem_IsLoopbackPlaceholder_" data-uid="FishMMO.Shared.DynamicAddressableLoadPathSystem.IsLoopbackPlaceholder*"></a>
+
+  <h3 id="FishMMO_Shared_DynamicAddressableLoadPathSystem_IsLoopbackPlaceholder_System_String_" data-uid="FishMMO.Shared.DynamicAddressableLoadPathSystem.IsLoopbackPlaceholder(System.String)">
+  IsLoopbackPlaceholder(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/DynamicAddressableLoadPathSystem.cs/#L82"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Returns true if the given URL is a loopback/localhost placeholder address
+that should be replaced with a local path on client builds.
+Uses System.Uri for exact host comparison to avoid substring false-positives.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool IsLoopbackPlaceholder(string url)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>url</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The URL to check.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if the URL's host is a loopback address.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_DynamicAddressableLoadPathSystem_ToLoadBaseUrl_" data-uid="FishMMO.Shared.DynamicAddressableLoadPathSystem.ToLoadBaseUrl*"></a>
+
+  <h3 id="FishMMO_Shared_DynamicAddressableLoadPathSystem_ToLoadBaseUrl_System_String_" data-uid="FishMMO.Shared.DynamicAddressableLoadPathSystem.ToLoadBaseUrl(System.String)">
+  ToLoadBaseUrl(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/DynamicAddressableLoadPathSystem.cs/#L102"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Builds a load-base URL for Addressables.RuntimePath / StreamingAssets.
+WebGL (and any platform where StreamingAssets is already http/https) must not
+receive a file:// prefix — that produces invalid IDs like
+file://https://host/StreamingAssets/aa/...</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static string ToLoadBaseUrl(string path)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>path</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd></dd>
@@ -562,10 +688,12 @@ Useful for changing asset server URLs based on runtime configuration (e.g., IP d
 
 
 
+
+
 </article>
 
         <div class="contribution d-print-none">
-          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Bootstrap/DynamicAddressableLoadPathSystem.cs/#L11" class="edit-link">Edit this page</a>
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Bootstrap/DynamicAddressableLoadPathSystem.cs/#L22" class="edit-link">Edit this page</a>
         </div>
 
 

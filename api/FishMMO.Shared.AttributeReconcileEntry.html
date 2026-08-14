@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Struct AttributeReconcileEntry | FishMMO </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Struct AttributeReconcileEntry | FishMMO ">
+      
+      <meta name="description" content="A single non-resource character attribute entry for reconcile serialization. Mirrors  /  index-delta compression so unchanged attributes contribute zero network bytes.  Resource attributes (HP/MP/Stamina) are NOT carried by this entry — they ride  on the reconcile payload because they also need CurrentValue + RegenTickAccum state that base attributes do not have.   Only  (authoritative base) and  (sum of buff / equipment / region contributions) are reconciled. FormulaModifier is intentionally recomputed locally via the dependency graph (CharacterAttribute.ApplyChildren): replicating it would (a) cost bandwidth for a derived value and (b) potentially overwrite a more up-to-date local computation.">
+      <link rel="icon" href="../favicon.ico">
+      <link rel="stylesheet" href="../public/docfx.min.css">
+      <link rel="stylesheet" href="../public/main.css">
+      <meta name="docfx:navrel" content="../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/new/dev/apiSpec/new?filename=FishMMO_Shared_AttributeReconcileEntry.md&amp;value=---%0Auid%3A%20FishMMO.Shared.AttributeReconcileEntry%0Asummary%3A%20&#39;*You%20can%20override%20summary%20for%20the%20API%20here%20using%20*MARKDOWN*%20syntax&#39;%0A---%0A%0A*Please%20type%20below%20more%20information%20about%20this%20API%3A*%0A%0A">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="ManagedReference">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../index.html">
+            <img id="logo" class="svg" src="../logo.svg" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="FishMMO.Shared.AttributeReconcileEntry">
+
+
+
+  <h1 id="FishMMO_Shared_AttributeReconcileEntry" data-uid="FishMMO.Shared.AttributeReconcileEntry" class="text-break">
+Struct AttributeReconcileEntry  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L24"><i class="bi bi-code-slash"></i></a>
+  </h1>
+
+  <div class="facts text-secondary">
+    <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Shared.html">Shared</a></dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
+  </div>
+
+  <div class="markdown summary"><p>A single non-resource character attribute entry for reconcile serialization.
+Mirrors <a class="xref" href="FishMMO.Shared.BuffReconcileEntry.html">BuffReconcileEntry</a> / <a class="xref" href="FishMMO.Shared.CooldownReconcileEntry.html">CooldownReconcileEntry</a>
+index-delta compression so unchanged attributes contribute zero network bytes.</p>
+<p>
+Resource attributes (HP/MP/Stamina) are NOT carried by this entry — they ride
+<a class="xref" href="FishMMO.Shared.CharacterAttributeResourceState.html">CharacterAttributeResourceState</a> on the reconcile payload because they
+also need <code>CurrentValue</code> + <code>RegenTickAccum</code> state that base attributes do not have.
+</p>
+<p>
+Only <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html#FishMMO_Shared_AttributeReconcileEntry_Value">Value</a> (authoritative base) and <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html#FishMMO_Shared_AttributeReconcileEntry_ExternalModifier">ExternalModifier</a>
+(sum of buff / equipment / region contributions) are reconciled.
+<code>FormulaModifier</code> is intentionally recomputed locally via the dependency graph
+(<code>CharacterAttribute.ApplyChildren</code>): replicating it would (a) cost bandwidth for a
+derived value and (b) potentially overwrite a more up-to-date local computation.
+</p>
+</div>
+  <div class="markdown conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public struct AttributeReconcileEntry : IEquatable&lt;AttributeReconcileEntry&gt;</code></pre>
+  </div>
+
+
+
+
+
+  <dl class="typelist implements">
+    <dt>Implements</dt>
+    <dd>
+      <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.iequatable-1">IEquatable</a>&lt;<a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html">AttributeReconcileEntry</a>&gt;</div>
+    </dd>
+  </dl>
+
+
+  <dl class="typelist inheritedMembers">
+    <dt>Inherited Members</dt>
+    <dd>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetype.tostring">ValueType.ToString()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object-system-object)">object.Equals(object, object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gettype">object.GetType()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.referenceequals">object.ReferenceEquals(object, object)</a>
+    </div>
+  </dd></dl>
+
+
+
+
+
+
+  <h2 class="section" id="fields">Fields
+</h2>
+
+
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_ExternalModifier" data-uid="FishMMO.Shared.AttributeReconcileEntry.ExternalModifier">
+  ExternalModifier
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L33"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Authoritative external modifier (sum of buff / equip / region contributions).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int ExternalModifier</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_TemplateID" data-uid="FishMMO.Shared.AttributeReconcileEntry.TemplateID">
+  TemplateID
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L27"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The attribute template ID.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int TemplateID</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_Value" data-uid="FishMMO.Shared.AttributeReconcileEntry.Value">
+  Value
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L30"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Authoritative base value (pre-modifier).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int Value</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+  <h2 class="section" id="methods">Methods
+</h2>
+
+
+  <a id="FishMMO_Shared_AttributeReconcileEntry_Equals_" data-uid="FishMMO.Shared.AttributeReconcileEntry.Equals*"></a>
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_Equals_FishMMO_Shared_AttributeReconcileEntry_" data-uid="FishMMO.Shared.AttributeReconcileEntry.Equals(FishMMO.Shared.AttributeReconcileEntry)">
+  Equals(AttributeReconcileEntry)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L36"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"></div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool Equals(AttributeReconcileEntry other)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>other</code> <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html">AttributeReconcileEntry</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_AttributeReconcileEntry_Equals_" data-uid="FishMMO.Shared.AttributeReconcileEntry.Equals*"></a>
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_Equals_System_Object_" data-uid="FishMMO.Shared.AttributeReconcileEntry.Equals(System.Object)">
+  Equals(object)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L44"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"></div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override bool Equals(object obj)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>obj</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object">object</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_AttributeReconcileEntry_GetHashCode_" data-uid="FishMMO.Shared.AttributeReconcileEntry.GetHashCode*"></a>
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_GetHashCode" data-uid="FishMMO.Shared.AttributeReconcileEntry.GetHashCode">
+  GetHashCode()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L50"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"></div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override int GetHashCode()</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_AttributeReconcileEntry_ReadArrayDelta_" data-uid="FishMMO.Shared.AttributeReconcileEntry.ReadArrayDelta*"></a>
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_ReadArrayDelta_FishNet_Serializing_Reader_FishMMO_Shared_AttributeReconcileEntry___" data-uid="FishMMO.Shared.AttributeReconcileEntry.ReadArrayDelta(FishNet.Serializing.Reader,FishMMO.Shared.AttributeReconcileEntry[])">
+  ReadArrayDelta(Reader, AttributeReconcileEntry[])
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L160"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads an attribute array from the delta stream.
+High header bit = index-delta over prev, otherwise full array.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static AttributeReconcileEntry[] ReadArrayDelta(Reader reader, AttributeReconcileEntry[] prev)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>reader</code> <span class="xref">Reader</span></dt>
+    <dd></dd>
+    <dt><code>prev</code> <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html">AttributeReconcileEntry</a>[]</dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html">AttributeReconcileEntry</a>[]</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_AttributeReconcileEntry_ReadFrom_" data-uid="FishMMO.Shared.AttributeReconcileEntry.ReadFrom*"></a>
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_ReadFrom_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.AttributeReconcileEntry.ReadFrom(FishNet.Serializing.Reader)">
+  ReadFrom(Reader)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L70"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads a single entry's fields from the network reader.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static AttributeReconcileEntry ReadFrom(Reader reader)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>reader</code> <span class="xref">Reader</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html">AttributeReconcileEntry</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_AttributeReconcileEntry_WriteArrayDelta_" data-uid="FishMMO.Shared.AttributeReconcileEntry.WriteArrayDelta*"></a>
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_WriteArrayDelta_FishNet_Serializing_Writer_FishMMO_Shared_AttributeReconcileEntry___FishMMO_Shared_AttributeReconcileEntry___FishNet_Serializing_DeltaSerializerOption_" data-uid="FishMMO.Shared.AttributeReconcileEntry.WriteArrayDelta(FishNet.Serializing.Writer,FishMMO.Shared.AttributeReconcileEntry[],FishMMO.Shared.AttributeReconcileEntry[],FishNet.Serializing.DeltaSerializerOption)">
+  WriteArrayDelta(Writer, AttributeReconcileEntry[], AttributeReconcileEntry[], DeltaSerializerOption)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L96"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Compares and writes attribute arrays using index-delta compression.
+The wire header is a packed 16-bit value: high bit = delta mode, low 15 bits = entry count.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool WriteArrayDelta(Writer writer, AttributeReconcileEntry[] prev, AttributeReconcileEntry[] next, DeltaSerializerOption option)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>writer</code> <span class="xref">Writer</span></dt>
+    <dd></dd>
+    <dt><code>prev</code> <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html">AttributeReconcileEntry</a>[]</dt>
+    <dd></dd>
+    <dt><code>next</code> <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html">AttributeReconcileEntry</a>[]</dt>
+    <dd></dd>
+    <dt><code>option</code> <span class="xref">DeltaSerializerOption</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_AttributeReconcileEntry_WriteArrayDelta_FishNet_Serializing_Writer_FishMMO_Shared_AttributeReconcileEntry___FishMMO_Shared_AttributeReconcileEntry___FishNet_Serializing_DeltaSerializerOption__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><b>Null / empty equivalence:</b> both <code>null</code> and empty arrays serialize as
+count == 0 on the wire, and <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html#FishMMO_Shared_AttributeReconcileEntry_ReadArrayDelta_FishNet_Serializing_Reader_FishMMO_Shared_AttributeReconcileEntry___">ReadArrayDelta(Reader, AttributeReconcileEntry[])</a> returns <code>null</code> for both.</p>
+<p><b>Stable ordering required:</b> producers MUST sort entries by <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html#FishMMO_Shared_AttributeReconcileEntry_TemplateID">TemplateID</a>
+ascending so index-delta comparisons remain meaningful across ticks.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Shared_AttributeReconcileEntry_WriteTo_" data-uid="FishMMO.Shared.AttributeReconcileEntry.WriteTo*"></a>
+
+  <h3 id="FishMMO_Shared_AttributeReconcileEntry_WriteTo_FishNet_Serializing_Writer_" data-uid="FishMMO.Shared.AttributeReconcileEntry.WriteTo(FishNet.Serializing.Writer)">
+  WriteTo(Writer)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L62"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Writes a single entry's fields to the network writer.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void WriteTo(Writer writer)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>writer</code> <span class="xref">Writer</span></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/AttributeReconcileEntry.cs/#L24" class="edit-link">Edit this page</a>
+        </div>
+
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

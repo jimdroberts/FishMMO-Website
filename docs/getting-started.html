@@ -87,6 +87,113 @@
         <article data-uid="">
 <h1 id="getting-started">Getting Started</h1>
 
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong> with IL2CPP scripting backend</li>
+<li><strong>.NET SDK 8.0</strong> for server/web projects</li>
+<li><strong>PostgreSQL 14+</strong> for the database</li>
+<li><strong>NGINX</strong> for reverse proxy (Linux deployment)</li>
+<li><strong>cmake 3.20+</strong> and C++17 compiler for the native WebTransport library</li>
+</ul>
+<h2 id="quick-start-development">Quick Start (Development)</h2>
+<h3 id="1-database-setup">1. Database Setup</h3>
+<pre><code class="lang-bash"># Install PostgreSQL and create the database
+createdb fishmmo
+
+# Apply migrations
+cd FishMMO-Database/FishMMO-DB-Migrator
+export FISHMMO_CONNECTION_STRING=&quot;Host=localhost;Database=fishmmo;Username=postgres;Password=postgres&quot;
+dotnet run
+</code></pre>
+<h3 id="2-build-native-webtransport-library">2. Build Native WebTransport Library</h3>
+<pre><code class="lang-bash">cd FishMMO-WebTransport
+./build_linux.sh    # Linux
+./build_macos.sh    # macOS (must be run on a Mac)
+# Windows: use Visual Studio 2022 with CMake
+</code></pre>
+<h3 id="3-configure-servers">3. Configure Servers</h3>
+<p>Copy and edit the config files from <code>FishMMO-Setup/Development/</code>:</p>
+<pre><code class="lang-bash">cp FishMMO-Setup/Development/*.cfg FishMMO-Setup/Development/appsettings*.json .
+# Edit LoginServer.cfg, WorldServer.cfg, SceneServer.cfg
+# Set database credentials in appsettings.json or via environment variables
+</code></pre>
+<h3 id="4-run-servers">4. Run Servers</h3>
+<pre><code class="lang-bash"># Start each server in its own terminal:
+dotnet run --project FishMMO-WebServers/IPFetchASP.NET/IpFetchServer
+dotnet run --project FishMMO-WebServers/PatcherASP.NET/Patcher
+# Game servers run within Unity:
+# Open FishMMO-Unity in Unity, load the Server bootstrap scene, press Play
+</code></pre>
+<h3 id="5-run-client">5. Run Client</h3>
+<p>Open <code>FishMMO-Unity</code> in Unity, load the Client bootstrap scene, press Play.</p>
+<h2 id="production-deployment">Production Deployment</h2>
+<p>See <code>FishMMO-Setup/</code> for:</p>
+<ul>
+<li><code>nginx.conf</code> — NGINX reverse proxy configuration</li>
+<li><code>install-config.full.json</code> — Full production install manifest</li>
+<li><code>gen-fishmmo-stream-config.sh</code> — UDP stream proxy config generator</li>
+<li><code>deploy-hooks/certbot-fishmmo.sh</code> — TLS certificate renewal hook</li>
+</ul>
+<h3 id="tls-certificates">TLS Certificates</h3>
+<p>Each game server terminates its own QUIC/TLS. Certificate paths are configured in <code>.cfg</code> files:</p>
+<ul>
+<li>Linux: <code>/etc/fishmmo/certs/fullchain.pem</code> and <code>privkey.pem</code></li>
+<li>Windows: <code>C:\ProgramData\FishMMO\certs\fullchain.pem</code></li>
+<li>macOS: <code>/usr/local/share/fishmmo/certs/fullchain.pem</code></li>
+</ul>
+<p>Use Let's Encrypt with the provided certbot deploy hook for automatic renewal.</p>
+<h3 id="environment-variables">Environment Variables</h3>
+<p>Database credentials and some service secrets are configured via environment variables:</p>
+<ul>
+<li><code>Npgsql__Password</code>, <code>Npgsql__Username</code> — Database credentials</li>
+<li><code>FISHMMO_SMTP_HOST</code>, <code>FISHMMO_SMTP_PASSWORD</code> — Email sending</li>
+<li><code>Discord__Token</code> — Discord bot token</li>
+</ul>
+<p><strong>Note:</strong> The <code>ClientGate</code> HMAC signing secret is <strong>no longer</strong> configured via environment variables.
+It is loaded exclusively from the <code>deployment_secrets</code> database table at web server startup
+(by <code>IDeploymentSecretService</code> + <code>GateSecretHolder</code>). Run <code>fishmmo-installer → Database → Configure Server Keys</code>
+to populate it. See the individual web server READMEs for details.</p>
+<h3 id="client-security-secrets">Client Security Secrets</h3>
+<p>The Unity client embeds shared secrets for HMAC request signing and certificate pinning.
+These are generated via Unity Editor tools:</p>
+<ul>
+<li><strong>FishMMO &gt; Security &gt; Fetch Client Secrets</strong> — writes <code>ClientApiSecret.generated.cs</code></li>
+<li><strong>FishMMO &gt; Security &gt; Fetch Certificate Pins</strong> — writes <code>CertificatePins.generated.cs</code></li>
+</ul>
+<p>These <code>.generated.cs</code> files are regenerated per-deployment and must match the server-side
+secrets loaded from the database. They are not produced by CI substitution.</p>
+<h2 id="platform-support">Platform Support</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Client</th>
+<th>Server</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows x64</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Linux x64</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>macOS x64</td>
+<td>✅</td>
+<td>⚠️ (untested)</td>
+</tr>
+<tr>
+<td>WebGL (Browser)</td>
+<td>⚠️ (requires HTTP/3 WebTransport server upgrade)</td>
+<td>N/A</td>
+</tr>
+</tbody>
+</table>
 
 </article>
 
