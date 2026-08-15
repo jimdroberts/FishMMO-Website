@@ -100,49 +100,78 @@ This document traces the complete server initialization flow from the MainBootst
 <p><strong>1.1 Unity Engine Loads MainBootstrap Scene</strong>
 • First scene loaded by Unity
 • Contains MainBootstrapSystem GameObject
-• DontDestroyOnLoad ensures persistence</p>
-<p><strong>1.2 MainBootstrapSystem.Awake()</strong></p>
-<pre><code>→ StartBootstrap()
+• Stays loaded for the whole process — every later scene is loaded additively on top of it</p>
+<p><strong>1.2 MainBootstrapSystem.Awake()</strong> (<code>protected override</code>)</p>
+<pre><code>→ base.Awake()
+    • Log.OnInternalLogMessage = OnInternalLogCallback
+→ StartBootstrap()
 </code></pre>
+<p>Awake is <code>protected virtual</code> on BootstrapSystem and <code>override</code> here. A second
+<code>void Awake()</code> would only shadow the base — Unity dispatches the most-derived
+member — which used to suppress the base entirely.</p>
 <p><strong>1.3 MainBootstrapSystem.OnPreload()</strong></p>
-<pre><code>→ Load version.txt (standalone builds only)
-→ Set GameVersion from VersionConfig
+<pre><code>→ Check serialized VersionConfig
+    • If null: log an error and CONTINUE (do not return)
+      Aborting here left the load queue empty, so the boot chain stalled forever
+→ Cap Application.targetFrameRate (#if !UNITY_SERVER only; headless servers skip it)
+→ GameVersion = versionConfig?.FullVersion ?? &quot;UNKNOWN&quot;
 → Register editor PlayModeStateChanged handler
 → Register Application.wantsToQuit handler
 → Initialize Logging System
     • Register UnityConsoleLogger factory
     • Create UnityConsoleFormatter (editor only)
-    • Load logging.json config
-    • Initialize Log manager with config
+    • Log.Initialize(logging.json path, formatter, manual loggers, callback)
 → Determine next scene based on build type:
     #if UNITY_SERVER
-        → Enqueue &quot;ServerLauncher&quot; scene
+        → Enqueue &quot;ServerLauncher&quot; scene (with OnBootstrapPostProcess)
     #else
-        → Enqueue &quot;ClientPreboot&quot; scene
+        → Enqueue &quot;ClientPreboot&quot; scene (with OnBootstrapPostProcess)
     #endif
 → AddressableLoadProcessor.EnqueueLoad(initialScenes)
 </code></pre>
 <p><strong>1.4 BootstrapSystem.InitializePreload()</strong></p>
-<pre><code>→ OnPreload() (MainBootstrapSystem override called)
-→ Subscribe to AddressableLoadProcessor.OnProgressUpdate
-→ AddressableLoadProcessor.BeginProcessQueue()
+<pre><code>→ Enqueue Editor/WebGL/Standalone Preload assets + scenes (OnBootstrapPostProcess)
+→ OnPreload() (MainBootstrapSystem override called — enqueues the next scene)
+→ AddressableLoadBatch batch = AddressableLoadProcessor.BeginProcessQueue()
+    • The batch claims exactly the items enqueued above
     • Starts loading ServerLauncher scene additively
+→ batch.Completed += OnPreloadBatchCompleted
 </code></pre>
-<p><strong>1.5 Scene Load Progress</strong></p>
-<pre><code>→ AddressableLoadProcessor_OnPreloadProgressUpdate(progress)
-→ When progress == 1.0:
-    • Unsubscribe from OnProgressUpdate
+<p>Completion is per-batch, not per-processor. The global
+<code>AddressableLoadProcessor.OnProgressUpdate</code> event is shared by every bootstrap
+system and both loading screens, so it is display-only; a batch fires exactly
+once for its own items.</p>
+<p><strong>1.5 Preload Batch Completion</strong></p>
+<pre><code>→ OnPreloadBatchCompleted(batch)   [private]
+    • hasCompletedPreload guard — returns if already run
+    • If batch.HasFailures: log batch.FailedItems and CONTINUE
+      (a batch completes whether items succeed, fail, or are dropped)
     • OnCompletePreload()
         → InitializePostload()
 </code></pre>
 <p><strong>1.6 BootstrapSystem.InitializePostload()</strong></p>
-<pre><code>→ OnPostLoad() (no-op in MainBootstrapSystem)
-→ Subscribe to AddressableLoadProcessor.OnProgressUpdate
-→ AddressableLoadProcessor.BeginProcessQueue()
-→ When postload progress == 1.0:
+<pre><code>→ Enqueue Editor/WebGL/Standalone Postload assets + scenes (OnBootstrapPostProcess)
+→ OnPostLoad() (no-op in MainBootstrapSystem)
+→ AddressableLoadBatch batch = AddressableLoadProcessor.BeginProcessQueue()
+→ batch.Completed += OnPostloadBatchCompleted
+→ OnPostloadBatchCompleted(batch)   [private]
+    • hasCompletedPostload guard — returns if already run
+    • If batch.HasFailures: log and CONTINUE
     • OnCompleteProcessing()
-        → Find BootstrapSystem components in loaded scenes
-        → Call StartBootstrap() on each found system
+        → Iterate a snapshot copy of preloadedBootstrapSystems
+        → Call StartBootstrap() on each discovered system
+</code></pre>
+<p>A batch with nothing to claim completes synchronously inside
+<code>BeginProcessQueue()</code>, and <code>Completed</code> invokes late subscribers immediately, so
+an empty postload still advances the chain.</p>
+<p><strong>1.7 Bootstrap System Discovery</strong></p>
+<pre><code>→ OnBootstrapPostProcess(scene) → CollectBootstrapSystems(scene)
+    • Skips invalid or unloaded scenes (logs a warning)
+    • GetComponentsInChildren&lt;BootstrapSystem&gt;(true) — includes inactive children
+    • Skips self and systems already collected
+    • APPENDS to preloadedBootstrapSystems (accumulated across every scene this
+      system loads; it used to be reassigned per scene, so a postload scene's
+      bootstraps silently displaced the preload scene's)
 </code></pre>
 <p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
 <p><strong>PHASE 2: SERVERLAUNCHER SCENE LOAD</strong></p>
@@ -156,10 +185,13 @@ This document traces the complete server initialization flow from the MainBootst
     → InitializePreload()
 </code></pre>
 <p><strong>2.3 ServerLauncher.OnPreload()</strong></p>
-<pre><code>→ Subscribe to AddressableLoadProcessor events:
+<pre><code>→ Unsubscribe then subscribe to AddressableLoadProcessor events (idempotent):
     • OnAddressableLoaded += AddressableLoadProcessor_OnAddressableLoaded
     • OnAddressableUnloaded += AddressableLoadProcessor_OnAddressableUnloaded
-→ Enqueue TemplateTypeCache asset load
+      (each adds/removes ICachedObject assets from the template cache)
+→ Enqueue static permanent addressable labels BEFORE any scene:
+    • &quot;Server_Static_Permanent&quot;
+    • Constants.SharedStaticLabel (&quot;Shared_Static_Permanent&quot;)
 → Determine which server scenes to load:
     
     #if UNITY_EDITOR
@@ -168,11 +200,12 @@ This document traces the complete server initialization flow from the MainBootst
             • WorldServer
             • SceneServer
     #else
-        → Parse command-line arguments:
-            args[1] == &quot;LOGIN&quot;  → Load LoginServer only
-            args[1] == &quot;WORLD&quot;  → Load WorldServer only
-            args[1] == &quot;SCENE&quot;  → Load SceneServer only
-            No args or unknown  → Load ALL from BootList
+        → No command-line args (args.Length &lt; 2) → Load ALL from BootList
+        → Otherwise map args[1].ToUpper():
+            &quot;LOGIN&quot;  → LoginServer only
+            &quot;WORLD&quot;  → WorldServer only
+            &quot;SCENE&quot;  → SceneServer only
+            unknown  → Close() → Server.Quit()   (does NOT fall back to BootList)
     #endif
 
 → Create List&lt;AddressableSceneLoadData&gt; with selected scenes
@@ -180,16 +213,19 @@ This document traces the complete server initialization flow from the MainBootst
 </code></pre>
 <p><strong>2.4 Server Scene Loading</strong></p>
 <pre><code>→ BootstrapSystem.InitializePreload()
-    • Enqueues server scenes for loading
-    • BeginProcessQueue() starts async scene loading
-→ Progress updates via AddressableLoadProcessor_OnPreloadProgressUpdate
-→ When complete:
+    • Enqueues static labels + server scenes for loading
+    • BeginProcessQueue() returns this launcher's own AddressableLoadBatch
+→ batch.Completed → OnPreloadBatchCompleted (guarded by hasCompletedPreload)
     • OnCompletePreload()
     • InitializePostload()
-→ When postload complete:
+→ Postload batch.Completed → OnPostloadBatchCompleted (hasCompletedPostload)
     • OnCompleteProcessing()
-        → Find BootstrapSystem components in loaded server scenes
-        → DO NOT call StartBootstrap() yet (server scenes don't have BootstrapSystem)
+        → preloadedBootstrapSystems is EMPTY here: ServerLauncher enqueues its
+          scenes without a post-process callback, and the server scenes contain
+          no BootstrapSystem anyway (the only subclasses are MainBootstrapSystem,
+          ServerLauncher, and ClientPostbootSystem)
+        → Nothing further is started; the Server components drive themselves
+          from Unity's Start() message
 </code></pre>
 <p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
 <p><strong>PHASE 3: SERVER SCENE(S) LOAD</strong></p>
@@ -203,8 +239,9 @@ This document traces the complete server initialization flow from the MainBootst
 • Loaded additively by ServerLauncher
 • Multiple scenes may load simultaneously (editor) or single scene (standalone)</p>
 <p><strong>3.2 Server.Start()</strong></p>
-<pre><code>→ Log.Debug(&quot;Server&quot;, &quot;Server is starting...&quot;)
-→ Find NetworkManager in scene
+<pre><code>→ hasShutdownFlag = 0
+→ Log.Debug(&quot;Server&quot;, &quot;Server is starting...&quot;)
+→ FindFirstObjectByType&lt;NetworkManager&gt;()
     • Throw UnityException if not found
 → Create FileServerConfiguration
 → Create ServerEvents
@@ -215,46 +252,75 @@ This document traces the complete server initialization flow from the MainBootst
     • OnWorldServerInitialized
     • OnSceneServerInitialized
 → StartCoroutine(NetHelper.FetchExternalIPAddress(OnFinalizeSetup))
+→ StartCoroutine(ExternalIpFetchTimeout(OnFinalizeSetup))
 </code></pre>
 <p><strong>3.3 Fetch External IP Address</strong></p>
 <pre><code>→ NetHelper.FetchExternalIPAddress() (async web request)
 → When complete:
     • Calls OnFinalizeSetup(remoteAddress)
+→ In parallel, ExternalIpFetchTimeout waits externalIpFetchTimeoutSeconds (30s)
+    • On expiry: warn, set usedFallbackAddress, call OnFinalizeSetup(&quot;127.0.0.1&quot;)
+    • Whichever fires first wins; the other is rejected by the CAS guard in 4.1
 </code></pre>
 <p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
 <p><strong>PHASE 4: SERVER FINALIZE SETUP</strong></p>
 <p><strong>4.1 Server.OnFinalizeSetup(remoteAddress)</strong></p>
-<pre><code>→ Validate remoteAddress is not null/empty
-→ CoreServer.Initialize(remoteAddress, sceneName)
-→ Create ServerAddressProvider
-    • Wraps Transport, AddressOverride, PortOverride
-    • Stores local and remote addresses
+<pre><code>→ Interlocked.CompareExchange(ref setupFinalized, 1, 0) guard
+    • Rejects the second caller (real fetch vs. 30s timeout fallback)
+    • If usedFallbackAddress, warn the operator that the real external IP
+      arrived too late and must be set as Address in the config
+→ Stop the timeout coroutine
+→ Throw UnityException if remoteAddress is null/whitespace
+→ If NetHelper.IsLoopbackAddress(remoteAddress):
+    • Prefer a non-loopback &quot;Address&quot; from the server config
+    • Otherwise warn (release builds only) that loopback will be registered
+→ CoreServer.Initialize(remoteAddress, gameObject.scene.name)
 </code></pre>
-<p><strong>4.2 Network Configuration</strong></p>
-<pre><code>→ NetworkWrapper.ApplyTransportConfiguration()
-    • Configures FishNet transport with addresses/ports
+<p><strong>4.2 Database</strong></p>
+<pre><code>→ DatabaseConfigurationHelper.BuildDesignTimeConfiguration()
+    • appsettings.json + appsettings.{env}.json + environment variables
+→ Database = new Database.Database(dbConfig)
+</code></pre>
+<p><strong>4.3 Address Provider, Account Manager, and Network Configuration</strong></p>
+<pre><code>→ AddressProvider = new ServerAddressProvider(
+      TransportManager.Transport, AddressOverride, PortOverride,
+      CoreServer.Address, CoreServer.RemoteAddress)
+
+→ AccountManager comes FROM the authenticator, not from a direct construction:
+    • authenticator = ServerManager.GetAuthenticator()
+    • if (authenticator is IServerAuthenticator serverAuth)
+          AccountManager = serverAuth.CreateAccountManager()
+      else throw InvalidOperationException
+    • This MUST precede AttachLoginAuthenticator, which synchronously starts
+      workers that validate Server.AccountManager
+
+→ if (authenticator is ServerAuthenticator srpAuth):
+    • Pre-bootstrap TokenSigningKey (CryptoHelper.GenerateKey)
+    • Derive TotpMasterKey via LocalDeriveKmsProvider
+    • Required because InitializeWorkersCore hard-throws on a missing
+      TotpMasterKey, and LoginServerSystem only assigns one later during
+      BehaviourRegistry.InitializeAll
+
+→ NetworkWrapper.ApplyTransportConfiguration(AddressOverride, PortOverride &gt; 0 ? PortOverride : null)
 → NetworkWrapper.AttachLoginAuthenticator(this)
-    • Sets up authenticator based on server type
-→ NetworkWrapper.AttachServerConnectionStateEventHandler(ServerManager_OnServerConnectionState)
-    • Subscribe to server connection state changes
-</code></pre>
-<p><strong>4.3 Account Management</strong></p>
-<pre><code>→ AccountManager = new AccountManager()
+→ NetworkWrapper.RegisterServerConnectionStateEventHandler(ServerManager_OnServerConnectionState)
 </code></pre>
 <p><strong>4.4 RUNTIME DATA CONTAINER INITIALIZATION</strong></p>
 <pre><code>→ DataContainerRegistry = new RuntimeDataContainerRegistry()
 → DiscoverAndCreateDataContainers()
     
     ┌─ Step 1: Scan ServerBehaviours ─┐
-    │ foreach (behaviour in ServerBehaviours)
+    │ dataContainers.Clear()   // domain reload may leave stale entries
+    │ foreach (behaviour in serverBehaviors)
     │ {
+    │     Skip null entries
     │     Get [RequiresDataContainer] attributes
     │     foreach (attribute)
     │     {
-    │         Check if container type already discovered (HashSet&lt;Type&gt;)
-    │         If new:
-    │             Validate container type (RuntimeDataContainerFactory)
-    │             Group by InitializationPriority
+    │         containerTypes.Add(type) — skip if already discovered
+    │         factory.IsValidContainerType(type)
+    │             → warn and skip if abstract or no parameterless ctor
+    │         Group by InitializationPriority (SortedDictionary&lt;int, List&lt;Type&gt;&gt;)
     │     }
     │ }
     └──────────────────────────────────┘
@@ -265,39 +331,45 @@ This document traces the complete server initialization flow from the MainBootst
     │     foreach (containerType)
     │     {
     │         container = factory.CreateContainer(containerType)
-    │         DataContainers.Add(container)
-    │         Log: &quot;Auto-created RuntimeDataContainer: {type}&quot;
+    │         if (container is RuntimeDataContainer rdc)
+    │             dataContainers.Add(rdc)
+    │             Log: &quot;Auto-created RuntimeDataContainer: {type}&quot;
+    │         else warn and skip
     │     }
     │ }
     └──────────────────────────────────┘
     
 → RegisterAllDataContainers()
-    • foreach container in DataContainers:
+    • foreach container in dataContainers (skipping already-Initialized ones):
         • DataContainerRegistry.Register(container)
             → Registers by concrete type
-            → Registers by all implemented interfaces
+            → Registers by every IRuntimeDataContainer-derived interface
     
 → DataContainerRegistry.InitializeAll(this)
-    • foreach container:
-        • container.InternalInitializeOnce(server, serverManager)
+    • foreach registered component:
+        • container.Initialize(typedServer, NetworkWrapper.NetworkManager.ServerManager)
+            → AlreadyInitialized / FailedToFindServer / FailedToFindServerManager guards
             → Set Server reference
             → Set ServerManager reference
             → Call container.InitializeOnce()
-            → Mark Initialized = true
-            → Log initialization status
+            → Mark Initialized = true only on status == Initialized
+            → Log initialization status; registry warns on any other status
 </code></pre>
 <p><strong>Container Discovery Example:</strong></p>
-<pre><code class="lang-csharp">// PartySystem.cs declares dependency
-[RequiresDataContainer(typeof(PartyRuntimeData))]
+<pre><code class="lang-csharp">// PartySystem.cs declares its dependencies
+[RequiresDataContainer(typeof(PartySystemRuntimeData))]
+[RequiresDataContainer(typeof(PartyCharacterMappingData))]
+[RequiresDataContainer(typeof(PartySystemMainThreadQueueData))]
+[RequiresDataContainer(typeof(AsyncWorkerData))]
 public class PartySystem : ServerBehaviour { }
 
-// ChatSystem.cs also declares same dependency
-[RequiresDataContainer(typeof(PartyRuntimeData))]
-public class ChatSystem : ServerBehaviour { }
+// CharacterSystem.cs, QuestSystem.cs, FriendSystem.cs, ... also declare AsyncWorkerData
+[RequiresDataContainer(typeof(AsyncWorkerData))]
+public class CharacterSystem : ServerBehaviour { }
 
-// Result: Only ONE PartyRuntimeData instance created
-// Both systems access it via:
-Server.DataContainerRegistry.TryGet&lt;IPartyRuntimeData&gt;(out var data)
+// Result: Only ONE AsyncWorkerData instance created for the whole server
+// Systems access containers via their interfaces:
+Server.DataContainerRegistry.TryGet&lt;IPartySystemRuntimeData&gt;(out var data)
 </code></pre>
 <p><strong>4.5 SERVER BEHAVIOUR INITIALIZATION</strong></p>
 <pre><code>→ BehaviourRegistry = new ServerBehaviourRegistry()

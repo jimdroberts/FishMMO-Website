@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class SystemUpdaterLauncher | FishMMO Documentation ">
       
-      <meta name="description" content="Starts the standalone updater executable and polls for its exit on the main thread, reporting completion/failure through callbacks safely usable with Unity APIs. Includes a hard timeout to prevent the launcher from hanging indefinitely if the updater process deadlocks or hangs on a corrupted patch file.">
+      <meta name="description" content="Starts the standalone updater executable and hands control over to it.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_SystemUpdaterLauncher" data-uid="FishMMO.Client.SystemUpdaterLauncher" class="text-break">
-Class SystemUpdaterLauncher  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Launcher/SystemUpdaterLauncher.cs/#L17"><i class="bi bi-code-slash"></i></a>
+Class SystemUpdaterLauncher  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Launcher/SystemUpdaterLauncher.cs/#L26"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,10 +97,7 @@ Class SystemUpdaterLauncher  <a class="header-action link-secondary" title="View
   <dl><dt>Assembly</dt><dd>FishMMO.Client.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Starts the standalone updater executable and polls for its exit on the main thread,
-reporting completion/failure through callbacks safely usable with Unity APIs.
-Includes a hard timeout to prevent the launcher from hanging indefinitely
-if the updater process deadlocks or hangs on a corrupted patch file.</p>
+  <div class="markdown summary"><p>Starts the standalone updater executable and hands control over to it.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -156,6 +153,18 @@ if the updater process deadlocks or hangs on a corrupted patch file.</p>
 
 
 
+  <h2 id="FishMMO_Client_SystemUpdaterLauncher_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>The updater takes ownership of the install as soon as it starts: its first
+action is to terminate this process (it is given our PID) so that the client
+binaries are not in use while they are patched, and its last action is to relaunch
+the client. This launcher therefore must NOT wait for the updater to exit — doing
+so is a mutual wait that the updater resolves by killing us, which makes every
+completion callback unreachable dead code.</p>
+<p>Instead we watch the updater only long enough to catch a fast failure
+(missing runtime, bad arguments, unreadable patch), then report success and let the
+caller shut the launcher down cleanly. If the updater is still running at the end
+of that window it has gotten far enough to own the handoff.</p>
+</div>
 
 
   <h2 class="section" id="methods">Methods
@@ -166,16 +175,19 @@ if the updater process deadlocks or hangs on a corrupted patch file.</p>
 
   <h3 id="FishMMO_Client_SystemUpdaterLauncher_LaunchUpdater_System_String_System_String_System_String_System_Action_System_Action_System_String__" data-uid="FishMMO.Client.SystemUpdaterLauncher.LaunchUpdater(System.String,System.String,System.String,System.Action,System.Action{System.String})">
   LaunchUpdater(string, string, string, Action, Action&lt;string&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Launcher/SystemUpdaterLauncher.cs/#L47"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Launcher/SystemUpdaterLauncher.cs/#L59"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Launches the updater executable and polls for process exit via a coroutine,
-ensuring callbacks execute on the Unity main thread.</p>
+  <div class="markdown level1 summary"><p>Launches the updater executable and hands off to it via a coroutine, ensuring
+callbacks execute on the Unity main thread.</p>
 <p><b>IMPORTANT:</b> This method returns an IEnumerator and the caller
 MUST invoke it via <code>MonoBehaviour.StartCoroutine</code>. The implementation
 uses <code>yield return new WaitForSeconds(...)</code> which requires a Unity
 coroutine host with a main-thread UnitySynchronizationContext. Calling this
 method outside of a Unity coroutine context will result in undefined behavior.</p>
+<p><code class="paramref">onComplete</code> means "the updater is running and owns the
+install from here" — NOT "the patch has been applied". The caller should shut
+the launcher down promptly so the updater can replace the client binaries.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -195,10 +207,10 @@ method outside of a Unity coroutine context will result in undefined behavior.</
     <dd><p>Latest server version string.</p>
 </dd>
     <dt><code>onComplete</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action">Action</a></dt>
-    <dd><p>Callback invoked when updater completes successfully.</p>
+    <dd><p>Callback invoked once the updater has started successfully and taken over.</p>
 </dd>
     <dt><code>onError</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action-1">Action</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a>&gt;</dt>
-    <dd><p>Callback invoked when updater fails or errors occur.</p>
+    <dd><p>Callback invoked when updater fails to start or exits with an error before handoff.</p>
 </dd>
   </dl>
 

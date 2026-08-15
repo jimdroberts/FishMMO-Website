@@ -242,9 +242,9 @@
 <td>Message shown to the player on completion</td>
 </tr>
 <tr>
-<td><code>CompleteSound</code></td>
-<td><code>AudioClip</code></td>
-<td>Sound played on completion</td>
+<td><code>CompleteSoundReference</code></td>
+<td><code>AssetReference</code></td>
+<td>Addressable sound played on completion (client-side only)</td>
 </tr>
 <tr>
 <td><code>AbilityRewards</code></td>
@@ -281,7 +281,7 @@
 </code></pre>
 <p>A player with <code>CurrentTier=1, CurrentValue=85</code> needs 15 more to reach Tier 1's threshold of 100. <code>NextTierValue</code> returns <code>100</code>.</p>
 <h3 id="achievement-categories">Achievement Categories</h3>
-<p>The <code>AchievementCategory</code> enum provides 19 categories for organizing achievements:</p>
+<p>The <code>AchievementCategory</code> enum provides 21 categories for organizing achievements:</p>
 <table>
 <thead>
 <tr>
@@ -379,8 +379,8 @@
 <h2 id="usage-examples">Usage Examples</h2>
 <h3 id="api--incrementing-an-achievement">API — Incrementing an Achievement</h3>
 <p>Gameplay systems call <code>AchievementController.Increment(template, amount)</code> to advance progress:</p>
-<pre><code class="lang-csharp">// In CharacterDamageController.Damage()
-achievementController.Increment(DamageAchievementTemplate, damageDealt);
+<pre><code class="lang-csharp">// In PetSystem, after a successful summon
+achievementController.Increment(PetSummonAchievementTemplate, 1);
 </code></pre>
 <h3 id="increment-sources">Increment Sources</h3>
 <table>
@@ -393,34 +393,34 @@ achievementController.Increment(DamageAchievementTemplate, damageDealt);
 </thead>
 <tbody>
 <tr>
-<td><code>CharacterDamageController.Damage()</code></td>
-<td><code>DamageAchievementTemplate</code> (attacker)</td>
-<td>Damage dealt</td>
+<td><code>GuildSystem</code></td>
+<td><code>GuildCreateAchievementTemplate</code> / <code>GuildJoinAchievementTemplate</code></td>
+<td>1 per create / join</td>
 </tr>
 <tr>
-<td><code>CharacterDamageController.Damage()</code></td>
-<td><code>DamagedAchievementTemplate</code> (defender)</td>
-<td>Damage received</td>
+<td><code>PartySystem</code></td>
+<td><code>PartyCreateAchievementTemplate</code> / <code>PartyJoinAchievementTemplate</code></td>
+<td>1 per create / join</td>
 </tr>
 <tr>
-<td><code>CharacterDamageController.Kill()</code></td>
-<td><code>KillAchievementTemplate</code> (killer)</td>
-<td>1 per kill</td>
+<td><code>FriendSystem</code></td>
+<td><code>FriendAddAchievementTemplate</code></td>
+<td>1 per friend added</td>
 </tr>
 <tr>
-<td><code>CharacterDamageController.Kill()</code></td>
-<td><code>KilledAchievementTemplate</code> (victim)</td>
-<td>1 per death</td>
+<td><code>PetSystem</code></td>
+<td><code>PetSummonAchievementTemplate</code></td>
+<td>1 per summon</td>
 </tr>
 <tr>
-<td><code>CharacterDamageController.Heal()</code></td>
-<td><code>HealAchievementTemplate</code> (healer)</td>
-<td>Amount healed</td>
+<td><code>InteractableSystem</code></td>
+<td>The interactable's own <code>AchievementTemplate</code> field (merchant, banker, teleporter, dungeon entrance, ability crafter, …)</td>
+<td>1 per interaction</td>
 </tr>
 <tr>
-<td><code>CharacterDamageController.Heal()</code></td>
-<td><code>HealedAchievementTemplate</code> (target)</td>
-<td>Amount healed</td>
+<td><code>AchievementIncrementAction</code> (ECA)</td>
+<td>Its configured <code>AchievementTemplate</code></td>
+<td>Action-configured value</td>
 </tr>
 </tbody>
 </table>
@@ -667,16 +667,16 @@ Tier 2:    │         │          ├───────────┤
 ├── Achievement.cs                 # Runtime achievement instance (tier, value, template ref)
 ├── AchievementCategory.cs         # Enum of achievement categories (Combat, Exploration, etc.)
 ├── AchievementController.cs       # Per-entity controller (CharacterBehaviour / NetworkBehaviour)
-├── IAchievementController.cs      # Achievement controller interface + static events
 └── Template/
     ├── AchievementTemplate.cs         # ScriptableObject blueprint (icon, category, tiers)
     ├── AchievementTemplateDatabase.cs # Name-to-template lookup database (ScriptableObject)
     └── AchievementTier.cs             # Serializable tier definition (value threshold, rewards)
 </code></pre>
 <h3 id="related-files-outside-this-directory">Related Files (Outside This Directory)</h3>
-<pre><code>Shared/Implementation/Network/Character/AchievementBroadcasts.cs              # FishNet broadcast structs for achievement updates
+<pre><code>Shared/Core/Entity/Achievement/IAchievementController.cs                       # Achievement controller interface + static events
+Shared/Implementation/Network/Character/AchievementBroadcasts.cs              # FishNet broadcast structs for achievement updates
 Server/Implementation/World/SceneServer/Achievement/AchievementSystem.cs       # Server-side achievement tracking, rewards, and DB persistence
-Shared/Implementation/Entity/CharacterAttribute/CharacterDamageController.cs   # Calls Increment() for damage, kill, and heal achievements
+Shared/Implementation/Entity/ECA/Actions/Character/Achievement/AchievementIncrementAction.cs  # ECA action calling Increment()
 Client/Client.cs                                                               # Client-side OnCompleteAchievement handler
 Client/UI/Controls/World/Achievement/UIAchievements.cs                         # Achievement UI panel
 </code></pre>
@@ -694,7 +694,7 @@ Client/UI/Controls/World/Achievement/UIAchievements.cs                         #
 </code></pre>
 <h4 id="configuration-types">Configuration Types</h4>
 <pre><code>AchievementTier                    # [Serializable] class: Value threshold + reward lists
-AchievementCategory                # Enum: 19 categories (Ability, Character, Combat, etc.)
+AchievementCategory                # Enum: 21 categories (Ability, Character, Combat, etc.)
 </code></pre>
 <h2 id="notes">Notes</h2>
 <ul>

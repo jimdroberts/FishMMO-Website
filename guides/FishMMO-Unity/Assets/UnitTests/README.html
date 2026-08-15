@@ -143,16 +143,25 @@ without spinning up servers or network sockets.</p>
 <p>Requirements: Unity 6.3 LTS, the <code>FishMMO-Auth</code> DLLs present in <code>Assets/Dependencies/</code>, and the Unity Test Framework package.</p>
 <h2 id="architecture">Architecture</h2>
 <pre><code>Assets/UnitTests/
-├── FishMMO.UnitTests.asmdef         # EditMode-only assembly definition
-├── Auth/
-│   ├── AuthHarness.cs               # Pairs ClientAuthenticatorCore + SrpAuthenticatorCore in-process
-│   ├── InMemoryAccountStore.cs      # IAccountStore double (no DB)
-│   ├── FakeConnection.cs            # FishNet-free connection stub
-│   ├── LoginTests.cs                # Happy / unhappy login paths
-│   ├── TotpTests.cs                 # TOTP enrollment + 2FA login
-│   ├── HandshakeTests.cs            # X25519 + SRP-6a handshake invariants
-│   └── KickTests.cs                 # Server-initiated disconnect paths
-└── README.md                        # This document
+├── FishMMO.UnitTests.asmdef                  # EditMode-only assembly definition
+├── UnitTestMenu.cs                           # FishMMO / Unit Tests menu items
+├── TestAssemblySetup.cs                      # [SetUpFixture] — initialises FishMMO.Logging.Log
+├── Harness/
+│   ├── AuthTestHarness.cs                    # Pairs ClientAuthenticatorCore + SrpAuthenticatorCore in-process
+│   ├── TestClientCore.cs                     # ClientAuthenticatorCore subclass (payload capture + interceptors)
+│   ├── TestServerCore.cs                     # SrpAuthenticatorCore&lt;int&gt; subclass (routes broadcasts to the client)
+│   ├── InMemoryAccountStore.cs               # IAccountStore double (no DB)
+│   ├── AuthTestTrace.cs                      # Trace gateway (AuthTestTrace.Verbose)
+│   └── LogAssert.cs                          # NUnit assertion wrappers that log pass/fail
+├── LoginTests.cs                             # Happy / unhappy login paths
+├── RegisterTests.cs                          # Client-side registration validation
+├── TokenLoginTests.cs                        # Token-based authentication
+├── SecurityTests.cs                          # Adversarial SRP / handshake / input validation
+├── AttackAndFailureScenariosTests.cs         # Brute-force, ban, 2FA, online-check
+├── ServerAuthenticatorIntegrationTests.cs    # End-to-end SRP → token integration
+├── RateLimiterTests.cs                       # Per-IP handshake rate limiting
+├── Prediction/                               # Prediction / reconcile serializer tests (non-auth)
+└── README.md                                 # This document
 </code></pre>
 <p>Tests do not touch PostgreSQL, FishNet, sockets, or any singleton state — each
 test instantiates a fresh harness and account store.</p>
@@ -166,7 +175,7 @@ test instantiates a fresh harness and account store.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>AuthHarness</code></td>
+<td><code>AuthTestHarness</code></td>
 <td>Constructs a paired client / server authenticator, wires <code>Send*</code> and <code>Broadcast*</code> to direct in-process calls, drives the test scenario.</td>
 </tr>
 <tr>
@@ -174,8 +183,8 @@ test instantiates a fresh harness and account store.</p>
 <td>Implements the same surface as the production account store, but keeps state in dictionaries — see <a href="#inmemoryaccountstore-api"><code>InMemoryAccountStore</code> API</a>.</td>
 </tr>
 <tr>
-<td><code>FakeConnection</code></td>
-<td>Replaces FishNet's <code>NetworkConnection</code> so the server authenticator can talk to a virtual client.</td>
+<td><code>TestServerCore</code></td>
+<td><code>SrpAuthenticatorCore&lt;int&gt;</code> subclass — FishNet's <code>NetworkConnection</code> is replaced by a plain <code>int</code> connection ID so the server authenticator can talk to a virtual client.</td>
 </tr>
 <tr>
 <td>Test classes</td>
@@ -187,7 +196,7 @@ test instantiates a fresh harness and account store.</p>
 <p>These tests are configuration-free: no environment variables, <code>appsettings</code>,
 or external services are read. Verbose logging is toggled via the
 <code>FishMMO / Unit Tests / Run All EditMode Tests (Verbose)</code> menu, which sets
-the <code>FISHMMO_TEST_VERBOSE</code> define for the run.</p>
+the static <code>AuthTestTrace.Verbose</code> flag for the run.</p>
 <hr>
 <h2 id="running">Running</h2>
 <ol>
@@ -233,12 +242,12 @@ the <code>FISHMMO_TEST_VERBOSE</code> define for the run.</p>
 <tbody>
 <tr>
 <td><code>LoginTests.cs</code></td>
-<td>5</td>
+<td>6</td>
 <td>Full client↔server SRP login flow</td>
 </tr>
 <tr>
 <td><code>RegisterTests.cs</code></td>
-<td>5</td>
+<td>6</td>
 <td>Client-side registration validation + <code>CreateAccount</code> emission</td>
 </tr>
 <tr>
@@ -253,13 +262,18 @@ the <code>FISHMMO_TEST_VERBOSE</code> define for the run.</p>
 </tr>
 <tr>
 <td><code>AttackAndFailureScenariosTests.cs</code></td>
-<td>7</td>
-<td>Brute-force, ban, 2FA, online-check, dropped-message attacks</td>
+<td>8</td>
+<td>Brute-force, ban, 2FA, online-check, pending-kick, dropped-message attacks</td>
 </tr>
 <tr>
 <td><code>ServerAuthenticatorIntegrationTests.cs</code></td>
 <td>2</td>
 <td>End-to-end SRP→token integration and token lifecycle</td>
+</tr>
+<tr>
+<td><code>RateLimiterTests.cs</code></td>
+<td>3</td>
+<td>Per-source-IP handshake burst / sustained-flood throttling</td>
 </tr>
 <tr>
 <td><code>TestAssemblySetup.cs</code></td>
@@ -331,8 +345,12 @@ the <code>FISHMMO_TEST_VERBOSE</code> define for the run.</p>
 <td><code>AccountUnverified</code></td>
 </tr>
 <tr>
-<td><code>Login_TwoSequentialAttempts_BothComplete</code></td>
-<td>Both <code>LoginSuccess</code></td>
+<td><code>Login_SequentialSessionsSameServer_StateProperlyReset</code></td>
+<td>Both sessions <code>LoginSuccess</code>, with distinct per-session server pubkey / cookie</td>
+</tr>
+<tr>
+<td><code>Login_SameCredentials_CaseSensitivePassword_Rejected</code></td>
+<td><code>InvalidUsernameOrPassword</code> (SRP does not normalize case)</td>
 </tr>
 </tbody>
 </table>
@@ -364,6 +382,10 @@ the <code>FISHMMO_TEST_VERBOSE</code> define for the run.</p>
 <tr>
 <td><code>Register_DifferentCredentials_ProduceDifferentEncryptedPayloads</code></td>
 <td>Ciphertexts are pairwise distinct</td>
+</tr>
+<tr>
+<td><code>Register_SameCredentialsTwoAttempts_ProduceDifferentSalts</code></td>
+<td>Each attempt derives a fresh salt</td>
 </tr>
 </tbody>
 </table>
@@ -601,6 +623,10 @@ the <code>FISHMMO_TEST_VERBOSE</code> define for the run.</p>
 <td><code>TwoFactor_AccountRequires2FA_ReturnsTwoFactorRequired</code></td>
 <td><code>TwoFactorRequired</code> after correct SRP proof on TOTP-enabled account</td>
 </tr>
+<tr>
+<td><code>Login_PendingKick_AccountRejected</code></td>
+<td>Account flagged for kick is rejected</td>
+</tr>
 </tbody>
 </table>
 <h3 id="serverauthenticatorintegrationtestscs"><code>ServerAuthenticatorIntegrationTests.cs</code></h3>
@@ -692,14 +718,13 @@ ClientAuthenticationResult result = await h.Client.AttemptTokenLogin(token);
 </ul>
 <h2 id="flow-diagram">Flow Diagram</h2>
 <pre><code class="lang-mermaid">flowchart LR
-    Test[Test method] --&gt; Harness[AuthHarness]
-    Harness --&gt; Client[ClientAuthenticatorCore]
-    Harness --&gt; Server[SrpAuthenticatorCore]
+    Test[Test method] --&gt; Harness[AuthTestHarness]
+    Harness --&gt; Client[TestClientCore : ClientAuthenticatorCore]
+    Harness --&gt; Server[TestServerCore : SrpAuthenticatorCore&amp;lt;int&amp;gt;]
     Server --&gt; Store[InMemoryAccountStore]
     Client -- Send/Broadcast --&gt; Server
     Server -- Send/Broadcast --&gt; Client
-    Server --&gt; Conn[FakeConnection]
-    Harness --&gt; Assertions[NUnit assertions]
+    Harness --&gt; Assertions[LogAssert / NUnit assertions]
     Assertions --&gt;|pass / fail| Test
 </code></pre>
 

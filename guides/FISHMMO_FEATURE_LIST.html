@@ -91,8 +91,9 @@
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FISHMMO_FEATURE_LIST.md">View this file on GitHub</a></p>
 </blockquote>
 <blockquote>
-<p>Generated 2026-06-26 from the FishMMO-Dev monorepo. Updated 2026-07-19.<br>
-Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3).</p>
+<p>Generated 2026-06-26 from the FishMMO-Dev monorepo. Updated 2026-08-15 against commit <code>630f975c</code>.<br>
+Built on Unity 6000.3.2f1, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3).</p>
+<p>Items marked <em>scaffolded</em>, <em>planned</em>, <em>projected</em>, or <em>not yet wired</em> are <strong>not</strong> shipped functionality — read those qualifiers literally.</p>
 </blockquote>
 <hr>
 <h2 id="index">Index</h2>
@@ -122,25 +123,25 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Process Liveness Monitoring</strong> — Verifies child processes are alive each check interval.</li>
 <li><strong>TCP Port Health Check</strong> — TCP connect probe to confirm the monitored port is accepting connections.</li>
 <li><strong>UDP Port Health Check</strong> — UDP send/receive probe to verify datagram delivery.</li>
-<li><strong>WebSocket Health Check</strong> — Full WebSocket upgrade handshake probe (for Bayou/WebGL transports).</li>
+<li><strong>WebSocket Health Check</strong> — Full WebSocket upgrade handshake probe. A generic capability of the supervisor (<code>WebSocketHealthChecker</code>, <code>PortType.WebSocket</code>); FishMMO's own game servers are QUIC/UDP and are probed with the UDP checker.</li>
 <li><strong>CPU Threshold Monitoring</strong> — Samples per-process CPU% and triggers restart on sustained breach.</li>
 <li><strong>Memory Threshold Monitoring</strong> — Samples per-process memory usage and triggers restart on sustained breach.</li>
 <li><strong>Exponential Backoff Restarts</strong> — Failed processes restart with increasing delay (configurable initial → max, capped retries).</li>
 <li><strong>Circuit Breaker</strong> — After N consecutive failures across launches, parks the application until manual intervention.</li>
 <li><strong>Graceful Shutdown</strong> — Sends close signal to child process; force-kills if it doesn't exit within timeout.</li>
-<li><strong>Interactive Console Commands</strong> — <code>start</code>, <code>stop</code>, <code>status</code>, <code>force-restart</code>, <code>force-kill</code>, <code>shutdown</code>, <code>help</code>.</li>
-<li><strong>Headless Mode</strong> — Disables interactive console; starts monitoring immediately on launch (for systemd/Docker).</li>
+<li><strong>Interactive Console Commands</strong> — <code>start</code>, <code>stop</code>, <code>status</code>, <code>force-restart</code>, <code>force-kill</code>, <code>shutdown</code> (alias <code>exit</code>), <code>help</code>, registered through <code>CommandHandler</code>/<code>ConsoleCommand</code>.</li>
+<li><strong>Headless Mode</strong> — <code>Headless: true</code> in config disables stdin reads and starts monitoring immediately on launch (for systemd/Docker). Exits with a failure code when the headless monitoring cycle ends with all monitors exhausted.</li>
 <li><strong>Per-App Config Validation</strong> — Validates all settings at startup, rejects with precise error messages.</li>
 <li><strong>Launch Delay Sequencing</strong> — Configurable per-app delay before launching the next application in sequence.</li>
 <li><strong>Post-Launch Settle Delay</strong> — Pause after launch/restart before resuming probes (lets the process fully boot).</li>
-<li><strong>systemd Integration</strong> — Ships with a reference systemd unit file for Linux service deployment.</li>
+<li><strong>systemd Integration</strong> — Handles both SIGTERM and SIGINT through the same graceful shutdown path. No <code>.service</code> file is checked into the project; the README documents a reference unit inline, and FishMMO-Installer can generate and register one.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-art">FishMMO-Art</h2>
 <p><strong>Art and visual asset repository.</strong> Contains game art assets (models, textures, materials, animations, UI graphics) consumed by the Unity project. No code or configuration — purely creative assets.</p>
 <hr>
 <h2 id="fishmmo-auth">FishMMO-Auth</h2>
-<p><strong>Transport-agnostic .NET authentication library</strong> providing SRP-6a login, token auth, TOTP 2FA, and engine-independent authenticator cores.</p>
+<p><strong>Transport-agnostic .NET authentication library</strong> providing SRP-6a login, token auth, TOTP 2FA, and engine-independent authenticator cores. Split into three projects: <strong>FishMMO-AuthShared</strong> (DTOs, enums, crypto services, trackers), <strong>FishMMO-ClientAuth</strong> (<code>ClientAuthenticatorCore</code>), and <strong>FishMMO-ServerAuth</strong> (<code>BaseAuthenticatorCore</code>, <code>SrpAuthenticatorCore</code>, <code>TokenAuthenticatorCore</code>). All auth broadcast structs used by the Unity layer live in <code>FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Authentication/AuthenticationBroadcasts.cs</code>.</p>
 <h3 id="core--protocol-contracts">Core / Protocol Contracts</h3>
 <ol>
 <li><strong>Bounded Concurrent Collections</strong> — <code>ArrivalOrderTracker&lt;T&gt;</code> (O(1) insertion-order TTL), <code>ExpiringKeyTracker&lt;T&gt;</code> (debounce / rate-limit), <code>LastSeenCacheTracker&lt;TKey,TValue&gt;</code> (LRU-style last-seen cache).</li>
@@ -177,12 +178,14 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 </ol>
 <hr>
 <h2 id="fishmmo-cms">FishMMO-CMS</h2>
-<p><strong>ASP.NET Core Content Management System</strong> for game news, announcements, and launcher content.</p>
+<p><strong>ASP.NET Core (net8.0) account-management web API</strong> — <em>not</em> a news/content CMS. Registers Swashbuckle and references FishMMO-ServerAuth and FishMMO-DB, and copies <code>appsettings.CMS.json</code> from FishMMO-Setup at build time.</p>
+<blockquote>
+<p><strong>Status: scaffolded, not implemented.</strong> Every controller action in this project is a stub — each one returns a placeholder and carries <code>// TODO</code> comments for the work it does not do. There is no database wiring, no authentication registration for the account endpoints, and no admin authorization on the admin endpoints. Nothing in this section is shipped functionality.</p>
+</blockquote>
 <ol>
-<li><strong>AccountController</strong> — Handles CMS user authentication and account management.</li>
-<li><strong>AdminController</strong> — Admin-level content management endpoints (news posts, announcements, launcher HTML content).</li>
-<li><strong>JSON/HTML Content Delivery</strong> — Serves structured content consumed by the client launcher's news feed and HTML display.</li>
-<li><strong>appsettings.json Configuration</strong> — Database and service configuration for the CMS backend.</li>
+<li><strong>AccountController (<code>api/Account</code>)</strong> — Route stubs for <code>POST register</code>, <code>POST verify</code>, <code>POST change-password</code>, <code>POST 2fa/setup</code>. TODOs cover SRP salt/verifier generation, <code>IAccountService</code> persistence, TOTP secret generation/encryption, recovery codes, and verification email delivery.</li>
+<li><strong>AdminController (<code>api/Admin</code>)</strong> — Route stubs for <code>GET accounts/search</code>, <code>POST accounts/{username}/ban</code>, <code>unban</code>, <code>access-level</code>, <code>revoke-tokens</code>, <code>reset-2fa</code>, <code>force-password-reset</code>. Every action's first TODO is &quot;Require admin authentication&quot; — the endpoints are currently unauthenticated stubs.</li>
+<li><strong>appsettings.json Configuration</strong> — <code>CopyFishMMOConfig</code> MSBuild target copies <code>FishMMO-Setup/Development/appsettings.CMS.json</code> (and the Production variant when present) into the build output.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-database">FishMMO-Database</h2>
@@ -202,7 +205,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>FISHMMO_ENVIRONMENT</strong> — Precedence-based environment selection (FISHMMO_ENVIRONMENT &gt; DOTNET_ENVIRONMENT &gt; ASPNETCORE_ENVIRONMENT).</li>
 </ol>
 <h3 id="database-services-npgsqlservices">Database Services (Npgsql/Services/)</h3>
-<ol start="13">
+<ol start="12">
 <li><strong>IAccountService</strong> — Account CRUD: create, fetch for login (SRP data), online status check, kick request persist, token hash persist, TOTP verify.</li>
 <li><strong>ICharacterService</strong> — Character CRUD: save, load, delete, fetch by account, session claim/release, inventory/equipment/bank/hotkey persist.</li>
 <li><strong>IChatService</strong> — Chat message persistence and retrieval with channel, character, and server metadata.</li>
@@ -212,15 +215,16 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>ICharacterInventoryService</strong> — Inventory/equipment/bank slot persistence.</li>
 <li><strong>IGuildService</strong> — Guild creation, membership, ranks, invitation persistence.</li>
 <li><strong>IPartyService</strong> — Party creation, membership persistence.</li>
-<li><strong>IFriendService</strong> — Friend list add/remove/query persistence.</li>
+<li><strong>ICharacterFriendService</strong> — Friend list add/remove/query persistence. (Part of a wider per-character service family: <code>ICharacterAbilityService</code>, <code>ICharacterAchievementService</code>, <code>ICharacterArchetypeService</code>, <code>ICharacterAttributeService</code>, <code>ICharacterBankService</code>, <code>ICharacterBuffService</code>, <code>ICharacterEquipmentService</code>, <code>ICharacterFactionService</code>, <code>ICharacterGuildService</code>, <code>ICharacterHotkeyService</code>, <code>ICharacterItemCooldownService</code>, <code>ICharacterKnownAbilityService</code>, <code>ICharacterMailService</code>, <code>ICharacterPartyService</code>, <code>ICharacterPetService</code>/<code>ICharacterPetAttributeService</code>/<code>ICharacterPetBuffService</code>, <code>ICharacterQuestService</code>, <code>ICharacterSkillService</code>.)</li>
 <li><strong>IKickRequestService</strong> — Kick request queue polling and processing.</li>
+<li><strong>Auth &amp; Deployment Services</strong> — <code>IAuthTokenService</code> (token hash persist/revoke), <code>ILoginServerSigningKeyService</code> (AEAD-wrapped signing keys), <code>ITwoFactorRecoveryCodeService</code>, <code>IConnectionTokenKeyService</code> (one-time connection token keys for IPFetch), <code>IDeploymentSecretService</code> (database-stored deployment secrets, e.g. the signing-key KEK), <code>IEmailQueueService</code> (verification email queue), <code>ISceneService</code> (pending scene load/unload queue), <code>IGuildUpdateService</code> / <code>IPartyUpdateService</code> (social update pumps).</li>
 <li><strong>UnitOfWorkService</strong> — Ambient DbContext + transaction scope for multi-step atomic operations. Supports savepoints for nested atomicity inside a unit of work.</li>
 <li><strong>BaseService Execution Wrappers</strong> — <code>ExecuteReadAsync</code>, <code>ExecuteWriteAsync</code>, <code>ExecuteTransactionAsync</code> with retry logic, transient error classification (PostgreSQL error code mapping), and automatic SaveChanges.</li>
 <li><strong>Convention Guards</strong> — <code>ApplyTimeCreatedConventions</code> skips entities with explicit defaults (prevents silent override of <code>QuestEntity</code>'s <code>DateTime.UnixEpoch</code>). <code>ApplyLogicalVersionConventions</code> checks for existing defaults before applying.</li>
 <li><strong>Npgsql Type Mapping</strong> — <code>List&lt;int&gt;</code> properties natively map to PostgreSQL <code>integer[]</code> columns; <code>HasDefaultValueSql(&quot;'{}'&quot;)</code> for empty array defaults.</li>
 </ol>
 <h3 id="data-entities">Data Entities</h3>
-<ol start="26">
+<ol start="28">
 <li><strong>AccountData</strong> — Account credentials (SRP verifier, salt), email, 2FA state, verification status.</li>
 <li><strong>CharacterData</strong> — Full character sheet: position, race, archetype, attributes, equipped items, hotkeys, achievements, faction standings.</li>
 <li><strong>ChatData</strong> — Chat message with channel, content, character, server metadata.</li>
@@ -234,51 +238,54 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>IVersioned / VersionExtensions</strong> — Optimistic concurrency versioning on all entities.</li>
 </ol>
 <h3 id="monitoring-infrastructure-npgsqlmonitoring">Monitoring Infrastructure (Npgsql/Monitoring/)</h3>
-<ol start="37">
+<ol start="39">
 <li><strong>DatabaseHealthMonitor</strong> — <code>SELECT 1</code> connectivity probe with Healthy/Degraded/Unhealthy classification.</li>
 <li><strong>ConnectionPoolMetrics</strong> — Runtime open connections, pool utilization %, driven by EF Core connection interceptors.</li>
 <li><strong>DatabaseMetricsTracker</strong> — Success/failure/latency aggregates with summary reporting.</li>
 <li><strong>QueryPerformanceTracker</strong> — Per-operation query performance with P95/P99 percentiles, slow query detection events, configurable tracking levels (None/Basic/Standard/Detailed/Full).</li>
 </ol>
 <h3 id="unity-integration">Unity Integration</h3>
-<ol start="41">
+<ol start="43">
 <li><strong>DatabaseHealthService</strong> — Unity MonoBehaviour wrapping the monitoring stack. Inspector-configurable health/pool/metrics check intervals. Exposes events for external alerting (Slack/PagerDuty). Context menu commands for manual health checks.</li>
 </ol>
 <h3 id="exceptions">Exceptions</h3>
-<ol start="42">
+<ol start="44">
 <li><strong>DatabaseException</strong> — Typed database exception hierarchy: <code>DatabaseEntityNotFoundException</code>, <code>StaleStateException</code>, <code>DuplicateReplayException</code>.</li>
 </ol>
 <h3 id="database-migrator">Database Migrator</h3>
-<ol start="43">
+<ol start="45">
 <li><strong>FishMMO-DB-Migrator</strong> — Standalone console tool for creating and applying EF Core migrations.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-dependencies">FishMMO-Dependencies</h2>
 <p><strong>Centralised NuGet dependency library</strong> — single source of truth for third-party package versions across the entire solution.</p>
 <ol>
-<li><strong>EF Core Stack</strong> — EF Core, Abstractions, Relational, Design, Tools, EFCore.NamingConventions (snake_case).</li>
-<li><strong>Microsoft.Extensions Stack</strong> — Configuration (Json, Abstractions), DependencyInjection, Logging, Caching, Options, Primitives, Bcl.AsyncInterfaces.</li>
-<li><strong>Utility Libraries</strong> — SRP (SRP-6a), HtmlAgilityPack, Humanizer, OpenAI, System.Collections.Immutable, ComponentModel.Annotations, DiagnosticSource, IO.Hashing (xxHash/Crc32/Crc64), Text.Json, Threading.Channels.</li>
-<li><strong>Post-Build DLL Copy</strong> — Output DLLs automatically copied to <code>../FishMMO-Unity/Assets/Dependencies/</code> via <code>CopyDependenciesToUnity</code> MSBuild target (cross-platform forward-slash paths). System DLLs excluded from copy to avoid Unity conflicts.</li>
+<li><strong>EF Core Stack (pinned 5.0.x)</strong> — EF Core, Abstractions, Relational, Design, Tools (all 5.0.17), EFCore.NamingConventions (snake_case), Npgsql 5.0.18 + Npgsql.EntityFrameworkCore.PostgreSQL 5.0.10. EF Core is <strong>intentionally pinned to 5.0.x</strong> for netstandard2.1 / Unity compatibility; the csproj carries an explicit warning that EF Core 5.0.x was compiled against older <code>Microsoft.Extensions.*</code> assemblies, so mixing in 9.0.x surface APIs risks <code>TypeLoadException</code> / <code>MissingMethodException</code> under Unity's resolver — hard crashes on IL2CPP rather than warnings.</li>
+<li><strong>Microsoft.Extensions Stack (9.0.4)</strong> — Configuration (+ Json, Abstractions, Binder, EnvironmentVariables), DependencyInjection (+ Abstractions), Logging (+ Abstractions), Caching (Abstractions, Memory), Options, Primitives, Http (pinned to override the transitive 2.1.0 pulled by OpenAI), Bcl.AsyncInterfaces.</li>
+<li><strong>Utility Libraries</strong> — srp 1.0.7 (SRP-6a), BouncyCastle.Cryptography 2.6.2, Otp.NET 1.4.1 (TOTP), HtmlAgilityPack, Humanizer, OpenAI, ZString, System.Collections.Immutable, ComponentModel.Annotations, DiagnosticSource, IO.Hashing (xxHash/Crc32/Crc64), Text.Json, Text.Encodings.Web, Threading.Channels, Runtime.CompilerServices.Unsafe.</li>
+<li><strong>Redis Pins</strong> — StackExchange.Redis 2.8.0, Pipelines.Sockets.Unofficial 2.2.8, StackExchange.Redis.Extensions.Core 10.0.0 — transitively pulled by FishMMO-AuthShared, pinned here for solution-wide version consistency.</li>
+<li><strong>FishMMO Sub-Library Project References</strong> — Builds and forwards FishMMO-AuthShared, FishMMO-ClientAuth, FishMMO-ServerAuth, FishMMO-DB, FishMMO-SharedUtility, and FishMMO-Logger so their DLLs land in Unity alongside the NuGet output.</li>
+<li><strong>Post-Build DLL Copy</strong> — Output DLLs automatically copied to <code>../FishMMO-Unity/Assets/Dependencies/</code> via the <code>CopyDependenciesToUnity</code> MSBuild target (cross-platform forward-slash paths). System DLLs excluded from copy to avoid Unity conflicts.</li>
+<li><strong>Stale DLL Sweep</strong> — <code>RemoveStaleDependencies</code> runs before the copy and clears the Unity <code>Assets/Dependencies</code> folder, so DLLs from removed NuGet packages do not linger.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-discordbot">FishMMO-DiscordBot</h2>
 <p><strong>Standalone .NET 8 Discord bot</strong> that bridges in-game chat with a Discord guild.</p>
 <ol>
-<li><strong>Game → Discord Chat Relay</strong> — Polls FishMMO chat REST API and forwards game messages to configured Discord channels.</li>
+<li><strong>Game → Discord Chat Relay</strong> — <code>ChatPollingService</code> (an <code>IHostedService</code> timer with a <code>SemaphoreSlim</code> reentrancy guard) polls the game <strong>database directly</strong> via <code>NpgsqlDbContextFactory</code>, tracking <code>lastProcessedChatId</code>, and forwards new messages to the mapped Discord channels. There is no chat REST API in this path.</li>
 <li><strong>Discord → Game Chat Relay</strong> — Discord messages intercepted and pushed back to the game via <code>GameChatBridgeService</code>.</li>
-<li><strong>Account Linking</strong> — <code>/link</code> workflow: issues short-lived one-time codes redeemable in-game to link Discord ↔ FishMMO account.</li>
+<li><strong>Account Linking</strong> — <code>link</code> / <code>unlink</code> commands (<code>LinkModule</code>, <code>AccountLinkingService</code>, <code>PendingLinkVerification</code>): issues short-lived one-time codes redeemable in-game to link Discord ↔ FishMMO account.</li>
 <li><strong>Dynamic Channel Management</strong> — Creates/archives Discord channels in response to in-game events (party formed, guild created).</li>
 <li><strong>Moderation Commands</strong> — Mute, unmute, ban, unban for the chat bridge (uses <code>BridgeBanService</code>).</li>
 <li><strong>Admin Commands</strong> — Reload config, shutdown, diagnostics (owner/admin-only).</li>
 <li><strong>Character Lookup</strong> — Query character info by name or Discord-linked account.</li>
-<li><strong>Slash Command Support</strong> — Modern Discord slash commands alongside legacy text-command support.</li>
+<li><strong>Text Command Handling</strong> — All commands are Discord.Net <strong>text</strong> commands (<code>CommandService</code>, <code>ModuleBase&lt;SocketCommandContext&gt;</code>, <code>[Command(&quot;…&quot;)]</code>). <code>CommandHandlingService</code> accepts either a leading <code>/</code> character prefix or an @-mention. Note this is a message prefix, not a registered Discord application command — no <code>InteractionService</code> or slash-command registration exists in the project. ~34 commands across General, Admin, Moderation, Character, Link, Database, and CommandList modules (<code>ping</code>, <code>help</code>, <code>commands</code>, <code>online</code>, <code>whois</code>, <code>inspect</code>, <code>getcharacter</code>, <code>getaccount</code>, <code>search</code>, <code>guild</code>, <code>channels</code>, <code>scenes</code>, <code>sceneservers</code>, <code>worldservers</code>, <code>status</code>, <code>kick</code>, <code>ban</code>/<code>unban</code>, <code>ban-bridge</code>/<code>unban-bridge</code>, <code>bridge-bans</code>, <code>mute-zone</code>/<code>unmute-zone</code>, <code>my-mutes</code>, <code>enable-cmd</code>/<code>disable-cmd</code>, <code>list-cmds</code>, <code>cmd-config</code>, <code>require-role</code>/<code>unrequire-role</code>, <code>cleanup</code>, <code>echo</code>, <code>link</code>/<code>unlink</code>).</li>
 <li><strong>Rate Limiting</strong> — Per-user/per-channel sliding-window rate limiter to prevent spam from either side (<code>RateLimiterService</code>).</li>
 <li><strong>Bridge Ban System</strong> — Tracks Discord users banned from the bridge; consulted before forwarding (<code>BridgeBanService</code>).</li>
 <li><strong>Config File Watching</strong> — <code>BotConfigurationService</code> watches <code>appsettings.json</code> for changes and propagates config at runtime.</li>
 <li><strong>Generic Host + DI</strong> — Built on <code>Microsoft.Extensions.Hosting</code>; all services are <code>IHostedService</code> with full DI composition.</li>
 <li><strong>Database Read-Only Queries</strong> — Admin-gated database queries via <code>DatabaseModule</code>.</li>
-<li><strong>Self-Documenting Help</strong> — <code>!help</code> / <code>/help</code> command lists all available commands.</li>
+<li><strong>Self-Documenting Help</strong> — <code>help</code> and <code>commands</code> list available commands, driven by <code>CommandService</code> reflection over the registered modules (<code>CommandListModule</code>). Per-command enable/disable and role gating come from <code>CommandPermissionConfig</code>.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-installer">FishMMO-Installer</h2>
@@ -341,15 +348,16 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>PgBouncer Configuration Generation</strong> — Generates <code>pgbouncer.ini</code> (transaction pooling, scram-sha-256) and <code>userlist.txt</code> (with SCRAM hash from <code>pg_shadow</code>) with secure file permissions.</li>
 <li><strong>Database Credentials File</strong> — Generates <code>/etc/fishmmo/db-secrets.env</code> (systemd <code>EnvironmentFile</code>) and <code>~/.config/fish/conf.d/fishmmo-secrets.fish</code> (fish shell snippet) so database passwords never live in plain-text JSON. Application secrets (gate secret, KEK, connection token HMAC key) are stored in the database, not in env files.</li>
 <li><strong>AppSettings Secure Wizard</strong> — Interactive configuration wizard for all FishMMO components (Database, IPFetch, Patcher, WebGL, Discord Bot, CMS). Preserves unmanaged JSON keys across writes. Applies <code>chmod 600</code> on all output files.</li>
+<li><strong>SecurityKeyInstaller</strong> — Generates CSPRNG keys (<code>RandomNumberGenerator.Fill</code>, base64, round-trip validated) and writes them <strong>directly to the database</strong> over a superuser <code>NpgsqlConnection</code>, so no env file has to be copied between machines: the ClientGate secret and signing-key KEK into <code>deployment_secrets</code> (<code>client_gate_secret</code>, <code>signing_key_kek</code>) and the connection token HMAC key into <code>connection_token_keys</code> (<code>key_id='shared'</code>). Superuser credentials come from the interactive prompt or <code>FISHMMO_PG_SUPERUSER_PASSWORD</code>. The matching client-side build constants (<code>ClientApiSecret.generated.cs</code>, <code>CertificatePins.generated.cs</code>, <code>HostConfig.generated.cs</code>) are generated separately from <strong>FishMMO Dashboard &gt; Game Settings</strong> in the Unity Editor.</li>
 </ol>
 <h3 id="build-automation">Build Automation</h3>
-<ol start="36">
+<ol start="37">
 <li><strong>Build All C# Projects</strong> — Discovers and builds all <code>.csproj</code> files under the repo root with dependency-prioritized ordering (synchronous for low-priority projects, parallel for independent builds). Copies DLLs to Unity Dependencies.</li>
 <li><strong>Unity Build Automation</strong> — Headless Unity builds via <code>-batchmode -nographics -executeMethod</code> for Client/Server/Addressables. Resolves Unity executable path from environment variable, Unity Hub CLI, or filesystem probing.</li>
 <li><strong>Unity Hub + Editor Installation</strong> — Installs Unity Hub (Linux: apt/AUR, Windows: official installer) and Unity Editor versions with selectable build support modules via Unity Hub CLI.</li>
 </ol>
 <h3 id="platform-support">Platform Support</h3>
-<ol start="39">
+<ol start="40">
 <li><strong>Cross-Platform</strong> — Windows 10/11 and Linux (Arch/CachyOS, Ubuntu/Debian, Fedora/RHEL).</li>
 <li><strong>Package Manager Auto-Detection</strong> — pacman, apt-get, dnf, and yum auto-detected with appropriate update/install command templates.</li>
 <li><strong>Platform Abstraction</strong> — <code>IPlatform</code> interface with <code>WindowsPlatform</code> / <code>LinuxPlatform</code> implementations for shell command dispatch, privilege elevation, and command availability checks.</li>
@@ -367,23 +375,23 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Pluggable Sink Model</strong> — <code>ILogger</code> + <code>ILoggerConfig</code> interfaces; register custom sinks via factory before initialization.</li>
 <li><strong>Polymorphic Config Converter</strong> — <code>ILoggerConfigConverter</code> for System.Text.Json round-tripping of sink configs.</li>
 <li><strong>Console Formatter</strong> — ANSI / plain-text console formatting helpers.</li>
-<li><strong>Unity Integration</strong> — Unity console bridge (<code>UnityLoggerBridge</code>) and Unity-specific console formatter.</li>
-<li><strong>Async Shutdown</strong> — <code>Log.Shutdown()</code> drains and disposes all sinks gracefully.</li>
+<li><strong>Unity Integration</strong> — <code>UnityLoggerBridge</code> (captures Unity log callbacks into the facade, with an <code>IsLoggingInternally</code> re-entrancy guard), <code>UnityConsoleLogger</code> sink, and <code>UnityConsoleFormatter</code>. These live in the Unity project under <code>Assets/Scripts/Shared/Implementation/Bootstrap/Logging/</code>, not in the FishMMO-Logger library itself, so the library stays engine-independent.</li>
+<li><strong>Async Shutdown</strong> — <code>Log.Shutdown()</code> (async <code>Task</code>) drains and disposes all sinks gracefully. Bootstrap detaches <code>UnityLoggerBridge</code> before the async shutdown runs.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-patcher">FishMMO-Patcher</h2>
-<p><strong>Standalone .NET 8 updater</strong> that applies versioned binary patches to FishMMO clients.</p>
+<p><strong>Standalone .NET 8 updater</strong> (<code>Updater/Program.cs</code>, ~850 lines) that applies a versioned binary patch to a FishMMO client. Invoked by the launcher with <code>-version=</code>, <code>-latestversion=</code>, <code>-pid=</code>, <code>-exe=</code>.</p>
 <ol>
-<li><strong>Versioned Patch Application</strong> — Applies sequential patches (<code>1.0.0 → 1.0.1 → 1.1.0</code>) from ZIP archives.</li>
-<li><strong>Patch Manifest Parsing</strong> — Reads <code>manifest.json</code> describing new/modified/deleted files with hashes.</li>
-<li><strong>Binary Diff Application</strong> — Applies binary diffs to existing files with pre- and post-hash verification.</li>
-<li><strong>Parallel File Operations</strong> — New and modified files processed concurrently for speed.</li>
-<li><strong>Transactional Patching</strong> — Every file backed up before modification; full rollback on any failure.</li>
-<li><strong>Atomic File Replacement</strong> — Temporary <code>.new</code> files atomically moved over originals.</li>
-<li><strong>Launcher Process Management</strong> — Locates launcher by PID, graceful close with force-kill fallback.</li>
-<li><strong>Automatic Client Restart</strong> — Starts the updated client executable after successful patch.</li>
-<li><strong>Multi-Step Version Chain</strong> — Locates and applies all intermediate patch archives in version order.</li>
-<li><strong>Retry with Backoff</strong> — Configurable retry count and delay for transient file I/O errors.</li>
+<li><strong>Single-Archive Patch Application</strong> — Applies exactly <strong>one</strong> archive per run: <code>Patches/{from}-{to}.zip</code>, built from the <code>-version</code> and <code>-latestversion</code> arguments. There is no patch chaining — if that specific archive is absent the updater logs the miss, restarts the client, and exits.</li>
+<li><strong>Patch Manifest Parsing</strong> — Reads <code>manifest.json</code> from the ZIP into <code>PatchManifest</code> (<code>OldVersion</code>, <code>NewVersion</code>, <code>NewFiles</code>, <code>ModifiedFiles</code>, <code>DeletedFiles</code>).</li>
+<li><strong>Binary Diff Application</strong> — <code>Patcher.Apply</code> reconstructs each modified file from its <code>PatchDataEntryName</code> diff stream into a temp file. New files are verified against <code>NewHash</code> (XxHash128) after extraction and deleted on mismatch.</li>
+<li><strong>Parallel File Operations</strong> — New and modified files processed concurrently via <code>Parallel.ForEach</code> with an exception bag that stops the loop on first failure.</li>
+<li><strong>Transactional Patching</strong> — Every replaced file copied to <code>.bak</code> before the move; failure anywhere triggers a full rollback to the previous state.</li>
+<li><strong>Atomic File Replacement</strong> — Patched content written to unique temp files, then moved over originals in a finalization phase.</li>
+<li><strong>Launcher Process Management</strong> — Terminates the launcher by PID before patching: <code>kill(SIGTERM)</code> via a <code>libc</code> P/Invoke on Linux/macOS, <code>Process.CloseMainWindow()</code> on Windows, falling through to a forced <code>Kill()</code> on any path where the graceful request fails or is ignored.</li>
+<li><strong>Automatic Client Restart</strong> — <code>TryStartExecutableAndExit</code> starts the client executable on every exit path (success, failure, missing archive, already-current) and always <code>Environment.Exit(0)</code> — the launcher treats a non-zero code as an updater failure.</li>
+<li><strong>Archive Lifecycle</strong> — The consumed archive is deleted on success so <code>Patches/</code> does not accumulate; it is <strong>kept</strong> on failure so a retry does not require re-downloading.</li>
+<li><strong>Retry with Backoff</strong> — <code>TryDeleteFile</code> / <code>TryMoveFile</code> retry with a fixed delay for transient file I/O errors before giving up.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-setup">FishMMO-Setup</h2>
@@ -394,25 +402,32 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>HTTP/HTTPS Gateway (L7)</strong> — TLS 1.2/1.3 termination with Let's Encrypt certificates, HSTS (6 months + includeSubDomains), modern cipher suite (ECDHE+AESGCM:ECDHE+CHACHA20), OCSP stapling.</li>
 <li><strong>Virtual Hosts</strong> — <code>play.fishmmo.com</code> (WebGL client), <code>api.fishmmo.com</code> (IPFetch + Patcher), <code>game.fishmmo.com</code> (444-close — game traffic is UDP-only). Catch-all returns 444.</li>
 <li><strong>Rate Limiting</strong> — <code>limit_req_zone</code> per-endpoint: 10r/s API, 2r/s patch downloads, 30r/s WebGL. <code>limit_conn_zone</code> per-IP: 20 conn WebGL, 10 conn API, 3 conn patch. HTTP 429 with <code>Retry-After</code>.</li>
-<li><strong>Security Headers</strong> — CSP (WebGL: <code>wasm-unsafe-eval</code>, <code>connect-src wss://game.fishmmo.com:*</code>), <code>X-Content-Type-Options: nosniff</code>, <code>X-Frame-Options: DENY</code>, <code>Referrer-Policy: strict-origin-when-cross-origin</code>, <code>Permissions-Policy</code>, <code>Access-Control-Allow-Origin</code> for API.</li>
+<li><strong>Security Headers</strong> — CSP (WebGL: <code>wasm-unsafe-eval</code>, <code>connect-src 'self' wss://game.fishmmo.com:* https://game.fishmmo.com:*</code>), <code>X-Content-Type-Options: nosniff</code>, <code>X-Frame-Options: DENY</code>, <code>Referrer-Policy: strict-origin-when-cross-origin</code>, <code>Permissions-Policy</code>, <code>Access-Control-Allow-Origin</code> for API. Browser WebTransport is permitted by the <code>https://</code> entry; the <code>wss://</code> entry is a leftover from the retired WebSocket transport and grants nothing that is still used.</li>
 <li><strong>Performance</strong> — <code>sendfile on</code>, <code>tcp_nopush on</code>, <code>tcp_nodelay on</code>, <code>gzip on</code> with <code>gzip_proxied any</code> (not <code>off</code>), <code>gzip_types</code> tuned for text/wasm, <code>keepalive_timeout 65s</code>.</li>
-<li><strong>Hardening</strong> — <code>server_tokens off</code>, <code>client_max_body_size 1k</code> (API), <code>client_body_timeout 10s</code>, <code>client_header_timeout 10s</code>.</li>
+<li><strong>Hardening</strong> — <code>server_tokens off</code>, <code>client_max_body_size 64k</code> globally (raised from nginx's 1m default being too restrictive for POST; the patch download location overrides to <code>0</code> / unlimited), <code>client_body_timeout 10s</code>, <code>client_header_timeout 10s</code>.</li>
 </ol>
 <h3 id="server-configuration-cfg-files">Server Configuration (.cfg files)</h3>
 <ol start="8">
-<li><strong>LoginServer.cfg</strong> — ServerName, MaximumClients (4000), Address (127.0.0.1 via nginx), Port (7770), TLS certificate paths, SMTP config (with <code>UseSsl</code> per-environment).</li>
-<li><strong>WorldServer.cfg</strong> — Port 7780, same TLS cert paths.</li>
-<li><strong>SceneServer.cfg</strong> — Port 7790+, StaleSceneTimeout (5 minutes), same TLS cert paths.</li>
-<li><strong>AutoVerifyAccounts</strong> — <code>true</code> in Development (local SMTP), <code>false</code> in Release (email verification required).</li>
+<li><strong>LoginServer.cfg</strong> — ServerName, MaximumClients (4000), Address (127.0.0.1, all traffic via nginx), Port (7770), TLS <code>CertificatePath</code>/<code>PrivateKeyPath</code> for the server's own QUIC/TLS termination, <code>AllowedOrigins</code> (browser WebTransport CORS allow-list; empty = allow all, development only), <code>ConnectionTokenHmacKeyBase64</code> (left blank — keys load from the <code>connection_token_keys</code> table), and SMTP config (<code>Smtp:Host/Port/Username/Password/FromAddress/FromName/UseSsl</code>, each overridable by <code>FISHMMO_SMTP_*</code> environment variables).</li>
+<li><strong>Login Queue Keys</strong> — <code>LoginQueueUpdateRateSeconds</code> (2.0), <code>LoginQueueMaxSize</code> (500), <code>LoginQueueAdmissionRatePerSecond</code> (5.0), <code>LoginQueueTimeoutSeconds</code> (300) configure <code>LoginQueueSystem</code>. All server-authoritative — clients cannot request faster updates.</li>
+<li><strong>WorldServer.cfg</strong> — Port 7780, same Address/TLS/connection-token keys.</li>
+<li><strong>SceneServer.cfg</strong> — Port 7790+, same Address/TLS/connection-token keys. Note <code>StaleSceneTimeout=5</code> is present in <strong>all three</strong> .cfg templates, not only SceneServer.</li>
+<li><strong>IPv6 Reserved</strong> — <code>EnableIPv6</code> / <code>IPv6Address</code> are commented out in every template. IPv6 dual-stack is not supported at the native QUIC layer; IPv6 clients must arrive through an IPv6-enabled NGINX L4 proxy.</li>
+<li><strong>AutoVerifyAccounts</strong> — <code>true</code> in Development (bypasses email verification, flagged with an explicit do-not-copy-to-production warning), <code>false</code> in Production so email verification is required.</li>
 </ol>
-<h3 id="deploy-hooks">Deploy Hooks</h3>
-<ol start="12">
-<li><strong>certbot-fishmmo.sh</strong> — Post-renewal deploy hook: copies Let's Encrypt certs to <code>/etc/fishmmo/certs/</code>, <code>chmod 640</code>, <code>chown fishmmo:fishmmo</code>, reloads nginx, restarts game servers via systemd (with SIGHUP fallback).</li>
-<li><strong>gen-fishmmo-stream-config.sh</strong> — Regenerates <code>stream.d/*.conf</code> for all game UDP ports (230 ports across Login/World/Scene ranges). Validates with <code>nginx -t</code> before atomic replacement.</li>
+<h3 id="deploy-hooks-contracts-operator-supplied--not-shipped-in-this-repo">Deploy Hooks (contracts, operator-supplied — <strong>not shipped in this repo</strong>)</h3>
+<p><em>Neither script exists under <code>FishMMO-Setup/</code>. <code>nginx.conf</code> and the deployment docs define the contract each must satisfy, and the root README states plainly that they are operator-supplied.</em><br>
+14. <strong>certbot-fishmmo.sh</strong> — Documented post-renewal deploy hook contract: copy Let's Encrypt certs to <code>/etc/fishmmo/certs/</code>, <code>chmod 640</code>, <code>chown fishmmo:fishmmo</code>, reload nginx, restart game servers via systemd (with SIGHUP fallback). Operator installs it to <code>/usr/local/bin/</code>.<br>
+15. <strong>gen-fishmmo-stream-config.sh</strong> — Documented generator contract for <code>stream.d/*.conf</code> across the game UDP port ranges, validated with <code>nginx -t</code> before atomic replacement. <code>nginx.conf</code> includes <code>/etc/nginx/stream.d/*.conf</code> and expects this generator at <code>/usr/local/bin/</code>.</p>
+<h3 id="config-templates">Config Templates</h3>
+<ol start="16">
+<li><strong>Per-Environment appsettings</strong> — <code>Development/</code> and <code>Production/</code> each hold <code>appsettings.json</code> plus per-component variants: <code>appsettings.Database.json</code>, <code>appsettings.IpFetchServer.json</code>, <code>appsettings.Patcher.json</code>, <code>appsettings.WebGLServer.json</code>, <code>appsettings.DiscordBot.json</code>, <code>appsettings.AppHealthMonitor.json</code>, <code>appsettings.CMS.json</code>. Component projects copy-and-rename these into their build output at build time.</li>
+<li><strong>Installer Manifests</strong> — <code>install-config.full.json</code>, <code>install-config.quickstart.json</code>, and <code>install-config.web.json</code> (Development only) drive FishMMO-Installer’s non-interactive pipeline.</li>
+<li><strong>logging.json</strong> — Single shared FishMMO-Logger sink configuration.</li>
 </ol>
 <h3 id="build-system">Build System</h3>
-<ol start="14">
-<li><strong>WebTransport Build</strong> — <code>build_all.sh</code> master script: Linux (native CMake), Windows (Zig cross-compile), macOS (native CMake).</li>
+<ol start="19">
+<li><strong>WebTransport Build</strong> — Per-platform scripts in <code>FishMMO-WebTransport/</code>; there is <strong>no</strong> <code>build_all.sh</code> master script. <code>build_linux.sh</code> (native CMake), <code>build_windows.ps1</code> / <code>build_windows_schannel.ps1</code> (native CMake on Windows), <code>build_windows_cross.sh</code> (Zig 0.13+ cross-compile from Linux — downloads the msquic NuGet package for the import library and runtime DLL, compiles with <code>zig c++ -target x86_64-windows-gnu</code>, links via <code>lld-link --out-implib</code>), <code>build_macos.sh</code> (must build on a Mac — msquic’s quictls dependency contains platform-specific assembly that cannot be cross-compiled), plus <code>rebuild_only.*</code> incremental helpers.</li>
 <li><strong>Cross-Platform Paths</strong> — Forward-slash paths in <code>.csproj</code> files. <code>$(Configuration)</code> used directly (no redundant <code>BuildConfiguration</code> property).</li>
 </ol>
 <hr>
@@ -428,6 +443,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>RefWrapper&lt;T&gt;</strong> — Boxed reference wrapper for value types with implicit conversion.</li>
 <li><strong>SetOnce&lt;T&gt;</strong> — Thread-safe write-once latch with lock-free reads and double-checked locking.</li>
 <li><strong>IReference</strong> — Marker interface for reference-equality compared objects.</li>
+<li><strong>CryptographicOperationsCompat</strong> — netstandard2.1 shim supplying <code>ZeroMemory</code> / fixed-time comparison primitives where <code>System.Security.Cryptography.CryptographicOperations</code> is unavailable.</li>
 </ol>
 <h3 id="compression">Compression</h3>
 <ol start="10">
@@ -448,7 +464,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 </ol>
 <hr>
 <h2 id="fishmmo-unity--client">FishMMO-Unity — Client</h2>
-<p><strong>The player-facing Unity client</strong> (FishMMO.Client assembly, 172 .cs files).</p>
+<p><strong>The player-facing Unity client</strong> (FishMMO.Client assembly, 175 .cs files).</p>
 <h3 id="networking--connectivity">Networking &amp; Connectivity</h3>
 <ol>
 <li><strong>Multi-Server Connection Management</strong> — LoginServer → WorldServer → SceneServer transitions with state tracking via <code>ClientConnectionManager</code>.</li>
@@ -460,7 +476,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Death Dialog</strong> — <code>UITKDeathDialog</code> with Respawn/Resurrect buttons. Handles <code>ResurrectOfferBroadcast</code> for dynamic button visibility.</li>
 </ol>
 <h3 id="authentication">Authentication</h3>
-<ol start="6">
+<ol start="8">
 <li><strong>SRP-6a Client Login Flow</strong> — Full SRP-6a protocol: cookie challenge echo, key agreement, verify/proof, token-based reauth.</li>
 <li><strong>Token-Based Reauthentication</strong> — Stored auth tokens for seamless World/Scene server transitions.</li>
 <li><strong>Account Creation</strong> — Encrypted credential registration with validation.</li>
@@ -469,7 +485,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Token Renewal &amp; Revocation</strong> — Token refresh on login server and revocation on logout/shutdown.</li>
 </ol>
 <h3 id="input-system">Input System</h3>
-<ol start="12">
+<ol start="14">
 <li><strong>Unity Input System Integration</strong> — <code>PlayerInputHandler</code> manages the <code>PlayerControls</code> asset.</li>
 <li><strong>Mouse Mode Management</strong> — Cursor visibility/lock state toggling.</li>
 <li><strong>Input Binding Persistence</strong> — Loading/saving input binding overrides to configuration.</li>
@@ -478,26 +494,27 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Right-Click Context Menus</strong> — Inspect, Add Friend, Invite to Party, Trade on player targets.</li>
 </ol>
 <h3 id="launcher">Launcher</h3>
-<ol start="18">
-<li><strong>HTML News Feed</strong> — Fetches and displays launcher news via HtmlAgilityPack → TextMeshPro rich text.</li>
-<li><strong>API Host Resolution</strong> — Randomised mirror selection from comma-separated host list with HTTPS enforcement.</li>
-<li><strong>Version Checking</strong> — Compares local version against <code>/latest_version</code> API endpoint.</li>
-<li><strong>Patch Download</strong> — Downloads patch ZIPs with SHA-256 integrity verification and progress display.</li>
-<li><strong>External Updater Launch</strong> — Spawns the standalone Updater process, monitors exit, reports results.</li>
-<li><strong>API Request Signing</strong> — HMAC-SHA256 request signing with replay protection (timestamp ±300s, nonce).</li>
-<li><strong>UnityWebRequest Service</strong> — Shared MonoBehaviour for HTTP requests with retry, timeout, progress callbacks, custom certificate handling.</li>
+<ol start="20">
+<li><strong>HTML News Feed</strong> — Fetches and displays launcher news via HtmlAgilityPack → TextMeshPro rich text (<code>IHtmlContentFetcher</code> / <code>UnityHtmlContentFetcher</code>).</li>
+<li><strong>API Host Resolution</strong> — Randomised mirror selection from comma-separated host list with HTTPS enforcement (<code>ApiHostResolver</code>).</li>
+<li><strong>Version Checking</strong> — <code>HttpPatchServerService</code> calls <code>GET /latest_version?from={clientVersion}</code> and parses <code>latest_version</code>, <code>up_to_date</code>, <code>patch_available</code>, <code>sha256</code>, and <code>size</code> into <code>PatchInfo</code>. Unparseable version strings are rejected rather than thrown on.</li>
+<li><strong>Patch Download with SHA-256 Verification</strong> — <code>DownloadPatch(patchUrl, destination, expectedSha256, …)</code> streams the archive with progress reporting and recomputes SHA-256 over the written file, failing the download on mismatch. Verification is skipped only when the server supplied no hash.</li>
+<li><strong>Launcher State Machine</strong> — <code>LauncherState</code>: LoadingNews, Connecting, CheckingVersion, DownloadingPatch, ApplyingPatch, ReadyToPlay, ClientAhead, ConnectionFailed, VersionCheckFailed, PatchDownloadFailed, UpdaterFailed, LaunchFailed, <strong>PatchUnavailable</strong> (out of date but no patch exists from this specific version — full reinstall required, retry cannot help), VersionError, <strong>ServerRejectedVersion</strong> (game server refused the client's game version).</li>
+<li><strong>Transient-State Watchdog</strong> — <code>TransientStateWatchdog</code> coroutine tracks a heartbeat across transient states (connecting/checking/downloading/applying) and recovers the UI if one stalls, so the player is never left with a dead button and no way to act. A separate <code>LaunchWatchdog</code> re-enables the Play button if the addressable scene load exceeds <code>launchWatchdogTimeoutSeconds</code> (default 30s).</li>
+<li><strong>External Updater Launch</strong> — <code>IUpdaterLauncher</code> / <code>SystemUpdaterLauncher</code> spawns the standalone Updater process, monitors exit, reports results. A non-zero updater exit code surfaces as <code>UpdaterFailed</code>.</li>
+<li><strong>UnityWebRequest Service</strong> — Shared MonoBehaviour for HTTP requests with retry, timeout, progress callbacks, custom certificate handling. Launcher API calls are HMAC-signed via <code>ClientApiSigner</code> / <code>ClientApiSecret</code> (see Security below).</li>
 </ol>
 <h3 id="security">Security</h3>
-<ol start="25">
+<ol start="28">
 <li><strong>TLS Certificate Pinning</strong> — SHA-256(SPKI) base64 pinning via BouncyCastle for UnityWebRequest. Constant-time pin comparison. Release builds fail-closed when pins are not configured.</li>
-<li><strong>IL-Embedded Pin Configuration</strong> — Pins are compiled into the assembly from <code>CertificatePins.generated.cs</code>, not loaded from StreamingAssets. Generated via Unity Editor tool at <strong>FishMMO &gt; Security &gt; Fetch Certificate Pins</strong>.</li>
+<li><strong>IL-Embedded Pin Configuration</strong> — Pins are compiled into the assembly from <code>CertificatePins.generated.cs</code>, not loaded from StreamingAssets. Generated from the <strong>FishMMO Dashboard</strong> (<code>FishMMO &gt; FishMMO Dashboard</code>, or Ctrl+Shift+D) &gt; <strong>Game Settings</strong> panel, which also emits <code>ClientApiSecret.generated.cs</code> and <code>HostConfig.generated.cs</code>. There is no <code>FishMMO &gt; Security</code> menu — these are Dashboard panels, not menu items.</li>
 <li><strong>TOFU Mode</strong> — Development/editor builds allow empty pins (trust-on-first-use with loud warnings).</li>
 <li><strong>Build-Time Validation</strong> — <code>IPreprocessBuildWithReport</code> warns on release builds without TLS pins (at least 2 required).</li>
 <li><strong>Dynamic Pin Update Scaffold</strong> — <code>IPinUpdateSidecar</code> interface for out-of-band signed manifest updates with UTC validity windows.</li>
 <li><strong>API Request Signing</strong> — HMAC-SHA256 with <code>X-FishMMO-Client</code> header (v1.{ts}.{nonce}.{sig} format), 30s skew window, per-process nonce LRU cache.</li>
 </ol>
 <h3 id="ui-toolkit-uitk-panels--login-flow">UI Toolkit (UITK) Panels — Login Flow</h3>
-<ol start="30">
+<ol start="34">
 <li><strong>Loading Screen</strong> — Addressable-loaded transition images with progress bar.</li>
 <li><strong>Reconnect Display</strong> — Reconnect attempt status during network interruptions.</li>
 <li><strong>Login Panel</strong> — Username/password, TOTP/2FA code, account verification code input.</li>
@@ -507,7 +524,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Character Create</strong> — Name input and appearance customization.</li>
 </ol>
 <h3 id="ui-toolkit-uitk-panels--world--in-game-hud">UI Toolkit (UITK) Panels — World / In-Game HUD</h3>
-<ol start="37">
+<ol start="41">
 <li><strong>Ability Book</strong> — Learned abilities with details.</li>
 <li><strong>Cast Bar</strong> — Channeling/casting progress display.</li>
 <li><strong>Ability Crafting</strong> — Ability-based item crafting UI.</li>
@@ -534,11 +551,11 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Target Frame</strong> — Target name, health, buffs/debuffs.</li>
 </ol>
 <h3 id="ugui-legacy-canvas-panels">UGUI (Legacy Canvas) Panels</h3>
-<ol start="61">
+<ol start="65">
 <li>Full UGUI equivalents of all login flow and world HUD panels above (loading screen, login, register, server select, character select/create, options with screen settings, chat, inventory, equipment, bank, merchant, abilities, hotkeys, achievements, buffs/debuffs, guild, party, friends, factions, dungeon finder, NPC dialogue, pet, minimap, inspect, chat channels, context menus, crosshair, tooltips).</li>
 </ol>
 <h3 id="shared-ui-components">Shared UI Components</h3>
-<ol start="62">
+<ol start="66">
 <li><strong>Dialog Box</strong> — Modal informational dialog.</li>
 <li><strong>Input Dialog Box</strong> — Modal dialog with text input field.</li>
 <li><strong>Color Picker</strong> — Color selection control.</li>
@@ -550,7 +567,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>UI Manager</strong> — Static registry for all UI controls with Show/Hide/Toggle/GetByName, close-on-escape stack, character injection.</li>
 </ol>
 <h3 id="3d-world-space-effects">3D World-Space Effects</h3>
-<ol start="71">
+<ol start="75">
 <li><strong>3D Label System</strong> — Object-pooled TextMeshPro labels for damage numbers, heal numbers, achievement popups.</li>
 <li><strong>Visual Effects</strong> — 10 configurable effects: FadeIn, FadeOut, FloatUp, FloatRandom, Bounce, Pulse, ScaleUp, ScaleDown, Wave, Shake.</li>
 <li><strong>Billboard Component</strong> — Makes GameObjects always face the camera (nameplates, health bars).</li>
@@ -558,7 +575,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Floating Labels</strong> — Damage, heal, achievement, and region name labels in world space.</li>
 </ol>
 <h3 id="scene-management">Scene Management</h3>
-<ol start="76">
+<ol start="80">
 <li><strong>Addressable-Based Scene Loading</strong> — Scene preloading/postloading with progress tracking.</li>
 <li><strong>Template Cache Population</strong> — Static permanent addressable loading.</li>
 <li><strong>Fog Transitions</strong> — Scene fog changes during world transitions. <code>ClientFogManager</code> extracted for SRP compliance.</li>
@@ -567,25 +584,17 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Death Broadcast Handler</strong> — <code>DeathBroadcast</code> registered on client for reconnect-while-dead death dialog re-display.</li>
 </ol>
 <h3 id="naming--resolution">Naming &amp; Resolution</h3>
-<ol start="76">
+<ol start="86">
 <li><strong>ClientNamingSystem</strong> — ID-to-name and name-to-ID resolution for characters, guilds, pets with server queries and disk persistence (GZip binary).</li>
 </ol>
-<h3 id="scene-management-1">Scene Management</h3>
-<ol start="77">
-<li><strong>Addressable-Based Scene Loading</strong> — Scene preloading/postloading with progress tracking.</li>
-<li><strong>Template Cache Population</strong> — Static permanent addressable loading.</li>
-<li><strong>Fog Transitions</strong> — Scene fog changes during world transitions.</li>
-<li><strong>World Scene Tracking / Unloading</strong> — Client-side world scene lifecycle management.</li>
-<li><strong>Postload Scene Lifecycle</strong> — Reloads on quit-to-login, unloads on entering game world.</li>
-</ol>
 <h3 id="webgl-support">WebGL Support</h3>
-<ol start="82">
-<li><strong>Browser Key Interception</strong> — Prevents default browser actions (F12, Ctrl+W) during gameplay via JavaScript interop.</li>
-<li><strong>WebGL Quit</strong> — Calls JavaScript quit function.</li>
+<ol start="87">
+<li><strong>Browser Key Interception</strong> — Prevents default browser actions (F12, Ctrl+W) during gameplay via JavaScript interop (<code>Assets/Scripts/Client/WebGL/WebGL.jslib</code>).</li>
+<li><strong>WebGL Quit</strong> — Calls a JavaScript quit function via <code>Client.jslib</code>.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-unity--server">FishMMO-Unity — Server</h2>
-<p><strong>The headless server</strong> (FishMMO.Server assembly, 210 .cs files). Three server types — Login, World, Scene — launched from one GameServer executable.</p>
+<p><strong>The headless server</strong> (FishMMO.Server assembly, 211 .cs files). Three server types — Login, World, Scene — launched from one GameServer executable.</p>
 <h3 id="core-server-infrastructure">Core Server Infrastructure</h3>
 <ol>
 <li><strong>Server Composition Root</strong> — <code>Server</code> MonoBehaviour orchestrates CoreServer, Database, NetworkWrapper, AddressProvider, AccountManager, BehaviourRegistry, DataContainerRegistry.</li>
@@ -594,7 +603,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Periodic Callback System</strong> — <code>IPeriodicUpdateSystem</code> for registering/unregistering configurable-interval per-frame callbacks.</li>
 <li><strong>Server Behaviour System</strong> — ScriptableObject-derived modular server behaviours with unified InitializeOnce/Deinitialize lifecycle.</li>
 <li><strong>Server Component Registry</strong> — Multi-interface lookup registry for all server components.</li>
-<li><strong>Runtime Data Containers</strong> — Typed runtime data containers with factory and registry; behaviours can declare required containers via <code>[RequiresDataContainer]</code>.</li>
+<li><strong>Runtime Data Containers</strong> — Typed runtime data containers (<code>RuntimeDataContainer</code>) with <code>RuntimeDataContainerFactory</code> and <code>RuntimeDataContainerRegistry</code>; behaviours declare required containers via <code>[RequiresDataContainer]</code>. Per-system containers follow the <code>&lt;System&gt;SystemRuntimeData</code> / <code>I&lt;System&gt;SystemRuntimeData</code> naming convention — e.g. <code>PartySystemRuntimeData</code>/<code>IPartySystemRuntimeData</code>, <code>GuildSystemRuntimeData</code>, <code>CharacterSystemRuntimeData</code>, <code>ChatSystemRuntimeData</code>, <code>WorldSceneSystemRuntimeData</code>, <code>NamingSystemRuntimeData</code>. Shared infrastructure containers (<code>MainThreadQueueData</code>, <code>AsyncWorkerData</code>) are similarly split per system via marker interfaces such as <code>IGuildSystemMainThreadQueueData</code> so systems do not collide on one registry slot.</li>
 <li><strong>Main Thread Queue</strong> — Thread-safe main-thread action queue for marshalling async worker results to the Unity thread.</li>
 <li><strong>Async Worker Queue</strong> — Centralized bounded async work queue with backpressure and entity-keyed ordering (FIFO per key via consistent hashing).</li>
 <li><strong>IngressGuard</strong> — Per-connection, per-operation debounce and in-flight guard to prevent duplicate/replay/DoS attacks (ConcurrentDictionary-backed, bounded, periodic sweep).</li>
@@ -620,16 +629,17 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Character Create System</strong> — Template-validated character creation with starting equipment/abilities/hotkeys initialization, <code>MaxCharacters</code> per account enforcement.</li>
 <li><strong>Character Select System</strong> — Character listing, selection, and deletion for player accounts.</li>
 <li><strong>Server Select System</strong> — World server list provisioning from database.</li>
+<li><strong>Login Queue System</strong> — <code>LoginQueueSystem</code> (<code>ServerBehaviour</code>) holds a FIFO queue, backed by <code>ArrivalOrderTracker&lt;TKey&gt;</code> for O(1) add/remove by connection, for clients arriving while the server is at authentication capacity. Queued clients stay connected at the QUIC layer and receive <code>LoginQueuePositionBroadcast</code> position updates every <code>LoginQueueUpdateRateSeconds</code>; on reaching position 0 the client re-initiates the handshake and proceeds through normal auth. Admission is rate-smoothed via <code>LoginQueueAdmissionRatePerSecond</code> so newly admitted clients cannot immediately re-saturate auth capacity. Clients beyond <code>LoginQueueMaxSize</code> are rejected with <code>ClientAuthenticationResult.ServerBusy</code> (<code>ServerBusyBroadcast</code>) rather than queued; clients exceeding <code>LoginQueueTimeoutSeconds</code> receive position -1 and are disconnected. All parameters are server-authoritative.</li>
 </ol>
 <h3 id="worldserver-features">WorldServer Features</h3>
-<ol start="27">
+<ol start="28">
 <li><strong>World Server Registration</strong> — DB registration, periodic heartbeat with character count.</li>
 <li><strong>World Server Authenticator</strong> — Token auth with per-account login debounce, server-lock check, combined admission gate (DB connection count + recently admitted usernames burst prevention), selected-character validation.</li>
 <li><strong>World Scene System</strong> — Open world and instanced scene routing, connection authentication, instance lookup with debounce and TTL caching, waiting queue management with TTL purge, DB updates.</li>
 <li><strong>Kick Request System</strong> — Periodic DB polling for admin-initiated kicks, player disconnection via main-thread marshalling.</li>
 </ol>
 <h3 id="sceneserver-features">SceneServer Features</h3>
-<ol start="31">
+<ol start="32">
 <li><strong>Scene Server Registration</strong> — DB registration, periodic heartbeat pulses with scene character counts.</li>
 <li><strong>Scene Loading/Unloading</strong> — FishNet SceneManager orchestration, pending scene queue processing from DB, stale scene cleanup.</li>
 <li><strong>Character System</strong> — Full lifecycle: loading from DB, spawning, periodic saves (configurable interval), despawning, disconnect cleanup. Session ownership with claim/release and lease refresh. Teleportation, out-of-bounds checks, death/respawn.</li>
@@ -650,7 +660,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Scene Channel System</strong> — Open-world channel listing and same-server channel switching with per-connection cooldown enforcement.</li>
 </ol>
 <h3 id="server-authority--security">Server Authority &amp; Security</h3>
-<ol start="49">
+<ol start="50">
 <li><strong>CharacterStateValidation</strong> — Centralized static validation gate for all broadcast handlers. <code>CanAct()</code> rejects dead, teleporting, frozen, and unloaded characters. <code>CanActOrMove()</code> additionally rejects in-combat characters. <code>TryGetPlayerAndValidate(conn, out player)</code> canonical pattern resolves player from connection and validates in one call. Called at entry of every state-mutating broadcast handler.</li>
 <li><strong>Comprehensive CanAct Coverage</strong> — All server-side broadcast handlers validated: CharacterInventory (6 ops), Bank (2 ops), Equipment (2 ops), Quest (3 ops), Guild (7 ops), Party (7 ops), Friend (2 ops), Pet (4 ops), Hotkey (2 ops), Chat, Interactable. Movement pipeline also gated server-side in KCCPlayer.OnReplicate.</li>
 <li><strong>Per-Account Rate Limiting</strong> — Auth callback rate limit keyed by account name (not ClientId), preventing multi-connection bypass. Separate per-connection rate limit for scene unload broadcasts.</li>
@@ -658,15 +668,15 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>TCP/TLS Transport Encryption</strong> — All network traffic encrypted at transport layer.</li>
 </ol>
 <h3 id="observer-lod-system">Observer LOD System</h3>
-<ol start="54">
-<li><strong>HashGrid Spatial Partitioning</strong> — FishNet <code>HashGrid</code> component on NetworkManager (Accuracy=70, GridAxes=XZ). O(1) hash-based proximity: objects in same or adjacent grid cells are &quot;nearby.&quot; Covers ~105m effective radius.</li>
-<li><strong>Global Observer Conditions</strong> — <code>ObserverManager</code> configured with <code>SceneCondition</code> (never observe cross-scene) + <code>GridCondition</code> (spatial hash pre-filter). Applied to all <code>NetworkObject</code>s with <code>OverrideType = AddMissing</code>.</li>
-<li><strong>Tiered Distance Conditions</strong> — Four <code>DistanceCondition</code> ScriptableObjects (FishMMO → Create Observer Distance Conditions): Player(100m/10% hysteresis), Monster(50m/15%), Interactable(30m/10%), WorldItem(15m/20%). Added per-prefab on <code>NetworkObserver</code>.</li>
-<li><strong>Bandwidth Reduction</strong> — Per-client observer bandwidth drops from ~256 KB/s to ~43 KB/s (83% reduction) with full observer condition setup. Server aggregate outbound drops from ~25.6 MB/s to ~4.3 MB/s for 100 players + 100 NPCs.</li>
+<ol start="55">
+<li><strong>HashGrid Spatial Partitioning</strong> — FishNet <code>HashGrid</code> component on the SceneServer scene's NetworkManager (<code>_accuracy: 70</code>). O(1) hash-based proximity: objects in the same or adjacent grid cells are &quot;nearby.&quot; <strong>Note:</strong> <code>_gridAxes</code> is currently serialized as <code>0</code> = <code>XY</code>, not <code>XZ</code> — for a horizontal-plane world this is very likely a misconfiguration and should be reviewed.</li>
+<li><strong>Global Observer Conditions</strong> — The scene's <code>ObserverManager</code> <code>_defaultConditions</code> list holds exactly two assets: FishNet's stock <code>SceneCondition</code> (never observe cross-scene) and <code>GridCondition</code> (spatial hash pre-filter), applied to all <code>NetworkObject</code>s.</li>
+<li><strong>Tiered Distance Conditions (authored, not yet wired)</strong> — Four <code>DistanceCondition</code> ScriptableObjects live in <code>Assets/Settings/ObserverConditions/</code>: <code>PlayerDistanceCondition</code> (100m, <code>_hideDistancePercent</code> 0.1), <code>MonsterDistanceCondition</code> (50m, 0.15), <code>InteractableDistanceCondition</code> (30m, 0.1), <code>WorldItemDistanceCondition</code> (15m, 0.2). They are plain assets — there is no &quot;FishMMO → Create Observer Distance Conditions&quot; editor menu — and as of this revision <strong>no prefab or scene references any of their GUIDs</strong>, so no <code>NetworkObserver</code> currently applies them. Wiring them onto the relevant prefabs is outstanding work.</li>
+<li><strong>Bandwidth Reduction (projected)</strong> — With the full observer condition setup applied, per-client observer bandwidth is projected to drop from ~256 KB/s to ~43 KB/s (83% reduction), and server aggregate outbound from ~25.6 MB/s to ~4.3 MB/s for 100 players + 100 NPCs. These are design targets for the completed setup, not measurements of the current wiring (see 56).</li>
 </ol>
 <hr>
 <h2 id="fishmmo-unity--shared">FishMMO-Unity — Shared</h2>
-<p><strong>The shared entity and logic layer</strong> (FishMMO.Shared assembly, 579 .cs files). Used by both client and server, containing all entity definitions, the ECA trigger system, templates, network broadcasts, and prediction pipeline.</p>
+<p><strong>The shared entity and logic layer</strong> (FishMMO.Shared assembly, 585 .cs files). Used by both client and server, containing all entity definitions, the ECA trigger system, templates, network broadcasts, and prediction pipeline.</p>
 <h3 id="character-system">Character System</h3>
 <ol>
 <li><strong>ICharacter / IPlayerCharacter Interfaces</strong> — Root character contracts: ID, name, transform, collider, network object, prediction manager, observers, flags, behaviours, triggers.</li>
@@ -679,14 +689,14 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 </ol>
 <h3 id="eca-trigger-system-entity-component-action">ECA Trigger System (Entity-Component-Action)</h3>
 <p><em>The data-driven trigger/action pipeline powering abilities, quests, dialogue, interactables, and game events.</em></p>
-<ol start="6">
+<ol start="8">
 <li><strong>Trigger System Core</strong> — <code>Trigger</code> ScriptableObjects with <code>TargetSelector</code> + <code>Conditions</code> + <code>OnConditionsMetActions</code> + <code>OnConditionsNotMetActions</code>. Fault isolation (throwing actions caught/logged).</li>
 <li><strong>EventData</strong> — Typed event context container: Initiator, Target, TargetCharacter, RNG, ConditionFilter. Supports typed sub-payloads, forking, merging.</li>
 <li><strong>Polymorphic Serialization</strong> — All actions/conditions/selectors use <code>[SerializeReference]</code> + <code>[SubclassSelector]</code> for designer-authored Inspector workflows.</li>
 </ol>
-<h4 id="eca-actions-80-implementations">ECA Actions (~80 implementations)</h4>
-<ol start="9">
-<li><strong>Combat Actions</strong> — ApplyDamage, ApplyHeal, ApplyBuff, ApplyDispel, ConsumeResource, Interrupt, KnockbackHit.</li>
+<h4 id="eca-actions-52-implementations">ECA Actions (52 implementations)</h4>
+<ol start="11">
+<li><strong>Combat Actions</strong> — ApplyDamage, ApplyHeal, ApplyRevive, ApplyBuff, ApplyDispel, ConsumeResource, Interrupt, KnockbackHit.</li>
 <li><strong>Ability Actions</strong> — AbilityApplyArea, AbilityApplyTarget, AbilityForkHit, AbilityHitCount, AbilityMoveTransform, AbilityPierceHit, AbilitySpawnMultiply.</li>
 <li><strong>Item Actions</strong> — EquipItem, UnequipItem, GiveItem, RemoveItem. (Equip/Unequip <code>#if UNITY_SERVER</code> guarded — persistent state mutations never run during prediction replay.)</li>
 <li><strong>Quest Actions</strong> — AcceptQuest, AbandonQuest, AdvanceQuestObjective, CompleteQuest, FailQuest, TurnInQuest.</li>
@@ -694,28 +704,26 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Region Actions</strong> — ApplyRegionAttribute, ApplyRegionBuff, ChangeFog, ChangeSkybox, DisplayRegionName, PlayRegionAudio.</li>
 <li><strong>Utility Actions</strong> — AchievementIncrement, AddFaction, ClearTarget, DestroyObject, DisplayDialogue, PlayFX. (DestroyObject <code>#if UNITY_SERVER</code> guarded; PlayFX/ClearTarget suppress during prediction replay via <code>IsReplicateTick</code>.)</li>
 </ol>
-<h4 id="eca-conditions-30-implementations">ECA Conditions (~30 implementations)</h4>
-<ol start="16">
-<li><strong>Combat/Attribute Conditions</strong> — HasResource, HasRequiredAttribute, HasBuff, HasCooldown, IsCharacterAlive, IsImmortal.</li>
-<li><strong>Equipment/Inventory Conditions</strong> — CanEquipItem, HasEquippedItem, CanUseItem, HasInventoryItem, HasInventorySpace, HasBankItem, HasBankSpace.</li>
-<li><strong>Social/Progression Conditions</strong> — HasGuild, HasParty, HasFaction, TargetAlliance, IsArchetype, IsRace, HasPet.</li>
-<li><strong>Quest Conditions</strong> — CanAcceptQuest, HasQuest, QuestObjectiveComplete, QuestStatus.</li>
-<li><strong>Achievement Conditions</strong> — AchievementCompleted.</li>
-<li><strong>Composite Conditions</strong> — AND/OR gate with <code>ConditionTargetCombine</code> (All/Any) and <code>Invert</code> flag.</li>
-</ol>
-<h4 id="eca-target-selectors-14-types">ECA Target Selectors (14 types)</h4>
-<ol start="22">
-<li><strong>Basic</strong> — EventTarget, Initiator, NearestTarget, FurthestTarget, RandomTarget, AllCharacters.</li>
-<li><strong>Spatial</strong> — AreaTarget, ConeTarget, LineTarget, ChainTarget.</li>
-<li><strong>Hierarchy</strong> — ChildrenTarget.</li>
-<li><strong>Named/Tagged</strong> — NamedSceneObjectTarget, TaggedSceneObjectTarget.</li>
-</ol>
+<h4 id="eca-conditions-30-implementations">ECA Conditions (30 implementations)</h4>
+<p><em>There is no separate composite/AND-OR condition type. Every <code>BaseCondition</code> carries a <code>ConditionTargetCombine Combine</code> field (All/Any, default All) governing how per-target results aggregate, plus a universal <code>Invert</code> flag the framework applies in <code>Check()</code> — derived classes must not apply it themselves.</em>
+18. <strong>Combat/Attribute Conditions</strong> — HasResource, HasRequiredAttribute, HasBuff, HasCooldown, HitCount, IsCharacterAlive, IsImmortal.<br>
+19. <strong>Equipment/Inventory Conditions</strong> — CanEquipItem, HasEquippedItem, CanUseItem, HasInventoryItem, HasInventorySpace, HasBankItem, HasBankSpace.<br>
+20. <strong>Social/Progression Conditions</strong> — HasGuild, HasParty, HasFaction, TargetAlliance, IsArchetype, IsRace, HasPet.<br>
+21. <strong>Quest Conditions</strong> — CanAcceptQuest, HasQuest, QuestObjectiveComplete, QuestStatus.<br>
+22. <strong>Achievement Conditions</strong> — AchievementCompleted.<br>
+23. <strong>Presence/Controller Conditions</strong> — HasTarget, IsCharacterNPC, HasAttributeController, HasBankController.</p>
+<h4 id="eca-target-selectors-13-types">ECA Target Selectors (13 types)</h4>
+<p><em>All derive from the abstract <code>TargetSelector</code> base (<code>Conditions</code> list + <code>SelectTargets(EventData)</code>). Selectors are attachable on the <code>Trigger</code> itself and, optionally, per-condition and per-action for additional fan-out.</em>
+24. <strong>Basic</strong> — <code>EventTargetSelector</code>, <code>InitiatorTargetSelector</code>, <code>NearestTargetSelector</code>, <code>FurthestTargetSelector</code>, <code>RandomTargetSelector</code>, <code>AllCharactersTargetSelector</code>.<br>
+25. <strong>Spatial</strong> — <code>AreaTargetSelector</code>, <code>ConeTargetSelector</code>, <code>LineTargetSelector</code>, <code>ChainTargetSelector</code>.<br>
+26. <strong>Hierarchy</strong> — <code>ChildrenTargetSelector</code>.<br>
+27. <strong>Named/Tagged</strong> — <code>NamedSceneObjectTargetSelector</code>, <code>TaggedSceneObjectTargetSelector</code>.</p>
 <h4 id="eca-value-providers-10-types">ECA Value Providers (10 types)</h4>
-<ol start="26">
-<li>ConstantFloat, ConstantInt, RandomRangeFloat, RandomRangeInt, StatScaledFloat, StatScaledInt, DamageAmount, HealAmount, FactionAmount, QuestObjectiveAmount.</li>
+<ol start="28">
+<li><code>ConstantValue</code>, <code>ConstantFloatValue</code>, <code>RandomRangeValue</code>, <code>RandomRangeFloatValue</code>, <code>StatScaledValue</code>, <code>StatScaledFloatValue</code>, <code>DamageAmountValue</code>, <code>HealAmountValue</code>, <code>FactionAmountValue</code>, <code>QuestObjectiveAmountValue</code>.</li>
 </ol>
 <h3 id="item-system">Item System</h3>
-<ol start="27">
+<ol start="29">
 <li><strong>Item Template Hierarchy</strong> — <code>BaseItemTemplate</code> → <code>ConsumableTemplate</code> / <code>EquippableItemTemplate</code> → concrete: Potion, Scroll, Armor, Weapon.</li>
 <li><strong>Runtime Item</strong> — <code>Item</code> with optional <code>ItemEquippable</code>, <code>ItemStackable</code>, <code>ItemGenerator</code> components.</li>
 <li><strong>Item Generation</strong> — <code>ItemGenerator</code> using <code>DeterministicRNG</code> for seed-based stat rolls (AttackPower, AttackSpeed, ArmorBonus + random attributes from databases).</li>
@@ -724,7 +732,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Item Slots</strong> — Head, Chest, Shoulders, Hands, Legs, Feet, Back, Primary, Secondary, Accessory (10 slots).</li>
 </ol>
 <h3 id="ability-system">Ability System</h3>
-<ol start="33">
+<ol start="35">
 <li><strong>Ability Templates</strong> — <code>BaseAbilityTemplate</code> → <code>AbilityTemplate</code> / <code>PetAbilityTemplate</code> with ActivationTime, LifeTime, Speed, Cooldown, Price, RequiresTarget, HitCount.</li>
 <li><strong>ECA Ability Events</strong> — OnTick, OnHit, OnPreSpawn, OnSpawn, OnDestroy — each with configurable ECA triggers.</li>
 <li><strong>Ability Activation State Machine</strong> — Resource cost validation via <code>IResourceCost</code> conditions, activation queuing, consumable support, network sync.</li>
@@ -733,13 +741,13 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Cooldown System</strong> — Tick-based immutable <code>CooldownInstance</code> with reconcile snapshots, static events for add/update/remove.</li>
 </ol>
 <h3 id="buffdebuff-system">Buff/Debuff System</h3>
-<ol start="39">
+<ol start="41">
 <li><strong>Runtime Buff</strong> — Tick-based timing (ExpiryTick, NextTickTick), stack count, cumulative tick multiplier.</li>
 <li><strong>Buff Template Types</strong> — AttributeBuff (flat stat modifier), AttributeTickBuff (per-tick modifier), ResourceTickBuff (DoT/HoT), StateBuff (stun/freeze/mesmerize), CompositeBuff.</li>
 <li><strong>Buff Reconciliation</strong> — <code>BuffReconcileEntry</code> for deterministic rollback in the prediction pipeline.</li>
 </ol>
 <h3 id="character-attribute-system">Character Attribute System</h3>
-<ol start="42">
+<ol start="44">
 <li><strong>Three-Tier Value System</strong> — baseValue + formulaModifier + externalModifier = finalValue. Parent/child dependency graph with formula propagation.</li>
 <li><strong>Resource Attributes</strong> — <code>CharacterResourceAttribute</code> extends with currentValue (health/mana/stamina), clamping, regeneration.</li>
 <li><strong>Attribute Formulas</strong> — Flat bonus and percentage bonus formulas with dependency tracking.</li>
@@ -751,7 +759,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Revive</strong> — <code>Revive(ICharacter, int)</code> works on dead characters (unlike Heal). Fires <code>OnResurrected</code> static event, resets death animation, fires ECA resurrect triggers.</li>
 </ol>
 <h3 id="client-side-prediction-pipeline">Client-Side Prediction Pipeline</h3>
-<ol start="49">
+<ol start="53">
 <li><strong>Unified Prediction Controller</strong> — <code>CharacterPredictionController</code> discovers all <code>IPredictableController</code> components, stable-sorts by Order with deterministic type-name tiebreaker, drives a single FishNet Prediction V2 pipeline.</li>
 <li><strong>Participating Subsystems</strong> — KCC movement (Order 80), BuffController (85), CooldownController (90), EquipmentController (93), CharacterAttributeController (95), AbilityController (100).</li>
 <li><strong>Type-Safe Ticks</strong> — <code>PredictionTick</code> struct prevents accidental raw tick usage.</li>
@@ -760,13 +768,13 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Shared Speed Enforcement</strong> — <code>MaxAllowedSpeed = SprintSpeed × 3.0f</code> runs identically on client and server in shared code. No server-only branches.</li>
 <li><strong>Motor PhysicsScene Init</strong> — <code>KCCPlayer.Awake</code> initializes motor's <code>PhysicsScene</code> from GameObject scene, ensuring client collision queries (ground detection, wall collision) work identically to server.</li>
 <li><strong>Deterministic Ability Math</strong> — <code>Math.Ceiling(double)</code> replaces <code>Mathf.CeilToInt(float)</code> for platform-independent activation time rounding (prevents x86/ARM one-tick mismatches).</li>
-<li><strong>Physics Query Guards</strong> — All ECA target selectors (<code>AreaTarget</code>, <code>ConeTarget</code>, <code>LineTarget</code>, <code>ChainTarget</code>, <code>NearestTarget</code>, <code>FurthestTarget</code>, <code>RandomTarget</code>) and <code>AbilityApplyAreaAction</code> suppress physics queries during prediction replay via <code>IsReplicateTick</code> guard.</li>
+<li><strong>Physics Query Guards</strong> — All ECA target selectors (<code>AreaTargetSelector</code>, <code>ConeTargetSelector</code>, <code>LineTargetSelector</code>, <code>ChainTargetSelector</code>, <code>NearestTargetSelector</code>, <code>FurthestTargetSelector</code>, <code>RandomTargetSelector</code>) and <code>AbilityApplyAreaAction</code> suppress physics queries during prediction replay via <code>IsReplicateTick</code> guard.</li>
 <li><strong>Reconcile Delta Efficiency</strong> — Delta serializer sends only changed fields. Idle tick: ~20 bytes. Walking: ~43 bytes. Combat: ~86 bytes. Full struct: ~223-1300 bytes raw → 95-97% reduction.</li>
 </ol>
 <h3 id="ai-system-npc">AI System (NPC)</h3>
-<ol start="53">
-<li><strong>State Machine</strong> — Idle, Wander, Patrol, ReturnHome, Retreat, MeleeAttacking, RangedAttacking, CasterAttacking, HealerAttacking, GetBehind, Orbit, PetIdle states.</li>
-<li><strong>Behavior Tree</strong> — Selector, Sequence, Inverter, Repeater, Composite, Condition nodes.</li>
+<ol start="63">
+<li><strong>State Machine</strong> — <code>BaseAIState</code> subclasses: Idle, Wander, Patrol, ReturnHome, Retreat, MeleeAttacking, RangedAttacking, CasterAttacking, HealerAttacking (via <code>BaseAttackingState</code>), GetBehind, Orbit, PetIdle, BossScript, plus <code>AggressionState</code>.</li>
+<li><strong>Behavior Tree</strong> — <code>AIBehaviorTree</code> of <code>AIBehaviorNode</code>s: <code>AISelector</code>, <code>AISequence</code>, <code>AIInverter</code>, <code>AIRepeater</code>, <code>AICompositeNode</code>, <code>AIConditionNode</code>, plus game-specific leaves <code>AIHasTargetNode</code>, <code>AIIsDeadNode</code>, <code>AIGroupInCombatNode</code>, <code>AIAdoptGroupTargetNode</code>, <code>AIStateTransitionNode</code>.</li>
 <li><strong>Group Combat</strong> — <code>NPCGroup</code> with roles, pack tactics, aggression management.</li>
 <li><strong>Boss Mechanics</strong> — <code>BossPhase</code>, <code>BossScript</code>, <code>BossTimedMechanic</code>.</li>
 <li><strong>Navigation</strong> — NavMeshAgent-based with waypoints, avoidance priorities, LOD settings.</li>
@@ -775,34 +783,34 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Combat Personality</strong> — <code>AICombatPersonality</code> configuration for varied NPC combat styles.</li>
 </ol>
 <h3 id="interactable-system">Interactable System</h3>
-<ol start="61">
-<li><strong>16 Interactable Types</strong> — AbilityCrafter, Banker, Bindstone, CapturePoint, Container, Dialogue, DungeonEntrance, GatheringNode, LoreObject, Mailbox, Merchant, Quest, Shrine, Switch, Teleporter, WorldItem.</li>
-<li><strong>Base Interaction</strong> — Range (3.5u default), 60ms rate limit, ECA trigger execution.</li>
-<li><strong>Server-Side Validation</strong> — <code>CanInteract()</code> + <code>InRange()</code> checks before trigger execution.</li>
-<li><strong>Capture Points</strong> — PvP capture points with state machine (Neutral, Capturing, Captured).</li>
-<li><strong>Dialogue Trees</strong> — <code>DialogueTemplate</code> with nodes and choices, server-authoritative session management with choice bitmasks.</li>
-<li><strong>Gathering Nodes</strong> — Harvesting with drop tables, cooldowns, remaining uses.</li>
-<li><strong>Merchant Tabs</strong> — Categorized merchant inventory tabs.</li>
+<ol start="71">
+<li><strong>16 Interactable Types</strong> — All derive from <code>Interactable : NetworkBehaviour, IInteractable, ISpawnable</code>: <code>AbilityCrafter</code>, <code>Banker</code>, <code>Bindstone</code>, <code>CapturePoint</code>, <code>Container</code>, <code>DialogueInteractable</code>, <code>DungeonEntrance</code>, <code>GatheringNode</code>, <code>LoreObject</code>, <code>Mailbox</code>, <code>Merchant</code>, <code>QuestInteractable</code>, <code>Shrine</code>, <code>Switch</code>, <code>Teleporter</code>, <code>WorldItem</code>.</li>
+<li><strong>Base Interaction — ECA-Authored, No Handler Plugins</strong> — <code>InteractionRange</code> 3.5u default, <code>INTERACT_RATE_LIMIT</code> of 60ms (overridable per type via <code>InteractRateLimit</code>). Behaviour is authored entirely as a <code>List&lt;Trigger&gt; OnInteractTriggers</code> on the interactable prefab and fired via <code>IInteractable.ExecuteOnInteract(EventData)</code>. There is <strong>no</strong> server-side handler-plugin architecture — no handler interface, no registration attribute, and no handler initializer exists anywhere in the codebase.</li>
+<li><strong>Server-Side Validation</strong> — The server's <code>InteractableSystem</code> validates the scene, runs <code>ValidateSceneObject</code> against the character's scene handle, resolves the <code>IInteractable</code> component, checks <code>CanInteract()</code> (which covers <code>InRange()</code> and the rate limit), then invokes <code>ExecuteOnInteract</code> with a <code>PlayerInteractionEventData</code> — all inside an <code>IngressGuard</code>.</li>
+<li><strong>Capture Points</strong> — PvP capture points with state machine (<code>CapturePointTemplate</code>, <code>ObjectiveState</code>).</li>
+<li><strong>Dialogue Trees</strong> — <code>DialogueTemplate</code> with <code>DialogueNode</code>/<code>DialogueChoice</code>, server-authoritative session management with choice bitmasks.</li>
+<li><strong>Gathering Nodes</strong> — Harvesting with <code>GatheringDrop</code> drop tables, cooldowns, remaining uses (<code>GatheringNodeTemplate</code>).</li>
+<li><strong>Merchant Tabs</strong> — Categorized merchant inventory tabs (<code>MerchantTabType</code>, <code>MerchantTemplate</code>).</li>
 </ol>
 <h3 id="faction-system">Faction System</h3>
-<ol start="68">
+<ol start="78">
 <li><strong>Faction Standing</strong> — Per-faction integer standing with Allied/Neutral/Hostile classification.</li>
 <li><strong>Faction Matrices</strong> — Template-driven faction relationship matrices with editor tooling.</li>
 </ol>
 <h3 id="quest-system">Quest System</h3>
-<ol start="70">
+<ol start="80">
 <li><strong>Quest Lifecycle</strong> — Inactive → Active → Complete → TurnedIn / Failed.</li>
 <li><strong>Objective Tracking</strong> — Per-objective progress with required amounts.</li>
 <li><strong>Attribute Requirements</strong> — Pre-requisite attribute checks before acceptance.</li>
 </ol>
 <h3 id="social-systems">Social Systems</h3>
-<ol start="73">
+<ol start="83">
 <li><strong>Friends</strong> — Friend list management with online status.</li>
 <li><strong>Guilds</strong> — Membership, invites, ranks, join/leave ECA triggers.</li>
 <li><strong>Parties</strong> — Creation, invites, member tracking, leader ranks.</li>
 </ol>
 <h3 id="world-system">World System</h3>
-<ol start="76">
+<ol start="86">
 <li><strong>World Scene Details</strong> — Per-scene configuration: max clients, spawn/respawn positions, teleporters, boundaries.</li>
 <li><strong>Day/Night Cycle</strong> — Configurable cycle durations, skybox transitions, object activation/deactivation, material alpha fading, ECA triggers for day/night transitions.</li>
 <li><strong>Spawner System</strong> — Linear/Random/Weighted spawning with respawn conditions (OR/AND), initial/max counts, pooling (<code>ObjectSpawner</code>). NPC corpse decay with per-spawner override. Re-rolled attributes on each spawn.</li>
@@ -811,7 +819,7 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Scene Boundaries</strong> — Terrain and custom boundary definitions.</li>
 </ol>
 <h3 id="character-appearance--visual-equipment">Character Appearance &amp; Visual Equipment</h3>
-<ol start="82">
+<ol start="92">
 <li><strong>Modular Character System</strong> — One shared humanoid skeleton, one Animator, one animation library for all races and equipment.</li>
 <li><strong>Body Region System</strong> — Body mesh split into 6 hideable regions (Head, Torso, Arms, Hands, Legs, Feet). <code>BodyVisibilityManager</code> with per-slot reference counting for overlapping equipment hides.</li>
 <li><strong>Character Customization</strong> — Bone scaling for Height, ArmLength, LegLength, TorsoLength, ShoulderWidth, HeadScale. Race presets (Human/Dwarf/Elf). Blend shapes for Weight, MuscleMass, ChestSize, WaistSize.</li>
@@ -823,14 +831,14 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Ability Animation</strong> — <code>TriggerAbilityAnimation</code> maps <code>AbilityType</code> to animation: Physical→Attack, Magic→Cast, Block→SetBlocking, Roll→TriggerRoll. Death animation suppresses all other state.</li>
 </ol>
 <h3 id="ai-threat-system">AI Threat System</h3>
-<ol start="91">
+<ol start="101">
 <li><strong>Threat Table</strong> — <code>AggressionController</code> with damage, healing, resource expenditure threat. Configurable weights per category.</li>
 <li><strong>Vulnerability Scoring</strong> — Low-health targets (&lt;30%) get 1.5x threat multiplier. Low-mana targets (&lt;20%) get 1.3x multiplier. AI intelligently pressures weakened enemies.</li>
 <li><strong>Replay-Safe Events</strong> — <code>AggressionState.IsSpawnedAndAuthoritative()</code> guard prevents threat double-counting during client-side prediction replay.</li>
 <li><strong>Object-Pooled Aggression Entries</strong> — Stack-based pool for <code>AggressionEntry</code> to avoid per-event allocations.</li>
 </ol>
 <h3 id="network-broadcasts-30-types">Network Broadcasts (30+ types)</h3>
-<ol start="82">
+<ol start="105">
 <li><strong>Auth</strong> — Authentication request/response, token sync.</li>
 <li><strong>Character</strong> — Character data, abilities, achievements, archetype, factions, friends, guild, party, pet, quest, hotkeys.</li>
 <li><strong>Inventory</strong> — Inventory, equipment, bank slot sync.</li>
@@ -842,47 +850,56 @@ Built on Unity 6.3 LTS, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTTP3)
 <li><strong>Server Select</strong> — Server list and connection info.</li>
 </ol>
 <h3 id="bootstrap--tools">Bootstrap &amp; Tools</h3>
-<ol start="91">
-<li><strong>Bootstrap System</strong> — Multi-environment asset/scene preloading (Editor, Standalone, WebGL), version management, graceful shutdown.</li>
-<li><strong>Addressable Integration</strong> — <code>AddressableLoadProcessor</code> for async prefab/sprite/mesh loading with caching.</li>
+<ol start="114">
+<li><strong>Bootstrap System</strong> — Multi-environment asset/scene preloading (Editor, Standalone, WebGL), version management, graceful shutdown. Each phase enqueues its work and completes on its own <code>batch.Completed</code> signal rather than a shared global event.</li>
+<li><strong>Addressable Integration</strong> — <code>AddressableLoadProcessor</code> for async prefab/sprite/mesh/scene loading with caching.</li>
+<li><strong>Per-Caller Load Batches</strong> — <code>BeginProcessQueue()</code> returns an <code>AddressableLoadBatch</code> claiming exactly the items that caller enqueued, with its own <code>Completed</code> event, <code>Progressed</code> event, <code>TotalItems</code>/<code>CompletedItems</code>/<code>Progress</code>, and <code>FailedItems</code>/<code>HasFailures</code>. This replaces completion signalling through the processor's global <code>OnProgressUpdate</code> multicast delegate, which reported &quot;done&quot; to every bootstrap system and loading screen whenever <em>any</em> drain finished and could double-invoke subscribers that resubscribed during dispatch. <code>OnProgressUpdate</code> remains as a display-only progress feed. A batch counts an item finished whether it succeeded, failed, or was dropped — failures surface via <code>FailedItems</code> instead of withholding completion and stalling boot. Handlers subscribing after completion are invoked immediately, so a fully-cached batch that completes inside <code>BeginProcessQueue</code> cannot be missed.</li>
 <li><strong>Template Caching</strong> — <code>CachedScriptableObject</code> with database-wide lookup and Addressable icon/mesh loading.</li>
 <li><strong>DeterministicRNG</strong> — Reproducible random number generator for networked determinism.</li>
 <li><strong>SerializableDictionary / SerializableHashSet</strong> — Unity-serializable generic collections with custom property drawers.</li>
 <li><strong>Version Management</strong> — <code>VersionBuilder</code> with <code>VersionConfig</code> ScriptableObject; increments major/minor/patch, writes <code>version.txt</code> at build time.</li>
 </ol>
 <h3 id="editor-tools">Editor Tools</h3>
-<ol start="97">
-<li><strong>FishMMO Dashboard</strong> — Custom build tool suite: AddressableManager, BuildConfigurator, BuildExecutor, LinkerGenerator.</li>
-<li><strong>Patch Generator</strong> — Unity Editor window for creating delta patches between builds with manifest generation.</li>
-<li><strong>Addressables Dashboard</strong> — Analysis, build, categorization, and tree view for addressable assets.</li>
-<li><strong>Behaviour Tree Editor</strong> — Visual editor for NPC behaviour trees.</li>
-<li><strong>Dialogue Tree Editor</strong> — Visual editor for NPC dialogue trees.</li>
-<li><strong>World Scene Details Cache Builder</strong> — Builds cached world scene details at edit time.</li>
+<ol start="121">
+<li><strong>FishMMO Dashboard</strong> — The single editor hub (<code>FishMMO &gt; FishMMO Dashboard</code>, Ctrl+Shift+D), a UI Toolkit window whose panels are Build &amp; Version, Categories, Game Settings, Inspector, and Patcher. Most FishMMO editor workflows are panels inside this window, not separate menu items. Backed by the custom build tool suite: AddressableManager, BuildConfigurator, BuildExecutor, LinkerGenerator. <code>BuildExecutor</code> additionally performs two post-build copies: <code>CopyRemoteAddressablesToBuild</code> stages <code>ServerData/[BuildTarget]/</code> bundles into the built player's <code>StreamingAssets/ServerData/[BuildTarget]/</code> for server builds (so <code>DynamicAddressableLoadPathSystem</code> can load them over <code>file://</code>), and <code>CopyUpdaterToBuild</code> copies the standalone Updater executable and its runtime dependencies into standalone client builds — without it the launcher's <code>Constants.Configuration.UpdaterExecutable</code> lookup fails and players are stranded on an unpatchable version. Both are skipped for build types that do not need them (server/WebGL for the updater).</li>
+<li><strong>Patch Generator</strong> — <code>PatchGeneratorWindow</code> (<code>EditorWindow</code>) for creating delta patches between builds with manifest generation, surfaced through the Dashboard's <strong>Patcher</strong> panel (<code>FishMMODashboard.Patcher.cs</code>). It has no menu item of its own.</li>
+<li><strong>Addressables Dashboard</strong> — Analysis, build, categorization, and tree view for addressable assets. Menu: <code>FishMMO &gt; Addressables Dashboard</code>.</li>
+<li><strong>Behavior Tree Editor</strong> — Visual editor for NPC behaviour trees. Menu: <code>FishMMO &gt; Behavior Tree Editor</code> (spelled &quot;Behavior&quot;).</li>
+<li><strong>Dialogue Tree Editor</strong> — Visual editor for NPC dialogue trees. Menu: <code>FishMMO &gt; Dialogue Tree Editor</code>.</li>
+<li><strong>World Scene Details Cache Builder</strong> — Builds cached world scene details at edit time. Menu: <code>FishMMO &gt; Rebuild World Scene Details</code>.</li>
 <li><strong>Custom Property Drawers</strong> — <code>[ShowReadonly]</code>, <code>[SubclassSelector]</code>, <code>[TemplateReference]</code>, serializable dictionary drawers.</li>
-<li><strong>Build Environment Options</strong> — Development/Release build environment selector.</li>
+<li><strong>Build Option Toggles</strong> — <code>FishMMO &gt; Build &gt; Build Type</code> (Client/Server), <code>&gt; OS Target</code> (Windows x64 / Linux x64 / WebGL), and <code>&gt; Environment</code> (Development/Production/Enable Local Directory), from <code>BuildEnvironmentOptions.cs</code> and <code>WorkingEnvironmentOptions.cs</code>. These set build options only — <strong>they do not run builds</strong>; builds execute from the Dashboard's Build &amp; Version panel.</li>
 <li><strong>Security Assembly Filter</strong> — Editor-only assembly filtering for security-sensitive code.</li>
+<li><strong>Version Menu</strong> — <code>FishMMO &gt; Version &gt; Increment Major/Minor/Patch</code> drives <code>VersionBuilder</code>.</li>
+<li><strong>QuickStart Scene Menu</strong> — <code>FishMMO &gt; QuickStart &gt; …</code> opens Main Bootstrap, Client Preboot/Postboot/Launcher, and Login/World/Scene Server scenes directly, ordered by priority.</li>
+<li><strong>Script Compilation Menu</strong> — <code>FishMMO &gt; Script Compilation &gt; …</code> toggles Auto Refresh and selects recompile behaviour while in Play Mode (Recompile After Finished Playing / Recompile And Continue Playing / Stop Playing And Recompile).</li>
+<li><strong>AddressablesPlayModeSceneHandleFix</strong> — Editor-only workaround for the &quot;Attempting to use an invalid operation handle&quot; exception Addressables throws from its own Play Mode teardown. <code>AddressablesImpl.Dispose()</code> releases each scene handle twice (once from <code>m_resultToHandle</code>, once from <code>m_SceneInstances</code>) with no <code>IsValid()</code> guard. Subscribes from <code>[InitializeOnLoadMethod]</code> so it runs ahead of the Addressables package's own handler, which our runtime shutdown path cannot do.</li>
 </ol>
 <hr>
 <h2 id="fishmmo-webservers">FishMMO-WebServers</h2>
 <p><strong>ASP.NET Core web services</strong> providing client-facing HTTP APIs.</p>
 <h3 id="ipfetchaspnet-login-server-discovery">IPFetchASP.NET (Login Server Discovery)</h3>
 <ol>
-<li><strong>Login Server Discovery API</strong> — <code>/loginserver</code> endpoint returns available login server ports from the database with a one-time connection token (SHA-256 hashed, 60s TTL) for real-IP recovery through the L4 UDP proxy.</li>
-<li><strong>ClientGate</strong> — Validates the <code>X-FishMMO-Client</code> HMAC-SHA256 header with multi-key rotation, 30s skew window, 20K-nonce LRU cache, and URL-decoded path traversal protection.</li>
-<li><strong>Port Safety</strong> — <code>WebServer:HttpPort</code> uses nullable <code>GetValue&lt;int?&gt;()</code> to prevent port-0 binding when config key is missing.</li>
-<li><strong>CORS Headers</strong> — <code>Access-Control-Allow-Origin: https://play.fishmmo.com</code> on API responses for cross-origin WebGL client access.</li>
+<li><strong>Login Server Discovery API</strong> — <code>GET /loginserver</code> (<code>LoginServerController</code>) returns available login server ports from the database, cached in <code>IMemoryCache</code> with a 60s TTL plus jitter so a server pulled from rotation ages out quickly. Empty results are deliberately not cached, so a re-registering server is not masked by a 404 for the full window.</li>
+<li><strong>Stateless Connection Token</strong> — Each response carries a token for real-IP recovery across the L4 UDP proxy (which loses the client IP). Format <code>base64url(payload).base64url(hmac)</code> where <code>payload = [keyId ':'] realIp '|' expiryUnixSeconds</code> and <code>hmac = HMAC-SHA256(sharedKey, payload)</code>; the client echoes it in its first <code>ClientHandshake</code> and the Login Server verifies the HMAC — no database round-trip. Expiry is 60 seconds. It is HMAC-<strong>signed</strong>, not a hashed one-time value. The optional <code>keyId</code> prefix lets multi-region game servers pick the right verification key; the signing key is registered in the <code>connection_token_keys</code> table as the sole discovery source. Keys shorter than 32 bytes are rejected at request time with a 500.</li>
+<li><strong>ClientGate</strong> — Validates the <code>X-FishMMO-Client</code> HMAC-SHA256 header with multi-key rotation, a 30-second skew window (<code>MaxSkewSeconds</code>, re-checked post-HMAC), a 100,000-entry nonce cache (<code>NonceCacheCapacity</code>) with oldest-quarter eviction on overflow, and canonicalization that collapses repeated slashes and rejects traversal segments before signing.</li>
+<li><strong>Port Safety</strong> — <code>WebServer:HttpPort</code> is read as a string (accepting both <code>&quot;8080&quot;</code> and <code>8080</code> in JSON) and validated with <code>int.TryParse</code> plus a 1–65535 range check; a malformed value throws at startup rather than silently falling back. Matches Patcher and WebGLServer behaviour. Kestrel binds via <code>ListenLocalhost</code> with no TLS — termination is NGINX's job.</li>
+<li><strong>CORS Defaults to Deny</strong> — The <code>Public</code> policy reads <code>Cors:AllowedOrigins</code>; when unset it emits <strong>no</strong> <code>Access-Control-Allow-Origin</code> and logs a warning, denying cross-origin browser requests. Native <code>UnityWebRequest</code> clients ignore CORS entirely and the WebGL build is loaded same-origin, so operators must opt in explicitly for genuine cross-origin browser access.</li>
+<li><strong>Forwarded Headers, Single Hop</strong> — <code>X-Forwarded-For</code> / <code>X-Forwarded-Proto</code> honoured with <code>ForwardLimit = 1</code>, since NGINX is the only trusted proxy; extra values would be attacker-controlled and would break per-IP rate limiting.</li>
+<li><strong>PascalCase JSON</strong> — <code>PropertyNamingPolicy</code>/<code>DictionaryKeyPolicy</code> set to null so Unity's <code>JsonUtility</code> (exact-name matching) can deserialize responses without client-side rewriting.</li>
 </ol>
 <h3 id="patcheraspnet-patch-delivery">PatcherASP.NET (Patch Delivery)</h3>
-<ol start="5">
-<li><strong>Latest Version Endpoint</strong> — <code>/latest_version</code> returns current game version, up-to-date status, and patch availability info (SHA-256, size).</li>
-<li><strong>Patch Download Endpoint</strong> — <code>/{version}</code> serves patch ZIP files with range request support, <code>ReparsePoint</code> symlink rejection at serve time, and SHA-256 integrity verification.</li>
-<li><strong>ClientGate</strong> — Same HMAC request signing validation as IPFetch.</li>
-<li><strong>Sliding-Window Rate Limiting</strong> — Patch downloads limited to 6 requests/minute via sliding window (prevents fixed-window boundary burst).</li>
+<ol start="8">
+<li><strong>Latest Version Endpoint</strong> — <code>GET</code>/<code>HEAD /latest_version?from={clientVersion}</code>. Without <code>from</code> it returns <code>{ latest_version }</code>; with <code>from</code> it returns <code>up_to_date: true</code>, or <code>patch_available: false</code> when no archive bridges that specific version pair, or <code>patch_available: true</code> with the patch's <code>sha256</code> and <code>size</code>.</li>
+<li><strong>Version Response Caching &amp; Integrity</strong> — Sets a weak <code>ETag</code> (derived from the patch hash / response shape) and <code>Cache-Control: public, max-age=30</code>; honours <code>If-None-Match</code> (comma-separated list, any match) with <code>304 Not Modified</code>. Adds <code>X-FishMMO-Version-Signature</code>, an HMAC over the canonical <code>latest_version=…</code> content so a compromised endpoint cannot silently substitute a patch hash.</li>
+<li><strong>Patch Download Endpoint</strong> — <code>GET /{version}</code> serves patch ZIP files with range request support, <code>ReparsePoint</code> symlink rejection at serve time, and strong <code>ETag</code>/<code>Cache-Control: public, max-age=3600, immutable</code> on the artifact. Returns <strong><code>204 No Content</code></strong> when the requesting client is already on the latest version.</li>
+<li><strong>ClientGate</strong> — Same HMAC request signing validation as IPFetch (<code>UseFishMMOClientGate</code>, with <code>/healthz</code> exempted).</li>
+<li><strong>Sliding-Window Rate Limiting</strong> — Patch downloads limited to 6 permits/minute via a sliding-window partition (<code>[EnableRateLimiting(&quot;PatchDownload&quot;)]</code>), behind a global token-bucket limiter partitioned by client IP.</li>
 <li><strong>Symlink Protection</strong> — <code>PatchVersionService</code> reindex skips <code>FileAttributes.ReparsePoint</code> files to prevent hash disclosure via symlinks.</li>
 <li><strong>Semantic Versioning</strong> — <code>VersionConfig</code> with full SemVer 2.0.0 parsing, comparison operators, and <code>IComparable&lt;VersionConfig&gt;</code>.</li>
 </ol>
 <h3 id="webglserveraspnet-webgl-static-server">WebGLServerASP.NET (WebGL Static Server)</h3>
-<ol start="11">
+<ol start="15">
 <li><strong>WebGL Build Serving</strong> — Serves Unity WebGL builds as static files (HTML, JS, WASM, <code>.unityweb</code>, <code>.data</code>) with correct MIME types and <code>X-Content-Type-Options: nosniff</code>.</li>
 <li><strong>Response Compression</strong> — <code>AddResponseCompression</code> middleware with <code>application/wasm</code> and <code>application/octet-stream</code> MIME types for bandwidth reduction on large WASM builds (20–50 MB).</li>
 <li><strong>Cross-Origin Isolation</strong> — CSP headers configured for <code>wasm-unsafe-eval</code> and WebTransport <code>connect-src</code> to <code>game.fishmmo.com:*</code>.</li>

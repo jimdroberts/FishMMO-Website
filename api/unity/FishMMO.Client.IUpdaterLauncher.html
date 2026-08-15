@@ -125,16 +125,21 @@ Interface IUpdaterLauncher  <a class="header-action link-secondary" title="View 
 
   <h3 id="FishMMO_Client_IUpdaterLauncher_LaunchUpdater_System_String_System_String_System_String_System_Action_System_Action_System_String__" data-uid="FishMMO.Client.IUpdaterLauncher.LaunchUpdater(System.String,System.String,System.String,System.Action,System.Action{System.String})">
   LaunchUpdater(string, string, string, Action, Action&lt;string&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Launcher/IUpdaterLauncher.cs/#L26"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Launcher/IUpdaterLauncher.cs/#L35"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Launches an external updater executable and polls for its exit.</p>
+  <div class="markdown level1 summary"><p>Launches an external updater executable and hands control of the install over
+to it.</p>
 <p><b>IMPORTANT:</b> This method returns an IEnumerator and the caller
 MUST invoke it via <code>MonoBehaviour.StartCoroutine</code>. The implementation
 uses <code>yield return new WaitForSeconds(...)</code> which requires a Unity
 coroutine host with a main-thread UnitySynchronizationContext. Calling this
 method outside of a Unity coroutine context (e.g., from a thread-pool thread
 or without a MonoBehaviour) will result in undefined behavior.</p>
+<p>Implementations must not block until the updater exits. The updater
+terminates the calling process by PID before patching and relaunches the client
+afterwards, so waiting for its exit is a mutual wait that strands every
+completion path.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -154,10 +159,12 @@ or without a MonoBehaviour) will result in undefined behavior.</p>
     <dd><p>The latest version available on the server.</p>
 </dd>
     <dt><code>onComplete</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action">Action</a></dt>
-    <dd><p>Callback invoked when the updater process successfully exits.</p>
+    <dd><p>Callback invoked once the updater has started successfully and taken over. This
+signals a successful handoff, not a completed patch — the caller should shut the
+launcher down so the updater can replace the client binaries.</p>
 </dd>
     <dt><code>onError</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action-1">Action</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a>&gt;</dt>
-    <dd><p>Callback invoked with an error message if the updater fails to launch or exits with an error.</p>
+    <dd><p>Callback invoked with an error message if the updater fails to launch or exits with an error before handoff.</p>
 </dd>
   </dl>
 

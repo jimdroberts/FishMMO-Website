@@ -210,7 +210,7 @@
 <li><strong>AccountManager backstop sweep</strong> — <code>ArrivalOrderTracker</code> with oldest-first traversal purges stale SRP/encryption state.</li>
 <li><strong>Max pending auth cap</strong> — <code>MaxPendingAuthConnections</code> (10,000) prevents memory exhaustion from half-open connection floods.</li>
 <li><strong>Bounded channel capacity</strong> — verify: 500, proof: 500, token: 500, account creation: 1000; all with <code>DropWrite</code> → <code>ServerBusy</code>.</li>
-<li><strong>Time-sliced main-thread drain</strong> — <code>MaxMainThreadActionsPerUpdate</code> (100) prevents frame spikes from queue bursts.</li>
+<li><strong>Time-sliced main-thread drain</strong> — <code>maxMainThreadActionsPerUpdate</code> (100) prevents frame spikes from queue bursts.</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -367,9 +367,9 @@ ProofChannel = Channel.CreateBounded&lt;SrpProofRequest&lt;TConnection&gt;&gt;(o
 <td>Absolute limit from auth start; prevents unbounded TTL extension</td>
 </tr>
 <tr>
-<td><code>AuthSweepIntervalSeconds</code></td>
-<td>1 s</td>
-<td>How often stale auth entries are scanned</td>
+<td><em>(no interval constant)</em></td>
+<td>every frame</td>
+<td>Sweeps run from <code>BaseAuthenticatorCore.Tick()</code>, which <code>BaseServerAuthenticator</code> calls each Unity frame — the scan/removal caps below bound the cost, not a timer</td>
 </tr>
 <tr>
 <td><code>AuthSweepMaxScan</code></td>
@@ -387,7 +387,7 @@ ProofChannel = Channel.CreateBounded&lt;SrpProofRequest&lt;TConnection&gt;&gt;(o
 <td>Cap on concurrent pending auth connections</td>
 </tr>
 <tr>
-<td><code>MaxMainThreadActionsPerUpdate</code></td>
+<td><code>maxMainThreadActionsPerUpdate</code></td>
 <td>100</td>
 <td>Max queued actions drained per Unity frame</td>
 </tr>
@@ -417,11 +417,6 @@ ProofChannel = Channel.CreateBounded&lt;SrpProofRequest&lt;TConnection&gt;&gt;(o
 <td><code>KickRequestDebounceSeconds</code></td>
 <td>10 s</td>
 <td>Min seconds between persisted kick requests per account</td>
-</tr>
-<tr>
-<td><code>KickDebounceSweepIntervalSeconds</code></td>
-<td>60 s</td>
-<td>Sweep interval for expired kick-request debounce entries</td>
 </tr>
 </tbody>
 </table>
@@ -702,7 +697,7 @@ private async Task ProcessSrpVerifyAsync(
 </tr>
 <tr>
 <td>In-flight gating prevents duplicates</td>
-<td>Send duplicate <code>SrpVerifyBroadcast</code> while first is processing</td>
+<td>Send duplicate <code>SrpVerifyRequestBroadcast</code> while first is processing</td>
 <td>Second packet silently dropped</td>
 </tr>
 <tr>
@@ -819,7 +814,7 @@ private async Task ProcessSrpVerifyAsync(
 </tbody>
 </table>
 <h3 id="srp-request-lifecycle">SRP Request Lifecycle</h3>
-<pre><code>SrpVerifyBroadcast arrives (network thread)
+<pre><code>SrpVerifyRequestBroadcast arrives (network thread)
     │
     ├── Validate connection exists
     ├── Check in-flight gate (verifyInFlightByClientId)
@@ -878,10 +873,10 @@ private async Task ProcessSrpVerifyAsync(
   │   { X25519 PublicKey, Cookie }       │                                    │
   │                                      │                                    │
   │  [Login Path]                        │                                    │
-  │── SrpVerifyBroadcast ──────────────► │  UDP Gate → verifyChannel          │
+  │── SrpVerifyRequestBroadcast ───────► │  UDP Gate → verifyChannel          │
   │   { Username(enc), Ephemeral(enc) }  │  Worker: decrypt, DB fetch,        │
   │                                      │    SRP state setup                 │
-  │◄── SrpVerifyBroadcast ──────────── │                                    │
+  │◄── SrpVerifyResponseBroadcast ──── │                                    │
   │   { Salt(enc), ServerEphemeral(enc)} │                                    │
   │                                      │                                    │
   │  SRP proof computation               │                                    │
@@ -1023,7 +1018,8 @@ Server/Implementation/LoginServer/AccountCreation/
 <pre><code>Shared/Implementation/Network/Authentication/
 ├── ClientHandshake.cs            # Broadcast: client public key + cookie + version range
 ├── ServerHandshake.cs            # Broadcast: server public key + cookie + agreed version
-├── SrpVerifyBroadcast.cs         # Broadcast: encrypted username/ephemeral (request) or salt/ephemeral (response)
+├── SrpVerifyRequestBroadcast     # Broadcast: encrypted username + client public ephemeral
+├── SrpVerifyResponseBroadcast    # Broadcast: encrypted salt + server public ephemeral
 ├── SrpProofBroadcast.cs          # Broadcast: encrypted client proof
 ├── SrpSuccessBroadcast.cs        # Broadcast: encrypted server proof + auth token + result
 ├── CreateAccountBroadcast.cs     # Broadcast: encrypted username, salt, verifier

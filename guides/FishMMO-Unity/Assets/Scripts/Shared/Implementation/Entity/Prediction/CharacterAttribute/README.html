@@ -341,7 +341,7 @@ types were removed entirely along with the per-tick dirty-flush pipeline.</p>
 <tbody>
 <tr>
 <td><code>CharacterReconcileData.ResourceState</code> (<code>CharacterAttributeResourceState</code>)</td>
-<td>Resource attributes (HP/MP/Stamina) — base value, <code>CurrentValue</code>, <code>RegenTickAccum</code></td>
+<td>Resource attributes (HP/MP/Stamina) — base value, <code>CurrentValue</code>, <code>NextRegenTick</code></td>
 </tr>
 <tr>
 <td><code>CharacterReconcileData.Attributes</code> (<code>AttributeReconcileEntry[]</code>)</td>
@@ -354,7 +354,7 @@ types were removed entirely along with the per-tick dirty-flush pipeline.</p>
 unchanged ticks contribute <strong>zero bytes</strong>. <code>FormulaModifier</code> is intentionally NOT
 replicated — it is recomputed locally via the dependency graph in <code>ApplyChildren()</code>.</p>
 <h4 id="reconciliation">Reconciliation</h4>
-<p><code>CharacterAttributeResourceState</code> is a snapshot struct containing <code>RegenTickAccum</code>, <code>Health</code>, <code>Mana</code>, <code>Stamina</code>, and max/final caps (<code>MaxHealth</code>, <code>MaxMana</code>, <code>MaxStamina</code>). Used by FishNet's Replicate/Reconcile prediction system via <code>GetResourceState()</code> / <code>ApplyResourceState()</code>. <code>RegenTickAccum</code> is an integer tick counter (replacing the legacy float <code>RegenDelta</code>) which guarantees deterministic client/server agreement on the exact tick a regen pulse fires.</p>
+<p><code>CharacterAttributeResourceState</code> is a snapshot struct containing <code>NextRegenTick</code>, <code>Health</code>, <code>Mana</code>, <code>Stamina</code>, and max/final caps (<code>MaxHealth</code>, <code>MaxMana</code>, <code>MaxStamina</code>). Used by FishNet's Replicate/Reconcile prediction system via <code>GetResourceState()</code> / <code>ApplyResourceState()</code>. <code>NextRegenTick</code> is the absolute simulation tick at which the next regen pulse fires (replacing the legacy float regen accumulator), which guarantees deterministic client/server agreement on the exact tick a regen pulse fires.</p>
 <h3 id="prediction-pipeline">Prediction Pipeline</h3>
 <p><code>CharacterAttributeController</code> implements <code>IPredictableController</code> (Order=95), running after <code>BuffController</code> (80) and <code>CooldownController</code> (90), and before <code>AbilityController</code> (100). This ensures regenerated resources are available for same-tick ability activation checks.</p>
 <table>
@@ -371,7 +371,7 @@ replicated — it is recomputed locally via the dependency graph in <code>ApplyC
 </tr>
 <tr>
 <td><code>OnReplicate</code></td>
-<td>Calls <code>Regenerate()</code> — advances integer <code>regenTickAccum</code> and fires a regen pulse when it reaches <code>regenTickInterval</code>. During reconcile replay the per-tick <code>OnAttributeUpdated</code> notifications are discarded so UI subscribers only react to the authoritative reconcile.</td>
+<td>Calls <code>Regenerate(tick)</code> — fires a regen pulse once the simulation tick reaches the scheduled <code>nextRegenTick</code>, then advances it by <code>regenTickInterval</code>. During reconcile replay the per-tick <code>OnAttributeUpdated</code> notifications are discarded so UI subscribers only react to the authoritative reconcile.</td>
 </tr>
 <tr>
 <td><code>OnCreateReconcile</code></td>
@@ -394,9 +394,9 @@ replicated — it is recomputed locally via the dependency graph in <code>ApplyC
 </thead>
 <tbody>
 <tr>
-<td><code>RegenTickAccum</code></td>
+<td><code>NextRegenTick</code></td>
 <td><code>uint</code></td>
-<td>Integer tick counter toward the next regen pulse</td>
+<td>Absolute simulation tick at which the next regen pulse fires</td>
 </tr>
 <tr>
 <td><code>Health</code></td>
@@ -626,9 +626,9 @@ replicated — it is recomputed locally via the dependency graph in <code>ApplyC
 <h3 id="regeneration-flow">Regeneration Flow</h3>
 <p><code>CharacterAttributeController.Regenerate()</code> uses a configurable tick rate (<code>regenTickRate</code>, default 5.0 seconds):</p>
 <ol>
-<li>Accumulates <code>deltaTime</code> until &gt;= <code>regenTickRate</code>.</li>
-<li>Calculates number of intervals elapsed.</li>
-<li>For each resource (Health, Mana, Stamina), looks up the regeneration attribute via dependency and calls <code>Gain(regenAmount * intervals)</code>.</li>
+<li>Converts <code>regenTickRate</code> into an integer <code>regenTickInterval</code> (ticks) from <code>TimeManager.TickDelta</code>.</li>
+<li>Fires when the simulation tick reaches the scheduled <code>nextRegenTick</code>, then advances <code>nextRegenTick</code> by <code>regenTickInterval</code>.</li>
+<li>For each resource (Health, Mana, Stamina), looks up the regeneration attribute via dependency and calls <code>RegenerateResource(...)</code>.</li>
 </ol>
 <p>Regeneration attributes (HealthRegeneration, ManaRegeneration, StaminaRegeneration) are <strong>dependencies</strong> of their corresponding resource attribute.</p>
 <h2 id="project-structure">Project Structure</h2>

@@ -130,13 +130,20 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
 │  │ (Unity) │    │ (L4/L7) │    │ Servers  │    │   + pgBouncer    │ │
 │  └─────────┘    └─────────┘    └──────────┘    └──────────────────┘ │
 │       │              │               │                    │          │
-│       │   WebTransport (QUIC/HTTP3)  │                    │          │
-│       │   UDP via NGINX stream proxy │        EF Core + Npgsql      │
-│       │                              │                               │
-│       │   HTTPS/WSS for WebGL        │                               │
+│       │   Gameplay: WebTransport (QUIC/HTTP3) — every platform       │
+│       │   UDP via NGINX L4 stream proxy → loopback                   │
+│       │                              │        EF Core + Npgsql       │
+│       │   Web APIs: HTTPS/TCP via NGINX L7 reverse proxy             │
 │       └──────────────────────────────┘                               │
 └──────────────────────────────────────────────────────────────────────┘
 </code></pre>
+<blockquote>
+<p><strong>There is exactly one gameplay transport: WebTransport over QUIC/HTTP3.</strong>
+There is no WebSocket or WSS path, no TCP fallback, and no per-platform
+transport shim. WebGL is not an exception — browsers reach the same QUIC
+servers on the same ports through the W3C <code>WebTransport</code> API. No WebSocket
+transport is present in the project at all.</p>
+</blockquote>
 <p><strong>Key design decisions:</strong></p>
 <table>
 <thead>
@@ -148,19 +155,23 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
 <tbody>
 <tr>
 <td><strong>WebTransport (QUIC) for all platforms</strong></td>
-<td>Unified transport — no TCP fallback, no WebSocket shim</td>
+<td>One transport everywhere — no TCP fallback, no WebSocket shim, one code path to secure and debug</td>
+</tr>
+<tr>
+<td><strong>Game servers bind loopback by default</strong></td>
+<td><code>Address=127.0.0.1</code> in every <code>.cfg</code>; the only public listener is NGINX. A game server is unreachable from the internet even if a firewall rule is wrong</td>
 </tr>
 <tr>
 <td><strong>NGINX L4 UDP stream proxy</strong></td>
-<td>Zero-copy packet forwarding; no TLS termination at proxy</td>
+<td>Raw datagram forwarding; no TLS termination, no protocol inspection, no path routing at the game layer</td>
 </tr>
 <tr>
 <td><strong>Each game server terminates its own TLS</strong></td>
-<td>End-to-end encrypted; NGINX never sees plaintext game data</td>
+<td>QUIC carries TLS 1.3 end-to-end (ALPN <code>h3</code>); NGINX never sees plaintext game data</td>
 </tr>
 <tr>
 <td><strong>One-time connection token for IP recovery</strong></td>
-<td>Bridges real client IP from HTTP layer into QUIC layer</td>
+<td>The proxy rewrites the source address, so the server sees <code>127.0.0.1</code>; the token bridges the real client IP from the HTTP layer into the QUIC layer</td>
 </tr>
 <tr>
 <td><strong>SRP-6a + X25519 ECDH</strong></td>
@@ -179,22 +190,29 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
                             └──────────┬───────────────┬───────────────────┬───────────┘
                                        │               │                   │
                           ┌────────────┴────┐   ┌──────┴───────┐   ┌──────┴───────┐
-                          │   Client 443    │   │  WebSocket   │   │  QUIC/UDP    │
-                          │  (HTTPS API)    │   │   (WebGL)    │   │   :7770-7999 │
-                          │  api.fishmmo.com│   │ play.fishmmo │   │ game.fishmmo │
+                          │   HTTPS API     │   │ WebGL client │   │ WebTransport │
+                          │   TCP :443      │   │  static TCP  │   │  QUIC/HTTP3  │
+                          │  api.fishmmo.com│   │  :443        │   │  UDP         │
+                          │                 │   │ play.fishmmo │   │  :7770-7999  │
+                          │                 │   │              │   │ game.fishmmo │
                           └────────┬────────┘   └──────┬───────┘   └──────┬───────┘
+                                   │                    │                  │
+                                   │      (browser gameplay traffic also   │
+                                   │       uses WebTransport, not WSS) ────┤
                                    │                    │                  │
                           ┌────────┴────────────────────┴──────────────────┴────────┐
                           │                   NGINX REVERSE PROXY                   │
                           │  L4 UDP stream proxy for game ports (:7770-7999)        │
+                          │      → raw datagrams to 127.0.0.1, no TLS termination   │
                           │  L7 HTTPS reverse proxy for web servers (:80/443)       │
-                          │  Rate limiting, TLS termination (web servers only)      │
+                          │      → TLS terminated here, for web services ONLY       │
+                          │  Rate limiting                                          │
                           └──────┬────────────┬────────────────┬───────────────────┘
                                  │            │                │
-                    ┌────────────┴──┐  ┌──────┴───────┐  ┌────┴──────────┐
+                    ┌────────────┴──┐  ┌──────┴─────────┐  ┌───┴──────────┐
                     │  Web Servers   │  │  Game Servers  │  │  WebGL       │
-                    │  (private)     │  │  (private,     │  │  Static      │
-                    │                │  │   via proxy)   │  │  (private)   │
+                    │  127.0.0.1     │  │  127.0.0.1     │  │  Static      │
+                    │                │  │  (own QUIC/TLS)│  │  127.0.0.1   │
                     │  IPFetch :8080 │  │                │  │  :8000       │
                     │  Patcher :8090 │  │  Login  :7770  │  └─────────────┘
                     └────────┬───────┘  │  World  :7780  │
@@ -216,16 +234,25 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
 <ul>
 <li><strong>Client → NGINX (HTTPS :443) → IPFetch :8080 / Patcher :8090</strong>: Login server discovery, version check, patching</li>
 <li><strong>Client → NGINX (QUIC/UDP :7770-7999) → Login/World/Scene servers</strong>: Gameplay traffic (end-to-end encrypted, NGINX forwards raw UDP)</li>
-<li><strong>Client → NGINX (HTTPS :443) → WebGL :8000</strong>: Browser client static assets</li>
+<li><strong>Browser client → NGINX (HTTPS :443) → WebGL :8000</strong>: Static assets only. Once loaded, the browser's gameplay traffic takes the same QUIC/UDP path as a native client</li>
 <li><strong>All game servers → PostgreSQL</strong>: Persistence (accounts, characters, world state)</li>
 <li><strong>IPFetch / Patcher → PostgreSQL</strong>: Auth tokens, version data</li>
 </ul>
 <p><strong>Security domains:</strong></p>
 <ul>
-<li><strong>Public</strong>: Ports 80 (redirect), 443 (HTTPS/WSS), 7770-7999 (QUIC/UDP game ports via NGINX)</li>
+<li><strong>Public</strong>: Ports 80 (redirect), 443 (HTTPS), 7770-7999 (QUIC/UDP game ports via NGINX)</li>
 <li><strong>Private (localhost only)</strong>: PostgreSQL :5432, pgBouncer :6432</li>
-<li><strong>Private (behind NGINX, same host)</strong>: IPFetch :8080, Patcher :8090, WebGL :8000, Game servers (via L4 proxy)</li>
+<li><strong>Private (localhost only, reached through NGINX)</strong>: IPFetch :8080, Patcher :8090, WebGL :8000, and every game server</li>
 </ul>
+<blockquote>
+<p><strong>Everything except NGINX binds loopback.</strong> Each game server's <code>.cfg</code> sets
+<code>Address=127.0.0.1</code>, so it accepts datagrams only from the proxy on the same
+host. The single documented exception is running NGINX on a <em>different</em>
+machine, which requires setting <code>Address=0.0.0.0</code> (see
+<a href="#configuration-reference">Configuration Reference</a>) — at which point the
+game port must be firewalled to the proxy host, because binding all
+interfaces exposes the server directly.</p>
+</blockquote>
 <blockquote>
 <p>For a full port listing see the <a href="#port-reference">Port Reference</a> table below.</p>
 </blockquote>
@@ -233,23 +260,32 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
 <h2 id="infrastructure-topology">Infrastructure Topology</h2>
 <pre><code>                          INTERNET
                              │
-                    ┌────────┴────────┐
-                    │   NGINX :80/443  │
-                    │  (Reverse Proxy) │
-                    └───┬────┬────┬───┘
+              ══════════════════════════════   ← the ONLY public boundary
+                             │
+                    ┌────────┴─────────┐
+                    │  NGINX            │
+                    │  :80/:443 TCP     │
+                    │  :7770-7999 UDP   │
+                    └───┬────┬────┬────┘
                         │    │    │
           ┌─────────────┘    │    └─────────────┐
           │                  │                  │
      UDP :7770-7999    TCP :443/*         TCP :443/*
-     (stream block)    api.fishmmo.com    play.fishmmo.com
+     L4 stream, raw    api.fishmmo.com    play.fishmmo.com
+     datagrams         TLS terminated     TLS terminated
           │                  │                  │
-    ┌─────┴─────┐    ┌──────┴──────┐    ┌──────┴──────┐
+ ─ ─ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ─ ─ │─ ─ ─ ─ ─ ─ ─ ─ ─ │─ ─  127.0.0.1 only
+          │                  │                  │      below this line
+    ┌─────┴──────┐    ┌──────┴──────┐    ┌──────┴──────┐
     │Game Servers│    │  IPFetch    │    │  WebGL      │
     │Login :7770 │    │  :8080      │    │  Server     │
     │World :7780 │    │  Patcher    │    │  :8000      │
     │Scene :7790+│    │  :8090      │    │             │
-    └─────┬─────┘    └──────┬──────┘    └─────────────┘
-          │                 │
+    │            │    └──────┬──────┘    └─────────────┘
+    │ own QUIC/  │           │
+    │ TLS 1.3    │           │
+    └─────┬──────┘           │
+          │                  │
     ┌─────┴─────┐    ┌──────┴──────┐
     │ pgBouncer │    │ PostgreSQL  │
     │ :6432     │◄──►│ :5432       │
@@ -260,37 +296,67 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
 <h3 id="phase-1-launcher-startup--version-check">Phase 1: Launcher Startup &amp; Version Check</h3>
 <pre><code class="lang-mermaid">sequenceDiagram
     actor Player
-    participant Launcher as ClientLauncher
+    participant Launcher as ClientLauncher, (plain MonoBehaviour)
     participant API as api.fishmmo.com, (NGINX → Patcher)
-    participant CMS as CMS Server
+    participant CMS as News Host, (Constants.Configuration.LauncherHtmlUrl)
 
     Player-&gt;&gt;Launcher: Launch game
-    Launcher-&gt;&gt;Launcher: Awake(), • Init services, • Set screen resolution, • Build updater path
+    Launcher-&gt;&gt;Launcher: Awake(), • Init services + SystemUpdaterLauncher, • Start TransientStateWatchdog (120s), • Build updater path, • Set screen resolution + title
 
-    par Fetch News &amp; Version
-        Launcher-&gt;&gt;CMS: GET /news (HTML)
-        CMS--&gt;&gt;Launcher: HTML content
-        Launcher-&gt;&gt;Launcher: Parse div.content, → HtmlText
-    and Happy-Eyeballs Version Check
-        Launcher-&gt;&gt;API: GET /latest_version, X-FishMMO-Client: v1.{ts}.{nonce}.{sig}
+    Launcher-&gt;&gt;CMS: GET LauncherHtmlUrl (HTML)
+    CMS--&gt;&gt;Launcher: HTML content
+    Launcher-&gt;&gt;Launcher: Extract div.content, → HtmlText, (failure is non-fatal — news is cosmetic)
+
+    Note over Launcher: ContinueAfterNews(), Editor → ReadyToPlay, Build → PlayButtonConnect()
+
+    loop ApiHostResolver.GetCandidates(), (shuffled, tried in sequence until one answers)
+        Launcher-&gt;&gt;API: GET /latest_version?from={clientVersion}, X-FishMMO-Client: v1.{ts}.{nonce}.{sig}
         API-&gt;&gt;API: ClientGate validation, • HMAC-SHA256 verify, • Timestamp ±300s, • Nonce replay check
-        API--&gt;&gt;Launcher: { version, upToDate, patch: { sha256, size } }
+        API--&gt;&gt;Launcher: { latest_version, up_to_date } or, { latest_version, patch_available, sha256, size }, ETag (weak) + Cache-Control: public, max-age=30, X-FishMMO-Version-Signature (HMAC)
     end
 
-    alt Client &lt; Server (outdated)
-        Launcher-&gt;&gt;Launcher: Show &quot;Update&quot; button
-        Player-&gt;&gt;Launcher: Click Update
-        Launcher-&gt;&gt;API: GET /{version} (patch ZIP)
-        API--&gt;&gt;Launcher: patch-{version}.zip
-        Launcher-&gt;&gt;Launcher: SHA-256 verify, Extract to temp
-        Launcher-&gt;&gt;Launcher: Launch Updater.exe, • Transactional patch apply, • Atomic file replacement
-        Updater--&gt;&gt;Launcher: Exit code 0 (success)
+    Note over Launcher,API: If-None-Match → 304 Not Modified, HEAD supported (headers only)
+
+    alt Client &lt; Server, and patch_available == false
+        Launcher-&gt;&gt;Launcher: PatchUnavailable, &quot;download the latest full client&quot;, (button re-runs the version check)
+    else Client &lt; Server, and patch_available == true
+        Launcher-&gt;&gt;Launcher: PlayButtonUpdate() (auto-entered), → DownloadingPatch
+        Launcher-&gt;&gt;API: GET /{clientVersion} (patch ZIP), same APIHost that answered the version check
+        alt 200 OK
+            API--&gt;&gt;Launcher: {from}-{to}.zip stream
+            Launcher-&gt;&gt;Launcher: Write to Patches/{from}-{to}.zip, • Constants.GetPatchesDirectory(), • ZIP magic check (PK\x03\x04), • SHA-256 verify vs manifest
+            Launcher-&gt;&gt;Launcher: ApplyingPatch, → SystemUpdaterLauncher.LaunchUpdater(), (-version, -latestversion, -pid, -exe)
+            Note over Launcher: Launcher does NOT wait for the updater to exit —, it watches 10s for a fast failure, then quits so the, updater (which kills it by PID) can replace the binaries
+        else 204 No Content (already up to date)
+            API--&gt;&gt;Launcher: 204, no body
+            Launcher-&gt;&gt;Launcher: Discard file, → ReadyToPlay
+        end
     else Client == Server
-        Launcher-&gt;&gt;Launcher: Show &quot;Play&quot; button
+        Launcher-&gt;&gt;Launcher: ReadyToPlay — show &quot;Play&quot;
     else Client &gt; Server
-        Launcher-&gt;&gt;Launcher: Show &quot;Client Ahead&quot;, (allow play anyway)
+        Launcher-&gt;&gt;Launcher: ClientAhead, (Play is NOT offered; button re-checks version)
     end
 </code></pre>
+<p><strong>Launcher states</strong> (<code>LauncherState.cs</code>): <code>LoadingNews</code>, <code>Connecting</code>, <code>CheckingVersion</code>, <code>DownloadingPatch</code>,
+<code>ApplyingPatch</code>, <code>ReadyToPlay</code>, <code>ClientAhead</code>, <code>ConnectionFailed</code>, <code>VersionCheckFailed</code>, <code>PatchDownloadFailed</code>,
+<code>UpdaterFailed</code>, <code>LaunchFailed</code>, <code>PatchUnavailable</code>, <code>VersionError</code>, <code>ServerRejectedVersion</code>.</p>
+<blockquote>
+<p><code>ServerRejectedVersion</code> is wired into the UI state machine but not yet driven by the version-check endpoint —
+version rejection is currently reported during the handshake as <code>ClientAuthenticationResult.VersionMismatch</code>
+(see <a href="#phase-4-cryptographic-handshake-x25519-ecdh">Phase 4</a>).</p>
+</blockquote>
+<blockquote>
+<p><strong>Transient-state watchdog:</strong> every state that offers the player no button
+(<code>LoadingNews</code>, <code>Connecting</code>, <code>CheckingVersion</code>, <code>DownloadingPatch</code>, <code>ApplyingPatch</code>) is guarded by a
+<code>transientStateTimeoutSeconds</code> (default 120s) watchdog. If a coroutine dies, the launcher is forced back to
+<code>PatchDownloadFailed</code> / <code>ConnectionFailed</code> instead of leaving a dead button. Download progress callbacks reset
+the timer, so a slow patch is never interrupted.</p>
+</blockquote>
+<p><strong>On &quot;Play&quot;</strong> (<code>PlayButtonLaunch</code>): the launcher enqueues the <code>ClientPostboot</code> scene, starts the load with
+<code>AddressableLoadProcessor.BeginProcessQueue()</code> and subscribes to the returned <code>AddressableLoadBatch.Completed</code>
+for failure reporting. When the scene loads it unloads the <code>ClientLauncher</code> scene and calls <code>StartBootstrap()</code>
+on the <code>ClientPostbootSystem</code> found in it. A separate <code>launchWatchdogTimeoutSeconds</code> (default 30s) watchdog
+re-enables the button if neither signal arrives.</p>
 <h3 id="phase-2-login-server-discovery-ipfetch">Phase 2: Login Server Discovery (IPFetch)</h3>
 <pre><code class="lang-mermaid">sequenceDiagram
     participant Client as Client.cs, GetLoginServerList()
@@ -392,7 +458,7 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
     else Fresh login
         Client-&gt;&gt;Client: Generate SRP client ephemeral 'A', Encrypt username + 'A' under AES-GCM
 
-        Client-&gt;&gt;Server: SrpVerifyBroadcast {,   S: enc(username),,   PublicEphemeral: enc(client_ephemeral_A), }
+        Client-&gt;&gt;Server: SrpVerifyRequestBroadcast {,   S: enc(username),,   PublicEphemeral: enc(client_ephemeral_A), }
 
         Server-&gt;&gt;Server: Validate:, • Connection has encryption data ✓, • Not already in auth state ✓, • Duplicate SRP verify guard ✓
 
@@ -408,7 +474,7 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
 
         Worker--&gt;&gt;Server: SrpVerifyResponse {,   enc(salt), enc(server_ephemeral_B), }
 
-        Server--&gt;&gt;Client: SrpVerifyBroadcast {,   S: enc(salt),,   PublicEphemeral: enc(server_ephemeral_B), }
+        Server--&gt;&gt;Client: SrpVerifyResponseBroadcast {,   S: enc(salt),,   PublicEphemeral: enc(server_ephemeral_B), }
 
         Client-&gt;&gt;Client: Decrypt salt + server ephemeral, Compute client proof M1, Clear username/password from memory
 
@@ -632,15 +698,27 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
 │  Unreliable: Datagram                        │
 ├─────────────────────────────────────────────┤
 │         TRANSPORT LAYER                      │
-│  QUIC (RFC 9000) over UDP                    │
+│  QUIC (RFC 9000) over UDP, ALPN &quot;h3&quot;         │
 │  TLS 1.3 (mandatory for QUIC)                │
-│  MsQuic C++ library (P/Invoke from C#)       │
+│  Native:  MsQuic C++ (P/Invoke from C#)      │
+│  WebGL:   browser W3C WebTransport API       │
+│           (HTTP/3 CONNECT, via .jslib)       │
 ├─────────────────────────────────────────────┤
 │         NETWORK LAYER                        │
 │  UDP datagrams                               │
-│  NGINX L4 stream proxy (optional)            │
+│  NGINX L4 stream proxy → 127.0.0.1           │
 └─────────────────────────────────────────────┘
 </code></pre>
+<p>Only the bottom two layers differ by platform, and only in <em>implementation</em>:
+a native client drives MsQuic through P/Invoke while a browser drives the same
+QUIC/HTTP3 protocol through the W3C <code>WebTransport</code> API. Both terminate TLS 1.3
+at the game server, speak the same broadcast wire format, and arrive on the
+same UDP port. Everything above the transport layer is identical.</p>
+<blockquote>
+<p>The NGINX hop is only skippable in a local development setup where a client
+talks straight to a server bound on <code>0.0.0.0</code>. In the standard deployment it
+is not optional — servers bind <code>127.0.0.1</code>, so the proxy is the only way in.</p>
+</blockquote>
 <hr>
 <h2 id="security-properties">Security Properties</h2>
 <table>
@@ -880,6 +958,7 @@ configured with <code>connect-src ... https://game.fishmmo.com:*</code> for cros
 <th>Port</th>
 <th>Service</th>
 <th>Protocol</th>
+<th>Binds</th>
 <th>Exposure</th>
 </tr>
 </thead>
@@ -888,64 +967,86 @@ configured with <code>connect-src ... https://game.fishmmo.com:*</code> for cros
 <td>80</td>
 <td>NGINX HTTP → HTTPS redirect</td>
 <td>TCP</td>
+<td>all interfaces</td>
 <td>Public</td>
 </tr>
 <tr>
 <td>443</td>
-<td>NGINX HTTPS + WSS</td>
+<td>NGINX HTTPS (API + WebGL static)</td>
 <td>TCP</td>
+<td>all interfaces</td>
+<td>Public</td>
+</tr>
+<tr>
+<td>7770-7999</td>
+<td>NGINX L4 UDP stream listeners</td>
+<td>UDP</td>
+<td>all interfaces (IPv4 only)</td>
 <td>Public</td>
 </tr>
 <tr>
 <td>5432</td>
 <td>PostgreSQL</td>
 <td>TCP</td>
-<td>Private (localhost)</td>
+<td><code>127.0.0.1</code></td>
+<td>Private</td>
 </tr>
 <tr>
 <td>6432</td>
 <td>pgBouncer</td>
 <td>TCP</td>
-<td>Private (localhost)</td>
+<td><code>127.0.0.1</code></td>
+<td>Private</td>
 </tr>
 <tr>
 <td>7770-7779</td>
 <td>LoginServer(s)</td>
-<td>UDP (QUIC)</td>
-<td>Public via NGINX L4</td>
+<td>UDP (QUIC/h3)</td>
+<td><code>127.0.0.1</code></td>
+<td>Reached only via NGINX L4</td>
 </tr>
 <tr>
 <td>7780-7789</td>
 <td>WorldServer(s)</td>
-<td>UDP (QUIC)</td>
-<td>Public via NGINX L4</td>
+<td>UDP (QUIC/h3)</td>
+<td><code>127.0.0.1</code></td>
+<td>Reached only via NGINX L4</td>
 </tr>
 <tr>
 <td>7790-7999</td>
 <td>SceneServer(s)</td>
-<td>UDP (QUIC)</td>
-<td>Public via NGINX L4</td>
+<td>UDP (QUIC/h3)</td>
+<td><code>127.0.0.1</code></td>
+<td>Reached only via NGINX L4</td>
 </tr>
 <tr>
 <td>8000</td>
 <td>WebGL Static Server</td>
 <td>TCP (HTTP)</td>
-<td>Private (behind NGINX)</td>
+<td><code>127.0.0.1</code></td>
+<td>Reached only via NGINX L7</td>
 </tr>
 <tr>
 <td>8080</td>
 <td>IPFetch Server</td>
 <td>TCP (HTTP)</td>
-<td>Private (behind NGINX)</td>
+<td><code>127.0.0.1</code></td>
+<td>Reached only via NGINX L7</td>
 </tr>
 <tr>
 <td>8090</td>
 <td>Patcher Server</td>
 <td>TCP (HTTP)</td>
-<td>Private (behind NGINX)</td>
+<td><code>127.0.0.1</code></td>
+<td>Reached only via NGINX L7</td>
 </tr>
 </tbody>
 </table>
+<p>The game-server rows list the same port range twice on purpose: NGINX listens
+publicly on port <em>N</em> and forwards to a game server listening on <code>127.0.0.1:N</code>.
+Port numbers are not translated.</p>
+<p><strong>No WSS/TCP game port exists.</strong> All gameplay is UDP on 7770-7999. If you are
+looking for a WebSocket listener to open in a firewall, there isn't one.</p>
 <hr>
 <h2 id="server-initialization-order">Server Initialization Order</h2>
 <blockquote>
@@ -1241,7 +1342,7 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <td>string</td>
 <td><code>&quot;127.0.0.1&quot;</code></td>
 <td>All</td>
-<td>Bind address. <code>127.0.0.1</code> = loopback (traffic through NGINX proxy). <code>0.0.0.0</code> = all interfaces.</td>
+<td>Bind address. <code>127.0.0.1</code> = loopback, the default and the expected deployment — the server accepts datagrams only from an NGINX on the same host. Set <code>0.0.0.0</code> <strong>only</strong> when NGINX runs on a different machine, and firewall the port to that proxy host; binding all interfaces otherwise puts the game server directly on the internet.</td>
 </tr>
 <tr>
 <td><code>Port</code></td>

@@ -149,7 +149,7 @@
 <li><strong>Thread-safe account/connection management</strong> — All public methods synchronize via <code>lock(syncRoot)</code>, supporting concurrent access from FishNet broadcast handlers, async worker threads, and scene-server handoff operations.</li>
 <li><strong>Unified AuthState machine</strong> — A single <code>AuthState</code> enum (8 states, <code>byte</code>-backed) replaces former per-flow in-flight dictionaries. All transitions use atomic compare-and-swap under lock.</li>
 <li><strong>Bidirectional account ↔ connection maps</strong> — <code>connectionAccounts</code> (connection → name) and <code>accountConnections</code> (name → connection) are kept in sync by all add/remove operations, providing O(1) lookup in both directions.</li>
-<li><strong>X25519 encryption key exchange</strong> — <code>AddConnectionEncryptionData</code> stores the client's X25519 public key and creates <code>AccountData</code> at <code>Handshake</code> state. Directional AES-256-GCM keys and nonce contexts are established later via <code>PromoteToDirectional</code> after ECDH key agreement.</li>
+<li><strong>X25519 encryption key exchange</strong> — <code>TryAddConnectionEncryptionData</code> stores the client's X25519 public key and creates <code>AccountData</code> at <code>Handshake</code> state. Directional AES-256-GCM keys and nonce contexts are established later via <code>PromoteToDirectional</code> after ECDH key agreement.</li>
 <li><strong>SRP authentication (LoginServer)</strong> — <code>SrpAccountManager.AddConnectionAccount</code> creates <code>ServerSrpData</code> (2048-bit SRP parameters, SHA-512), generates server ephemeral values, and advances auth state to <code>WaitingForProof</code>. Proof verification via <code>ServerSrpData.GetProof</code> derives the session.</li>
 <li><strong>Token authentication (World/Scene)</strong> — <code>TokenAccountManager.AddConnectionAccount</code> registers account name and access level without SRP state. Used for post-login reconnection via signed tokens.</li>
 <li><strong>Oldest-first stale-connection sweeps</strong> — <code>SweepUnauthenticatedConnections</code> processes the <code>ArrivalOrderTracker</code> head-first, dropping authenticated entries from tracking and purging stale unauthenticated entries with configurable <code>maxScan</code> and <code>maxRemovals</code> per sweep.</li>
@@ -180,7 +180,7 @@
 <h3 id="using-srpaccountmanager-loginserver">Using SrpAccountManager (LoginServer)</h3>
 <ol>
 <li>Create an <code>SrpAccountManager</code> instance in the login server's initialization.</li>
-<li>When a client connects and sends its public key, call <code>AddConnectionEncryptionData(connection, publicKey)</code> — this creates <code>AccountData</code> at <code>Handshake</code> state and begins unauthenticated tracking.</li>
+<li>When a client connects and sends its public key, call <code>TryAddConnectionEncryptionData(connection, publicKey)</code> — this creates <code>AccountData</code> at <code>Handshake</code> state and begins unauthenticated tracking.</li>
 <li>On receiving an SRP verify request, advance state with <code>TryAdvanceAuthState(connection, Handshake, VerifyPending)</code>.</li>
 <li>In the async worker, call <code>AddConnectionAccount(connection, accountName, publicClientEphemeral, salt, verifier, accessLevel)</code> — this creates <code>ServerSrpData</code>, generates server ephemeral values, and advances to <code>WaitingForProof</code>.</li>
 <li>Send the server's ephemeral and salt back to the client.</li>
@@ -191,7 +191,7 @@
 <h3 id="using-tokenaccountmanager-worldscene-server">Using TokenAccountManager (World/Scene Server)</h3>
 <ol>
 <li>Create a <code>TokenAccountManager</code> instance in the world or scene server's initialization.</li>
-<li>On public-key handshake, call <code>AddConnectionEncryptionData(connection, publicKey)</code>.</li>
+<li>On public-key handshake, call <code>TryAddConnectionEncryptionData(connection, publicKey)</code>.</li>
 <li>On receiving a token, advance with <code>TryAdvanceAuthState(connection, Handshake, TokenPending)</code>.</li>
 <li>In the async worker, validate the token against the database. On success, call <code>AddConnectionAccount(connection, accountName, accessLevel)</code> and advance to <code>Authenticated</code>.</li>
 </ol>
@@ -328,7 +328,7 @@ if (accountManager.IsAuthInProgress(connection))
 </tr>
 <tr>
 <td>AccountData created at handshake</td>
-<td>Call <code>GetConnectionAccountData</code> after <code>AddConnectionEncryptionData</code></td>
+<td>Call <code>GetConnectionAccountData</code> after <code>TryAddConnectionEncryptionData</code></td>
 <td>Returns <code>true</code>, <code>AuthState == Handshake</code></td>
 </tr>
 <tr>
@@ -397,7 +397,7 @@ if (accountManager.IsAuthInProgress(connection))
 │                                                                         │
 │  1. Client Connects — Public Key Handshake                              │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ AddConnectionEncryptionData(connection, publicKey)                 │ │
+│  │ TryAddConnectionEncryptionData(connection, publicKey)              │ │
 │  │   ├── Store ConnectionEncryptionData (X25519 public key)          │ │
 │  │   ├── Create AccountData { AuthState = Handshake }                │ │
 │  │   └── Track in unauthenticatedTracker (arrival-ordered)           │ │
@@ -705,7 +705,7 @@ ConnectionEncryptionData
 <tr>
 <td><code>SrpAuthenticatorCore</code> (FishMMO-Auth)</td>
 <td><code>ISrpAccountManager&lt;NetworkConnection&gt;</code></td>
-<td>Calls <code>AddConnectionEncryptionData</code>, drives all SRP state transitions, runs <code>SweepUnauthenticatedConnections</code></td>
+<td>Calls <code>TryAddConnectionEncryptionData</code>, drives all SRP state transitions, runs <code>SweepUnauthenticatedConnections</code></td>
 </tr>
 <tr>
 <td><code>TokenAuthenticatorCore</code> (FishMMO-Auth)</td>

@@ -90,7 +90,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Interactable/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p><strong>Short description:</strong> SceneServer subsystem for validating and dispatching player interactions with world objects, including merchants, ability crafting, dialogue, dungeon finders, mailboxes, containers, and fifteen pluggable handler types discovered and registered via reflection.</p>
+<p><strong>Short description:</strong> SceneServer subsystem that validates player interactions with world objects and dispatches them into the interactable's own ECA triggers, plus the follow-up broadcasts those interactions produce — merchant purchases, ability crafting, dialogue sessions, dungeon finders, mailboxes, and containers.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
 <li><a href="#overview">Overview</a></li>
@@ -108,10 +108,49 @@
 </ul>
 <h2 id="overview">Overview</h2>
 <p>The Interactable system is the SceneServer subsystem responsible for validating and processing all player interactions with world interactable objects. It handles generic interaction dispatch, merchant item/ability/event purchases, ability crafting, server-authoritative dialogue sessions, dungeon finder instance assignment, mailbox operations, container item retrieval, and NPC look-at behavior.</p>
-<p>The system is built around a plugin architecture: concrete interaction handlers implement <code>IInteractableHandler</code> and are decorated with <code>[HandlesInteractable(typeof(...))]</code>. At initialization, <code>InteractableHandlerInitializer</code> uses reflection-based auto-discovery to find and register all handlers automatically — adding a new interactable type requires only creating a new handler class with the attribute.</p>
+<p><strong>Interaction behaviour is data, not code.</strong> There is no server-side handler registry: <code>InteractableSystem</code> validates the request and then calls <code>IInteractable.ExecuteOnInteract(eventData)</code>, which fires the <code>OnInteractTriggers</code> list authored on the interactable prefab through the <a href="../../../../../Shared/Implementation/Entity/ECA/Target/README.html">ECA trigger system</a>. What a banker, shrine, or teleporter <em>does</em> lives in the Trigger assets designers wire onto it, so adding a new kind of interaction requires no C# in this system at all.</p>
+<p>The system's own C# is split across partial classes of <code>InteractableSystem</code>, one per <strong>follow-up</strong> broadcast — the second round-trip that a UI opened by an interaction sends back:</p>
+<table>
+<thead>
+<tr>
+<th>Partial class</th>
+<th>Handles</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InteractableSystem.cs</code></td>
+<td>Broadcast registration, validation, ingress guard, dispatch, NPC look-at, main-thread queue drain</td>
+</tr>
+<tr>
+<td><code>InteractableSystem.Merchant.cs</code></td>
+<td><code>MerchantPurchaseBroadcast</code> — item / ability / ability-event purchases</td>
+</tr>
+<tr>
+<td><code>InteractableSystem.AbilityCraft.cs</code></td>
+<td><code>AbilityCraftBroadcast</code> — crafting an ability from a base plus selected events</td>
+</tr>
+<tr>
+<td><code>InteractableSystem.Dialogue.cs</code></td>
+<td><code>DialogueChoiceBroadcast</code> — server-authoritative dialogue sessions</td>
+</tr>
+<tr>
+<td><code>InteractableSystem.DungeonFinder.cs</code></td>
+<td><code>DungeonFinderBroadcast</code> — instance lookup and assignment</td>
+</tr>
+<tr>
+<td><code>InteractableSystem.Mailbox.cs</code></td>
+<td><code>MailFetchBroadcast</code> / <code>MailSendBroadcast</code> / <code>MailDeleteBroadcast</code></td>
+</tr>
+<tr>
+<td><code>InteractableSystem.Container.cs</code></td>
+<td><code>ContainerTakeItemBroadcast</code> — retrieving items from an open container</td>
+</tr>
+</tbody>
+</table>
 <p>The implementation uses a split execution model:</p>
 <ul>
-<li><strong>Main thread:</strong> request validation, ingress guard checks, handler dispatch, dialogue session management, debounce sweep, and network broadcasts.</li>
+<li><strong>Main thread:</strong> request validation, ingress guard checks, trigger execution, dialogue session management, debounce sweep, and network broadcasts.</li>
 <li><strong>Async worker:</strong> database reads/writes for inventory persistence, ability persistence, mail operations, dungeon finder scene assignment, and known-ability persistence via <code>TryEnqueueAsyncWork</code>.</li>
 <li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe context via <code>IInteractableSystemMainThreadQueueData</code>.</li>
 </ul>
@@ -155,9 +194,8 @@
 </table>
 <h2 id="features">Features</h2>
 <ul>
-<li>Plugin-based handler architecture with reflection auto-discovery via <code>[HandlesInteractable]</code> attribute — no initializer modifications needed for new handlers</li>
-<li>Generic interaction dispatch resolving interactable runtime type to registered <code>IInteractableHandler</code></li>
-<li>Strict server-side validation for every interaction: connection, character, scene, scene object, range, and interactable type</li>
+<li>Data-driven interaction: dispatch ends at <code>IInteractable.ExecuteOnInteract</code>, running the designer-authored <code>OnInteractTriggers</code> on the prefab — new interaction types need no server code</li>
+<li>Strict server-side validation for every interaction: connection, character, act-state, scene, scene object, scene-handle match, and <code>CanInteract</code></li>
 <li>Global per-connection interaction cooldown via shared <code>IngressGuard</code> (one interaction at a time per connection)</li>
 <li>Bounded periodic debounce tracker sweep with configurable TTL, interval, and max removals</li>
 <li>Merchant purchases with tab-type dispatch (Item, Ability, AbilityEvent), currency validation, and inventory/ability synchronization</li>
@@ -177,7 +215,7 @@
 <li>Bindstone interaction setting character respawn position and scene</li>
 <li>Teleporter interaction supporting direct transform teleport or named destination teleport</li>
 <li>Banker interaction opening bank UI with last-interactable tracking</li>
-<li>Achievement integration on all handler types via optional <code>AchievementTemplate</code> fields</li>
+<li>Achievement integration on interactable components via optional <code>AchievementTemplate</code> fields, incremented by trigger actions</li>
 <li>Async inventory persistence with fallback direct-persistence path when async worker rejects work</li>
 <li>Known-ability and crafted-ability persistence via async worker with fail-closed semantics on enqueue rejection</li>
 <li>Per-system main-thread queue isolation with configurable drain cap per frame</li>
@@ -187,7 +225,7 @@
 <ul>
 <li><strong>Unity 6.3 LTS</strong></li>
 <li><strong>FishNetworking</strong> — networking framework</li>
-<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IInteractableSystem</code>, <code>IInteractableHandler</code>, <code>IInteractableSystemRuntimeData</code>, <code>IInteractableSystemMainThreadQueueData</code>, <code>IngressGuard</code>, <code>AsyncWorkerData</code>, <code>WorldSceneDetailsCache</code>, broadcast types (<code>InteractableBroadcast</code>, <code>MerchantPurchaseBroadcast</code>, <code>AbilityCraftBroadcast</code>, <code>DungeonFinderBroadcast</code>, <code>DialogueChoiceBroadcast</code>, <code>MailFetchBroadcast</code>, <code>MailSendBroadcast</code>, <code>MailDeleteBroadcast</code>, <code>ContainerTakeItemBroadcast</code>), and data containers</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IInteractableSystem</code>, <code>IInteractableSystemRuntimeData</code>, <code>IInteractableSystemMainThreadQueueData</code>, <code>IngressGuard</code>, <code>AsyncWorkerData</code>, <code>WorldSceneDetailsCache</code>, broadcast types (<code>InteractableBroadcast</code>, <code>MerchantPurchaseBroadcast</code>, <code>AbilityCraftBroadcast</code>, <code>DungeonFinderBroadcast</code>, <code>DialogueChoiceBroadcast</code>, <code>MailFetchBroadcast</code>, <code>MailSendBroadcast</code>, <code>MailDeleteBroadcast</code>, <code>ContainerTakeItemBroadcast</code>), and data containers</li>
 <li><strong>FishMMO Shared Core</strong> — provides <code>IInteractable</code>, <code>IPlayerCharacter</code>, interactable type interfaces (<code>IMerchant</code>, <code>IAbilityCrafter</code>, <code>IDungeonEntrance</code>, <code>IDialogueInteractable</code>, <code>IMailbox</code>, <code>IContainer</code>, <code>IWorldItem</code>, <code>IGatheringNode</code>, <code>ICapturePoint</code>, <code>ILoreObject</code>, <code>IShrine</code>, <code>ISwitch</code>, <code>ITeleporter</code>, <code>IBindstone</code>, <code>IBanker</code>), <code>AbilityTemplate</code>, <code>AbilityEvent</code>, <code>MerchantTemplate</code>, <code>DialogueTemplate</code>, <code>CharacterAttributeTemplate</code>, <code>SceneObject</code>, and ECA system types</li>
 <li><strong>FishMMO Database</strong> — provides <code>ICharacterInventoryService</code>, <code>ICharacterKnownAbilityService</code>, <code>ICharacterAbilityService</code>, <code>ISceneService</code>, <code>ICharacterPartyService</code>, <code>ICharacterMailService</code>, <code>CharacterInventoryData</code>, <code>CharacterAbilityData</code>, and <code>DatabaseResult&lt;T&gt;</code></li>
 </ul>
@@ -196,7 +234,6 @@
 <h2 id="quick-start-guides">Quick Start Guides</h2>
 <ol>
 <li>Ensure <code>InteractableSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>IInteractableSystem</code>). The asset is created via <code>Create &gt; FishMMO &gt; Server &gt; SceneServer &gt; Interactable System</code>.</li>
-<li>Assign the <code>InteractableHandlerInitializer</code> asset in the inspector (created via <code>Create &gt; FishMMO &gt; Interactables &gt; FishMMO Interactable Handler Initializer</code>). This ScriptableObject uses reflection to auto-discover and register all <code>IInteractableHandler</code> implementations decorated with <code>[HandlesInteractable]</code>.</li>
 <li>Assign the <code>WorldSceneDetailsCache</code> asset for scene validation and respawn lookup.</li>
 <li>Assign a <code>CharacterAttributeTemplate</code> for <code>currencyTemplate</code> to enable merchant purchases and ability crafting cost validation.</li>
 <li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
@@ -206,8 +243,8 @@
 <li><code>AsyncWorkerData</code> (shared async work queue)</li>
 </ul>
 </li>
-<li>On initialize, <code>InteractableSystem</code> registers all interactable handlers via the initializer, registers nine broadcast handlers (<code>InteractableBroadcast</code>, <code>MerchantPurchaseBroadcast</code>, <code>AbilityCraftBroadcast</code>, <code>DungeonFinderBroadcast</code>, <code>DialogueChoiceBroadcast</code>, <code>MailFetchBroadcast</code>, <code>MailSendBroadcast</code>, <code>MailDeleteBroadcast</code>, <code>ContainerTakeItemBroadcast</code>), subscribes to <code>IDialogueInteractable.OnServerDialogueRequested</code>, and clamps inspector parameters.</li>
-<li>On deinitialize, it drains the remaining main-thread queue, clears all handlers and ingress guard state, unregisters all broadcast handlers, unsubscribes dialogue events, and clears dialogue session/choice caches.</li>
+<li>On initialize, <code>InteractableSystem</code> registers nine broadcast handlers (<code>InteractableBroadcast</code>, <code>MerchantPurchaseBroadcast</code>, <code>AbilityCraftBroadcast</code>, <code>DungeonFinderBroadcast</code>, <code>DialogueChoiceBroadcast</code>, <code>MailFetchBroadcast</code>, <code>MailSendBroadcast</code>, <code>MailDeleteBroadcast</code>, <code>ContainerTakeItemBroadcast</code>), subscribes to <code>IDialogueInteractable.OnServerDialogueRequested</code>, and clamps inspector parameters.</li>
+<li>On deinitialize, it drains the remaining main-thread queue, clears ingress guard state, unregisters all broadcast handlers, unsubscribes dialogue events, and clears dialogue session/choice caches.</li>
 <li>Clients send the appropriate broadcast to trigger interactions; the server validates, processes, optionally persists to database, and replies with result broadcasts.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
@@ -257,12 +294,6 @@
 <td>WorldSceneDetailsCache</td>
 <td>—</td>
 <td>Scene detail cache for scene validation and respawn lookup</td>
-</tr>
-<tr>
-<td><code>interactableHandlerInitializer</code></td>
-<td>InteractableHandlerInitializer</td>
-<td>—</td>
-<td>ScriptableObject that discovers and registers interactable handlers via reflection</td>
 </tr>
 <tr>
 <td><code>maxAbilityCount</code></td>
@@ -424,7 +455,7 @@
 <li>Validates scene via <code>WorldSceneDetailsCache</code>.</li>
 <li>Validates scene object via <code>ValidateSceneObject</code> (existence + same-scene check).</li>
 <li>Gets <code>IInteractable</code> component and calls <code>CanInteract(character)</code>.</li>
-<li>Resolves runtime type and looks up registered <code>IInteractableHandler</code>.</li>
+<li>Calls <code>interactable.CanInteract(character)</code>, then <code>ExecuteOnInteract</code> to run the prefab's <code>OnInteractTriggers</code>.</li>
 <li>Calls <code>handler.HandleInteraction(interactable, character, sceneObject, this)</code>.</li>
 </ol>
 <h3 id="merchant-purchase">Merchant Purchase</h3>
@@ -525,94 +556,90 @@
 <li>Broadcasts <code>InventorySetMultipleItemsBroadcast</code> to client.</li>
 <li>Enqueues <code>PersistInventoryItemsAsync</code> via async worker; falls back to direct async persistence with warning if worker rejects.</li>
 </ol>
-<h3 id="registered-handlers">Registered Handlers</h3>
-<p>The following handlers are auto-discovered and registered via reflection:</p>
+<h3 id="interactable-types">Interactable Types</h3>
+<p>Each type is a component deriving from <code>Interactable</code> in
+<a href="https://github.com/jimdroberts/FishMMO/tree/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Interactable"><code>Shared/Implementation/Entity/Interactable/</code></a>. None of them
+carries interaction logic in this server system — the component supplies
+identity, display metadata, <code>CanInteract</code> rules, and template references, while
+the behaviour listed below is what the prefab's <code>OnInteractTriggers</code> are
+conventionally wired to do.</p>
 <table>
 <thead>
 <tr>
-<th>Handler</th>
 <th>Interactable Type</th>
-<th>Behavior</th>
+<th>Typical authored behaviour</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>AbilityCrafterHandler</code></td>
 <td><code>AbilityCrafter</code></td>
-<td>Broadcasts <code>AbilityCrafterBroadcast</code>, triggers NPC look-at</td>
+<td>Opens the ability crafting UI; NPC look-at</td>
 </tr>
 <tr>
-<td><code>BankerHandler</code></td>
 <td><code>Banker</code></td>
-<td>Sets <code>LastInteractableID</code>, broadcasts <code>BankerBroadcast</code>, triggers NPC look-at, increments achievement</td>
+<td>Sets <code>LastInteractableID</code>, opens bank UI; NPC look-at; achievement</td>
 </tr>
 <tr>
-<td><code>BindstoneHandler</code></td>
 <td><code>Bindstone</code></td>
-<td>Sets character <code>BindPosition</code> and <code>BindScene</code>, increments achievement</td>
+<td>Sets character <code>BindPosition</code> and <code>BindScene</code>; achievement</td>
 </tr>
 <tr>
-<td><code>CapturePointHandler</code></td>
 <td><code>CapturePoint</code></td>
-<td>Applies capture progress, broadcasts <code>CapturePointUpdateBroadcast</code>, increments achievement on capture</td>
+<td>Applies capture progress, broadcasts state, achievement on capture</td>
 </tr>
 <tr>
-<td><code>ContainerHandler</code></td>
 <td><code>Container</code></td>
-<td>Builds slot data, broadcasts <code>ContainerOpenBroadcast</code>, increments achievement</td>
+<td>Builds slot data and opens the container UI; achievement</td>
 </tr>
 <tr>
-<td><code>DialogueInteractableHandler</code></td>
 <td><code>DialogueInteractable</code></td>
-<td>Starts dialogue session via <code>StartDialogueSession</code>, triggers NPC look-at</td>
+<td>Starts a server-authoritative dialogue session; NPC look-at</td>
 </tr>
 <tr>
-<td><code>DungeonEntranceHandler</code></td>
 <td><code>DungeonEntrance</code></td>
-<td>Broadcasts <code>DungeonFinderBroadcast</code> to open finder UI</td>
+<td>Opens the dungeon finder UI</td>
 </tr>
 <tr>
-<td><code>GatheringNodeHandler</code></td>
 <td><code>GatheringNode</code></td>
-<td>Broadcasts <code>GatheringNodeBroadcast</code>, rolls weighted drop table, grants items, decrements uses, auto-despawns</td>
+<td>Rolls the weighted drop table, grants items, decrements uses, auto-despawns</td>
 </tr>
 <tr>
-<td><code>LoreObjectHandler</code></td>
 <td><code>LoreObject</code></td>
-<td>Broadcasts <code>LoreObjectBroadcast</code>, idempotently grants abilities/events/items</td>
+<td>Idempotently grants abilities / events / items</td>
 </tr>
 <tr>
-<td><code>MailboxHandler</code></td>
 <td><code>Mailbox</code></td>
-<td>Broadcasts <code>MailboxBroadcast</code> to open mail UI, increments achievement</td>
+<td>Opens the mail UI; achievement</td>
 </tr>
 <tr>
-<td><code>MerchantHandler</code></td>
 <td><code>Merchant</code></td>
-<td>Broadcasts <code>MerchantBroadcast</code> with template ID, triggers NPC look-at</td>
+<td>Opens the merchant UI with the template ID; NPC look-at</td>
 </tr>
 <tr>
-<td><code>ShrineHandler</code></td>
+<td><code>Quest</code></td>
+<td>Offers and turns in quests</td>
+</tr>
+<tr>
 <td><code>Shrine</code></td>
-<td>Heals health/mana by percentage, applies buff stacks, broadcasts <code>ShrineBroadcast</code>, increments achievement</td>
+<td>Heals health/mana by percentage, applies buff stacks; achievement</td>
 </tr>
 <tr>
-<td><code>SwitchHandler</code></td>
 <td><code>Switch</code></td>
-<td>Toggles <code>ISwitchTarget</code> activate/deactivate, broadcasts <code>SwitchStateBroadcast</code>, increments achievement</td>
+<td>Toggles <code>ISwitchTarget</code> activate/deactivate; achievement</td>
 </tr>
 <tr>
-<td><code>TeleporterHandler</code></td>
 <td><code>Teleporter</code></td>
-<td>Teleports via direct transform or named destination, increments achievement</td>
+<td>Teleports via direct transform or named destination; achievement</td>
 </tr>
 <tr>
-<td><code>WorldItemHandler</code></td>
 <td><code>WorldItem</code></td>
-<td>Picks up world item with concurrency guard, adjusts stack or despawns, increments achievement</td>
+<td>Picks up the item with a concurrency guard, adjusts stack or despawns; achievement</td>
 </tr>
 </tbody>
 </table>
+<p>Because the mapping is authored per prefab rather than compiled in, two
+<code>Shrine</code> prefabs can behave differently, and a prefab whose <code>OnInteractTriggers</code>
+list is empty is interactable but inert — see <a href="#operational-checks">Operational Checks</a>.</p>
 <h3 id="failure-semantics">Failure Semantics</h3>
 <ul>
 <li>Invalid requests fail closed with no mutation.</li>
@@ -640,8 +667,8 @@
 <td>Confirm <code>InteractableSystem</code> logs &quot;Initialized&quot; without errors on server startup</td>
 </tr>
 <tr>
-<td>Handler registration</td>
-<td>Confirm log entries &quot;Registered handler for [type]&quot; for all 15 handler types</td>
+<td>Trigger wiring</td>
+<td>Confirm each interactable prefab has its <code>OnInteractTriggers</code> list populated; an empty list means interacting does nothing</td>
 </tr>
 <tr>
 <td>Data containers available</td>
@@ -834,7 +861,7 @@
 <pre><code class="lang-mermaid">flowchart LR
     Client[Unity Client] --&gt;|interact request| Sys[InteractableSystem]
     Sys --&gt;|range + cooldown check| Sys
-    Sys --&gt;|invoke handler| Handler[Interactable handler]
+    Sys --&gt;|ExecuteOnInteract| Handler[OnInteractTriggers - ECA]
     Handler --&gt;|loot / dialogue / portal| Effects
     Effects --&gt;|persist| DB[(PostgreSQL)]
     Effects --&gt;|broadcast| Client
@@ -852,7 +879,7 @@
 ├─ 6. Resolve interactable.GetType() → lookup in InteractableHandlers
 └─ 7. handler.HandleInteraction(interactable, character, sceneObject, this)
        │
-       └── (Handler-specific logic: broadcast, state change, achievement, etc.)
+       └── (Trigger actions: broadcast, state change, achievement, etc.)
 </code></pre>
 <h3 id="merchant-purchase-1">Merchant Purchase</h3>
 <pre><code>OnServerMerchantPurchaseBroadcastReceived(conn, msg, channel)
@@ -983,10 +1010,7 @@ OnServerMailDeleteBroadcastReceived(conn, msg, channel)
 <h3 id="directory-structure">Directory Structure</h3>
 <pre><code>Interactable/
 ├── README.md                                  # This document
-├── HandlesInteractableAttribute.cs            # Attribute for handler-to-interactable type mapping
-├── IInteractableHandlerInitializer.cs         # Handler registration contract
-├── InteractableHandlerInitializer.cs          # Default handler registration ScriptableObject (reflection auto-discovery)
-├── InteractableSystem.cs                      # Main SceneServer interactable subsystem (dispatch, handler registry, NPC look-at)
+├── InteractableSystem.cs                      # Main SceneServer interactable subsystem (validation, dispatch, NPC look-at, update loop)
 ├── InteractableSystem.AbilityCraft.cs         # Partial: ability craft broadcast handling and async persistence
 ├── InteractableSystem.Container.cs            # Partial: container take-item broadcast handling
 ├── InteractableSystem.Dialogue.cs             # Partial: server-authoritative dialogue sessions, ECA evaluation, choice tracking
@@ -994,42 +1018,22 @@ OnServerMailDeleteBroadcastReceived(conn, msg, channel)
 ├── InteractableSystem.Mailbox.cs              # Partial: mail fetch/send/delete broadcast handling and async persistence
 ├── InteractableSystem.Merchant.cs             # Partial: merchant purchase broadcast handling (items, abilities, events)
 ├── InteractableSystemMainThreadQueueData.cs   # Main-thread action queue container
-├── InteractableSystemRuntimeData.cs           # Runtime state (IngressGuard, handler registry dictionary)
-└── Handlers/                                  # Concrete IInteractableHandler implementations
-    ├── AbilityCrafterHandler.cs               # Opens ability crafting UI, triggers NPC look-at
-    ├── BankerHandler.cs                       # Opens bank UI, sets LastInteractableID, triggers NPC look-at
-    ├── BindstoneHandler.cs                    # Sets character BindPosition and BindScene
-    ├── DialogueInteractableHandler.cs         # Starts server-authoritative dialogue session
-    ├── DungeonEntranceHandler.cs              # Opens dungeon finder UI
-    ├── MerchantHandler.cs                     # Opens merchant UI with template ID, triggers NPC look-at
-    ├── TeleporterHandler.cs                   # Teleports via direct transform or named destination
-    ├── WorldItemHandler.cs                    # Picks up world item with concurrency guard
-    ├── CapturePoint/
-    │   └── CapturePointHandler.cs             # Applies capture progress, broadcasts state
-    ├── Container/
-    │   └── ContainerHandler.cs                # Opens container UI with slot data
-    ├── GatheringNode/
-    │   └── GatheringNodeHandler.cs            # Rolls drop table, grants items, depletes node
-    ├── LoreObject/
-    │   └── LoreObjectHandler.cs               # Displays lore text, idempotent ability/event/item grants
-    ├── Mailbox/
-    │   └── MailboxHandler.cs                  # Opens mail UI
-    ├── Shrine/
-    │   └── ShrineHandler.cs                   # Heals health/mana, applies buffs
-    └── Switch/
-        └── SwitchHandler.cs                   # Toggles ISwitchTarget, broadcasts state
+└── InteractableSystemRuntimeData.cs           # Runtime state (IngressGuard)
 </code></pre>
+<p>The interactable <em>components</em> themselves are shared code, not server code — they
+live in <code>Shared/Implementation/Entity/Interactable/</code> (<code>Banker.cs</code>, <code>Shrine/</code>,
+<code>Merchant/</code>, …) alongside the <code>Interactable</code> base class that owns
+<code>OnInteractTriggers</code> and <code>ExecuteOnInteract</code>.</p>
 <h3 id="related-core-contracts">Related Core Contracts</h3>
 <ul>
 <li><code>Server/Core/World/SceneServer/Interactable/IInteractableSystem.cs</code></li>
-<li><code>Server/Core/World/SceneServer/Interactable/IInteractableHandler.cs</code></li>
 <li><code>Server/Core/World/SceneServer/Interactable/IInteractableSystemRuntimeData.cs</code></li>
 <li><code>Server/Core/World/SceneServer/Interactable/IInteractableSystemMainThreadQueueData.cs</code></li>
 </ul>
 <h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
 <pre><code>ServerBehaviour
 └── InteractableSystem : IInteractableSystem (partial class)
-        ├── InteractableSystem.cs              # Core: init, deinit, dispatch, handler registry, update loop
+        ├── InteractableSystem.cs              # Core: init, deinit, validation, dispatch, update loop
         ├── InteractableSystem.AbilityCraft.cs  # Ability crafting broadcast + persistence
         ├── InteractableSystem.Container.cs     # Container take-item broadcast
         ├── InteractableSystem.Dialogue.cs      # Dialogue session management + ECA
@@ -1042,29 +1046,20 @@ RuntimeDataContainer
 
 SystemMainThreadQueueData
 └── InteractableSystemMainThreadQueueData : IInteractableSystemMainThreadQueueData
-
-ScriptableObject
-└── InteractableHandlerInitializer : IInteractableHandlerInitializer
-
-Attribute
-└── HandlesInteractableAttribute
-
-IInteractableHandler (implemented by all 15 handlers)
-├── AbilityCrafterHandler       [HandlesInteractable(typeof(AbilityCrafter))]
-├── BankerHandler               [HandlesInteractable(typeof(Banker))]
-├── BindstoneHandler            [HandlesInteractable(typeof(Bindstone))]
-├── CapturePointHandler         [HandlesInteractable(typeof(CapturePoint))]
-├── ContainerHandler            [HandlesInteractable(typeof(Container))]
-├── DialogueInteractableHandler [HandlesInteractable(typeof(DialogueInteractable))]
-├── DungeonEntranceHandler      [HandlesInteractable(typeof(DungeonEntrance))]
-├── GatheringNodeHandler        [HandlesInteractable(typeof(GatheringNode))]
-├── LoreObjectHandler           [HandlesInteractable(typeof(LoreObject))]
-├── MailboxHandler              [HandlesInteractable(typeof(Mailbox))]
-├── MerchantHandler             [HandlesInteractable(typeof(Merchant))]
-├── ShrineHandler               [HandlesInteractable(typeof(Shrine))]
-├── SwitchHandler               [HandlesInteractable(typeof(Switch))]
-├── TeleporterHandler           [HandlesInteractable(typeof(Teleporter))]
-└── WorldItemHandler            [HandlesInteractable(typeof(WorldItem))]
+</code></pre>
+<p>The interactable side of the hierarchy is shared code, and every type below is a
+<code>NetworkBehaviour</code> carrying an <code>OnInteractTriggers</code> list rather than a server
+handler:</p>
+<pre><code>NetworkBehaviour
+└── Interactable : IInteractable, ISpawnable      # OnInteractTriggers + ExecuteOnInteract
+    ├── AbilityCrafter        ├── GatheringNode
+    ├── Banker                ├── LoreObject
+    ├── Bindstone             ├── Mailbox
+    ├── CapturePoint          ├── Merchant
+    ├── Container             ├── Quest
+    ├── DialogueInteractable  ├── Shrine
+    ├── DungeonEntrance       ├── Switch
+    ├── Teleporter            └── WorldItem
 </code></pre>
 <h2 id="license">License</h2>
 <p>This project is subject to the FishMMO project license.</p>

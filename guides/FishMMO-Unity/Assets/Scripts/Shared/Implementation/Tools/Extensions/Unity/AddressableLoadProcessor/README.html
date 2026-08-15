@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Addressable Load Processor | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Addressable Load Processor | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Tools/Extensions/Unity/AddressableLoadProcessor/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="addressable-load-processor">Addressable Load Processor</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Tools/Extensions/Unity/AddressableLoadProcessor/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> A central queue for Addressable asset and scene loading. Callers stage work with <code>EnqueueLoad</code>, then claim it with <code>BeginProcessQueue()</code>, which returns an <code>AddressableLoadBatch</code> that completes when exactly that caller's items have finished.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#batches-vs-progress">Batches vs. Progress</a></li>
+<li><a href="#invariants">Invariants</a></li>
+<li><a href="#api">API</a></li>
+<li><a href="#data-types">Data Types</a></li>
+<li><a href="#usage">Usage</a></li>
+<li><a href="#shutdown">Shutdown</a></li>
+<li><a href="#editor-play-mode-fix">Editor Play Mode Fix</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p><code>AddressableLoadProcessor</code> is a static class backed by an on-demand <code>AddressableLoadHelper</code> MonoBehaviour that owns the drain coroutine and survives scene loads via <code>DontDestroyOnLoad</code>.</p>
+<p>The usage pattern is <strong>stage, then claim</strong>:</p>
+<ol>
+<li>Call <code>EnqueueLoad(...)</code> any number of times. Items land in a staging set.</li>
+<li>Call <code>BeginProcessQueue()</code>. It claims everything staged since the previous call into a new batch, starts the drain if it is not already running, and hands the batch back.</li>
+<li>Subscribe to <code>batch.Completed</code>.</li>
+</ol>
+<p>Multiple callers can be in flight at once. A batch created while a drain is already running joins that drain and still completes independently of every other batch.</p>
+<h2 id="batches-vs-progress">Batches vs. Progress</h2>
+<p>This distinction is the reason the type exists, and getting it wrong reintroduces a class of hangs and double-invocations:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>AddressableLoadBatch.Completed</code></th>
+<th><code>AddressableLoadProcessor.OnProgressUpdate</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scope</td>
+<td>Exactly the items one <code>BeginProcessQueue()</code> call claimed</td>
+<td>Global aggregate across everything in flight</td>
+</tr>
+<tr>
+<td>Use for</td>
+<td><strong>Completion</strong></td>
+<td><strong>Display only</strong> — progress bars</td>
+</tr>
+<tr>
+<td>Fires for work you did not request</td>
+<td>Never</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p><code>OnProgressUpdate</code> is a single multicast delegate shared by every bootstrap system, both loading screens, and the world-scene readiness handshake. Any queue draining anywhere reported &quot;done&quot; to all of them. Worse, a handler that resubscribed during dispatch mutated the invocation list while the runtime was iterating a stale snapshot of it, which could run another subscriber twice.</p>
+<p>Each <code>BeginProcessQueue</code> call produces its own batch with its own event, so callers cannot observe one another's completion, and a handler that starts new work during dispatch is operating on a different object entirely.</p>
+<p><strong>A batch counts an item as finished whether it succeeded, failed, or was dropped.</strong> Load failures surface through <code>FailedItems</code> rather than by withholding completion — a batch that never completes would stall its caller forever, which is precisely the failure this design replaces.</p>
+<h2 id="invariants">Invariants</h2>
+<p>Three properties the implementation depends on. Breaking any of them produces a hang rather than an error:</p>
+<ul>
+<li><strong>Termination.</strong> Every item entering the queue must call <code>FinishAsset</code> or <code>FinishScene</code> exactly once, on every path — success, failure, duplicate, or invalid handle. An item that leaves without being finished is never removed from the in-flight tables, so <code>PendingItemCount</code> never reaches zero, the drain loop never exits, and every batch waiting on it stalls forever.</li>
+<li><strong>Ordering.</strong> Within a pass the drain processes <strong>assets before scenes</strong>. Callers rely on this: bootstrap systems enqueue template labels and scenes together and expect templates to be in the cache before a scene referencing them deserializes.</li>
+<li><strong>Monotonic totals.</strong> <code>RefreshRunTotal()</code> only ever raises the run's item total, so aggregate progress cannot move backwards when work is enqueued mid-drain.</li>
+</ul>
+<h2 id="api">API</h2>
+<h3 id="enqueue">Enqueue</h3>
+<table>
+<thead>
+<tr>
+<th>Overload</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EnqueueLoad(string label, MergeMode = None)</code></td>
+<td>One asset label</td>
+</tr>
+<tr>
+<td><code>EnqueueLoad(IEnumerable&lt;string&gt; labels, MergeMode = None)</code></td>
+<td>Several labels</td>
+</tr>
+<tr>
+<td><code>EnqueueLoad(string label, string key, MergeMode = Intersection)</code></td>
+<td>Label + key pair</td>
+</tr>
+<tr>
+<td><code>EnqueueLoad(IEnumerable&lt;KeyValuePair&lt;string,string&gt;&gt; labels, MergeMode = Intersection)</code></td>
+<td>Several label/key pairs</td>
+</tr>
+<tr>
+<td><code>EnqueueLoad(AddressableSceneLoadData data, Action&lt;Scene&gt; globalOnScenePostProcess = null)</code></td>
+<td>One scene</td>
+</tr>
+<tr>
+<td><code>EnqueueLoad(IEnumerable&lt;AddressableSceneLoadData&gt; datas, Action&lt;Scene&gt; globalOnScenePostProcess = null)</code></td>
+<td>Several scenes</td>
+</tr>
+</tbody>
+</table>
+<p>Enqueuing an asset already loaded, or anything at all while shutting down, is a no-op. Enqueuing a scene that is already staged merges the two entries' <code>OnSceneLoaded</code> callbacks rather than dropping one.</p>
+<h3 id="drain">Drain</h3>
+<p><code>static AddressableLoadBatch BeginProcessQueue()</code></p>
+<p>Claims the staged items into a new batch and starts the drain if needed. Two cases complete synchronously, before the call returns:</p>
+<ul>
+<li><strong>Nothing to claim</strong> — everything requested was already loaded, or nothing was requested. Subscribing to <code>Completed</code> afterwards still invokes the handler, so sequential chains advance without waiting a frame.</li>
+<li><strong>Shutting down</strong> — new work is refused, but a completed batch is still handed back so a caller awaiting it is released rather than stalled mid-quit.</li>
+</ul>
+<p>If the drain coroutine fails to start, the processor clears <code>isProcessingQueue</code> (leaving it set would make every future <code>BeginProcessQueue</code> a silent no-op), aborts the active batches instead of hanging them, and raises a terminal progress value so loading screens do not sit over a dead queue.</p>
+<h3 id="observation">Observation</h3>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnProgressUpdate</code></td>
+<td><code>Action&lt;float&gt;</code> — display-only aggregate. Subscriber exceptions are caught and logged, never propagated into the drain</td>
+</tr>
+<tr>
+<td><code>OnAddressableLoaded</code> / <code>OnAddressableUnloaded</code></td>
+<td><code>Action&lt;UnityEngine.Object&gt;</code></td>
+</tr>
+<tr>
+<td><code>OnSceneLoaded</code> / <code>OnSceneUnloaded</code></td>
+<td><code>Action&lt;Scene&gt;</code> / <code>Action&lt;string&gt;</code></td>
+</tr>
+<tr>
+<td><code>CurrentProgress</code></td>
+<td><code>itemsCompletedThisRun / itemsTotalThisRun</code>, clamped</td>
+</tr>
+<tr>
+<td><code>RemainingAssetsToLoad</code></td>
+<td>Items still queued or in flight</td>
+</tr>
+<tr>
+<td><code>IsLoading</code></td>
+<td>True while the drain runs</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><code>IsLoading</code> exists so a subscriber created mid-drain can seed its own state. A loading screen living in a scene the processor is itself loading is exactly that case: every event raised before its <code>Awake</code> is lost, so without this it cannot distinguish &quot;boot is still running&quot; from &quot;nothing is happening&quot; until the next item happens to finish.</p>
+</blockquote>
+<blockquote>
+<p><code>CurrentProgress</code> divides by the run's total, not by the remaining count. The earlier <code>processed / remaining</code> form produced 1/3, 2/2, 3/1, 4/0 for a four-item load — values at or above 1 from the halfway point on, which callers discarded, so bars never animated past the first item.</p>
+</blockquote>
+<h3 id="prefabs-and-unloading">Prefabs and unloading</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LoadPrefabAsync(AssetReference, Action&lt;GameObject&gt;)</code></td>
+<td>Load a prefab outside the queue</td>
+</tr>
+<tr>
+<td><code>UnloadPrefab(AssetReference)</code></td>
+<td>Release it</td>
+</tr>
+<tr>
+<td><code>UnloadAssetByKey(AddressableAssetKey)</code></td>
+<td>Release a queued asset</td>
+</tr>
+<tr>
+<td><code>UnloadSceneByLabelAsync(string \| List&lt;string&gt; \| List&lt;AddressableSceneLoadData&gt;)</code></td>
+<td>Unload scenes</td>
+</tr>
+<tr>
+<td><code>IsSceneLoaded(string)</code></td>
+<td>Query</td>
+</tr>
+<tr>
+<td><code>ReleaseAllAssets()</code></td>
+<td>Full teardown — see <a href="#shutdown">Shutdown</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="data-types">Data Types</h2>
+<h3 id="addressableloadbatch"><code>AddressableLoadBatch</code></h3>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Completed</code></td>
+<td><code>event Action&lt;AddressableLoadBatch&gt;</code> — raised once, when this batch's items have all finished. Subscribing to an already-complete batch invokes the handler immediately</td>
+</tr>
+<tr>
+<td><code>Progressed</code></td>
+<td><code>event Action&lt;float&gt;</code> — this batch's own progress</td>
+</tr>
+<tr>
+<td><code>TotalItems</code> / <code>CompletedItems</code></td>
+<td>Counts</td>
+</tr>
+<tr>
+<td><code>Progress</code></td>
+<td><code>CompletedItems / TotalItems</code>, or <code>1</code> when empty</td>
+</tr>
+<tr>
+<td><code>IsComplete</code></td>
+<td>Whether <code>Completed</code> has fired</td>
+</tr>
+<tr>
+<td><code>FailedItems</code></td>
+<td><code>IReadOnlyList&lt;string&gt;</code> of names/keys that did not load successfully</td>
+</tr>
+<tr>
+<td><code>HasFailures</code></td>
+<td>Convenience over <code>FailedItems</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="addressableassetkey"><code>AddressableAssetKey</code></h3>
+<p><code>List&lt;string&gt; Keys</code> plus a <code>MergeMode</code>. Implements <code>Equals</code>/<code>GetHashCode</code> so it can key the staging and in-flight sets.</p>
+<h3 id="addressablesceneloaddata"><code>AddressableSceneLoadData</code></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SceneName</code></td>
+<td>—</td>
+<td>Addressable scene name</td>
+</tr>
+<tr>
+<td><code>ActivateOnLoad</code></td>
+<td><code>true</code></td>
+<td>Activate once loaded</td>
+</tr>
+<tr>
+<td><code>LoadSceneMode</code></td>
+<td><code>Additive</code></td>
+<td>Load mode</td>
+</tr>
+<tr>
+<td><code>OnSceneLoaded</code></td>
+<td><code>null</code></td>
+<td>Per-scene callback; merged when a duplicate is enqueued</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage">Usage</h2>
+<pre><code class="lang-csharp">// Stage the work.
+AddressableLoadProcessor.EnqueueLoad(new List&lt;string&gt;
+{
+    &quot;Client_Static_Permanent&quot;,
+    Constants.SharedStaticLabel,
+});
+AddressableLoadProcessor.EnqueueLoad(
+    new AddressableSceneLoadData(&quot;ClientPostboot&quot;, OnPostbootSceneLoaded));
+
+// Claim it and wait on this batch only.
+AddressableLoadBatch batch = AddressableLoadProcessor.BeginProcessQueue();
+batch.Completed += OnBatchCompleted;
+
+void OnBatchCompleted(AddressableLoadBatch b)
+{
+    if (b.HasFailures)
+    {
+        // Report and continue. Do not block the chain on a failed item.
+        Log.Error(&quot;MySystem&quot;, $&quot;{b.FailedItems.Count} item(s) failed to load.&quot;);
+    }
+    // ... proceed
+}
+</code></pre>
+<p>For a progress bar, subscribe to <code>OnProgressUpdate</code> (or <code>batch.Progressed</code> for just your own work) — never to detect completion.</p>
+<h2 id="shutdown">Shutdown</h2>
+<p><code>ReleaseAllAssets()</code> tears the processor down and sets <code>isShuttingDown</code>, after which every <code>EnqueueLoad</code> is ignored and <code>BeginProcessQueue</code> returns an already-completed batch. It clears the staging sets, the active batch list, and the public event delegates so a stale subscriber from a previous run cannot be invoked after a domain reload.</p>
+<h2 id="editor-play-mode-fix">Editor Play Mode Fix</h2>
+<p><code>../Editor/AddressablesPlayModeSceneHandleFix.cs</code> works around an &quot;Attempting to use an invalid operation handle&quot; exception thrown out of the Addressables package's own Play Mode teardown.</p>
+<p><code>AddressablesImpl</code> tracks a loaded Addressable scene in two places — <code>m_SceneInstances</code> and <code>m_resultToHandle</code>. <code>Dispose()</code> releases every handle in the second, then every handle in the first, with no <code>IsValid()</code> guard on either pass. The first pass drops a scene handle's refcount to zero, destroying the operation and bumping its version; the second releases that same stale handle and <code>AsyncOperationHandle.InternalOp</code> throws. Any Addressable scene still loaded when Play Mode exits reproduces it.</p>
+<p>Our own shutdown cannot cover this. <code>Addressables.Initialize()</code> subscribes its cleanup from both <code>[InitializeOnLoadMethod]</code> and <code>[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]</code>, long before any MonoBehaviour runs, and <code>EditorApplication.playModeStateChanged</code> dispatches in subscription order — so <code>Dispose()</code> runs <em>before</em> <code>ReleaseAllAssets</code> ever sees <code>ExitingPlayMode</code>. Unloading scenes there would not help regardless: scene unload is asynchronous and Play Mode exit gives it no frame to finish in.</p>
+<p>The fix subscribes from <code>[InitializeOnLoadMethod]</code>, which runs at domain load and therefore lands ahead of Addressables' handler (Addressables re-appends itself to the tail of the delegate at SubsystemRegistration on every Play Mode start — true whether or not domain reload is disabled). It empties <code>m_SceneInstances</code> before <code>Dispose()</code> runs.</p>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to verify</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Empty batch completes</td>
+<td><code>BeginProcessQueue()</code> with nothing staged</td>
+<td><code>IsComplete</code> true on return; a handler subscribed afterwards still fires</td>
+</tr>
+<tr>
+<td>Batches are independent</td>
+<td>Two systems enqueue and claim separately</td>
+<td>Each <code>Completed</code> fires once, only for its own items</td>
+</tr>
+<tr>
+<td>Failures do not stall</td>
+<td>Enqueue a missing Addressable key</td>
+<td>Batch completes with <code>HasFailures</code>; the item is named in <code>FailedItems</code></td>
+</tr>
+<tr>
+<td>Assets precede scenes</td>
+<td>Enqueue a template label and a scene using it together</td>
+<td>Templates resolve before the scene deserializes</td>
+</tr>
+<tr>
+<td>Progress animates</td>
+<td>Watch a multi-item load</td>
+<td>Bar advances smoothly rather than sticking after the first item</td>
+</tr>
+<tr>
+<td>Play Mode exit is clean</td>
+<td>Exit Play Mode with an Addressable scene loaded</td>
+<td>No &quot;invalid operation handle&quot; exception in the console</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart TD
+    A[&quot;EnqueueLoad(...) xN&quot;] --&gt; Stage[&quot;Staging sets&lt;br/&gt;stagedAssetKeys / stagedSceneNames&quot;]
+    Stage --&gt; Begin[&quot;BeginProcessQueue()&quot;]
+
+    Begin --&gt; Shut{isShuttingDown?}
+    Shut -- yes --&gt; Done0[&quot;Completed batch&lt;br/&gt;(caller released, not stalled)&quot;]
+    Shut -- no --&gt; Claim[&quot;Claim staged items into a new batch&lt;br/&gt;clear staging sets&quot;]
+
+    Claim --&gt; Empty{TotalItems == 0?}
+    Empty -- yes --&gt; Done1[&quot;RaiseCompleted() synchronously&quot;]
+    Empty -- no --&gt; Track[&quot;activeBatches.Add(batch)&quot;]
+
+    Track --&gt; Running{Drain already running?}
+    Running -- yes --&gt; Join[&quot;Items join the running drain&quot;]
+    Running -- no --&gt; Start[&quot;RefreshRunTotal + StartCoroutine(ProcessLoadQueue)&quot;]
+    Start --&gt;|coroutine failed to start| Abort[&quot;Clear flag, AbortActiveBatches,&lt;br/&gt;raise terminal progress&quot;]
+
+    Join --&gt; Drain
+    Start --&gt; Drain[&quot;ProcessLoadQueue:&lt;br/&gt;assets first, then scenes&quot;]
+    Drain --&gt; Finish[&quot;FinishAsset / FinishScene&lt;br/&gt;exactly once per item&quot;]
+    Finish --&gt; Notify[&quot;Notify every batch waiting on that item&quot;]
+    Notify --&gt; BDone{Batch's own items all finished?}
+    BDone -- no --&gt; Drain
+    BDone -- yes --&gt; Raise[&quot;batch.Completed&lt;br/&gt;(success, failure, or dropped)&quot;]
+
+    Finish -.-&gt; Prog[&quot;OnProgressUpdate&lt;br/&gt;display only — never completion&quot;]
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>AddressableLoadProcessor/
+├── AddressableLoadProcessor.cs   # Static queue, drain coroutine, unload + teardown APIs
+├── AddressableLoadBatch.cs       # Per-caller completion handle
+├── AddressableAssetKey.cs        # Asset keys + merge mode, value-equality
+├── AddressableSceneLoadData.cs   # Scene name, load mode, activation, per-scene callback
+└── README.md                     # This document
+
+../Editor/
+└── AddressablesPlayModeSceneHandleFix.cs   # Editor-only Play Mode teardown workaround
+</code></pre>
+<h3 id="consumers">Consumers</h3>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Uses it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../../../Bootstrap/README.html">BootstrapSystem</a></td>
+<td>Preload and postload phases, each waiting on its own batch</td>
+</tr>
+<tr>
+<td><a href="../../../../../../Client/Launcher/README.html">ClientLauncher</a></td>
+<td>Loading <code>ClientPostboot</code> on Play and unloading the launcher scene</td>
+</tr>
+<tr>
+<td>Loading screens</td>
+<td><code>OnProgressUpdate</code> and <code>IsLoading</code> for display</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is distributed under the FishMMO project license.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -327,9 +327,9 @@ TokenServerAuthenticator : BaseServerAuthenticator
 <td>Absolute auth deadline (cannot be extended)</td>
 </tr>
 <tr>
-<td><code>AuthSweepIntervalSeconds</code></td>
-<td>1 s</td>
-<td>Sweep interval for stale auth cleanup</td>
+<td><em>(no interval constant)</em></td>
+<td>every frame</td>
+<td><code>Core.Tick()</code> runs the stale-auth sweep each Unity frame; the caps below bound its cost</td>
 </tr>
 <tr>
 <td><code>AuthSweepMaxScan</code></td>
@@ -524,7 +524,7 @@ internal override Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(
 </tr>
 <tr>
 <td>SRP verify processing</td>
-<td>Client receives <code>SrpVerifyBroadcast</code> response with encrypted salt and server ephemeral</td>
+<td>Client receives <code>SrpVerifyResponseBroadcast</code> with encrypted salt and server ephemeral</td>
 </tr>
 <tr>
 <td>SRP proof accepted</td>
@@ -604,7 +604,7 @@ internal override Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(
 <h4 id="phase-2-srp-verify-bounded-channel">Phase 2: SRP Verify (Bounded Channel)</h4>
 <pre><code>Client                              Server
   │                                      │
-  │── SrpVerifyBroadcast ──────────────► │  UDP Gate → verifyChannel
+  │── SrpVerifyRequestBroadcast ───────► │  UDP Gate → verifyChannel
   │   { Username (enc), Ephemeral (enc)} │    • Per-IP debounce (1 s)
   │                                      │    • AuthState: Handshake → VerifyPending
   │                                      │    • DropWrite rollback on channel full
@@ -621,7 +621,7 @@ internal override Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(
   │                                      │    • Non-existent account → fake SRP tuple + per-username HMAC salt
   │                                      │    • AddConnectionAccount (VerifyPending → WaitingForProof)
   │                                      │    • AES-GCM encrypt salt + server ephemeral
-  │◄── SrpVerifyBroadcast ──────────── │    • Enqueue → Main Thread Broadcast
+  │◄── SrpVerifyResponseBroadcast ──── │    • Enqueue → Main Thread Broadcast
   │   { Salt (enc), Ephemeral (enc) }   │
 </code></pre>
 <h4 id="phase-3-srp-proof-bounded-channel">Phase 3: SRP Proof (Bounded Channel)</h4>
@@ -832,9 +832,14 @@ private sealed class ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkCo
 <td>X25519 public key (phase 2) or cookie (phase 1), agreed version</td>
 </tr>
 <tr>
-<td><code>SrpVerifyBroadcast</code></td>
-<td>Bidirectional</td>
-<td>Encrypted username/salt + public ephemeral</td>
+<td><code>SrpVerifyRequestBroadcast</code></td>
+<td>Client → Server</td>
+<td>Encrypted username + client public ephemeral</td>
+</tr>
+<tr>
+<td><code>SrpVerifyResponseBroadcast</code></td>
+<td>Server → Client</td>
+<td>Encrypted salt + server public ephemeral</td>
 </tr>
 <tr>
 <td><code>SrpProofBroadcast</code></td>

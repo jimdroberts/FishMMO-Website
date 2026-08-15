@@ -144,17 +144,22 @@
 </table>
 <p>Requirements: Unity 6.3 LTS with FishNet. Selectors depend only on the shared FishMMO entity layer; no platform-specific APIs.</p>
 <h2 id="architecture">Architecture</h2>
-<p>Selectors are pure data: a <code>BaseTargetSelector</code> subclass holds parameters in <code>[SerializeField]</code> fields and exposes a <code>Resolve(...)</code> method. Triggers / conditions / actions invoke <code>Resolve</code> to obtain an <code>IReadOnlyList&lt;GameObject&gt;</code> and then operate on that list. There is no runtime registration step — types are discovered by Unity's <code>SerializeReference</code> system.</p>
+<p>Selectors are pure data: a <code>TargetSelector</code> subclass holds parameters in serialized fields and implements <code>IEnumerable&lt;GameObject&gt; SelectTargets(EventData eventData)</code>. Triggers, conditions, and actions call <code>SelectTargets</code> to obtain candidates and then operate on them. There is no runtime registration step — types are discovered by Unity's <code>SerializeReference</code> system and picked in the Inspector through <code>[SubclassSelector]</code>.</p>
 <pre><code>Entity/ECA/Target/
-├── BaseTargetSelector.cs          # Abstract base (Resolve + helpers)
-├── SelfTargetSelector.cs          # The invoking entity
-├── OwnerTargetSelector.cs         # The owner / source character
-├── NearestTargetSelector.cs       # Closest matching candidate
-├── RadiusTargetSelector.cs        # All entities within radius
-├── ConeTargetSelector.cs          # Cone-shaped AoE
-├── TaggedTargetSelector.cs        # Filter by tag
-├── FactionTargetSelector.cs       # Filter by faction relationship
-└── ChainTargetSelector.cs         # Chain / composite selectors
+├── TargetSelector.cs                     # Abstract base (SelectTargets + Conditions + helpers)
+├── InitiatorTargetSelector.cs            # The entity that fired the trigger
+├── EventTargetSelector.cs                # Whatever the event already carries as Target
+├── NearestTargetSelector.cs              # Closest candidate within a radius
+├── FurthestTargetSelector.cs             # Furthest candidate within a radius
+├── RandomTargetSelector.cs               # Random pick within a radius (uses EventData.RNG)
+├── AreaTargetSelector.cs                 # Sphere overlap around the context point
+├── ConeTargetSelector.cs                 # Cone-shaped AoE
+├── LineTargetSelector.cs                 # Ray / line cast from the context point
+├── ChainTargetSelector.cs                # Bounces target-to-target up to a hop limit
+├── ChildrenTargetSelector.cs             # Direct children of the context object
+├── AllCharactersTargetSelector.cs        # Every ICharacter in the active scene
+├── NamedSceneObjectTargetSelector.cs     # Scene object resolved by name at fire time
+└── TaggedSceneObjectTargetSelector.cs    # Scene objects resolved by Unity tag at fire time
 </code></pre>
 <h2 id="key-components">Key Components</h2>
 <table>
@@ -166,35 +171,40 @@
 </thead>
 <tbody>
 <tr>
-<td><code>BaseTargetSelector</code></td>
-<td>Abstract base; defines <code>Resolve(context, candidates)</code> and helper filters.</td>
+<td><code>TargetSelector</code></td>
+<td>Abstract base; declares <code>SelectTargets(eventData)</code>, carries the per-candidate <code>Conditions</code> list, and provides the <code>GetContext</code> / <code>AreConditionsMet</code> helpers.</td>
 </tr>
 <tr>
-<td><code>SelfTargetSelector</code></td>
-<td>Returns the invoking <code>GameObject</code>.</td>
+<td><code>InitiatorTargetSelector</code></td>
+<td>Returns the initiator's <code>GameObject</code>.</td>
 </tr>
 <tr>
-<td><code>NearestTargetSelector</code></td>
-<td>Returns the single closest valid target from a candidate set.</td>
+<td><code>EventTargetSelector</code></td>
+<td>Returns the target already present on the <code>EventData</code>.</td>
 </tr>
 <tr>
-<td><code>RadiusTargetSelector</code></td>
-<td>Returns all valid entities within a configured radius.</td>
+<td><code>NearestTargetSelector</code> / <code>FurthestTargetSelector</code></td>
+<td>Single closest / furthest valid candidate within a radius, excluding the context object.</td>
 </tr>
 <tr>
-<td><code>ConeTargetSelector</code></td>
-<td>Returns entities inside a forward-facing cone.</td>
+<td><code>RandomTargetSelector</code></td>
+<td>One random valid candidate within a radius, drawn from <code>EventData.RNG</code> so server and client agree.</td>
 </tr>
 <tr>
-<td><code>TaggedTargetSelector</code> / <code>FactionTargetSelector</code></td>
-<td>Filtering selectors layered on top of source selectors.</td>
+<td><code>AreaTargetSelector</code> / <code>ConeTargetSelector</code> / <code>LineTargetSelector</code></td>
+<td>Geometric queries around the context point.</td>
 </tr>
 <tr>
 <td><code>ChainTargetSelector</code></td>
-<td>Pipes one selector's output into the next.</td>
+<td>Walks target to target, accumulating a chain up to a configured hop count.</td>
+</tr>
+<tr>
+<td><code>NamedSceneObjectTargetSelector</code> / <code>TaggedSceneObjectTargetSelector</code></td>
+<td>Asset-safe scene lookup by name or tag, resolved at fire time.</td>
 </tr>
 </tbody>
 </table>
+<p>Filtering is not a selector. Rather than layering &quot;tag&quot; or &quot;faction&quot; selectors over source selectors, every selector carries its own <code>Conditions</code> list and yields only candidates that satisfy it — see <a href="#3-anatomy-of-targetselector">Anatomy of <code>TargetSelector</code></a>.</p>
 <h2 id="configuration">Configuration</h2>
 <p>Selectors are configured in-place on <code>ScriptableObject</code> assets that reference triggers / conditions / actions. The configurable surface is per-selector and exposed via Unity's Inspector. There is no separate <code>appsettings</code> file — designers tune values directly on the assets.</p>
 <hr>
@@ -211,12 +221,7 @@
 <tr>
 <td>Core base class</td>
 <td><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/TargetSelector.cs">TargetSelector.cs</a></td>
-<td>Abstract base; per-target conditions + fork helpers</td>
-</tr>
-<tr>
-<td>Core interface</td>
-<td><a href="IConditionalTargetSelector.cs">IConditionalTargetSelector.cs</a></td>
-<td>Marker interface exposing <code>Conditions</code></td>
+<td>Abstract base; <code>SelectTargets</code>, per-target <code>Conditions</code>, and fork helpers</td>
 </tr>
 <tr>
 <td>Identity / event</td>

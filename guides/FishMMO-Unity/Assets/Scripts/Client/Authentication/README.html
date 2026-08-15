@@ -113,7 +113,7 @@
 <li>Implements the abstract <code>Send*</code> callbacks on <code>ClientAuthenticatorCore</code> by emitting FishNet broadcasts via <code>Client.Broadcast(...)</code>.</li>
 <li>Implements <code>Disconnect()</code> by calling <code>Client.ForceDisconnect()</code>.</li>
 <li>Forwards FishNet <code>OnClientConnectionState</code> (<code>Started</code> / <code>Stopping</code> / <code>Stopped</code>) into <code>core.OnConnected()</code> / <code>core.OnDisconnected()</code>.</li>
-<li>Forwards incoming <code>ServerHandshake</code>, <code>SrpVerifyBroadcast</code>, <code>SrpSuccessBroadcast</code>, <code>ClientAuthResultBroadcast</code>, and <code>TwoFactorSetupBroadcast</code> broadcasts into the matching core handlers.</li>
+<li>Forwards incoming <code>ServerHandshake</code>, <code>SrpVerifyResponseBroadcast</code>, <code>SrpSuccessBroadcast</code>, <code>ClientAuthResultBroadcast</code>, and <code>TwoFactorSetupBroadcast</code> broadcasts into the matching core handlers.</li>
 <li>Surfaces <code>OnClientAuthenticationResult</code> and <code>OnTwoFactorSetupReceived</code> as Unity-facing events.</li>
 <li>Disposes the core in <code>OnDestroy()</code>.</li>
 </ul>
@@ -217,7 +217,7 @@
 <li><code>FishMMO.Shared.Authentication</code> — centralized validation rules (<code>IsAllowedUsername</code>: 3–32 chars, alphanumeric + underscores; <code>IsAllowedPassword</code>: 8–32 chars, expanded charset).</li>
 <li><code>Client</code> class — FishNet client wrapper providing <code>Broadcast()</code> and <code>ForceDisconnect()</code>.</li>
 <li><code>FishMMO.Logging</code> — structured logging via <code>Log.Warning()</code>, <code>Log.Error()</code>, <code>Log.Debug()</code>.</li>
-<li>Shared broadcast message types: <code>ClientHandshake</code>, <code>ServerHandshake</code>, <code>SrpVerifyBroadcast</code>, <code>SrpProofBroadcast</code>, <code>SrpSuccessBroadcast</code>, <code>CreateAccountBroadcast</code>, <code>TokenAuthBroadcast</code>, <code>ClientAuthResultBroadcast</code>, <code>TwoFactorVerifyBroadcast</code>, <code>TwoFactorSetupBroadcast</code>.</li>
+<li>Shared broadcast message types: <code>ClientHandshake</code>, <code>ServerHandshake</code>, <code>SrpVerifyRequestBroadcast</code>, <code>SrpVerifyResponseBroadcast</code>, <code>SrpProofBroadcast</code>, <code>SrpSuccessBroadcast</code>, <code>CreateAccountBroadcast</code>, <code>TokenAuthBroadcast</code>, <code>ClientAuthResultBroadcast</code>, <code>TwoFactorVerifyBroadcast</code>, <code>TwoFactorSetupBroadcast</code>.</li>
 </ul>
 <h2 id="installation--build">Installation / Build</h2>
 <p>This is an integrated module within the FishMMO Unity project. The client authentication classes are compiled as part of the client assembly. They depend on <code>FishMMO-Auth.dll</code> (auto-copied to <code>Assets/Dependencies/</code> by the FishMMO-Auth build) for all crypto service classes and core types, and on the shared <code>Authentication</code> validation utilities.</p>
@@ -470,7 +470,7 @@ networkManager.ClientManager.StopConnection();
 </tr>
 <tr>
 <td>Duplicate verify ignored</td>
-<td>Server sends second <code>SrpVerifyBroadcast</code></td>
+<td>Server sends second <code>SrpVerifyResponseBroadcast</code></td>
 <td><code>srpVerifyProcessed</code> guard returns early</td>
 </tr>
 <tr>
@@ -527,9 +527,9 @@ networkManager.ClientManager.StopConnection();
   │                                               │
   │  AES-GCM encrypt(username, AAD=SrpVerify)      │
   │  AES-GCM encrypt(clientEphemeral, AAD=SrpVer)  │
-  │── SrpVerifyBroadcast { S, PublicEphemeral } ─►│
+  │── SrpVerifyRequestBroadcast { S, PublicEphemeral } ─►│
   │                                               │
-  │◄── SrpVerifyBroadcast { S, PublicEphemeral } ─│  Encrypted salt + server ephemeral
+  │◄── SrpVerifyResponseBroadcast { S, PublicEphemeral } ─│  Encrypted salt + server ephemeral
   │                                               │
   │  AES-GCM decrypt salt (AAD=SrpVerifyResponse)  │
   │  AES-GCM decrypt serverEphemeral               │
@@ -655,18 +655,30 @@ Nonce also passed as AAD to AES-GCM, binding ciphertext to its nonce context
 </code></pre>
 <h3 id="related-modules">Related Modules</h3>
 <pre><code>Shared/Implementation/Network/Authentication/
-├── ClientHandshake.cs            # Broadcast: client public key + cookie + version range
-├── ServerHandshake.cs            # Broadcast: server public key + cookie + agreed version
-├── SrpVerifyBroadcast.cs         # Broadcast: encrypted username/ephemeral (request) or salt/ephemeral (response)
-├── SrpProofBroadcast.cs          # Broadcast: encrypted client proof
-├── SrpSuccessBroadcast.cs        # Broadcast: encrypted server proof + auth token + result
-├── CreateAccountBroadcast.cs     # Broadcast: encrypted username, salt, verifier
-├── TokenAuthBroadcast.cs         # Broadcast: encrypted stored auth token
-└── ClientAuthResultBroadcast.cs  # Broadcast: authentication result enum
+└── AuthenticationBroadcasts.cs   # Every auth broadcast struct lives in this one file:
+    ├── ClientHandshake               # client public key + cookie + version range
+    ├── ServerHandshake               # server public key + cookie + agreed version
+    ├── SrpVerifyRequestBroadcast     # encrypted username + client public ephemeral
+    ├── SrpVerifyResponseBroadcast    # encrypted salt + server public ephemeral
+    ├── SrpProofBroadcast             # encrypted client proof
+    ├── SrpSuccessBroadcast           # encrypted server proof + auth token + result
+    ├── CreateAccountBroadcast        # encrypted username, salt, verifier
+    ├── AccountVerifyBroadcast        # email verification code
+    ├── TokenAuthBroadcast            # encrypted stored auth token
+    ├── RenewTokenResponseBroadcast   # reissued auth token
+    ├── RevokeTokenBroadcast          # token invalidation
+    ├── TwoFactorSetupBroadcast       # TOTP secret + recovery codes
+    ├── TwoFactorVerifyBroadcast      # TOTP code submission
+    └── ClientAuthResultBroadcast     # authentication result enum
 
 FishMMO-SharedUtility/
 └── Authentication.cs             # Centralized validation: IsAllowedUsername, IsAllowedPassword
 </code></pre>
+<blockquote>
+<p>The SRP verify step uses <strong>two distinct broadcast types</strong>, not one bidirectional
+type: <code>SrpVerifyRequestBroadcast</code> client→server and
+<code>SrpVerifyResponseBroadcast</code> server→client.</p>
+</blockquote>
 <h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
 <p>Because <code>Authenticator</code> (FishNet) is a MonoBehaviour and C# single-inheritance prevents the Unity class from also extending <code>ClientAuthenticatorCore</code>, the wrapper uses <strong>composition with an inner sealed core class</strong>:</p>
 <pre><code>FishNet.Authenticating.Authenticator (abstract MonoBehaviour)
@@ -699,7 +711,7 @@ FishMMO-SharedUtility/
 </tr>
 <tr>
 <td><code>SendSrpVerify</code></td>
-<td><code>Client.Broadcast(new SrpVerifyBroadcast { ... }, Channel.Reliable)</code></td>
+<td><code>Client.Broadcast(new SrpVerifyRequestBroadcast { ... }, Channel.Reliable)</code></td>
 </tr>
 <tr>
 <td><code>SendSrpProof</code></td>

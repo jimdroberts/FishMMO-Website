@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Client Launcher | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Client Launcher | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Client/Launcher/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="client-launcher">Client Launcher</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Client/Launcher/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> The launcher is the first window a standalone player sees. It renders news fetched over HTTP, resolves an API host, checks the installed version against the patch server, downloads and verifies a patch when one is needed, hands the install over to the external Updater, and — when the client is current — loads the game and gets out of the way.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#state-machine">State Machine</a></li>
+<li><a href="#the-update-path">The Update Path</a></li>
+<li><a href="#handoff-to-the-game">Handoff to the Game</a></li>
+<li><a href="#api-host-resolution-and-request-signing">API Host Resolution and Request Signing</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p><code>ClientLauncher</code> is a plain <code>MonoBehaviour</code> living in the <code>ClientLauncher</code> Addressable scene. It is deliberately <strong>not</strong> a <code>BootstrapSystem</code>: it is a terminal stage that hands control onward explicitly rather than being auto-discovered and chained. See the <a href="../../Shared/Implementation/Bootstrap/README.html">Bootstrap README</a> for where it sits in the boot order.</p>
+<p>The launcher only exists on standalone builds. <code>ClientPreboot</code>'s postload scene list routes Editor and WebGL straight to <code>ClientPostboot</code>, skipping the launcher entirely — neither can run an external updater process, so there is nothing for it to do.</p>
+<p>Everything it does over the network goes through an injected service so the flow can be tested and swapped:</p>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Interface</th>
+<th>Default implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Web requests</td>
+<td>—</td>
+<td><code>UnityWebRequestService</code></td>
+</tr>
+<tr>
+<td>News HTML</td>
+<td><code>IHtmlContentFetcher</code></td>
+<td><code>UnityHtmlContentFetcher</code></td>
+</tr>
+<tr>
+<td>Version + patch download</td>
+<td><code>IPatchServerService</code></td>
+<td><code>HttpPatchServerService</code></td>
+</tr>
+<tr>
+<td>Updater process</td>
+<td><code>IUpdaterLauncher</code></td>
+<td><code>SystemUpdaterLauncher</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Launcher runs</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Full news → version check → patch → play flow</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Full flow</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td>Yes</td>
+<td>Full flow</td>
+</tr>
+<tr>
+<td>Editor</td>
+<td><strong>No</strong></td>
+<td><code>ClientPreboot</code> postloads <code>ClientPostboot</code> directly</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td><strong>No</strong></td>
+<td>No external updater in the browser sandbox; an outdated build reports &quot;refresh the page&quot; instead</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Explicit UI state machine</strong> — one <code>LauncherState</code> drives the button label, its interactability, its click action, and progress-bar visibility, all from a single <code>SetLauncherState</code> switch. Every failure state is recoverable: the button is re-enabled and wired to a retry action that can actually succeed.</li>
+<li><strong>Multi-host API failover</strong> — <code>ApiHostResolver.GetCandidates()</code> returns an ordered candidate list; the version check walks it until one responds, and the subsequent patch download is pinned to the host that answered so the archive matches the version we were told about.</li>
+<li><strong>Patch integrity verification</strong> — the server reports the expected SHA-256 and byte size up front; the downloaded archive is hashed and rejected on mismatch.</li>
+<li><strong>Unreachable-update detection</strong> — the server states whether it holds a patch <em>from this specific version</em>, so a client with no upgrade path lands in <code>PatchUnavailable</code> (reinstall required) rather than looping forever on a request that can only 404.</li>
+<li><strong>Transient-state watchdog</strong> — any state with no interactive button is forced back to a recoverable one after <code>transientStateTimeoutSeconds</code>. Download progress resets the timer, so a slow patch is never interrupted. This is a catch-all for a coroutine that dies (Unity logs the exception and silently stops it), not a substitute for per-operation error handling.</li>
+<li><strong>Re-entrancy interlocks</strong> — <code>isConnecting</code>, <code>isLaunching</code>, and <code>isUpdating</code> guard the three entry points. The button state alone is insufficient, because the update flow is also entered directly from the version check.</li>
+<li><strong>Signed requests</strong> — every call carries an <code>X-FishMMO-Client</code> HMAC header via <code>ClientApiSigner</code>, which the IPFetch and Patcher servers' <code>ClientGate</code> middleware validates.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>The <code>ClientLauncher</code> scene, with <code>ClientLauncher</code> and its four service components wired in the Inspector. A missing dependency is reported at <code>Awake</code> and the launcher refuses to run rather than null-referencing mid-flow.</li>
+<li><code>Constants.Configuration.APIHost</code> and <code>LauncherHtmlUrl</code>, both baked at build time from <code>GeneratedHostConfig</code> (CI substitutes them from <code>FISHMMO_ROOT_DOMAIN</code>).</li>
+<li><code>ClientApiSecret.generated.cs</code>, produced by <strong>FishMMO Dashboard &gt; Game Settings</strong>. A build still carrying the sentinel value will be rejected by <code>ClientGate</code>.</li>
+<li>The Updater executable present at the install root (<code>Constants.Configuration.UpdaterExecutable</code>).</li>
+</ul>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector">Inspector</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>htmlViewURL</code></td>
+<td><code>string</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Per-scene override for the news URL. <strong>Leave empty.</strong></td>
+</tr>
+<tr>
+<td><code>divClass</code></td>
+<td><code>string</code></td>
+<td>—</td>
+<td>CSS class of the <code>div</code> whose text is extracted from the fetched page</td>
+</tr>
+<tr>
+<td><code>defaultScreenWidth</code> / <code>defaultScreenHeight</code></td>
+<td><code>int</code></td>
+<td>—</td>
+<td>Window size applied on launch</td>
+</tr>
+<tr>
+<td><code>transientStateTimeoutSeconds</code></td>
+<td><code>float</code></td>
+<td><code>120</code></td>
+<td>Watchdog timeout for states with no interactive button</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Why <code>htmlViewURL</code> defaults to empty.</strong> A non-empty default gets baked into the scene the first time it is saved, and the serialized copy then silently wins over the build-time configured value for every subsequent build — which is exactly how a stale hard-coded URL once shipped. Resolution happens at read time instead: <code>HtmlViewURL</code> falls back to <code>Constants.Configuration.LauncherHtmlUrl</code> whenever the override is blank.</p>
+</blockquote>
+<h3 id="ui-text">UI text</h3>
+<p>All player-facing strings are constants on the nested <code>UIText</code> class — status labels (<code>StatusPatchUnavailable</code>, <code>StatusServerRejectedVersion</code>, …), long-form explanations (<code>DetailPatchUnavailable</code>, <code>DetailApplyingPatch</code>, …), and log format strings. Change copy there, not at the call sites.</p>
+<h2 id="state-machine">State Machine</h2>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Button</th>
+<th>Click action</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LoadingNews</code></td>
+<td>disabled</td>
+<td>—</td>
+<td>Fetching the news page</td>
+</tr>
+<tr>
+<td><code>Connecting</code></td>
+<td>disabled</td>
+<td>—</td>
+<td>Contacting the API host</td>
+</tr>
+<tr>
+<td><code>CheckingVersion</code></td>
+<td>disabled</td>
+<td>—</td>
+<td>Comparing installed version to the server's</td>
+</tr>
+<tr>
+<td><code>DownloadingPatch</code></td>
+<td>disabled</td>
+<td>—</td>
+<td>Progress bar visible; heartbeats the watchdog</td>
+</tr>
+<tr>
+<td><code>ApplyingPatch</code></td>
+<td>disabled</td>
+<td>—</td>
+<td>Updater has been handed the install</td>
+</tr>
+<tr>
+<td><code>ReadyToPlay</code></td>
+<td><strong>Play</strong></td>
+<td><code>PlayButtonLaunch</code></td>
+<td>Versions match</td>
+</tr>
+<tr>
+<td><code>ClientAhead</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>Client is newer than the server — re-check, do <strong>not</strong> allow Play</td>
+</tr>
+<tr>
+<td><code>PatchUnavailable</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>No upgrade path from this version; re-runs the version check rather than retrying an impossible download</td>
+</tr>
+<tr>
+<td><code>ServerRejectedVersion</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>Reserved — see note below</td>
+</tr>
+<tr>
+<td><code>ConnectionFailed</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>Retry</td>
+</tr>
+<tr>
+<td><code>VersionCheckFailed</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>Retry</td>
+</tr>
+<tr>
+<td><code>PatchDownloadFailed</code></td>
+<td>enabled</td>
+<td><code>PlayButtonUpdate</code></td>
+<td>Retry the download</td>
+</tr>
+<tr>
+<td><code>UpdaterFailed</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>Re-check, then retry the update</td>
+</tr>
+<tr>
+<td><code>LaunchFailed</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>Back to the version check — a failing scene load is often fixed by re-patching</td>
+</tr>
+<tr>
+<td><code>VersionError</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>Retry; version parse failures can be transient after a partial patch</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><code>ServerRejectedVersion</code> is defined and wired into the state machine but not currently reachable. Version rejection is presently handled during the authentication handshake (<code>ClientAuthenticationResult.VersionMismatch</code>) and rendered through a separate UI path. The state exists for a future version-check endpoint that rejects a client outright without offering a patch.</p>
+</blockquote>
+<h2 id="the-update-path">The Update Path</h2>
+<p><code>GetLatestVersion()</code> walks the API host candidates, then compares versions:</p>
+<ul>
+<li><strong>client == server</strong> → <code>ReadyToPlay</code>.</li>
+<li><strong>client &gt; server</strong> → <code>ClientAhead</code>. Play stays blocked.</li>
+<li><strong>client &lt; server</strong> → if <code>PatchInfo.PatchAvailable</code> is false, <code>PatchUnavailable</code>; otherwise <code>PlayButtonUpdate()</code> runs immediately.</li>
+</ul>
+<p><code>VersionConfig.Parse</code> returns <code>null</code> for malformed input rather than throwing, so both versions are null-checked explicitly. A null client version would otherwise compare as older than everything and start downloading a patch for a version the server has never heard of.</p>
+<p><code>PlayButtonUpdate()</code> then:</p>
+<ol>
+<li>Computes the destination as <code>Constants.GetPatchesDirectory()</code> + <code>Constants.GetPatchFileName(currentVersion, latestVersion)</code> — i.e. <code>&lt;install root&gt;/Patches/&lt;from&gt;-&lt;to&gt;.zip</code>. <strong>This path is a contract.</strong> The Updater resolves the same location from its own base directory and looks nowhere else; if the archive is not exactly there it reports &quot;patch file not found&quot;, relaunches the client unchanged, and the launcher detects the same mismatch on the next run. See the <a href="../../../../../FishMMO-Patcher/Updater/README.html">Updater README</a>.</li>
+<li>Downloads from the pinned host, verifying the SHA-256 when the server supplied one.</li>
+<li>If the server answers <strong>204 No Content</strong> mid-flight — the version we checked against was superseded, or we raced a deployment — no archive is written and the launcher goes straight to <code>ReadyToPlay</code> instead of invoking the Updater on a file that does not exist.</li>
+<li>Otherwise enters <code>ApplyingPatch</code> and starts the Updater. The archive is deliberately <strong>not</strong> deleted here: the Updater is about to read it, and removes it itself once applied.</li>
+<li>On successful handoff, quits promptly so the client binaries are released for patching. <code>LaunchUpdater</code> must not wait for the Updater to exit — the Updater kills this process by PID before patching, so waiting is a mutual deadlock.</li>
+</ol>
+<p>A download error deletes the partial file best-effort and lands in <code>PatchDownloadFailed</code>.</p>
+<h2 id="handoff-to-the-game">Handoff to the Game</h2>
+<p><code>PlayButtonLaunch()</code> enqueues the <code>ClientPostboot</code> scene, waits on the returned <code>AddressableLoadBatch</code>, then in <code>OnPostbootSceneLoaded</code>:</p>
+<ol>
+<li>Unloads the <code>ClientLauncher</code> scene.</li>
+<li>Finds the <code>ClientPostbootSystem</code> among the loaded scene's roots and calls <code>StartBootstrap()</code> on it.</li>
+</ol>
+<p>If <code>ClientPostboot</code> is already loaded — reachable when a previous launch failed — the launch completes directly instead of enqueueing a second load, which would otherwise dead-end.</p>
+<h2 id="api-host-resolution-and-request-signing">API Host Resolution and Request Signing</h2>
+<p><code>ApiHostResolver</code> turns the configured <code>APIHost</code> into an ordered candidate list and exposes <code>SanitizeForLog</code> so hosts can be logged without leaking full URLs. Loopback targets are detected explicitly.</p>
+<p><code>ClientApiSigner</code> builds the gate header:</p>
+<pre><code>X-FishMMO-Client: v1.&lt;timestamp&gt;.&lt;nonce&gt;.&lt;signature&gt;
+</code></pre>
+<p>The signing secret lives in <code>GeneratedClientSecret.Secret</code> (<code>ClientApiSecret.generated.cs</code>). <strong>It is not a credential.</strong> It ships inside the client binary and is recoverable by anyone with the build; its job is to filter crawlers, port scanners, and blatant header forgery. Real authority comes from the SRP-derived session token issued by the auth server.</p>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to verify</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>News renders</td>
+<td>Launch a standalone build</td>
+<td>News panel populated; on failure, a logged warning and the flow continues to the version check</td>
+</tr>
+<tr>
+<td>Host failover</td>
+<td>Point the first candidate at a dead host</td>
+<td>Debug log per failed candidate, then success on the next</td>
+</tr>
+<tr>
+<td>Up-to-date client</td>
+<td>Launch at the server's version</td>
+<td>Button reads <strong>Play</strong></td>
+</tr>
+<tr>
+<td>Patch applied</td>
+<td>Launch an outdated client with a published patch</td>
+<td>Download progress → <code>ApplyingPatch</code> → launcher exits → client restarts at the new version, and <code>Patches/</code> is empty afterwards</td>
+</tr>
+<tr>
+<td>No upgrade path</td>
+<td>Launch an outdated client the server has no patch for</td>
+<td><code>PatchUnavailable</code>, button re-runs the version check — never a repeating 404</td>
+</tr>
+<tr>
+<td>Corrupt download</td>
+<td>Corrupt the served archive</td>
+<td>Hash mismatch → <code>PatchDownloadFailed</code>, partial file removed</td>
+</tr>
+<tr>
+<td>Watchdog</td>
+<td>Force a transient state and stall it</td>
+<td>After <code>transientStateTimeoutSeconds</code>, an error is logged and the UI returns to a usable button</td>
+</tr>
+<tr>
+<td>Slow patch not interrupted</td>
+<td>Throttle the download below the timeout</td>
+<td>Progress heartbeats keep the watchdog from firing</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<pre><code class="lang-mermaid">flowchart TD
+    Start([Launcher scene loads]) --&gt; News[LoadingNews&lt;br/&gt;fetch + extract div text]
+    News --&gt; Connect[Connecting]
+    Connect --&gt; Check[CheckingVersion&lt;br/&gt;walk API host candidates]
+
+    Check --&gt;|all hosts failed| CF[ConnectionFailed / VersionCheckFailed]
+    Check --&gt;|unparseable version| VE[VersionError]
+    Check --&gt; Cmp{client vs server}
+
+    Cmp --&gt;|equal| Ready[ReadyToPlay]
+    Cmp --&gt;|client newer| Ahead[ClientAhead]
+    Cmp --&gt;|client older| Avail{patch_available?}
+
+    Avail --&gt;|no| Unavail[PatchUnavailable&lt;br/&gt;full reinstall required]
+    Avail --&gt;|yes| DL[DownloadingPatch&lt;br/&gt;to Patches/from-to.zip]
+
+    DL --&gt;|204 No Content| Ready
+    DL --&gt;|hash mismatch / error| DF[PatchDownloadFailed]
+    DL --&gt;|verified| Apply[ApplyingPatch]
+
+    Apply --&gt; Updater[Start Updater, then Quit]
+    Apply --&gt;|failed to start| UF[UpdaterFailed]
+    Updater --&gt; Restart([Updater patches and relaunches client])
+
+    Ready --&gt;|Play| Load[Load ClientPostboot]
+    Load --&gt;|failed| LF[LaunchFailed]
+    Load --&gt; Hand[Unload launcher scene&lt;br/&gt;ClientPostbootSystem.StartBootstrap]
+    Hand --&gt; Game([Game])
+
+    CF --&gt; Connect
+    VE --&gt; Connect
+    Ahead --&gt; Connect
+    Unavail --&gt; Connect
+    UF --&gt; Connect
+    LF --&gt; Connect
+    DF --&gt; DL
+
+    Watchdog[[Transient-state watchdog]] -.-&gt;|no button for 120s| Connect
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>Client/Launcher/
+├── ClientLauncher.cs            # MonoBehaviour: UI, state machine, orchestration
+├── LauncherState.cs             # The 15 UI/process states
+├── PatchInfo.cs                 # Server patch metadata: UpToDate, PatchAvailable, Sha256, Size
+├── VersionFetch.cs              # Version response parsing
+│
+├── IPatchServerService.cs       # Contract: GetLatestVersion, DownloadPatch
+├── HttpPatchServerService.cs    #   → HTTP implementation with SHA-256 verification
+├── IHtmlContentFetcher.cs       # Contract: fetch a page, extract a div's text
+├── UnityHtmlContentFetcher.cs   #   → UnityWebRequest implementation
+├── IUpdaterLauncher.cs          # Contract: start the external updater and hand off
+├── SystemUpdaterLauncher.cs     #   → Process.Start implementation
+├── UnityWebRequestService.cs    # Shared UnityWebRequest wrapper
+│
+├── ApiHostResolver.cs           # Candidate host list, loopback detection, log sanitizing
+├── ClientApiSigner.cs           # X-FishMMO-Client HMAC header
+└── ClientApiSecret.cs           # Compiled-in gate secret (NOT a credential)
+</code></pre>
+<p><code>ClientApiSecret.generated.cs</code> sits alongside these but is generated, not committed.</p>
+<h3 id="related">Related</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Relationship</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../Shared/Implementation/Bootstrap/README.html">Bootstrap</a></td>
+<td>Loads the launcher scene; the launcher hands back to <code>ClientPostbootSystem</code></td>
+</tr>
+<tr>
+<td><a href="../../../../../FishMMO-Patcher/Updater/README.html">Updater</a></td>
+<td>Consumes the downloaded archive; shares the <code>Patches/</code> path contract</td>
+</tr>
+<tr>
+<td><a href="../../../../../FishMMO-WebServers/PatcherASP.NET/README.html">Patcher server</a></td>
+<td>Serves <code>/latest_version</code> metadata and the patch archive</td>
+</tr>
+<tr>
+<td><code>Constants.Configuration</code></td>
+<td><code>APIHost</code>, <code>LauncherHtmlUrl</code>, <code>UpdaterExecutable</code>, <code>PatchesDirectoryName</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is distributed under the FishMMO project license.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

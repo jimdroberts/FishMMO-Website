@@ -202,20 +202,62 @@
 <li><strong><code>MapHealthChecks</code></strong> — <code>/healthz</code> endpoint with patch version status.</li>
 </ol>
 <h2 id="endpoints">Endpoints</h2>
-<h3 id="get-latest_version"><code>GET /latest_version</code></h3>
-<p>Returns the latest patch version string as JSON:</p>
+<h3 id="get-latest_version--head-latest_version"><code>GET /latest_version</code> · <code>HEAD /latest_version</code></h3>
+<p>Metadata endpoint. Returns the latest patch version, and — when the caller
+identifies its own version — whether a patch path exists for it.</p>
+<p>Without <code>?from=</code>:</p>
 <pre><code class="lang-json">{ &quot;latest_version&quot;: &quot;1.2.3&quot; }
 </code></pre>
+<p>With <code>?from={clientVersion}</code>, one of three shapes:</p>
+<pre><code class="lang-json">{ &quot;latest_version&quot;: &quot;1.2.3&quot;, &quot;up_to_date&quot;: true }
+{ &quot;latest_version&quot;: &quot;1.2.3&quot;, &quot;patch_available&quot;: false }
+{ &quot;latest_version&quot;: &quot;1.2.3&quot;, &quot;patch_available&quot;: true, &quot;sha256&quot;: &quot;&lt;hex&gt;&quot;, &quot;size&quot;: 10485760 }
+</code></pre>
+<p>The client uses this to distinguish &quot;you are current&quot;, &quot;you are behind and we
+have a patch for you&quot; (with the digest and byte size it should expect), and
+&quot;you are behind but no patch upgrades <em>your</em> version&quot; — the last of which is
+not retryable and drives the launcher's <code>PatchUnavailable</code> state.</p>
+<p><strong>Caching and integrity headers:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Header</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ETag</code></td>
+<td>Weak ETag derived from the answer (<code>W/&quot;&lt;sha256&gt;&quot;</code> when a patch is indexed, otherwise a version-derived token). New patches invalidate it immediately.</td>
+</tr>
+<tr>
+<td><code>Cache-Control</code></td>
+<td><code>public, max-age=30</code> — launchers polling on a tight loop do not hammer the origin.</td>
+</tr>
+<tr>
+<td><code>X-FishMMO-Version-Signature</code></td>
+<td>HMAC-SHA256 over <code>latest_version=&lt;v&gt;&amp;etag_source=&lt;token&gt;</code>, signed with the gate secret. Lets the client confirm the manifest came from an authentic patcher rather than a MITM proxy or spoofed DNS.</td>
+</tr>
+</tbody>
+</table>
+<p><code>If-None-Match</code> is honoured (RFC 7232 comma-separated list) and short-circuits
+with <code>304 Not Modified</code>. <code>HEAD</code> emits identical headers with no body.</p>
 <h3 id="get-version"><code>GET /{version}</code></h3>
 <p>Downloads the patch file for upgrading from <code>{version}</code> to the latest version.</p>
 <p><strong>Flow:</strong></p>
 <ol>
 <li>Parse client version via <code>VersionConfig.Parse(version)</code>.</li>
 <li>Parse server latest version via <code>VersionConfig.Parse(latest)</code>.</li>
-<li>If client &gt;= latest: return <code>{ &quot;status&quot;: &quot;AlreadyUpdated&quot; }</code>.</li>
-<li>Look for <code>Patches/{clientVersion}-{latestVersion}.zip</code>.</li>
+<li>If client &gt;= latest: return <code>204 No Content</code>.</li>
+<li>Look for the patch indexed as <code>{clientVersion}-{latestVersion}.zip</code>.</li>
 <li>If found: stream as <code>application/octet-stream</code>.</li>
 </ol>
+<blockquote>
+<p>This route streams a binary archive and the launcher writes the response body
+straight to disk without inspecting it. The up-to-date case is therefore a
+bodiless <code>204</code>, never a <code>200</code> carrying a JSON status document — such a
+document would be saved as if it were the patch and handed to the Updater.</p>
+</blockquote>
 <p><strong>Response Codes:</strong></p>
 <table>
 <thead>
@@ -227,11 +269,19 @@
 <tbody>
 <tr>
 <td>200</td>
-<td>Patch file streamed, or already up to date</td>
+<td>Patch file streamed</td>
+</tr>
+<tr>
+<td>204</td>
+<td>Client is already at or ahead of the latest version — nothing to download</td>
+</tr>
+<tr>
+<td>304</td>
+<td><code>latest_version</code> only: caller's <code>If-None-Match</code> matches the current ETag</td>
 </tr>
 <tr>
 <td>400</td>
-<td>Invalid client version format</td>
+<td>Invalid client version format (or invalid <code>?from=</code> value)</td>
 </tr>
 <tr>
 <td>401</td>
@@ -327,7 +377,7 @@ VALUES ('client_gate_secret', 'your-32+byte-secret', NOW(), NOW());
 <ul>
 <li><strong>IPFetchServer</strong> (via <code>GateSecretHolder</code>)</li>
 <li><strong>Patcher</strong> (via <code>GateSecretHolder</code>; also used by <code>PatchVersionService</code> to HMAC-sign version manifest responses)</li>
-<li><strong>Unity client</strong> (embedded via Unity Editor: <strong>FishMMO &gt; Security &gt; Fetch Client Secrets</strong>, which writes <code>ClientApiSecret.generated.cs</code>)</li>
+<li><strong>Unity client</strong> (embedded via Unity Editor: <strong>FishMMO Dashboard</strong> (<code>FishMMO &gt; FishMMO Dashboard</code>, or Ctrl+Shift+D) &gt; <strong>Game Settings</strong>, which writes <code>ClientApiSecret.generated.cs</code>)</li>
 </ul>
 <p>The <code>client_gate_secret</code> is a single value (or a comma-separated set for rotation). If a comma-separated keyset is provided, all keys are tried during verification so old clients continue to work during rotation.</p>
 <h2 id="security">Security</h2>
@@ -359,17 +409,24 @@ VALUES ('client_gate_secret', 'your-32+byte-secret', NOW(), NOW());
     Track --&gt; Ready[Ready for requests]
     DB[(&quot;PostgreSQL\ndeployment_secrets&quot;)] -.-&gt; LoadSecret
 
-    Client[Unity Client] --&gt;|GET /latest_version| Ready
-    Ready --&gt;|&quot;{ latest_version }&quot;| Client
+    Client[Unity Client] --&gt;|&quot;GET /latest_version?from=clientVer&quot;| Meta{Compare versions}
+    Meta -- &quot;client up to date&quot; --&gt; UpToDate[&quot;{ latest_version, up_to_date: true }&quot;]
+    Meta -- &quot;behind, patch indexed&quot; --&gt; HavePatch[&quot;{ latest_version, patch_available: true,&lt;br/&gt;sha256, size }&quot;]
+    Meta -- &quot;behind, no path&quot; --&gt; NoPatch[&quot;{ latest_version, patch_available: false }&quot;]
+    UpToDate --&gt; Signed
+    HavePatch --&gt; Signed
+    NoPatch --&gt; Signed
+    Signed[&quot;+ ETag, Cache-Control,&lt;br/&gt;X-FishMMO-Version-Signature&quot;] --&gt; Client
 
     Client --&gt;|GET /clientVersion| Cmp{Client greater or equal to latest?}
-    Cmp -- yes --&gt; AlreadyUpdated[&quot;{ status: AlreadyUpdated }&quot;]
-    Cmp -- no --&gt; Lookup[&quot;Look for Patches/clientVer-latestVer.zip&quot;]
+    Cmp -- yes --&gt; NoContent[&quot;204 No Content&quot;]
+    Cmp -- no --&gt; Lookup[&quot;Look for indexed clientVer-latestVer.zip&quot;]
     Lookup --&gt;|found| Stream[Stream as application/octet-stream]
     Lookup --&gt;|missing| NotFound[404]
 
+    Ready -.-&gt;|serves both routes| Client
     Stream --&gt; Client
-    AlreadyUpdated --&gt; Client
+    NoContent --&gt; Client
     NotFound --&gt; Client
 </code></pre>
 <ul>
