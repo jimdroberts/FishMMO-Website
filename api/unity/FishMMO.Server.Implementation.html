@@ -116,6 +116,26 @@ All logic lives in <a class="xref" href="../auth/FishMMO.Auth.Implementation.Acc
 </dd>
     </dl>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.AccountVerificationPolicy.html">AccountVerificationPolicy</a></dt>
+      <dd><p>Single source of truth for the development-only &quot;skip email verification&quot; policy
+driven by the <code>AutoVerifyAccounts</code> configuration key.</p>
+<p>Two call sites must agree on this answer:</p>
+<ul>
+<li>Account creation, which persists <code>verified = true</code> instead of generating a
+verify code, queueing a verification email, and enrolling mandatory TOTP.</li>
+<li>The login lookup, which otherwise rejects an unverified account once
+<code>verification_email_sent_at</code> has been stamped. Without the login side
+honouring the flag, accounts created before auto-verify was enabled (or created
+against a production build) stay locked out of a local server forever.</li>
+</ul>
+<p>The compile-time guard is deliberate: a production player build ignores the key
+entirely, so a Development <code>LoginServer.cfg</code> that leaks into a production
+deployment cannot re-enable the bypass. Consequently the flag also has no effect in a
+server binary built with the Production working environment — build the server with
+the Development working environment for local testing.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Implementation.AsyncWorkerData.html">AsyncWorkerData</a></dt>
       <dd><p>Centralized async work queue backed by System.Threading.Channels.</p>
 <p>Replaces fire-and-forget <code>_ = SomeAsync(...)</code> across all server systems with
@@ -315,6 +335,42 @@ All logic lives in <a class="xref" href="../auth/FishMMO.Auth.Implementation.Tok
 Delegates all handshake, channel, worker, and protocol logic to
 <a class="xref" href="../auth/FishMMO.Auth.Implementation.TokenAuthenticatorCore-1.html">TokenAuthenticatorCore&lt;TConnection&gt;</a> in FishMMO-Auth.
 This class bridges FishNet broadcast events to the core and provides Unity/DB callbacks.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.UnitySyncOverAsync.html">UnitySyncOverAsync</a></dt>
+      <dd><p>Blocks the calling thread on an async operation without risking a
+<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.synchronizationcontext">SynchronizationContext</a> deadlock.</p>
+<p>
+Unity installs a <code>UnitySynchronizationContext</code> on the main thread; continuations
+posted to it only run when the player loop drains them. Any <code>await</code> in the callee
+that captures that context — i.e. any <code>await</code> without <code>ConfigureAwait(false)</code>,
+anywhere in the call chain — can therefore never resume while the main thread sits in
+<code>GetResult()</code>/<code>.Result</code>/<code>.Wait()</code>. The server then stays alive but never
+finishes <code>InitializeOnce</code>, so the transport never binds its port.
+</p>
+<p>
+<b>Shutdown paths only.</b> <code>OnDestroy</code>/<code>OnApplicationQuit</code> cannot yield and the
+process exits immediately afterwards, so there is no continuation to hand work to — a
+bounded block is the only way to flush pending state before exit. Startup has no such
+constraint and must not use this: behaviours initialize through
+<code>ServerBehaviour.InitializeOnceAsync</code>, driven by <code>Server</code>'s initialization
+coroutine, which leaves the main thread free to drain continuations.
+</p>
+<p>
+Where a bounded block genuinely is required, route it through here rather than
+hand-rolling <code>Task.Run(...).Wait(...)</code>: call sites should not have to audit an entire
+EF/Npgsql call chain to know whether blocking is safe.
+</p>
+</dd>
+    </dl>
+    <h3 id="structs">
+Structs
+</h3>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.KekLoadResult.html">SigningKeyKekProvider.KekLoadResult</a></dt>
+      <dd><p>Outcome of a KEK load. <a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.KekLoadResult.html#FishMMO_Server_Implementation_SigningKeyKekProvider_KekLoadResult_Kek">Kek</a> is non-null only when <a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.KekLoadResult.html#FishMMO_Server_Implementation_SigningKeyKekProvider_KekLoadResult_Success">Success</a>
+is <code>true</code>; otherwise <a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.KekLoadResult.html#FishMMO_Server_Implementation_SigningKeyKekProvider_KekLoadResult_Error">Error</a> explains why, for fail-closed callers.</p>
 </dd>
     </dl>
     <h3 id="interfaces">

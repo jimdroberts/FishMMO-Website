@@ -152,6 +152,52 @@ by the payload. Native raw-QUIC peers exchange bare payloads.</p>
 both be built from this revision or later; a pre-framing peer cannot
 interoperate with a framing one.</p>
 </blockquote>
+<h2 id="webgl-bridge">WebGL bridge</h2>
+<p><code>WebGL/plugin/WebTransport.jslib</code> is the browser half of the transport, driven
+from <code>WebGL/WebTransportJSLib.cs</code>. Three rules in it are non-obvious and easy to
+undo by accident.</p>
+<h3 id="session-liveness-is-not-readystate">Session liveness is not <code>readyState</code></h3>
+<p>Nothing in the bridge gates traffic on <code>wt.readyState === 'connected'</code>. That
+property is absent on some Chromium builds and can still read <code>'connecting'</code>
+immediately after the <code>ready()</code> promise resolves, so gating on it dropped the
+very first <code>ClientHandshake</code> — the client logged <code>WIRE SEND FAIL</code> while the
+server logged <code>prefill=0</code>, and the connection stalled until it timed out.</p>
+<p>The single source of truth is the <code>_isLive(session)</code> helper: once <code>ready()</code>
+resolves it sets <code>session._ready</code> and the session counts as live until it is
+explicitly <code>'closed'</code>/<code>'failed'</code> or <code>WTDisconnect</code> sets <code>session._closed</code>. Send
+paths, the datagram pump, and the incoming-stream pump all call it. Reintroducing
+a bare <code>readyState</code> check anywhere brings the dropped handshake back.</p>
+<h3 id="one-persistent-outgoing-stream-opened-before-started">One persistent outgoing stream, opened before Started</h3>
+<p>Reliable sends share a single bidirectional stream whose writer is cached in
+<code>session._streamWriter</code>; a new stream is opened only when the cached writer dies
+(<code>desiredSize === null</code>). Opening a stream per packet exhausts the browser's
+~100–200 stream limit within seconds at gameplay rates.</p>
+<p>That stream is warmed up inside <code>wt.ready</code> — <code>_writeReliable(session, null)</code>
+creates it <em>before</em> the <code>onOpen</code> callback tells C# the socket is Started, so the
+first handshake packet cannot race <code>createBidirectionalStream()</code>. Sends issued
+while the stream is still resolving are queued in <code>session._sendQueue</code> and
+flushed in order once the writer exists, so ordering holds either way.</p>
+<p>The readable half of that client-opened stream is pumped too: the server replies
+on the stream the client opened, and leaving it undrained silently discards every
+login result, spawn, and RPC.</p>
+<h3 id="freeing-heap-pointers-call-wtfree-never-_free">Freeing heap pointers: call <code>WTFree</code>, never <code>_free</code></h3>
+<p><code>WTGetLastErrorMessage</code> returns a <code>_malloc</code>'d UTF-8 pointer that managed code
+must release. C# frees it through the <code>WTFree</code> jslib export, wrapped by
+<code>WebTransportJSLib.WASMFree</code>:</p>
+<pre><code class="lang-csharp">IntPtr msgPtr = WebTransportJSLib.WTGetLastErrorMessage(index);
+if (msgPtr != IntPtr.Zero)
+{
+    string detail = Marshal.PtrToStringUTF8(msgPtr);
+    WebTransportJSLib.WASMFree(msgPtr);
+}
+</code></pre>
+<p>Do <strong>not</strong> replace that with <code>[DllImport(&quot;__Internal&quot;, EntryPoint = &quot;_free&quot;)]</code>.
+IL2CPP resolves a <code>DllImport</code> entry point against the linked libc symbol name,
+which modern Emscripten (Unity 6) emits as <code>free</code>, so the <code>_free</code> spelling fails
+the WebGL link with <code>undefined symbol: _free</code>. Inside the <code>.jslib</code> the leading
+underscore <em>is</em> correct — <code>_free</code> there is the JS-side name of the same
+allocator as <code>_malloc</code>. The underscore rule is opposite on each side of the
+boundary, which is exactly why the wrapper exists.</p>
 <h2 id="tls">TLS</h2>
 <p>The <strong>server</strong> presents a certificate the same way it always has, via
 <code>CertificatePath</code> / <code>PrivateKeyPath</code> in its <code>.cfg</code>. Nothing about server TLS

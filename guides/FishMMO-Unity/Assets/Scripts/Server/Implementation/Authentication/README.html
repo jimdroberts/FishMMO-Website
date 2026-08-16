@@ -169,10 +169,31 @@ TokenServerAuthenticator : BaseServerAuthenticator
 <tr>
 <td><strong>Main Thread</strong></td>
 <td><code>Broadcast()</code>, <code>Disconnect()</code>, <code>OnAuthenticationResult</code></td>
-<td>N/A (Unity main loop)</td>
+<td><strong>No</strong> — see below</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Never block the Unity main thread on I/O.</strong> It is the thread that drains async
+continuations, so blocking it stalls the very work being waited on. <code>LoginServerSystem</code>
+used to resolve the signing-key KEK synchronously during <code>InitializeOnce</code>, and the process
+stayed alive with <code>login_servers.last_pulse</code> frozen and WebTransport never binding <code>:7770</code>.</p>
+<p>The rules that replaced it:</p>
+<ul>
+<li><strong>Startup</strong> — behaviours override <code>ServerBehaviour.InitializeOnceAsync</code> and <code>await</code> their
+I/O. <code>Server</code> drives them from a coroutine and starts the transport from the completion
+callback, so the player loop keeps running and continuations can be drained.</li>
+<li><strong>Worker paths</strong> — stay asynchronous end to end. <code>TokenServerAuthenticator</code> gates its
+cached KEK with a <code>SemaphoreSlim</code> and awaits <code>SigningKeyKekProvider.LoadFromDatabaseAsync</code>,
+so a token verification never parks a pool thread on a database round trip.</li>
+<li><strong>Shutdown only</strong> — <code>OnDestroy</code>/<code>OnApplicationQuit</code> cannot yield and the process exits
+immediately after, so a bounded block is the only way to flush. Route it through
+<code>UnitySyncOverAsync</code>, which starts the work off the synchronization context, cancels on
+timeout, rethrows the original exception rather than an <code>AggregateException</code>, and clamps
+every call to a shared budget so teardown fits inside a supervisor's grace period.</li>
+</ul>
+<p><code>ConfigureAwait(false)</code> on your own awaits is <strong>not</strong> sufficient protection: it only governs
+the await it is attached to, and it says nothing about a caller that blocks. The fix is to
+not block, not to annotate.</p>
 <p>Workers enqueue <code>Action</code> delegates into a <code>ConcurrentQueue&lt;Action&gt;</code> held by <code>BaseServerAuthenticator</code>, drained each frame by <code>Update()</code> → <code>DrainMainThreadQueue()</code>. A per-frame cap (<code>maxMainThreadActionsPerUpdate = 100</code>, Inspector-configurable) time-slices draining to avoid frame spikes, with back-pressure logging when the queue is not fully drained.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
@@ -515,6 +536,18 @@ internal override Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(
 </thead>
 <tbody>
 <tr>
+<td>LoginServer reached the transport</td>
+<td>Log: <code>[wt:INFO] Server started on &lt;address&gt;:7770</code>. If the process is alive but this never appears and <code>login_servers.last_pulse</code> is stale, startup stalled before <code>StartServer()</code></td>
+</tr>
+<tr>
+<td>Startup registration recovered</td>
+<td>On a database that is slow to come up, expect retry lines, then success. After the final attempt the process exits with code 1 rather than idling unbound</td>
+</tr>
+<tr>
+<td>Signing-key KEK loaded</td>
+<td>No <code>&quot;Signing-key KEK not provisioned — persisting raw HMAC key&quot;</code> warning. That warning means World/Scene servers cannot unwrap tokens</td>
+</tr>
+<tr>
 <td>Workers started</td>
 <td>Log output: <code>&quot;Workers initialized (Verify=2, Proof=2)&quot;</code> or <code>&quot;Workers initialized (Token=2)&quot;</code></td>
 </tr>
@@ -765,7 +798,9 @@ Server/
 │   ├── IServerAuthenticator.cs                # Interface: Server ref + worker lifecycle
 │   ├── BaseServerAuthenticator.cs             # Composition host: owns Core, routes FishNet events to core
 │   ├── ServerAuthenticator.cs                 # SRP wrapper: inner ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkConnection&gt;
-│   └── TokenServerAuthenticator.cs            # Token wrapper: inner TokenCore : TokenAuthenticatorCore&lt;NetworkConnection&gt;
+│   ├── TokenServerAuthenticator.cs            # Token wrapper: inner TokenCore : TokenAuthenticatorCore&lt;NetworkConnection&gt;
+│   ├── AccountVerificationPolicy.cs           # Single source of truth for the email-verification gate (AutoVerifyAccounts)
+│   └── SigningKeyKekProvider.cs               # Loads signing_key_kek from deployment_secrets (async; never blocks)
 │
 └── Implementation/World/
     ├── WorldServer/Authentication/

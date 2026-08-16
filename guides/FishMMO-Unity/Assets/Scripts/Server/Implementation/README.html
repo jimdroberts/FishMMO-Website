@@ -206,7 +206,8 @@
 <h2 id="features">Features</h2>
 <ul>
 <li><strong>Composition-root architecture</strong> — <code>Server</code> wires core services, networking, database, authentication, behaviours, and data containers in a single orchestrated startup.</li>
-<li><strong>Modular server behaviours</strong> — <code>ServerBehaviour</code> (ScriptableObject-based) provides a plug-in lifecycle: <code>InitializeOnce</code>, <code>OnUpdate</code>, <code>OnDeinitialize</code>.</li>
+<li><strong>Modular server behaviours</strong> — <code>ServerBehaviour</code> (ScriptableObject-based) provides a plug-in lifecycle: <code>InitializeOnce</code> / <code>InitializeOnceAsync</code>, <code>OnUpdate</code>, <code>OnDeinitialize</code>.</li>
+<li><strong>Non-blocking startup</strong> — behaviours are initialized one at a time through <code>InitializeAllAsync</code>, awaited from a coroutine in <code>Server</code>, and the transport starts from the completion callback. Failed initialization retries with exponential backoff and then exits the process rather than leaving a live server that never binds its port.</li>
 <li><strong>Auto-discovered runtime data containers</strong> — behaviours declare <code>[RequiresDataContainer(typeof(T))]</code>; the server discovers, deduplicates, priority-sorts, and creates containers automatically.</li>
 <li><strong>Generic component registries</strong> — <code>ServerComponentRegistry&lt;TNet, TConn, TComponent&gt;</code> registers components under concrete type and all <code>IServerComponent</code>-derived interfaces for dependency lookup.</li>
 <li><strong>Network abstraction</strong> — <code>INetworkManagerWrapper</code> / <code>FishNetNetworkWrapper</code> decouple the server from FishNet internals, exposing start/stop, transport config, broadcast registration, and authenticator attachment.</li>
@@ -262,7 +263,16 @@
 <h3 id="adding-a-new-server-behaviour">Adding a New Server Behaviour</h3>
 <ol>
 <li>Create a class extending <code>ServerBehaviour</code>.</li>
-<li>Implement <code>InitializeOnce()</code>, <code>OnDeinitialize()</code>, and optionally <code>OnUpdate(float deltaTime)</code>.</li>
+<li>Implement <code>InitializeOnce()</code>, <code>OnDeinitialize()</code>, and optionally <code>OnUpdate(float deltaTime)</code>.
+<ul>
+<li>If initialization needs I/O (database registration, for example), override
+<code>InitializeOnceAsync(CancellationToken)</code> instead and <code>await</code> the work. Never block the
+Unity main thread: it is the thread that drains async continuations, so blocking it can
+deadlock startup before the transport binds. Overrides run on the main thread and, because
+they await without <code>ConfigureAwait(false)</code>, resume on it — Unity APIs stay safe to use
+after an await.</li>
+</ul>
+</li>
 <li>If the behaviour needs mutable runtime state, create a <code>RuntimeDataContainer</code> subclass and annotate the behaviour with <code>[RequiresDataContainer(typeof(YourData))]</code>.</li>
 <li>Create a ScriptableObject asset for the behaviour and add it to the <code>Server</code> component's <code>serverBehaviours</code> list.</li>
 </ol>
