@@ -839,9 +839,9 @@ private sealed class ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkCo
 <h3 id="key-interfaces-and-classes">Key Interfaces and Classes</h3>
 <ul>
 <li><strong><code>IServerAuthenticator</code></strong> — Unity interface exposing <code>Server</code> property, <code>InitializeWorkers()</code>, and <code>ShutdownWorkers()</code>. Consumed by <code>FishNetNetworkWrapper.AttachLoginAuthenticator</code>.</li>
-<li><strong><code>BaseServerAuthenticator</code></strong> — Abstract Unity composition host. Holds <code>protected abstract BaseAuthenticatorCore&lt;NetworkConnection&gt; Core</code>. Owns the <code>ConcurrentQueue&lt;Action&gt;</code> drained by <code>Update()</code>, handles <code>InitializeOnce</code>, <code>OnRemoteConnectionState</code>, <code>ClientHandshake</code> broadcast routing, and the <code>OnAuthSweep()</code> / <code>TryLoginAsync()</code> virtual hooks. Includes an <code>OnDestroy()</code> failsafe that calls <code>ShutdownWorkers()</code>.</li>
+<li><strong><code>BaseServerAuthenticator</code></strong> — Abstract Unity composition host. Holds <code>protected abstract BaseAuthenticatorCore&lt;NetworkConnection&gt; Core</code>. Owns the <code>ConcurrentQueue&lt;Action&gt;</code> drained by <code>Update()</code>, handles <code>InitializeOnce</code>, <code>OnRemoteConnectionState</code>, <code>ClientHandshake</code> broadcast routing, and the <code>OnAuthSweep()</code> / <code>OnUpdate()</code> / <code>OnConnectionStopped()</code> / <code>TryLoginAsync()</code> virtual hooks. <code>OnConnectionStopped(conn)</code> fires before the core purges its own auth state, so subclasses can drop per-connection state that depends on the account or encryption entries. Includes an <code>OnDestroy()</code> failsafe that calls <code>ShutdownWorkers()</code>.</li>
 <li><strong><code>ServerAuthenticator</code></strong> — SRP wrapper (LoginServer). Inspector fields: <code>tokenExpirationMinutes</code>. Contains inner <code>ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkConnection&gt;</code> which implements all abstract callbacks by routing to <code>_outer</code>. The outer class provides DB method implementations (<code>FetchAccountForLoginCoreAsync</code>, <code>CheckIsOnlineCoreAsync</code>, <code>PersistTokenHashCoreAsync</code>, <code>VerifyTotpCodeCoreAsync</code>, etc.).</li>
-<li><strong><code>TokenServerAuthenticator</code></strong> — Token wrapper (base for World/Scene servers). Contains inner <code>TokenCore : TokenAuthenticatorCore&lt;NetworkConnection&gt;</code>. Provides <code>FetchSigningKeyCoreAsync</code> and <code>CheckTokenRevocationCoreAsync</code>. Subclassed by <code>WorldServerAuthenticator</code> and <code>SceneServerAuthenticator</code> (both located outside this directory under <code>Server/Implementation/World/...</code>).</li>
+<li><strong><code>TokenServerAuthenticator</code></strong> — Token wrapper (base for World/Scene servers). Inspector fields: <code>renewalTokenExpirationMinutes</code>, <code>renewalRefreshFraction</code>. Contains inner <code>TokenCore : TokenAuthenticatorCore&lt;NetworkConnection&gt;</code>. Provides <code>FetchSigningKeyCoreAsync</code> and <code>CheckTokenRevocationCoreAsync</code>, and owns the periodic token-renewal sweep (see below). Subclassed by <code>WorldServerAuthenticator</code> and <code>SceneServerAuthenticator</code> (both located outside this directory under <code>Server/Implementation/World/...</code>).</li>
 <li><strong><code>BaseAuthenticatorCore&lt;TConnection&gt;</code></strong> (FishMMO-Auth) — Engine-independent base: cookie challenge, X25519 handshake, stale-auth TTL sweep, pending-auth cap, global/per-IP handshake rate limits, worker lifecycle (<code>InitializeWorkers</code>, <code>ShutdownWorkers</code>, <code>Tick</code>), and <code>HandleConnectionStopped</code>.</li>
 <li><strong><code>SrpAuthenticatorCore&lt;TConnection&gt;</code></strong> (FishMMO-Auth) — All SRP-6a logic: bounded verify/proof channels, workers, fake SRP verifier, TOTP, per-IP/account debounce, IP cache, kick-request debounce, token generation. <code>TickRateLimits()</code> must be called each frame from the Unity wrapper's <code>OnUpdate()</code>.</li>
 <li><strong><code>TokenAuthenticatorCore&lt;TConnection&gt;</code></strong> (FishMMO-Auth) — All token-auth logic: bounded token channel, worker, HMAC verification with timing equalization, expiration and revocation checks.</li>
@@ -1083,11 +1083,46 @@ private sealed class ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkCo
 <td><code>OnAuthSweep()</code> / <code>OnUpdate()</code> in subclasses evicts stale debounce/rate-limit entries</td>
 </tr>
 <tr>
+<td><strong>Token Renewal Sweep</strong></td>
+<td><code>TokenServerAuthenticator.SweepTokenRenewals()</code> (every 5 s) re-mints tokens due for refresh; entries are removed on <code>OnConnectionStopped</code> and cleared by <code>ShutdownWorkers()</code></td>
+</tr>
+<tr>
 <td><strong>Cookie Key Rotation</strong></td>
 <td><code>InitializeWorkers()</code> regenerates HMAC key; <code>ShutdownWorkers()</code> zeroes it — in-flight cookies fail-closed</td>
 </tr>
 </tbody>
 </table>
+<h3 id="token-renewal">Token Renewal</h3>
+<p>World and Scene servers re-mint each connection's auth token on a timer, not only when it
+authenticates. A scene transfer is a re-authentication — the scene server releases the
+character and disconnects the client, which reconnects to the World server and presents its
+stored token — so a session that stayed in one scene longer than the token lifetime would
+otherwise arrive with an expired token and be dropped to the login screen.</p>
+<p><code>HandleTokenAuthSuccessAsync</code> registers a <code>TokenRenewalState</code> per ClientId (account, access
+level, LoginServer ID, next-attempt time) and issues the first token.
+<code>SweepTokenRenewals()</code> runs from <code>OnUpdate()</code> and re-issues once <code>RenewalInterval</code>
+(<code>renewalRefreshFraction</code> × lifetime, default half) has elapsed, backing off exponentially on
+failure up to the renewal interval.</p>
+<p>Three invariants make repeated renewal over one connection safe. Breaking any of them
+silently disables renewal for the rest of the session:</p>
+<ol>
+<li><strong>Build and persist before encrypting.</strong> <code>TokenService.EncryptTokenForSend</code> consumes a
+sequence number from the connection's server→client nonce context, and the client derives
+its decryption nonce from its own receive counter. A token encrypted but never delivered
+desynchronises them permanently. Every fallible step — real-IP resolution, signing-key
+fetch, <code>BuildToken</code>, the <code>IssueAsync</code> write — happens first. If the broadcast itself
+throws, the connection is dropped so the client re-authenticates on a fresh channel.</li>
+<li><strong>One renewal in flight per connection.</strong> Two overlapping renewals take sequence numbers
+<code>N</code> and <code>N+1</code> and may reach the main thread in either order; the client rejects anything
+that is not exactly the next sequence. A CAS guard on <code>TokenRenewalState.InFlight</code>
+serialises them.</li>
+<li><strong>Never mint without a verified real IP.</strong> Scene <code>TokenAuth</code> requires <code>RealIp</code> (v4+), so a
+token minted without one is guaranteed to be rejected at the next hop. Aborting leaves the
+client holding its current, still-valid token.</li>
+</ol>
+<p>Because FishNet recycles ClientIds, a renewal re-checks that its <code>TokenRenewalState</code> is still
+the registered one before touching the encryption channel, so a renewal scheduled for a
+closed connection cannot be delivered to its replacement.</p>
 <h3 id="extensibility">Extensibility</h3>
 <p><code>TryLoginAsync</code> is <code>internal virtual</code> on <code>BaseServerAuthenticator</code>, returning <code>Task&lt;ClientAuthenticationResult&gt;</code>. Subclasses override for server-type-specific admission logic:</p>
 <ul>

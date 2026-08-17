@@ -90,7 +90,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p><strong>Short description:</strong> SceneServer subsystem for the full player character lifecycle — authentication-triggered loading, async database hydration with session claiming, prefab instantiation, scene validation, network spawning, periodic persistence with session lease refresh, teleportation, death/respawn, out-of-bounds correction, social data broadcast, and connection cleanup with save-then-release semantics.</p>
+<p><strong>Short description:</strong> SceneServer subsystem for the full player character lifecycle — authentication-triggered loading, async database hydration with session claiming, prefab instantiation, scene validation, network spawning, periodic persistence, batched session lease refresh, teleportation, death/respawn, out-of-bounds correction, social data broadcast, and connection cleanup with save-then-release semantics and a retry queue that guarantees claims are never stranded.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
 <li><a href="#overview">Overview</a></li>
@@ -114,7 +114,12 @@
 <li><strong>Async worker:</strong> database load/save/session operations (claim, release, lease refresh), social data fetches, and character persistence via <code>EnqueueAsyncWork</code>.</li>
 <li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe context via <code>ICharacterSystemMainThreadQueueData</code>.</li>
 </ul>
-<p>Character sessions are explicitly claimed and released to prevent dual-server ownership. The session lifecycle uses <code>TryClaimAsync</code> during load, <code>RefreshSessionLeaseAsync</code> during periodic saves, and <code>ReleaseAsync</code> on disconnect, teleport, error, or deinitialize. All release paths follow save-then-release ordering to ensure data is persisted while the session lock is still held.</p>
+<p>Character sessions are explicitly claimed and released to prevent dual-server ownership. The session lifecycle uses <code>TryClaimAsync</code> during load, a batched <code>RefreshSessionLeasesAsync</code> on its own timer, and <code>ReleaseAsync</code> on disconnect, teleport, error, or deinitialize. All release paths follow save-then-release ordering to ensure data is persisted while the session lock is still held.</p>
+<p>Two properties of that lifecycle are load-bearing for scene transfers and easy to regress:</p>
+<ul>
+<li><strong>A release is never dropped.</strong> The async worker pool is bounded and drops writes when full, and the session token is removed from <code>SessionTokens</code> before the release runs — so a lost work item would leave the character <code>Online</code> with nothing left in the process holding its token. Every release path routes through <code>ReleaseSessionSafely</code>, and anything that fails to enqueue or fails at the database lands on the pending-flush retry queue (also drained during <code>OnDeinitialize</code>). A stranded claim blocks the destination scene server from claiming the character and kicks the player repeatedly until the lease expires.</li>
+<li><strong>Lease liveness is independent of save throughput.</strong> Leases are refreshed by <code>OnPeriodicSessionLeaseRefresh</code> in a single batched statement, not per-character inside the sequential save loop. <code>PersistAsync</code> does not touch the lease at all.</li>
+</ul>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
 <thead>
@@ -156,7 +161,8 @@
 <ul>
 <li>Authentication-triggered character load with per-connection rate limiting (<code>AuthCallbackCooldownSeconds = 2.0s</code>)</li>
 <li>Async database fetch of character and 13 sub-entity data sets within a single Unit of Work for a consistent snapshot</li>
-<li>Early session claim (<code>TryClaimAsync</code>) before sub-entity hydration to fail fast if another server owns the character</li>
+<li>Early session claim (<code>TryClaimAsync</code>) before sub-entity hydration to fail fast if another server owns the character, with a bounded retry (5 attempts, ~1.5s) that absorbs the hand-off window during a scene transfer instead of kicking</li>
+<li>Authoritative re-read of the character row <strong>after</strong> the claim succeeds, so a transfer cannot load a snapshot that predates the source server's final save</li>
 <li>Race-template-based prefab instantiation from the FishNet object pool</li>
 <li>Full controller hydration from pre-fetched DTOs: attributes, inventory, bank, equipment, abilities, known abilities, achievements, friends, guild, party, hotkeys, buffs, factions</li>
 <li>Equipment attribute modifier application during load (<code>item.Equippable.Equip</code>)</li>
@@ -169,10 +175,13 @@
 <li>Immediate non-DB payload broadcast after spawn: known abilities, known ability events, achievements, inventory, bank, hotkeys</li>
 <li>Async social payload broadcast after spawn: guild members, party members, friend online status</li>
 <li>Targeted broadcast helpers by character name (case-insensitive) or character ID</li>
-<li>Periodic save with configurable interval, main-thread DTO snapshot, async persistence, session lease refresh even on save failure, and atomic processing guard to prevent overlapping save cycles</li>
+<li>Periodic save with configurable interval, main-thread DTO snapshot, async persistence, and an atomic processing guard to prevent overlapping save cycles</li>
+<li>Batched session lease refresh on an independent timer (<code>sessionLeaseRefreshRate</code>, default 20s), one statement for the whole resident population</li>
+<li>Pending-flush retry queue for saves and releases that could not be enqueued or failed at the database, with linear backoff and a bounded attempt count</li>
 <li>Periodic out-of-bounds check with respawn point teleportation for characters outside scene boundaries</li>
 <li>Teleport flow: teleporter validation, scene unload, immortality, position/scene update, instance flag removal, save-then-release with reconnect through world routing</li>
-<li>Death/respawn: player marked <code>IsDead</code>, death dialog shown on client. Player chooses Respawn (teleport to bind + revive) or waits for Resurrect (revive at corpse location). Reconnect-while-dead re-shows the death dialog. NPC despawn with corpse decay timer; pet killed event with immediate despawn</li>
+<li>Transfer watchdog: a connection whose character has been handed off is force-disconnected after <code>TransferDisconnectGrace</code> (15s) if the client never reports its scene unload, so a crashed or modified client cannot idle on a server that no longer holds its character</li>
+<li>Death/respawn: player marked <code>IsDead</code>, death dialog shown on client. Player chooses Respawn (teleport to bind + revive) or waits for Resurrect (revive at corpse location). A respawn into a different scene follows the same ordering as the teleporter path, so <code>OnDisconnect</code> subscribers see the scene being left rather than the one being entered. Reconnect-while-dead re-shows the death dialog. NPC despawn with corpse decay timer; pet killed event with immediate despawn</li>
 <li>Connection disconnect cleanup: waiting-scene-load character pool return with session release, spawned character mapping removal with save-then-despawn</li>
 <li>Graceful deinitialize: main-thread DTO snapshot of all characters, async persist all, release all sessions (spawned + waiting-to-load)</li>
 <li>Optimistic concurrency via <code>character.Version++</code> on every save</li>
@@ -205,9 +214,9 @@
 <li>Verify that <code>ISceneServerSystem&lt;NetworkConnection&gt;</code> is registered in <code>BehaviourRegistry</code> for scene loading and validation.</li>
 <li>Verify that <code>SceneServerAuthenticator</code> exists in the scene for authentication event subscription.</li>
 <li>Verify that <code>ICharacterService</code> and all sub-entity services are registered in <code>Database.ServiceRegistry</code>.</li>
-<li>Adjust inspector parameters (<code>saveRate</code>, <code>outOfBoundsCheckRate</code>, <code>maxMainThreadActionsPerFrame</code>) as needed.</li>
-<li>On initialize, <code>CharacterSystem</code> registers the authenticator callback, broadcast handlers (<code>ClientValidatedSceneBroadcast</code>, <code>ClientScenesUnloadedBroadcast</code>, <code>RespawnAtBindPointBroadcast</code>, <code>ResurrectAcceptBroadcast</code>), scene manager events, connection state events, character events (<code>IPlayerCharacter.OnTeleport</code>, <code>ICharacterDamageController.OnKilled</code>), and periodic callbacks for save and out-of-bounds checks.</li>
-<li>On deinitialize, it unregisters all event handlers, snapshots and persists all character data, and releases all claimed sessions.</li>
+<li>Adjust inspector parameters (<code>saveRate</code>, <code>sessionLeaseRefreshRate</code>, <code>outOfBoundsCheckRate</code>, <code>maxMainThreadActionsPerFrame</code>) as needed.</li>
+<li>On initialize, <code>CharacterSystem</code> registers the authenticator callback, broadcast handlers (<code>ClientValidatedSceneBroadcast</code>, <code>ClientScenesUnloadedBroadcast</code>, <code>RespawnAtBindPointBroadcast</code>, <code>ResurrectAcceptBroadcast</code>), scene manager events, connection state events, character events (<code>IPlayerCharacter.OnTeleport</code>, <code>ICharacterDamageController.OnKilled</code>), and periodic callbacks for save, session lease refresh, pending-flush retry, transfer watchdog, out-of-bounds checks, and respawn/resurrect guard sweep.</li>
+<li>On deinitialize, it unregisters all event handlers, snapshots and persists all character data, drains the pending-flush retry queue, and releases all claimed sessions.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
 <h3 id="inspector-parameters">Inspector Parameters</h3>
@@ -234,6 +243,12 @@
 <td>Interval in seconds between periodic character saves (min 1.0)</td>
 </tr>
 <tr>
+<td><code>sessionLeaseRefreshRate</code></td>
+<td>float</td>
+<td>20.0</td>
+<td>Interval in seconds between batched session lease refreshes (min 1.0). Must stay well under the 2-minute lease duration so a few missed passes cannot let a live character's claim lapse.</td>
+</tr>
+<tr>
 <td><code>outOfBoundsCheckRate</code></td>
 <td>float</td>
 <td>2.5</td>
@@ -255,6 +270,36 @@
 <td><code>AuthCallbackCooldownSeconds</code></td>
 <td>2.0</td>
 <td>Minimum seconds between auth-callback character load requests per connection</td>
+</tr>
+<tr>
+<td><code>ValidatedSceneBroadcastCooldownSeconds</code></td>
+<td>2.0</td>
+<td>Minimum seconds between validated-scene broadcasts per connection</td>
+</tr>
+<tr>
+<td><code>PendingFlushRetryIntervalSeconds</code></td>
+<td>3.0</td>
+<td>Interval between pending save/release retry passes</td>
+</tr>
+<tr>
+<td><code>MaxPendingFlushAttempts</code></td>
+<td>12</td>
+<td>Attempts before abandoning a pending flush (spans past the 2-minute lease, after which the claim frees itself)</td>
+</tr>
+<tr>
+<td><code>TransferDisconnectGrace</code></td>
+<td>15s</td>
+<td>Grace period for a handed-off client to disconnect on its own before the watchdog forces it</td>
+</tr>
+<tr>
+<td><code>TransferDisconnectSweepIntervalSeconds</code></td>
+<td>5.0</td>
+<td>Interval between transfer watchdog sweeps</td>
+</tr>
+<tr>
+<td><code>DefaultSessionLeaseDuration</code></td>
+<td>2 min</td>
+<td>Database-side lease duration (<code>CharacterService</code>), the backstop that frees a claim held by a dead server</td>
 </tr>
 </tbody>
 </table>
@@ -488,9 +533,10 @@
 </ol>
 <p><strong>Step 2 — Async DB snapshot + session claim</strong> (<code>LoadCharacterAsync</code>):</p>
 <ol>
-<li>Begins <code>IUnitOfWork</code> for consistent snapshot.</li>
-<li>Fetches the selected character for the account via <code>ICharacterService.FetchByAccountAsync</code>.</li>
-<li>Claims character session via <code>TryClaimAsync(characterID, serverID)</code> before heavy hydration — fails fast if another server owns the character.</li>
+<li>Fetches the selected character for the account via <code>ICharacterService.FetchByAccountAsync</code> to resolve its ID.</li>
+<li>Claims the session via <code>ClaimCharacterSessionAsync</code> → <code>TryClaimAsync(characterID, serverID)</code>, before heavy hydration, so contention fails before 13 sub-entity fetches. Contention (<code>InvalidOperation</code>) is retried up to 5 times with linear backoff (~1.5s total); any other error fails immediately. This runs <strong>outside</strong> the Unit of Work — retrying inside an open transaction would hold it for the whole backoff.</li>
+<li>Re-reads the character row now that the claim is held, and verifies the selected character did not change. The pre-claim read is unsynchronised and on a scene transfer can predate the source server's final save; loading it would put the player back where they started.</li>
+<li>Begins <code>IUnitOfWork</code> for a consistent sub-entity snapshot. If this fails, the already-committed claim is released explicitly (there is no transaction to roll it back).</li>
 <li>Fetches 13 sub-entity datasets sequentially within the UoW: inventory, bank, equipment, attributes, abilities, known abilities, achievements, friends, guild, party, hotkeys, buffs, factions.</li>
 <li>Commits the read-only transaction.</li>
 <li>Bundles all data into <code>CharacterLoadContext</code> and marshals to main thread.</li>
@@ -586,36 +632,49 @@
 <tr>
 <td>Claim</td>
 <td><code>TryClaimAsync(characterID, serverID)</code></td>
-<td>During <code>LoadCharacterAsync</code>, before sub-entity hydration</td>
+<td>During <code>LoadCharacterAsync</code>, before sub-entity hydration. Succeeds only when the row is <code>Offline</code> or its lease has expired.</td>
 </tr>
 <tr>
 <td>Lease refresh</td>
-<td><code>RefreshSessionLeaseAsync(characterID, serverID, token)</code></td>
-<td>During <code>SaveAllCharactersAsync</code>, per character (even on save failure)</td>
+<td><code>RefreshSessionLeasesAsync(leases)</code></td>
+<td><code>OnPeriodicSessionLeaseRefresh</code>, batched across every held session in one statement</td>
 </tr>
 <tr>
 <td>Release</td>
 <td><code>ReleaseAsync(characterID, serverID, token)</code></td>
-<td>On disconnect, teleport, load failure, scene validation failure, deinitialize</td>
+<td>On disconnect, teleport, bind-point respawn into another scene, load failure, scene validation failure, deinitialize</td>
 </tr>
 </tbody>
 </table>
-<p>All release paths follow <strong>save-then-release</strong> ordering via <code>SaveAndReleaseCharacterAsync</code> to ensure data is persisted while the session lock is still held. <code>TryExtractAndReleaseSession</code> is used for non-save release paths (waiting-to-load characters, scene validation failures).</p>
+<p>Claim, release and lease refresh all verify the full ownership triple (character, owner server, owner token), so a stale server can neither free nor extend a claim it no longer holds.</p>
+<p>All release paths follow <strong>save-then-release</strong> ordering via <code>SaveAndReleaseCharacterAsync</code> to ensure data is persisted while the session lock is still held. <code>TryExtractAndReleaseSession</code> is used for non-save release paths (waiting-to-load characters, scene validation failures), and every path ultimately routes through <code>ReleaseSessionSafely</code>.</p>
+<p>The release happens <strong>even if the save fails</strong>. Holding the claim back because a write failed strands the character far more visibly than losing one save: the destination scene server cannot claim it and kicks the player. A failed save is retried separately by the pending-flush queue, where the version guard drops it if the next owner has already written something newer.</p>
+<h4 id="pending-flush-retry">Pending flush retry</h4>
+<p><code>QueuePendingFlush</code> records any save and/or release that could not be completed on its first attempt — because <code>EnqueueAsyncWork</code> returned <code>false</code> (bounded worker channel, <code>DropWrite</code>) or because the database call failed. <code>OnPeriodicPendingFlushRetry</code> drains it every <code>PendingFlushRetryIntervalSeconds</code> with linear backoff up to <code>MaxPendingFlushAttempts</code>, and <code>DrainPendingFlushes</code> flushes whatever remains during <code>OnDeinitialize</code>.</p>
+<p>Terminal outcomes are not retried: a release that reports <code>InvalidOperation</code>/<code>NotFound</code> means the session is no longer ours, and a save rejected as <code>StaleState</code> means newer state is already persisted.</p>
+<p>Note that a character queued for release has already been removed from <code>SessionTokens</code>, so the lease refresher no longer covers it — if every retry fails, the claim still frees itself when the lease expires.</p>
 <h3 id="periodic-save">Periodic Save</h3>
 <p><code>OnPeriodicSave(deltaTime)</code> fires at <code>saveRate</code> intervals:</p>
 <ol>
 <li>Validates initialization and character count.</li>
 <li>Acquires atomic processing guard via <code>TryBeginSave</code>.</li>
 <li>Snapshots character DTOs on the main thread via <code>BuildCharacterData</code> (increments <code>character.Version</code> for optimistic concurrency).</li>
-<li>Captures all session tokens.</li>
 <li>Enqueues <code>SaveAllCharactersAsync</code>:
 <ul>
 <li>Persists each character via <code>ICharacterService.PersistAsync</code>.</li>
-<li>Refreshes session lease for each character regardless of save success.</li>
 <li>Releases processing guard in <code>finally</code>.</li>
 </ul>
 </li>
 </ol>
+<p>Saving does not touch session leases. <code>PersistAsync</code> previously extended the lease for any row whose session was <code>Online</code> without checking which server was writing, which let a stale save from a released character extend the <em>new</em> owner's lease.</p>
+<h3 id="periodic-session-lease-refresh">Periodic Session Lease Refresh</h3>
+<p><code>OnPeriodicSessionLeaseRefresh(deltaTime)</code> fires at <code>sessionLeaseRefreshRate</code> intervals, independently of the save cycle:</p>
+<ol>
+<li>Snapshots every entry in <code>SessionTokens</code> into <code>CharacterSessionLeaseData</code> triples on the main thread.</li>
+<li>Enqueues a single batched <code>ICharacterService.RefreshSessionLeasesAsync</code> call (chunked at 500 rows per statement).</li>
+<li>Logs a warning when fewer rows were refreshed than sent — that means at least one claim is no longer owned by this server, the signature of the split-brain window the lease exists to bound.</li>
+</ol>
+<p>This is deliberately decoupled from <code>saveRate</code>: the save walk is sequential with a round trip per character, so on a busy shard with a slow database the characters at its tail could exceed the 2-minute lease between refreshes and become claimable while still online.</p>
 <h3 id="periodic-out-of-bounds-check">Periodic Out-of-Bounds Check</h3>
 <p><code>OnPeriodicOutOfBoundsCheck(deltaTime)</code> fires at <code>outOfBoundsCheckRate</code> intervals:</p>
 <ol>
@@ -636,7 +695,21 @@
 <li>Updates <code>SceneName</code> and position/rotation to teleporter destination.</li>
 <li>Removes instance and loaded flags.</li>
 <li>Calls <code>RemoveCharacterConnectionMapping</code> with <code>skipOnDisconnect: true</code> — triggers save-then-release, forcing reconnect through world routing.</li>
+<li>Arms the transfer watchdog via <code>ArmTransferDisconnect(owner)</code>.</li>
 </ol>
+<p>Nothing in this flow disconnects the client directly. The transfer depends on the client
+reporting its scene unload (<code>ClientScenesUnloadedBroadcast</code>), which is what sends it back to
+the world server. Two safeguards keep that from becoming a hang:</p>
+<ul>
+<li><code>OnClientScenesUnloadedBroadcastReceived</code> checks for a loaded character <strong>before</strong>
+consulting its rate limiter. A client unloads scenes on the way in as well as on the way
+out, so stamping the limiter on the benign entry-time broadcast would swallow a teleport
+broadcast arriving within the next five seconds — which teleporters placed near a spawn
+point hit every time.</li>
+<li><code>OnPeriodicTransferDisconnectSweep</code> force-disconnects any armed connection still present
+after <code>TransferDisconnectGrace</code>, skipping connections that have since acquired a character
+(FishNet recycles ClientIds).</li>
+</ul>
 <h3 id="deathrespawn-flow">Death/Respawn Flow</h3>
 <p><code>CharacterDamageController_OnKilled(killer, defender)</code>:</p>
 <ol>
@@ -656,6 +729,14 @@
 <li><code>RespawnAtBindPointBroadcast</code> → <code>OnClientRespawnAtBindPointBroadcastReceived</code>: revives character, teleports to bind.</li>
 <li><code>ResurrectAcceptBroadcast</code> → <code>OnClientResurrectAcceptBroadcastReceived</code>: revives character at current position (no teleport).</li>
 </ul>
+<p>When the bind point is in a <strong>different scene</strong>, respawning is a scene-server transfer and
+follows the same ordering as the teleporter path: fire <code>OnDisconnect</code> while the character
+still knows the scene it is in, then apply the bind scene/position, then
+<code>RemoveCharacterConnectionMapping(skipOnDisconnect: true)</code> to save and release, then
+disconnect. Deferring the save and release to the connection-stopped handler instead meant
+<code>SceneName</code> had already been overwritten with <code>BindScene</code> by the time <code>OnDisconnect</code> ran, so
+party, guild and per-scene bookkeeping were told the player left the scene they were
+respawning <em>into</em> rather than the one they died in.</p>
 <h3 id="targeted-broadcasts">Targeted Broadcasts</h3>
 <table>
 <thead>
@@ -681,7 +762,8 @@
 <h3 id="disconnect-cleanup">Disconnect Cleanup</h3>
 <p><code>OnRemoteConnectionStopped(conn)</code>:</p>
 <ol>
-<li>Removes auth callback rate-limit tracking for the connection.</li>
+<li>Removes the transfer watchdog entry, scene-unload and validated-scene rate-limit tracking for the connection.</li>
+<li>Removes auth callback rate-limit tracking for the account.</li>
 <li>Calls <code>RemoveCharacterConnectionMapping(conn)</code>.</li>
 </ol>
 <p><code>RemoveCharacterConnectionMapping(conn, skipOnDisconnect)</code>:</p>
@@ -698,17 +780,19 @@
 <li>Unregisters all event handlers (authenticator, broadcasts, scene manager, connection state, character events, periodic callbacks).</li>
 <li>Snapshots all character DTOs on the main thread.</li>
 <li>Captures all session tokens (spawned + waiting-to-load).</li>
-<li>Synchronously runs async task: persists all characters, releases all sessions.</li>
+<li>Synchronously runs async task (bounded by <code>shutdownFlushTimeoutMs</code>): persists all characters, drains the pending-flush retry queue, then releases all sessions.</li>
 </ol>
 <h3 id="failure-semantics">Failure Semantics</h3>
 <ul>
 <li>Auth rate-limited connections are silently skipped (timestamp not updated).</li>
 <li>Invalid authentication state results in <code>Kick(UnusualActivity)</code>.</li>
-<li>Failed <code>TryClaimAsync</code> results in kick — no sub-entity data is fetched.</li>
+<li><code>TryClaimAsync</code> contention is retried up to 5 times before kicking; non-contention errors kick immediately. No sub-entity data is fetched in either case.</li>
+<li>A selected character that changes between the pre-claim and post-claim reads releases the claim and kicks.</li>
 <li>Connection dying between async load and main-thread marshal triggers session release without kick.</li>
 <li>Duplicate character load attempts are detected via <code>CharactersByID</code> and result in session release + kick.</li>
 <li>Failed scene load releases session, pools prefab, and disconnects.</li>
 <li>Scene validation failures after <code>WaitingSceneLoadCharacters</code> release session, pool prefab, and kick.</li>
+<li>A release that cannot be enqueued or that fails at the database is queued for retry rather than dropped; if every attempt fails, the 2-minute database lease is the backstop.</li>
 <li>Failed <code>EnqueueAsyncWork</code> logs a warning; critical paths (load, save-and-despawn) also take fallback action.</li>
 <li><code>SaveAllCharactersAsync</code> refreshes session leases even when individual saves fail.</li>
 <li>Deinitialize catches per-character snapshot/save/release failures independently.</li>

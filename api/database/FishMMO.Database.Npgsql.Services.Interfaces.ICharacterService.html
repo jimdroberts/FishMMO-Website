@@ -172,7 +172,7 @@ one database statement is unavoidable, the implementation uses an explicit trans
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_AnyOnlineAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.AnyOnlineAsync(System.String,System.Threading.CancellationToken)">
   AnyOnlineAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L194"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L215"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Checks whether any non-deleted character on the given account is currently online.</p>
@@ -397,7 +397,7 @@ Character names are stored with a lowercase version for case-insensitive uniquen
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_FetchSelectedCharactersByAccountsAsync_System_Collections_Generic_List_System_String__System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.FetchSelectedCharactersByAccountsAsync(System.Collections.Generic.List{System.String},System.Int32,System.Threading.CancellationToken)">
   FetchSelectedCharactersByAccountsAsync(List&lt;string&gt;, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L183"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L204"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Retrieves the selected character for each of the specified accounts in batches.</p>
@@ -477,6 +477,61 @@ Character names are stored with a lowercase version for case-insensitive uniquen
 
 
 
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_RefreshSessionLeasesAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.RefreshSessionLeasesAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_RefreshSessionLeasesAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_CharacterSessionLeaseData__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.RefreshSessionLeasesAsync(System.Collections.Generic.IReadOnlyList{FishMMO.Database.Data.CharacterSessionLeaseData},System.Threading.CancellationToken)">
+  RefreshSessionLeasesAsync(IReadOnlyList&lt;CharacterSessionLeaseData&gt;, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L151"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Refreshes the session lease for many owned online characters in a single round trip.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; RefreshSessionLeasesAsync(IReadOnlyList&lt;CharacterSessionLeaseData&gt; leases, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>leases</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="FishMMO.Database.Data.CharacterSessionLeaseData.html">CharacterSessionLeaseData</a>&gt;</dt>
+    <dd><p>Ownership triples to refresh. Invalid entries are skipped.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
+    <dd><p>The number of leases actually refreshed.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_RefreshSessionLeasesAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_CharacterSessionLeaseData__System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Session liveness must not depend on save throughput. Refreshing one character per
+round trip inside the periodic save loop meant that on a busy shard with a slow
+database the characters at the tail of the loop could exceed the lease duration
+between refreshes and become claimable while still online. This performs the whole
+population in one statement, so the cost is independent of how many characters are
+resident.</p>
+<p>
+Each entry is verified against the stored owner server and token, so a server that
+no longer owns a session silently refreshes nothing rather than extending the
+current owner's lease.
+</p>
+</div>
 
 
 
@@ -623,7 +678,7 @@ On success, returns a new session owner token that must be presented for subsequ
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_UpdatePositionAsync_System_Int64_System_Single_System_Single_System_Single_System_Single_System_Single_System_Single_System_Single_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.UpdatePositionAsync(System.Int64,System.Single,System.Single,System.Single,System.Single,System.Single,System.Single,System.Single,System.Threading.CancellationToken)">
   UpdatePositionAsync(long, float, float, float, float, float, float, float, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L152"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L173"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the position and rotation of a character atomically.</p>
@@ -691,7 +746,7 @@ Execution strategy wrapping ensures transient database failures are automaticall
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_UpdateSceneAsync_System_Int64_System_Int64_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.UpdateSceneAsync(System.Int64,System.Int64,System.String,System.Int32,System.Threading.CancellationToken)">
   UpdateSceneAsync(long, long, string, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L174"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterService.cs/#L195"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the routing information for a character atomically.</p>
