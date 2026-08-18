@@ -158,7 +158,7 @@ exponential backoff, and connection state tracking. Extracted from Client.cs.</p
 
   <h3 id="FishMMO_Client_ClientConnectionManager__ctor_FishNet_Managing_NetworkManager_" data-uid="FishMMO.Client.ClientConnectionManager.#ctor(FishNet.Managing.NetworkManager)">
   ClientConnectionManager(NetworkManager)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L118"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L145"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Creates a ClientConnectionManager and subscribes to NetworkManager connection events.</p>
@@ -239,10 +239,11 @@ automatic reconnects get a token too, not just the login screen.
 
   <h3 id="FishMMO_Client_ClientConnectionManager_CanReconnect" data-uid="FishMMO.Client.ClientConnectionManager.CanReconnect">
   CanReconnect
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L112"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L138"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Returns true if the current connection type supports reconnection (World or Scene).</p>
+  <div class="markdown level1 summary"><p>Returns true if the current connection type supports reconnection
+(World, Scene, or an in-flight world connect).</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -263,6 +264,18 @@ automatic reconnects get a token too, not just the login screen.
 
 
 
+  <h4 class="section" id="FishMMO_Client_ClientConnectionManager_CanReconnect_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>ConnectingToWorld counts. <a class="xref" href="FishMMO.Client.ClientConnectionManager.html#FishMMO_Client_ClientConnectionManager_ConnectToServer_System_String_System_UInt16_System_Boolean_">ConnectToServer(string, ushort, bool)</a> sets it for every world
+connect — including the reconnects <a class="xref" href="FishMMO.Client.ClientConnectionManager.html#FishMMO_Client_ClientConnectionManager_TryReconnect">TryReconnect()</a> issues — and
+<span class="xref">FishMMO.Client.ClientConnectionManager.OnClientConnectionState(FishNet.Transporting.ClientConnectionStateArgs)</span> clears CurrentConnectionType to None on the
+drop that arms the retry, so by the time an attempt fails ConnectingToWorld is the
+only type left describing it. Without it here, a failed reconnect read as a
+non-reconnectable failure: no further retry was armed, so MaxReconnectAttempts
+never counted past one, OnReconnectFailed (and its quit-to-login forward) never
+fired, and the client sat disconnected with no path forward. lastWorldAddress is
+assigned before StartConnection on that same path, so a retry always has an
+address to dial — and TryReconnect no-ops when it does not.</p>
+</div>
 
 
 
@@ -555,6 +568,53 @@ automatic reconnects get a token too, not just the login screen.
 
 
 
+  <a id="FishMMO_Client_ClientConnectionManager_SceneHandoffReconnectDelay_" data-uid="FishMMO.Client.ClientConnectionManager.SceneHandoffReconnectDelay*"></a>
+
+  <h3 id="FishMMO_Client_ClientConnectionManager_SceneHandoffReconnectDelay" data-uid="FishMMO.Client.ClientConnectionManager.SceneHandoffReconnectDelay">
+  SceneHandoffReconnectDelay
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L370"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Delay used for the first retry after a scene server hands the client back, instead of
+the full backoff. Jittered so a scene-wide event does not send every client at once.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public float SceneHandoffReconnectDelay { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_ClientConnectionManager_SceneHandoffReconnectDelay_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A scene-to-scene transfer is implemented as a deliberate drop: the scene server
+releases the character and disconnects, and the client is expected to return to the
+world server to be re-routed. That return went through the ordinary reconnect
+backoff, so every teleport and channel switch cost a full
+<a class="xref" href="FishMMO.Client.ClientConnectionManager.html#FishMMO_Client_ClientConnectionManager_ReconnectAttemptWaitTime">ReconnectAttemptWaitTime</a> (5s) of dead time — during which the scene has
+already unloaded and the loading overlay has already been dismissed by
+<code>OnSceneEndUnload</code>, leaving the player looking at an empty world.</p>
+<p>
+Only the first attempt is fast-pathed, and only from a Scene connection. If that
+attempt fails the normal exponential backoff resumes from attempt 1, so a genuinely
+unreachable world server is still not hammered.
+</p>
+</div>
+
+
+
+
   <h2 class="section" id="methods">Methods
 </h2>
 
@@ -563,7 +623,7 @@ automatic reconnects get a token too, not just the login screen.
 
   <h3 id="FishMMO_Client_ClientConnectionManager_CancelReconnect" data-uid="FishMMO.Client.ClientConnectionManager.CancelReconnect">
   CancelReconnect()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L218"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L280"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Cancels pending reconnect and fires OnReconnectFailed immediately.</p>
@@ -590,7 +650,7 @@ automatic reconnects get a token too, not just the login screen.
 
   <h3 id="FishMMO_Client_ClientConnectionManager_ConnectToServer_System_String_System_UInt16_System_Boolean_" data-uid="FishMMO.Client.ClientConnectionManager.ConnectToServer(System.String,System.UInt16,System.Boolean)">
   ConnectToServer(string, ushort, bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L163"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L191"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initiates a connection. Guards against concurrent calls via CAS.</p>
@@ -629,7 +689,7 @@ automatic reconnects get a token too, not just the login screen.
 
   <h3 id="FishMMO_Client_ClientConnectionManager_ForceDisconnect" data-uid="FishMMO.Client.ClientConnectionManager.ForceDisconnect">
   ForceDisconnect()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L221"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L292"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Forces the connection closed and prevents auto-reconnect until reset.</p>
@@ -648,6 +708,15 @@ automatic reconnects get a token too, not just the login screen.
 
 
 
+  <h4 class="section" id="FishMMO_Client_ClientConnectionManager_ForceDisconnect_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The suppression flag is only latched when there is a connection left to tear down.
+<span class="xref">FishMMO.Client.ClientConnectionManager.OnClientConnectionState(FishNet.Transporting.ClientConnectionStateArgs)</span> is what consumes it, so latching it against a
+connection that is already Stopped strands it: no further Stopped transition is
+raised to clear it, and the next <a class="xref" href="FishMMO.Client.ClientConnectionManager.html#FishMMO_Client_ClientConnectionManager_ConnectToServer_System_String_System_UInt16_System_Boolean_">ConnectToServer(string, ushort, bool)</a> aborts inside
+<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">OnAwaitingConnectionReady(string, ushort, bool)</a> — silently, with the guard released and no
+connection started. The login screen reaches that state routinely, because every
+auth-error dialog calls this whether or not the transport is still up.</p>
+</div>
 
 
 
@@ -656,7 +725,7 @@ automatic reconnects get a token too, not just the login screen.
 
   <h3 id="FishMMO_Client_ClientConnectionManager_IsConnectionReady_System_Boolean_" data-uid="FishMMO.Client.ClientConnectionManager.IsConnectionReady(System.Boolean)">
   IsConnectionReady(bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L256"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L343"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns true if connected and optionally authenticated.</p>
@@ -695,7 +764,7 @@ automatic reconnects get a token too, not just the login screen.
 
   <h3 id="FishMMO_Client_ClientConnectionManager_ResetReconnectState" data-uid="FishMMO.Client.ClientConnectionManager.ResetReconnectState">
   ResetReconnectState()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L228"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L304"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resets all reconnect state: attempt count, connection type, stored address.</p>
@@ -722,7 +791,7 @@ automatic reconnects get a token too, not just the login screen.
 
   <h3 id="FishMMO_Client_ClientConnectionManager_Shutdown" data-uid="FishMMO.Client.ClientConnectionManager.Shutdown">
   Shutdown()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L125"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L152"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unsubscribes from NetworkManager events. Call during client teardown.</p>
@@ -749,7 +818,7 @@ automatic reconnects get a token too, not just the login screen.
 
   <h3 id="FishMMO_Client_ClientConnectionManager_TryReconnect" data-uid="FishMMO.Client.ClientConnectionManager.TryReconnect">
   TryReconnect()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L199"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L251"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts a reconnect with exponential backoff. The backoff delay is set in
@@ -779,7 +848,7 @@ timer expires — it must NOT reset the delay or the reconnect will never fire.<
 
   <h3 id="FishMMO_Client_ClientConnectionManager_Update" data-uid="FishMMO.Client.ClientConnectionManager.Update">
   Update()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L147"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L175"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Drives reconnect timer. Called every frame from the owning client.</p>
@@ -926,6 +995,46 @@ timer expires — it must NOT reset the delay or the reconnect will never fire.<
 
 
 
+
+
+
+
+
+  <h3 id="FishMMO_Client_ClientConnectionManager_OnReconnectPending" data-uid="FishMMO.Client.ClientConnectionManager.OnReconnectPending">
+  OnReconnectPending
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Connection/ClientConnectionManager.cs/#L122"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Fired the moment a reconnect is armed, before the backoff delay begins.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public event Action OnReconnectPending</code></pre>
+  </div>
+
+
+
+
+
+
+  <h4 class="section">Event Type</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action">Action</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+  <h4 class="section" id="FishMMO_Client_ClientConnectionManager_OnReconnectPending_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Client.ClientConnectionManager.html#FishMMO_Client_ClientConnectionManager_OnReconnectAttempt">OnReconnectAttempt</a> fires when the retry actually starts, which leaves
+the whole backoff window unreported. That window is not idle time during a scene
+transfer: the scene server has already unloaded the client's scene, so the loading
+overlay has been dismissed by the unload-end event and the player is looking at an
+empty world until the retry fires. Shortening the delay for a deliberate hop reduces
+that to a flicker; this event closes it, by letting the overlay treat &quot;a reconnect is
+coming&quot; as a transition in progress rather than waiting for it to begin.</p>
+</div>
 
 
 

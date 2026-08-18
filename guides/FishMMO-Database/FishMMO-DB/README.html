@@ -520,6 +520,40 @@ var factory = new NpgsqlDbContextFactory(config);
 <li>Keep secrets out of source control; use environment variables or secret stores.</li>
 <li>In production, set <code>enableLogging: false</code> to avoid sensitive data logging.</li>
 </ul>
+<h2 id="character-session-ownership">Character session ownership</h2>
+<p>The claim taken by <code>TryClaimAsync</code> gates who may <em>load</em> a character. It is also enforced on
+<em>writes</em>:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PersistOwnedAsync(data, ownership)</code></td>
+<td>Character-row write that additionally requires <code>session_state = Online</code> and a matching <code>session_owner_server_id</code> / <code>session_owner_token</code>, verified in the same statement as the write. Returns <code>Forbidden</code> when the claim is gone — checked before the version comparison, since a displaced writer usually looks version-stale too.</td>
+</tr>
+<tr>
+<td><code>FetchUnownedSessionsAsync(leases)</code></td>
+<td>Returns which of the supplied ownership triples the database no longer attributes to that owner. A diagnostic read for the short-count path of <code>RefreshSessionLeasesAsync</code>, which reports only a row count.</td>
+</tr>
+</tbody>
+</table>
+<p>Plain <code>PersistAsync</code> remains for legitimate non-owner writes — the world server clearing
+<code>IsInInstance</code> while the character is Offline between servers, and character creation.</p>
+<h3 id="expired-leases-are-not-online">Expired leases are not &quot;online&quot;</h3>
+<p><code>AnyOnlineAsync</code> and <code>FetchInWorldCharacterAsync</code> additionally require
+<code>session_lease_expires_utc &gt; now</code>, matching the predicate <code>TryClaimAsync</code> already uses to steal
+an expired claim. Without it, a scene server that died holding characters locked those accounts
+out of login <strong>permanently</strong> with &quot;already online&quot;, against a session that no longer existed and
+a character any server was free to claim.</p>
+<h3 id="kick-requests-expire">Kick requests expire</h3>
+<p><code>HasPendingAsync</code> ignores requests older than <code>PendingKickRequestTtl</code> (3 minutes). A kick request
+is deleted by whichever game server acts on it, so the normal lifetime is seconds — but if that
+server dies before polling, nothing ever deletes the row and an unbounded check reported the
+account as &quot;already online&quot; at every future login, forever.</p>
 
 </article>
 

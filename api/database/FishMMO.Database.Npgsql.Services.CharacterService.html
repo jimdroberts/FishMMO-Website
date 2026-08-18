@@ -215,7 +215,7 @@ recover from connection-level failures.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService__ctor_FishMMO_Database_Npgsql_INpgsqlDbContextFactory_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.#ctor(FishMMO.Database.Npgsql.INpgsqlDbContextFactory)">
   CharacterService(INpgsqlDbContextFactory)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L112"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L114"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes a new instance of the <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterService.html">CharacterService</a> class.</p>
@@ -258,7 +258,7 @@ recover from connection-level failures.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_AnyOnlineAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.AnyOnlineAsync(System.String,System.Threading.CancellationToken)">
   AnyOnlineAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1068"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1289"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Checks whether any non-deleted character on the given account is currently online.</p>
@@ -293,6 +293,68 @@ recover from connection-level failures.
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_CharacterService_AnyOnlineAsync_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A character whose body is running out a combat-logout timer is deliberately NOT
+counted as online. Its session is still claimed — that is what keeps the body
+authoritative and stops another server taking it — but the player who owns it must
+be able to log back in and rejoin it. Counting it here would lock them out of their
+own character for the whole linger window, which is the opposite of the intent.
+A genuine second session still blocks, because a live session never carries this flag.</p>
+<p>
+A claim whose lease has expired does not count either. <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterService.html#FishMMO_Database_Npgsql_Services_CharacterService_TryClaimAsync_System_Int64_System_Int64_System_Threading_CancellationToken_">TryClaimAsync(long, long, CancellationToken)</a>
+treats an expired lease as free — that is the whole recovery path for a scene server
+that died holding characters — but this check did not, so the row a crashed server
+left behind reported its owner as permanently online. The account was then refused at
+login forever with "already online", against a session that no longer existed and a
+character any server was free to claim. Matching the claim predicate here bounds that
+to one lease duration.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_CharacterService_ClearCombatLoggedAsync_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.ClearCombatLoggedAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_ClearCombatLoggedAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.ClearCombatLoggedAsync(System.Int64,System.Threading.CancellationToken)">
+  ClearCombatLoggedAsync(long, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1222"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Clears the combat-logout flag on a character.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; ClearCombatLoggedAsync(long characterId, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>characterId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>Character to clear.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_CharacterService_ClearCombatLoggedAsync_System_Int64_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Used when the scene server that held a character's body is judged to be gone, so the
+character is no longer waiting for a body that will never be handed back.</p>
+</div>
 
 
 
@@ -301,7 +363,7 @@ recover from connection-level failures.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_CountAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.CountAsync(System.String,System.Threading.CancellationToken)">
   CountAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L117"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L119"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Counts items for the given key.</p>
@@ -341,7 +403,7 @@ recover from connection-level failures.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_CreateCharacterAsync_FishMMO_Database_Data_CharacterData_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.CreateCharacterAsync(FishMMO.Database.Data.CharacterData,System.Threading.CancellationToken)">
   CreateCharacterAsync(CharacterData, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L131"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L133"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Creates a new character in the database.</p>
@@ -391,7 +453,7 @@ Character names are stored with a lowercase version for case-insensitive uniquen
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_DeleteAsync_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.DeleteAsync(System.Int64,System.Int64,System.Threading.CancellationToken)">
   DeleteAsync(long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L456"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L521"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes the entity identified by the given key if <code class="paramref">incomingVersion</code> is newer.</p>
@@ -442,7 +504,7 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchAsync(System.Int64,System.Threading.CancellationToken)">
   FetchAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L525"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L590"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches an entity for the given key.</p>
@@ -482,7 +544,7 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchAsync_System_String_System_Nullable_System_Boolean__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchAsync(System.String,System.Nullable{System.Boolean},System.Threading.CancellationToken)">
   FetchAsync(string, bool?, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L563"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L628"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches a character by name with an optional selected filter.</p>
@@ -527,7 +589,7 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchAsync(System.String,System.Threading.CancellationToken)">
   FetchAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L557"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L622"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches an entity for the given key.</p>
@@ -567,7 +629,7 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchByAccountAsync_System_String_System_Nullable_System_Boolean__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchByAccountAsync(System.String,System.Nullable{System.Boolean},System.Threading.CancellationToken)">
   FetchByAccountAsync(string, bool?, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L588"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L653"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches a character by account name with an optional selected filter.</p>
@@ -612,7 +674,7 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchByAccountAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchByAccountAsync(System.String,System.Threading.CancellationToken)">
   FetchByAccountAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L582"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L647"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches a character by account name. Returns the first matching character.</p>
@@ -650,11 +712,58 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_CharacterService_FetchInWorldCharacterAsync_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchInWorldCharacterAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchInWorldCharacterAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchInWorldCharacterAsync(System.String,System.Threading.CancellationToken)">
+  FetchInWorldCharacterAsync(string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1245"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Returns the account's character that currently holds a session, if any.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;CharacterData?&gt;&gt; FetchInWorldCharacterAsync(string account, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>account</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account to inspect.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.CharacterData.html">CharacterData</a>?&gt;&gt;</dt>
+    <dd><p>The in-world character, or <code>null</code> when the account has none.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_CharacterService_FetchInWorldCharacterAsync_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Unlike <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.html#FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_AnyOnlineAsync_System_String_System_Threading_CancellationToken_">AnyOnlineAsync(string, CancellationToken)</a> this counts combat-logout bodies as well, because
+the caller needs to know a body exists in order to refuse switching away from it. An
+account may only ever have one character in the world, so at most one row matches.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_CharacterService_FetchManyAsync_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchManyAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchManyAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchManyAsync(System.String,System.Threading.CancellationToken)">
   FetchManyAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L541"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L606"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches many items for the given key.</p>
@@ -694,7 +803,7 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchSelectedCharactersByAccountsAsync_System_Collections_Generic_List_System_String__System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchSelectedCharactersByAccountsAsync(System.Collections.Generic.List{System.String},System.Int32,System.Threading.CancellationToken)">
   FetchSelectedCharactersByAccountsAsync(List&lt;string&gt;, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1023"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1167"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Retrieves the selected character for each of the specified accounts in batches.</p>
@@ -735,11 +844,64 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_CharacterService_FetchUnownedSessionsAsync_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchUnownedSessionsAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchUnownedSessionsAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_CharacterSessionLeaseData__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchUnownedSessionsAsync(System.Collections.Generic.IReadOnlyList{FishMMO.Database.Data.CharacterSessionLeaseData},System.Threading.CancellationToken)">
+  FetchUnownedSessionsAsync(IReadOnlyList&lt;CharacterSessionLeaseData&gt;, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L968"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Returns the subset of <code class="paramref">leases</code> whose sessions the database no longer
+attributes to the supplied owner — that is, the claims the caller has lost.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;IReadOnlyList&lt;long&gt;&gt;&gt; FetchUnownedSessionsAsync(IReadOnlyList&lt;CharacterSessionLeaseData&gt; leases, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>leases</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="FishMMO.Database.Data.CharacterSessionLeaseData.html">CharacterSessionLeaseData</a>&gt;</dt>
+    <dd><p>Ownership triples the caller believes it holds.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;&gt;&gt;</dt>
+    <dd><p>Character IDs no longer owned by the supplied server/token, including rows that have been deleted.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_CharacterService_FetchUnownedSessionsAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_CharacterSessionLeaseData__System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.html#FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_RefreshSessionLeasesAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_CharacterSessionLeaseData__System_Threading_CancellationToken_">RefreshSessionLeasesAsync(IReadOnlyList&lt;CharacterSessionLeaseData&gt;, CancellationToken)</a> reports only how many rows it refreshed, so a
+short count says a claim was lost without saying which. This resolves that, and is
+meant to be called only on the short-count path: it is a diagnostic read, not part of
+the refresh hot path.</p>
+<p>
+A character reported here is being simulated by a server that can no longer persist
+it. The caller must evict it locally; see <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.html#FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_PersistOwnedAsync_FishMMO_Database_Data_CharacterData_FishMMO_Database_Data_CharacterSessionLeaseData_System_Threading_CancellationToken_">PersistOwnedAsync(CharacterData, CharacterSessionLeaseData, CancellationToken)</a>.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_CharacterService_PersistAsync_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.PersistAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_PersistAsync_FishMMO_Database_Data_CharacterData_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.PersistAsync(FishMMO.Database.Data.CharacterData,System.Threading.CancellationToken)">
   PersistAsync(CharacterData, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L305"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L315"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Persists the provided data.</p>
@@ -779,6 +941,78 @@ the character extended the <em>new</em> owner's lease. Lease liveness belongs to
 ownership operations (<a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterService.html#FishMMO_Database_Npgsql_Services_CharacterService_TryClaimAsync_System_Int64_System_Int64_System_Threading_CancellationToken_">TryClaimAsync(long, long, CancellationToken)</a>, <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterService.html#FishMMO_Database_Npgsql_Services_CharacterService_ReleaseAsync_System_Int64_System_Int64_System_Guid_System_Threading_CancellationToken_">ReleaseAsync(long, long, Guid, CancellationToken)</a>,
 <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterService.html#FishMMO_Database_Npgsql_Services_CharacterService_RefreshSessionLeaseAsync_System_Int64_System_Int64_System_Guid_System_Threading_CancellationToken_">RefreshSessionLeaseAsync(long, long, Guid, CancellationToken)</a>, <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterService.html#FishMMO_Database_Npgsql_Services_CharacterService_RefreshSessionLeasesAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_CharacterSessionLeaseData__System_Threading_CancellationToken_">RefreshSessionLeasesAsync(IReadOnlyList&lt;CharacterSessionLeaseData&gt;, CancellationToken)</a>),
 all of which verify ownership before writing.</p>
+<p>
+It also does not write <code>selected</code>. That column belongs to the login flow —
+character creation sets it, <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterService.html#FishMMO_Database_Npgsql_Services_CharacterService_SetSelectedAsync_System_String_System_Int64_System_Threading_CancellationToken_">SetSelectedAsync(string, long, CancellationToken)</a> moves it — and a gameplay
+save has no business asserting it. It used to write <code>true</code> unconditionally, so a
+save replayed after the player had already picked a different character (the retry
+queue does exactly this after a database hiccup) left two rows marked selected, and
+the account would enter the world as whichever one the next lookup returned first.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_CharacterService_PersistOwnedAsync_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.PersistOwnedAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_PersistOwnedAsync_FishMMO_Database_Data_CharacterData_FishMMO_Database_Data_CharacterSessionLeaseData_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.PersistOwnedAsync(FishMMO.Database.Data.CharacterData,FishMMO.Database.Data.CharacterSessionLeaseData,System.Threading.CancellationToken)">
+  PersistOwnedAsync(CharacterData, CharacterSessionLeaseData, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L319"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Persists a character row, requiring that the caller still holds its session claim.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistOwnedAsync(CharacterData characterData, CharacterSessionLeaseData ownership, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>characterData</code> <a class="xref" href="FishMMO.Database.Data.CharacterData.html">CharacterData</a></dt>
+    <dd><p>Snapshot to persist. Its <code>Version</code> must exceed the stored version.</p>
+</dd>
+    <dt><code>ownership</code> <a class="xref" href="FishMMO.Database.Data.CharacterSessionLeaseData.html">CharacterSessionLeaseData</a></dt>
+    <dd><p>The claim this server holds, as returned by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.html#FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_TryClaimAsync_System_Int64_System_Int64_System_Threading_CancellationToken_">TryClaimAsync(long, long, CancellationToken)</a>.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>Success when written; <a class="xref" href="FishMMO.Database.DatabaseErrorCodes.html#FishMMO_Database_DatabaseErrorCodes_Forbidden">Forbidden</a> when the claim is no
+longer held; <a class="xref" href="FishMMO.Database.DatabaseErrorCodes.html#FishMMO_Database_DatabaseErrorCodes_StaleState">StaleState</a> when a newer version is
+already stored; <a class="xref" href="FishMMO.Database.DatabaseErrorCodes.html#FishMMO_Database_DatabaseErrorCodes_NotFound">NotFound</a> when the row is gone.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_CharacterService_PersistOwnedAsync_FishMMO_Database_Data_CharacterData_FishMMO_Database_Data_CharacterSessionLeaseData_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The claim taken by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.html#FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_TryClaimAsync_System_Int64_System_Int64_System_Threading_CancellationToken_">TryClaimAsync(long, long, CancellationToken)</a> gates who may <em>load</em> a
+character. Without this method nothing gated who may <em>write</em> one: the plain
+<code>PersistAsync</code> is guarded only by the monotonic <code>Version</code>, so a server
+whose lease lapsed while it was still running kept saving a character another server
+had legitimately claimed — and reliably won, because its version counter had been
+climbing for the whole session while the new owner started again from the persisted
+row. The claim was advisory on the write path, which is what made a lease lapse
+corrupting rather than merely untidy.</p>
+<p>
+Ownership is verified in the same statement as the write, so there is no window
+between checking and writing. A caller that no longer owns the row gets
+<a class="xref" href="FishMMO.Database.DatabaseErrorCodes.html#FishMMO_Database_DatabaseErrorCodes_Forbidden">Forbidden</a> and must stop simulating the character
+rather than retrying — the current owner's state is authoritative, and replaying a
+stale snapshot over it would destroy exactly the progress this refuses to overwrite.
+</p>
 </div>
 
 
@@ -788,7 +1022,7 @@ all of which verify ownership before writing.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_RefreshSessionLeaseAsync_System_Int64_System_Int64_System_Guid_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.RefreshSessionLeaseAsync(System.Int64,System.Int64,System.Guid,System.Threading.CancellationToken)">
   RefreshSessionLeaseAsync(long, long, Guid, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L755"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L820"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Refreshes the session lease for an owned online character.</p>
@@ -831,7 +1065,7 @@ all of which verify ownership before writing.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_RefreshSessionLeasesAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_CharacterSessionLeaseData__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.RefreshSessionLeasesAsync(System.Collections.Generic.IReadOnlyList{FishMMO.Database.Data.CharacterSessionLeaseData},System.Threading.CancellationToken)">
   RefreshSessionLeasesAsync(IReadOnlyList&lt;CharacterSessionLeaseData&gt;, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L813"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L878"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Refreshes the session lease for many owned online characters in a single round trip.</p>
@@ -886,7 +1120,7 @@ current owner's lease.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_ReleaseAsync_System_Int64_System_Int64_System_Guid_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.ReleaseAsync(System.Int64,System.Int64,System.Guid,System.Threading.CancellationToken)">
   ReleaseAsync(long, long, Guid, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L699"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L764"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Releases an online character back to offline and clears ownership in a single step.</p>
@@ -929,7 +1163,7 @@ current owner's lease.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_SetSelectedAsync_System_String_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.SetSelectedAsync(System.String,System.Int64,System.Threading.CancellationToken)">
   SetSelectedAsync(string, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L613"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L678"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Sets the selected character for an account atomically. Deselects all other characters for the account.</p>
@@ -979,7 +1213,7 @@ Execution strategy wrapping ensures transient database failures are automaticall
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_TryClaimAsync_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.TryClaimAsync(System.Int64,System.Int64,System.Threading.CancellationToken)">
   TryClaimAsync(long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L646"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L711"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to claim ownership of a character session (Offline → Online).</p>
@@ -1024,7 +1258,7 @@ On success, returns a new session owner token that must be presented for subsequ
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_UpdatePositionAsync_System_Int64_System_Single_System_Single_System_Single_System_Single_System_Single_System_Single_System_Single_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.UpdatePositionAsync(System.Int64,System.Single,System.Single,System.Single,System.Single,System.Single,System.Single,System.Single,System.Threading.CancellationToken)">
   UpdatePositionAsync(long, float, float, float, float, float, float, float, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L924"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1068"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the position and rotation of a character atomically.</p>
@@ -1092,7 +1326,7 @@ Execution strategy wrapping ensures transient database failures are automaticall
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_UpdateSceneAsync_System_Int64_System_Int64_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.UpdateSceneAsync(System.Int64,System.Int64,System.String,System.Int32,System.Threading.CancellationToken)">
   UpdateSceneAsync(long, long, string, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L988"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1132"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the routing information for a character atomically.</p>

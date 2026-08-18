@@ -783,6 +783,25 @@ Automatically registers and unregisters with <a class="xref" href="FishMMO.Clien
 &quot;Respawn at Bind Point&quot; (always visible) and &quot;Accept Resurrect&quot;
 (appears when another player casts resurrect on the corpse).
 Sends the appropriate broadcast on button click and hides on success.</p>
+<p>
+There is deliberately no close button. Respawning or being resurrected are the only
+ways out of the dead state, and both are reached through this dialog — a control that
+merely dismissed it would leave the player a corpse with no route back, because the
+server only re-sends <code>DeathBroadcast</code> on scene entry.
+</p>
+<p>
+Two properties keep a character from getting stuck dead:
+<ul><li><b>It opens from state, not just from a message.</b> A character that
+arrives already dead — a login while dead, or a scene transfer while dead — surfaces the
+dialog from <a class="xref" href="FishMMO.Client.UITKDeathDialog.html#FishMMO_Client_UITKDeathDialog_OnPostSetCharacter">OnPostSetCharacter()</a>, which reads the replicated
+<a class="xref" href="FishMMO.Shared.CharacterFlags.html#FishMMO_Shared_CharacterFlags_IsDead">IsDead</a> flag out of the spawn payload. That does not depend
+on a <code>DeathBroadcast</code> arriving at the right moment relative to the world GUI scene
+finishing its load.</li><li><b>It confirms rather than assumes.</b> Clicking an action used to
+hide the dialog immediately, so a request the server declined — its respawn/resurrect
+ingress guard debounces at two seconds — left the player dead with no UI and no way to
+ask again. The dialog now stays up until the character is actually observed alive, and
+re-arms itself if that never happens.</li></ul>
+
 </dd>
     </dl>
     <dl class="jumplist">

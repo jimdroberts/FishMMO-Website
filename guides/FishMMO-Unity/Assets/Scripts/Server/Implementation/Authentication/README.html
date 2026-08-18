@@ -1207,6 +1207,25 @@ closed connection cannot be delivered to its replacement.</p>
 </table>
 <h2 id="license">License</h2>
 <p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+<h2 id="channel-selection-for-terminal-results">Channel selection for terminal results</h2>
+<p>Every <code>BroadcastAuthResult</code> call site sends <strong>Reliable</strong>. The two <code>ServerBusy</code> rejections in
+<code>OnHandshakeDeferred</code> previously sent Unreliable; that is the terminal answer to a handshake,
+with no retry behind it and nothing else ever sent on the connection, so dropping it left the
+client on &quot;Connecting...&quot; for the full 15 s handshake timeout and then disconnected it with no
+reason given.</p>
+<p>The same rule governs <code>LoginQueueSystem.SendPositionUpdate</code>: a positive queue position is a
+periodic progress report and is re-sent every sweep, so Unreliable is correct; position <strong>0</strong>
+(admitted — re-send your handshake) and <strong>-1</strong> (queue cancelled) are one-shot state transitions
+and are sent Reliable. An admitted client has already been popped off the queue, so a dropped
+admission stranded it until the handshake timeout.</p>
+<p>Queue purge and shutdown also use <code>conn.Disconnect(false)</code> rather than <code>true</code>: the immediate
+form stops the transport outright and discards anything still queued for send — including the
+cancellation notice sent on the line above.</p>
+<blockquote>
+<p>Handshake receipt is logged at <strong>Debug</strong>, not Warning. It fires on every connection attempt
+including every healthy one, and at Warning level a busy login server buries its real warnings
+under one line per attempt.</p>
+</blockquote>
 
 </article>
 

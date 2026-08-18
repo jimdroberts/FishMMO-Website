@@ -491,6 +491,15 @@ if (server.DataContainerRegistry.TryGet(out IWorldServerSystemRuntimeData runtim
 </table>
 <h2 id="license">License</h2>
 <p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+<h2 id="registration-is-mandatory">Registration is mandatory</h2>
+<p><code>InitializeOnceAsync</code> fails with <code>FailedToFindRequiredDependency</code> when the server address or
+<code>IWorldSceneSystem</code> cannot be resolved, matching <code>SceneServerSystem</code>.</p>
+<p>Both lookups previously gated the registration call inside a single combined <code>if</code>, so a failure
+of either skipped registration and still returned <code>Initialized</code>. A world server in that state
+comes up healthy and accepts logins with its database ID left at 0 — and every routing decision
+is keyed on that ID, so <code>FetchAvailableAsync</code> matched no scene rows and no player was ever
+assigned an instance. They sat in the open-world queue until the 45 s TTL sweep kicked them,
+with nothing in the log explaining why.</p>
 
 </article>
 

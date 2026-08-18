@@ -744,6 +744,26 @@ await FallbackToWorldSceneAsync(conn, accountName);
 </table>
 <h2 id="license">License</h2>
 <p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+<h2 id="routing-safety-nets">Routing safety nets</h2>
+<p><strong>Residency watchdog.</strong> The world server is a router: a client authenticates, receives a
+<code>WorldSceneConnectBroadcast</code>, and disconnects on its own to dial the scene server. Every step in
+between can drop the client somewhere no sweep would find it — the routing snapshot empties the
+waiting queues before going async, and both delivery paths go through <code>TryEnqueueMainThread</code>,
+which returns false and discards the action when the main-thread queue is saturated. A
+connection lost that way sits authenticated on the world server forever with no scene and no
+error.</p>
+<p><code>worldResidencyDeadlineByClientId</code> bounds every such path at once: a connection still here
+<code>WorldResidencyGraceSeconds</code> (90 s) after authenticating, and <strong>not in any waiting queue</strong>, is
+disconnected so its own reconnect loop brings it back to be routed again. Queued connections
+have their deadline pushed forward rather than being kicked — <code>PurgeExpiredWaitingConnections</code>
+owns that case with its own shorter TTL, and kicking here would interrupt the combat-logout
+routing deferral, which deliberately holds a connection for up to 150 s.</p>
+<p><strong>Bounded main-thread dispatch.</strong> <code>RunOnMainThreadAsync</code> times out after 30 s. A successful
+enqueue only promises the action is <em>queued</em>; it is run by <code>OnUpdate</code>, which stops being called
+the moment this behaviour is deinitialized or the server stops. Anything queued after the single
+drain in <code>OnDeinitialize</code> never ran, and the awaiting worker waited forever — holding an
+async-worker slot for the life of the process. Enough of those starve the shared pool, at which
+point every system's database work is silently rejected.</p>
 
 </article>
 

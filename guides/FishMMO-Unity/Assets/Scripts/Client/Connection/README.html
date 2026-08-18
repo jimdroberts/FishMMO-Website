@@ -101,14 +101,124 @@
 <li><code>Scene</code> — Connected to SceneServer</li>
 </ul>
 <h2 id="reconnection">Reconnection</h2>
-<p>Automatic reconnection is enabled for World and Scene connections only:</p>
+<p>Automatic reconnection targets the WorldServer. <code>CanReconnect</code> gates it on the current
+connection type — <code>World</code>, <code>Scene</code>, or <code>ConnectingToWorld</code>. A <code>Login</code> connection that drops
+is not reconnectable and raises <code>OnConnectionAttemptFailed</code> instead. <code>Client</code> responds to that
+by invalidating the cached login server list (so the next attempt re-probes IPFetch) <strong>and</strong>
+running <code>QuitToLogin</code>. Without the second half, a client kicked or timed out on the login
+server was left with no visible panel at all: <code>UICharacterSelect</code> hides itself on any stop and
+<code>UILogin</code> never re-showed, so the only recovery was restarting the client.</p>
 <ul>
 <li>Maximum attempts: 10 (configurable)</li>
 <li>Base delay: 5 seconds (configurable)</li>
 <li>Maximum delay: 60 seconds (configurable)</li>
 <li>Algorithm: <code>baseDelay * 2^attempt</code> with 25% random jitter</li>
+<li><strong>Exception — deliberate scene handoffs.</strong> The first retry after a <code>Scene</code> connection drops
+uses <code>SceneHandoffReconnectDelay</code> (0.25 s, jittered) instead of the full base delay. A
+scene-to-scene transfer <em>is</em> a deliberate drop: the scene server releases the character and
+disconnects, expecting the client to return through the world server. Charging it the
+failure backoff cost every teleport and channel switch ~5 s of dead time, during which the
+scene had already unloaded. Only attempt 0 from a <code>Scene</code> drop is fast-pathed; if it fails,
+normal exponential backoff resumes from attempt 1, so an unreachable world server is still
+not hammered.</li>
 <li>Reconnection is canceled by <code>ForceDisconnect()</code> or <code>CancelReconnect()</code></li>
+<li><code>OnReconnectPending</code> fires the moment a retry is <em>armed</em>, before its delay elapses.
+<code>OnReconnectAttempt</code> fires when the retry actually starts, which leaves the whole backoff
+window unreported — and that window is not idle during a transfer, because the scene has
+already unloaded. Both loading screens treat &quot;a reconnect is coming&quot; as a transition in
+progress so the overlay never drops over an emptied world.</li>
+<li>Every attempt dials <code>lastWorldAddress</code> / <code>lastWorldPort</code>, recorded on the last world
+connect. A dropped <em>Scene</em> connection therefore reconnects to the WorldServer, which
+re-routes the client, rather than back to the scene server directly.</li>
 </ul>
+<h3 id="why-connectingtoworld-counts-as-reconnectable">Why <code>ConnectingToWorld</code> counts as reconnectable</h3>
+<p>The retry loop spans two connection types, and missing either one breaks it:</p>
+<ol>
+<li>A drop arms the retry timer, then clears <code>CurrentConnectionType</code> to <code>None</code>.</li>
+<li><code>TryReconnect()</code> calls <code>ConnectToServer(..., isWorldServer: true)</code>, which sets
+<code>ConnectingToWorld</code> for the in-flight attempt.</li>
+<li>If that attempt fails, <code>ConnectingToWorld</code> is the only type still describing it — <code>World</code>
+and <code>Scene</code> are long gone.</li>
+</ol>
+<p>So a <code>CanReconnect</code> that accepted only <code>World</code> and <code>Scene</code> reported false at step 3: no
+further retry was armed, <code>MaxReconnectAttempts</code> never counted past one, <code>OnReconnectFailed</code>
+(and the quit-to-login forward hanging off it) never fired, and the client sat disconnected
+with no path forward. <code>OnConnectionAttemptFailed</code> fired in its place, throwing away the
+cached login server list over what was a world server outage.</p>
+<p>The same gate covers the initial Login→World hop, which is also typed <code>ConnectingToWorld</code>.
+A world server that is down at server-select now retries with backoff behind the cancellable
+<code>UIReconnectDisplay</code> and ends in quit-to-login, rather than failing silently on the first try.</p>
+<h2 id="connection-type-transitions">Connection Type Transitions</h2>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>Trigger</th>
+<th>To</th>
+<th>Set by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>None</code></td>
+<td>Login server authenticates</td>
+<td><code>Login</code></td>
+<td><code>Client.OnAuthenticationResult</code></td>
+</tr>
+<tr>
+<td><code>Login</code></td>
+<td><code>ConnectToServer(isWorldServer: true)</code></td>
+<td><code>ConnectingToWorld</code></td>
+<td><code>ConnectToServer</code></td>
+</tr>
+<tr>
+<td><code>ConnectingToWorld</code></td>
+<td>World server authenticates</td>
+<td><code>World</code></td>
+<td><code>Client.OnAuthenticationResult</code></td>
+</tr>
+<tr>
+<td><code>World</code></td>
+<td>Scene server authenticates after a hop</td>
+<td><code>Scene</code></td>
+<td><code>Client.OnAuthenticationResult</code></td>
+</tr>
+<tr>
+<td>any</td>
+<td>Connection stops, and it was not a deliberate hop</td>
+<td><code>None</code></td>
+<td><code>OnClientConnectionState</code></td>
+</tr>
+</tbody>
+</table>
+<p>A deliberate teardown — the <code>StopConnection()</code> that <code>ConnectToServer</code> issues before dialing
+somewhere new — is flagged with <code>stoppingForConnect</code> and leaves the type alone, so
+<code>ConnectingToWorld</code> survives the stop it was set for.</p>
+<h2 id="forcedisconnect-lifecycle"><code>forceDisconnect</code> lifecycle</h2>
+<p><code>ForceDisconnect()</code> latches a flag that suppresses the reconnect timer and
+<code>OnConnectionAttemptFailed</code> for the stop it causes. Two rules keep that flag from being
+stranded or cleared too early:</p>
+<ul>
+<li><strong>It is only latched when there is a connection left to tear down.</strong> <code>OnClientConnectionState</code>
+is what consumes it, so latching against an already-<code>Stopped</code> connection strands it — no
+further transition arrives to clear it, and the next <code>ConnectToServer</code> aborts inside
+<code>OnAwaitingConnectionReady</code>, silently, with the guard released and no connection started.
+The login screen reaches that state routinely, because every auth-error dialog calls
+<code>ForceDisconnect</code> whether or not the transport is still up.</li>
+<li><strong>The <code>Stopped</code> handler consumes it.</strong> <code>ResetReconnectState()</code> therefore only clears it when
+the connection is <em>already</em> stopped. <code>QuitToLogin</code> calls <code>ForceDisconnect</code> then
+<code>ResetReconnectState</code> on the same synchronous path, but the transport reports <code>Stopped</code> a
+frame or more later — clearing unconditionally meant that stop arrived with nothing marking
+it deliberate, and an ordinary quit-to-login was reported as a failed connection attempt.</li>
+</ul>
+<h2 id="leaked-guard-recovery">Leaked-guard recovery</h2>
+<p><code>connectingGuard</code> is released on every exit path of <code>OnAwaitingConnectionReady</code>, but the
+coroutine has to actually run for that to happen, and <code>CoroutineRunner</code> hosts it on a
+GameObject this class does not own. If it never starts or is stopped from outside, the guard
+stays acquired and every later connect is refused for the life of the process — which presents
+as a login button that silently stops working. <code>ConnectToServer</code> therefore checks the age of
+the acquisition when the CAS fails, and reclaims a guard held longer than any legitimate
+acquisition could last (stop wait × 2 + establish timeout + 30 s).</p>
 <h2 id="thread-safety">Thread Safety</h2>
 <ul>
 <li><code>connectingGuard</code> uses <code>Interlocked.CompareExchange</code> for CAS-based concurrency control</li>

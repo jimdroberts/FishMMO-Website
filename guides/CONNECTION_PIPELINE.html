@@ -988,8 +988,8 @@ is not optional — servers bind <code>127.0.0.1</code>, so the proxy is the onl
 <pre><code class="lang-mermaid">stateDiagram-v2
     [*] --&gt; Connected: Initial connection
     Connected --&gt; Disconnected: Connection lost
-    Disconnected --&gt; Reconnecting: CanReconnect? (World/Scene only)
-    Disconnected --&gt; LoginScreen: Cannot reconnect (Login)
+    Disconnected --&gt; Reconnecting: CanReconnect? (World / Scene / ConnectingToWorld)
+    Disconnected --&gt; LoginScreen: Cannot reconnect (Login), (OnConnectionAttemptFailed -&gt; QuitToLogin)
     Reconnecting --&gt; Connected: Reconnect success
     Reconnecting --&gt; Reconnecting: Attempt failed, (exponential backoff + jitter)
     Reconnecting --&gt; LoginScreen: Max attempts (10) exhausted
@@ -1001,8 +1001,41 @@ is not optional — servers bind <code>127.0.0.1</code>, so the proxy is the onl
         delay = base(5s) × 2^attempt × jitter(0.75-1.25)
         Max delay capped at 60s
         Max 10 attempts
+
+        Exception: first retry after a
+        Scene drop uses 0.25s (jittered),
+        because a scene transfer is a
+        deliberate handoff, not a failure
     end note
 </code></pre>
+<p><strong>The <code>Reconnecting → Reconnecting</code> self-loop depends on <code>ConnectingToWorld</code> being
+reconnectable.</strong> The retry sequence changes connection type as it runs: the drop clears
+<code>CurrentConnectionType</code> to <code>None</code>, then <code>TryReconnect()</code> calls
+<code>ConnectToServer(..., isWorldServer: true)</code>, which sets <code>ConnectingToWorld</code> for the in-flight
+attempt. By the time an attempt <em>fails</em>, <code>ConnectingToWorld</code> is the only type left describing
+it — so a <code>CanReconnect</code> covering only <code>World</code> and <code>Scene</code> collapsed the loop after a single
+attempt: no retry re-armed, <code>OnReconnectFailed</code> never fired, and the client reached neither
+<code>Connected</code> nor <code>LoginScreen</code>. <code>OnConnectionAttemptFailed</code> fired in its place, discarding the
+cached login server list over a world server outage.</p>
+<p>The same gate governs the initial Login→World hop, which carries the same type. A world
+server that is down at server-select now enters this loop rather than failing on the first
+attempt, and exits it through the same <code>Max attempts exhausted → LoginScreen</code> edge —
+cancellable at any point from <code>UIReconnectDisplay</code>.</p>
+<p><strong>A scene transfer is a deliberate handoff, not a failure.</strong> Phase 11 hands a client back by
+releasing its character and dropping the connection, expecting it to return through the world
+server. That arrives as an ordinary <code>Scene</code> drop, so it entered the failure backoff and cost
+roughly five seconds of dead time on every teleport and channel switch — during which the scene
+had already unloaded and the loading overlay had already been dismissed by the unload-end event,
+leaving the player looking at an empty world. The first retry from a <code>Scene</code> drop therefore uses
+<code>SceneHandoffReconnectDelay</code> (0.25 s, jittered); if it fails, normal exponential backoff resumes
+from attempt 1. <code>OnReconnectPending</code> fires when a retry is <em>armed</em> rather than when it starts, so
+both loading screens hold the overlay across the whole handoff instead of dropping it in the gap.</p>
+<p><strong>Losing the login server returns to the login screen.</strong> <code>OnConnectionAttemptFailed</code> fires only
+for a connection that stopped without being reconnectable and without being torn down on
+purpose. It invalidates the cached login server list <em>and</em> runs <code>QuitToLogin</code>. Without the
+second half a client kicked or timed out on the login server was left with no visible panel at
+all — <code>UICharacterSelect</code> hides itself on any stop and <code>UILogin</code> never re-showed — recoverable
+only by restarting the client.</p>
 <p><strong>Token rejection short-circuits the retry loop.</strong> A server that answers <code>TokenExpired</code>,
 <code>TokenInvalid</code> or <code>TokenRevoked</code> has refused the exact credential the client would present
 again on every retry. Feeding those into the backoff loop cost ten attempts spread over

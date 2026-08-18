@@ -175,6 +175,7 @@
 <li><strong>Duplicate-start and duplicate-completion guards</strong> — <code>StartBootstrap()</code> tracks <code>hasStartedBootstrap</code>; <code>hasCompletedPreload</code> and <code>hasCompletedPostload</code> ensure <code>OnCompletePreload()</code> and <code>OnCompleteProcessing()</code> each run at most once.</li>
 <li><strong>Ownership-checked log hook release</strong> — <code>Log.OnInternalLogMessage</code> is a single-cast static assigned by every bootstrap system's <code>Awake()</code>, so several are alive at once and the last to wake owns it. <code>OnDestroy()</code> clears it only if this instance is the current owner; clearing unconditionally silenced internal logging for every system still shutting down.</li>
 <li><strong>Boot survives a missing <code>VersionConfig</code></strong> — <code>MainBootstrapSystem</code> logs the error and continues with an unknown version instead of aborting <code>OnPreload()</code>. Aborting left the load queue empty, which made every downstream phase report &quot;done&quot; instantly and produced a permanently black screen; carrying on lets the launcher come up and report the bad version to the player.</li>
+<li><strong>Client frame rate capped before anything renders</strong> — <code>MainBootstrapSystem.OnPreload()</code> sets <code>Application.targetFrameRate</code> to <code>BootstrapTargetFrameRate</code> (60) and zeroes <code>QualitySettings.vSyncCount</code>. Nothing else sets a target before a network connection exists and the default is <code>-1</code> (unlimited), so the launcher and login menus would otherwise render as fast as the GPU allows and peg a CPU core drawing a static screen. Headless servers are excluded (<code>#if !UNITY_SERVER</code>) — they do not render, and FishNet derives the server frame rate from the tick rate.</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -234,6 +235,55 @@
 </tr>
 </tbody>
 </table>
+<h3 id="bootstrap-frame-rate-cap">Bootstrap Frame Rate Cap</h3>
+<p><code>BootstrapTargetFrameRate</code> is a private const (60) rather than an Inspector field — it is a
+floor for the pre-configuration window only, not a user-facing setting. Two values are
+written together in <code>OnPreload()</code>, both guarded by <code>#if !UNITY_SERVER</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Set to</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Application.targetFrameRate</code></td>
+<td><code>BootstrapTargetFrameRate</code> (60)</td>
+<td>Default is <code>-1</code> (unlimited) until a network connection exists</td>
+</tr>
+<tr>
+<td><code>QualitySettings.vSyncCount</code></td>
+<td><code>0</code></td>
+<td><code>targetFrameRate</code> is <strong>ignored entirely</strong> while the active quality level has vSync on</td>
+</tr>
+</tbody>
+</table>
+<p>The vSync write is not cosmetic. <code>ProjectSettings/QualitySettings.asset</code> ships the
+<strong>Balanced</strong> level with <code>vSyncCount: 1</code>, so on that level the cap silently did nothing and
+the menus ran uncapped regardless.</p>
+<p>Neither value survives past configuration load, and neither overrides a player's choice:</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>What replaces it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Options UI loads</td>
+<td><code>RefreshRateSettingOption.Load()</code> / <code>UITKOptions</code> → <code>Client.ApplyTargetFrameRate</code>, and <code>VSyncSettingOption.Load()</code> / <code>UITKOptions.InitializeVSync</code> → <code>QualitySettings.vSyncCount</code>, both from the saved <code>Configuration.GlobalSettings</code> preference</td>
+</tr>
+<tr>
+<td>Client connects</td>
+<td>FishNet's <code>NetworkManager.UpdateFramerate</code> raises <code>targetFrameRate</code> from <code>ClientManager.FrameRate</code></td>
+</tr>
+</tbody>
+</table>
+<p>A player who wants vSync still gets it — the options UI reapplies the saved preference when
+<code>UIOptions.OnStarting()</code> runs, which is after bootstrap.</p>
 <h3 id="bootstrapsystem-inspector-properties">BootstrapSystem Inspector Properties</h3>
 <p>Each <code>BootstrapSystem</code> exposes platform-specific load lists in the Inspector:</p>
 <table>
@@ -484,6 +534,21 @@
 <td>Error is logged, boot completes, and the launcher reports the version problem in its UI — never a black screen</td>
 </tr>
 <tr>
+<td>Frame rate cap applied</td>
+<td>Watch console during client startup</td>
+<td><code>Client frame rate capped to 60 for bootstrap and menus (FishNet raises it on connect).</code></td>
+</tr>
+<tr>
+<td>Cap holds on a vSync quality level</td>
+<td>Set quality to <strong>Balanced</strong> (<code>vSyncCount: 1</code>), enter Play Mode, watch the launcher</td>
+<td>Frame rate settles at ~60, not the display refresh rate or uncapped</td>
+</tr>
+<tr>
+<td>VSync preference is not clobbered</td>
+<td>Enable VSync in Options, restart the client, reopen Options</td>
+<td>Toggle still reads on, and <code>QualitySettings.vSyncCount</code> is <code>1</code> once the options UI has loaded</td>
+</tr>
+<tr>
 <td>Logging bridge active</td>
 <td>Call <code>Debug.Log(&quot;test&quot;)</code> during play</td>
 <td>Message routed through <code>FishMMO.Logging.Log</code> with source <code>&quot;UNITY&quot;</code></td>
@@ -542,6 +607,9 @@
                     │
                     ├── OnPreload() — MainBootstrapSystem overrides:
                     │   ├── Load VersionConfig (asset + optional version.txt validation)
+                    │   ├── Cap the client frame rate (!UNITY_SERVER only):
+                    │   │   ├── QualitySettings.vSyncCount  = 0   (else the cap is ignored)
+                    │   │   └── Application.targetFrameRate = 60
                     │   ├── Set GameVersion static string
                     │   ├── Register editor play-mode state handler (editor only)
                     │   ├── Register Application.wantsToQuit handler

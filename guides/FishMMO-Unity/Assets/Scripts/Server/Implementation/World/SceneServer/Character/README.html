@@ -1112,6 +1112,78 @@ Server/Core/RuntimeData/
 </code></pre>
 <h2 id="license">License</h2>
 <p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+<h2 id="session-claims-are-binding-on-writes">Session claims are binding on writes</h2>
+<p><code>TryClaimAsync</code> / <code>ReleaseAsync</code> / <code>RefreshSessionLeasesAsync</code> gate who may <strong>load</strong> a
+character. Until recently nothing gated who may <strong>write</strong> one: <code>PersistAsync</code> was guarded only
+by the monotonic <code>Version</code>, which does not identify the writer.</p>
+<p>That made a lease lapse corrupting rather than untidy. A scene server whose lease expired while
+it was still running (a database outage or async-worker saturation lasting past the two-minute
+lease) kept simulating and saving characters another server had legitimately claimed — and
+reliably <strong>won</strong>, because its version counter had been climbing all session while the new owner
+restarted from the persisted row. Every periodic save overwrote the live session.</p>
+<p>Two changes close it:</p>
+<ul>
+<li><strong><code>ICharacterService.PersistOwnedAsync</code></strong> puts the ownership triple in the same <code>UPDATE</code> as
+the write, so there is no check-then-write window. A displaced server gets
+<code>DatabaseErrorCodes.Forbidden</code>, checked <em>before</em> the version comparison — a displaced server
+usually looks version-stale too, and reporting that as a benign stale write is what let it
+retry forever. Every save path that holds a claim uses it: periodic save, save-and-release,
+combat-linger snapshot, linger reattach, pending-flush retry, and the shutdown flush.</li>
+<li><strong><code>ICharacterService.FetchUnownedSessionsAsync</code></strong> resolves <em>which</em> claims were lost when the
+batched lease refresh reports a short count, so eviction happens within one refresh interval
+(~20 s) rather than waiting for a save to be refused.</li>
+</ul>
+<h3 id="lost-claim-eviction">Lost-claim eviction</h3>
+<p><code>EvictLostCharacter</code> removes a character this server no longer owns. It deliberately does
+<strong>not</strong> save and does <strong>not</strong> release:</p>
+<ul>
+<li>not save, because the other server has been authoritative since it loaded — writing this
+server's diverged snapshot would overwrite the live session's progress, which loses strictly
+more than discarding it;</li>
+<li>not release, because the row's owner token belongs to somebody else.</li>
+</ul>
+<p>It logs at Error with the character ID, name and discarded version, removes the mappings, fires
+<code>OnDisconnect</code> so scene counts and social systems stay in step, despawns, and disconnects the
+client — which reconnects through the world server and reloads the authoritative row.</p>
+<blockquote>
+<p><strong>Residual.</strong> Sub-entity writes (inventory, buffs, attributes, abilities) remain version-gated
+only. The window is bounded to one refresh interval instead of being unbounded, and within it
+both servers write the same <code>version + 1</code>, so it degrades to last-writer-wins per row rather
+than systematic overwrite. Extending the ownership gate to those services is a mechanical
+follow-up.</p>
+</blockquote>
+<h2 id="death-respawn-and-resurrect">Death, respawn and resurrect</h2>
+<p><code>CharacterDamageController_OnKilled</code> flags <code>IsDead</code> <strong>first</strong>, before any side-effecting call.
+<code>CharacterDamageController.Kill</code> guards re-entry on that flag but never sets it — this handler
+does, and it is invoked at the very end of <code>Kill</code>. Anything side-effecting that ran before the
+flag was set executed inside a window where a second <code>Kill</code> would sail past the guard and
+recurse; buff removal, which invokes each buff's removal effects, is exactly such a call.</p>
+<p>The handler never revives, teleports, or moves the character. Bind-point movement happens only
+in <code>OnClientRespawnAtBindPointBroadcastReceived</code>, in response to an explicit client request.</p>
+<h3 id="resurrect-offers">Resurrect offers</h3>
+<p><code>ApplyReviveAction</code> <strong>offers</strong> a resurrect to a player rather than applying one — the revive
+happens only if they accept. It previously called <code>Revive</code> and <em>then</em> sent the offer, which
+made the prompt meaningless and left the target with health restored but <code>IsDead</code> still set,
+because only the accept handler cleared it. A player who ignored the prompt stayed in that
+contradictory state indefinitely.</p>
+<p>Offers are recorded server-side (<code>pendingResurrectOffers</code>: who offered, how much, 30 s expiry)
+and raised through <code>ICharacterDamageController.OnResurrectOffered</code>, so the shared ECA action
+does not need to reference server types.</p>
+<p><code>OnClientResurrectAcceptBroadcastReceived</code> requires a matching, unexpired recorded offer.
+Previously it only checked that the named resurrector existed and shared the scene — <strong>not that
+they had offered anything</strong> — so a dead player could revive themselves at full health at will
+by naming any nearby character. The accept now applies the offer's configured amount, credited
+to the actual resurrector so their ECA resurrect triggers fire, instead of a blanket full heal.
+Choosing bind-point respawn declines any outstanding offer; unanswered offers expire on the
+existing respawn/resurrect sweep.</p>
+<h3 id="reconnecting-while-dead">Reconnecting while dead</h3>
+<p>Death survives a disconnect intact: combat-logout linger declines a dead character, the save
+preserves <code>IsDead</code> (only <code>IsInCombat</code> is masked), and health persists at zero. On reload the
+flag and health are restored, scene entry re-sends <code>DeathBroadcast</code>, and <code>Immortal</code> is cleared.
+The character cannot regenerate, be healed, be damaged further, move, or cast.
+<code>CharacterAnimationController</code> re-applies the death pose when the animator appears, because
+death is an Animator <em>trigger</em> — a one-shot with nothing to restore — so a character that
+arrives already dead would otherwise stand and idle.</p>
 
 </article>
 

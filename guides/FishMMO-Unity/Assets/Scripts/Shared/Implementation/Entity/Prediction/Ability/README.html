@@ -375,43 +375,32 @@ abilityController.Release();
 <td><code>Func&lt;bool&gt;</code></td>
 <td>Checked before activation (e.g., not stunned)</td>
 </tr>
-<tr>
-<td><code>OnUpdate</code></td>
-<td><code>Action&lt;string, float, float&gt;</code></td>
-<td>UI cast bar updates</td>
-</tr>
-<tr>
-<td><code>OnInterrupt</code></td>
-<td><code>Action</code></td>
-<td>Current ability interrupted</td>
-</tr>
-<tr>
-<td><code>OnCancel</code></td>
-<td><code>Action</code></td>
-<td>Current ability cancelled</td>
-</tr>
-<tr>
-<td><code>OnReset</code></td>
-<td><code>Action</code></td>
-<td>Ability UI reset</td>
-</tr>
-<tr>
-<td><code>OnAddAbility</code></td>
-<td><code>Action&lt;Ability&gt;</code></td>
-<td>New crafted ability learned</td>
-</tr>
-<tr>
-<td><code>OnAddKnownAbility</code></td>
-<td><code>Action&lt;BaseAbilityTemplate&gt;</code></td>
-<td>New base template learned</td>
-</tr>
-<tr>
-<td><code>OnAddKnownAbilityEvent</code></td>
-<td><code>Action&lt;AbilityEvent&gt;</code></td>
-<td>New event template learned</td>
-</tr>
 </tbody>
 </table>
+<h3 id="death-gate">Death gate</h3>
+<p><code>OnReplicate</code> refuses to <strong>start</strong> a new activation while the character is not alive
+(<code>CanStartActivation</code>, backed by <code>ICharacterDamageController.IsAlive</code>).</p>
+<p>Ability activation does not arrive by broadcast — it rides the predicted replicate stream — so
+it bypassed <code>CharacterStateValidation.CanAct</code>, the gate every server broadcast handler uses and
+which already rejects dead characters. A player could keep casting from the floor.</p>
+<p>The gate sits on the <em>start</em> decision only, not at the top of <code>OnReplicate</code>:</p>
+<ul>
+<li>an already-active cast still processes (<code>Kill</code> cancels it server-side);</li>
+<li>the deterministic cooldown and resource simulation keeps running, so cooldowns continue to
+tick while dead instead of freezing and desyncing on revive;</li>
+<li>a refusal falls through the shared <code>tried &amp;&amp; !started</code> path, so the server still records the
+denial and the client reconciles its prediction away.</li>
+</ul>
+<p>It tests health rather than <code>CharacterFlags.IsDead</code> for the reason given in
+<a href="../CharacterAttribute/README.html#the-dead-state-invariant">CharacterAttribute</a>: flags are
+spawn-payload only and go stale on the client after the first death.
+| <code>OnUpdate</code>           | <code>Action&lt;string, float, float&gt;</code>     | UI cast bar updates                |
+| <code>OnInterrupt</code>        | <code>Action</code>                           | Current ability interrupted        |
+| <code>OnCancel</code>           | <code>Action</code>                           | Current ability cancelled          |
+| <code>OnReset</code>            | <code>Action</code>                           | Ability UI reset                   |
+| <code>OnAddAbility</code>       | <code>Action&lt;Ability&gt;</code>                  | New crafted ability learned        |
+| <code>OnAddKnownAbility</code>  | <code>Action&lt;BaseAbilityTemplate&gt;</code>      | New base template learned          |
+| <code>OnAddKnownAbilityEvent</code> | <code>Action&lt;AbilityEvent&gt;</code>         | New event template learned         |</p>
 <h3 id="template-system">Template System</h3>
 <h4 id="baseabilitytemplate-abstract">BaseAbilityTemplate (Abstract)</h4>
 <p>The abstract base for all ability templates. Defines shared fields and ECA-based activation requirements.</p>
