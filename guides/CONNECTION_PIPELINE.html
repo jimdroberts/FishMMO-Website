@@ -732,7 +732,7 @@ enough for a player to hit by picking a different character straight after an
     Scene--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: SceneLoginSuccess, }
     Scene--&gt;&gt;Client: RenewTokenResponseBroadcast { Token }
 
-    Client-&gt;&gt;Client: OnAuthResult(SceneLoginSuccess), • CurrentConnectionType = Scene, • DismissLoadingScreen(true), • Fire OnEnterGameWorld
+    Client-&gt;&gt;Client: OnAuthResult(SceneLoginSuccess), • CurrentConnectionType = Scene, • Fire OnEnterGameWorld → overlay held up, • Overlay is NOT dismissed here
 
     Client-&gt;&gt;Client: Character spawn → gameplay begins
 
@@ -785,6 +785,47 @@ disconnects with <code>RateLimited</code>.</p>
 while FishNet reissues <code>ClientId</code>s from zero. <code>OnDeinitialize</code> clears them — a stale entry
 whose id is reissued would be read as the new connection's state, and for a deadline map, one
 that expired long ago.</p>
+</blockquote>
+<h4 id="the-overlay-must-span-the-whole-of-world-entry-not-just-its-loads">The overlay must span the whole of world entry, not just its loads</h4>
+<p>The watchdogs above assume the player is looking at a loading screen for all of Phase 9. That
+was not true. World entry is three waits with gaps between them, and the overlay's drivers only
+covered the waits — so on each boundary every driver was momentarily clear and
+<code>RefreshVisibility</code> took the screen down:</p>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>What the player saw</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FishNet scene load ends (<code>OnLoadEnd</code>)</td>
+<td><code>sceneTransitionActive</code> clears. The Addressable world preload has not started — it is kicked off by <code>ClientValidatedSceneBroadcast</code>, still in flight — so the overlay drops over a half-built scene for a full round trip.</td>
+</tr>
+<tr>
+<td>Addressable world preload drains</td>
+<td><code>AddressableLoadProcessor</code> raises its terminal <code>1</code> and <code>addressableLoadActive</code> clears. The client has only just sent its acknowledgement; the server has not spawned anything. The bar reaches 100%, the screen vanishes, and the player watches an empty world until the spawn lands.</td>
+</tr>
+</tbody>
+</table>
+<p>A fourth driver, <code>worldEntryActive</code>, now spans the phase on both <code>UITKLoadingScreen</code> and
+<code>UILoadingScreen</code>. It is raised from <code>Client.OnEnterGameWorld</code>, which fires on
+<code>SceneLoginSuccess</code> — before the character load, and therefore before the scene load request —
+and is cleared only by the overlay's own <code>Hide()</code>. Every way world entry can end reaches that:
+<code>DismissLoadingScreen</code> on local character start and on quit-to-login, and
+<code>Client_OnReconnectFailed</code>. The three watchdogs bound the case where it ends badly, so the
+overlay cannot outlive the entry it is covering.</p>
+<p><code>Client.DismissLoadingScreen</code> also stopped routing through <code>UIManager.Hide</code>, which is a no-op
+unless the panel happens to be visible at that instant. The overlay's <code>Hide()</code> override is what
+clears the driver flags, so a dismissal arriving while the panel was momentarily down left a
+driver latched — and the next refresh popped the overlay back up over live gameplay with
+nothing left to take it down again.</p>
+<blockquote>
+<p><code>SceneLoginSuccess</code> is broadcast exactly once per token handshake, and
+<code>TokenAuthenticatorCore</code> invokes <code>OnAuthenticationResult</code> — which starts the character load —
+in the same main-thread item, immediately after the broadcast. The driver therefore cannot be
+raised after the character has already spawned.</p>
 </blockquote>
 <h3 id="phase-9a-scene-routing-queue">Phase 9a: Scene-Routing Queue</h3>
 <p>Phase 9 assumes the World server has somewhere to send the client. It often does not — every
@@ -1081,6 +1122,63 @@ Online in the database, so the destination server cannot claim it and kicks the 
 repeatedly, until the lease expires. Every abandoned-load path therefore routes through
 <code>ReleaseSessionSafely</code>, and anything that fails lands on a retry queue that is also drained
 on shutdown.</p>
+<h4 id="combat-logout-bodies">Combat-logout bodies</h4>
+<p>A character whose owner disconnects mid-combat is not despawned. <code>TryBeginCombatLinger</code> removes
+ownership — which is what takes the object out of <code>connection.Objects</code> before FishNet's
+disconnect cleanup despawns everything in it — cancels any in-flight ability, sets the persisted
+<code>IsCombatLogged</code> flag, and leaves the body standing, targetable and killable, for up to
+<code>combatLogoutLingerSeconds</code>. Without it, closing the client is a guaranteed escape from a losing
+fight: the ordinary disconnect path saves, despawns and releases within milliseconds, making
+Alt+F4 strictly better than fleeing.</p>
+<p>Cancelling the ability is not cosmetic. A despawn would have done it for free via <code>ResetState</code>,
+but a lingering body is still ticked, and <code>AbilityController.OnReplicate</code> re-asserts <code>IsHeld</code>
+from the replicated flags on a tick with no input — so a channelled cast holds indefinitely and
+a plain cast runs to completion and fires, spawning projectiles and raising ECA events on behalf
+of a player who cannot aim, retarget or stop them.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>How it is held</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claim</td>
+<td>Kept in <code>SessionTokens</code> for the whole linger, so this server stays authoritative and no other server can load a second copy from a row that predates whatever is still happening to this one.</td>
+</tr>
+<tr>
+<td>Scene population</td>
+<td><code>AdjustLingeringSceneCount(+1)</code> puts the body back into its instance's count. A scene holding only unattended bodies would otherwise report itself empty — marking it a stale-pulse candidate for unload, which destroys the bodies and strands their claims — while also advertising capacity that is not free.</td>
+</tr>
+<tr>
+<td>Account availability</td>
+<td><code>AnyOnlineAsync</code> skips characters carrying <code>IsCombatLogged</code>, so the owner can log back in and reclaim the body instead of being locked out of their own character for the whole window.</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td>The body exists on exactly one scene server, so <code>WorldSceneSystem</code> holds the reconnecting client in the open-world queue with reason <code>CombatLogoutBody</code> rather than routing it somewhere that cannot claim it. Bounded by <code>CombatLogoutRoutingGraceSeconds</code> (150 s), which exceeds the session lease so giving up is safe.</td>
+</tr>
+<tr>
+<td>Termination</td>
+<td>Combat ending, death, or the <code>ExpiresUtc</code> deadline — the last of which is what stops an attacker pinning a body indefinitely by chipping at it.</td>
+</tr>
+<tr>
+<td>Reclaim</td>
+<td><code>TryReattachLingeringCharacter</code> snapshots the body, despawns it, and runs the normal load against the row it just wrote, carrying the existing token through so there is no window in which another server could take the character mid-handover.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The periodic save must include them.</strong> A lingering body has no connection, so it is absent
+from <code>ConnectionCharacters</code> <em>and</em> from <code>CharactersByID</code> — the map <code>OnPeriodicSave</code> walks. It
+therefore received exactly two writes, one at each end of the linger, and everything in between
+went unpersisted: precisely the damage the body is left standing there to receive. A scene
+server that died mid-linger restored the character at full health, refunding a fight it had
+already lost and handing the player the escape this feature exists to deny.
+<code>AppendLingeringCharacterSnapshots</code> folds them into the same snapshot pass as everyone else,
+each paired with the claim this server holds, so the writes go through <code>PersistOwnedAsync</code> like
+every other save — and a body whose claim has lapsed is refused with <code>Forbidden</code> and evicted via
+<code>DropLingeringCharacter</code> rather than allowed to overwrite the server that took the character.</p>
 <hr>
 <h2 id="protocol-layers">Protocol Layers</h2>
 <pre><code>┌─────────────────────────────────────────────┐
@@ -1205,8 +1303,28 @@ is not optional — servers bind <code>127.0.0.1</code>, so the proxy is the onl
 <td>AES-256 master key</td>
 <td>TOTP secrets encrypted at rest in DB</td>
 </tr>
+<tr>
+<td><strong>Log-tier data minimisation</strong></td>
+<td>Level policy on healthy paths</td>
+<td>Per-player identifiers stay out of <code>Warning</code> and above. Healthy-path events log at <code>Debug</code></td>
+</tr>
 </tbody>
 </table>
+<p><strong>Log level is part of the threat model, not just an operator preference.</strong> <code>Warning</code> and above
+are the tiers that get shipped off-host, aggregated and retained longest, so what goes into them
+is a data-handling decision. Two rules follow, and both have been violated in this pipeline
+before:</p>
+<ul>
+<li><em>A healthy path never logs above <code>Debug</code>.</em> Every Login→World and World→Scene hop mints a
+connection token, and the successful mint logged at <code>Warning</code> — one line per hop on a busy
+server, burying the failures the tier exists for. The handshake log had the same fault and was
+corrected for the same reason.</li>
+<li><em>Per-player identifiers do not travel with success.</em> That same line named the client's
+resolved real IP. A mint that succeeded is not something an operator correlates by address,
+and the failure branch still identifies the connection that could not be served — so the
+address bought nothing and put one player-attributable record into a widely-retained tier per
+zone change.</li>
+</ul>
 <h3 id="security-incident-response">Security Incident Response</h3>
 <p>Quick-reference playbooks for common security incidents. Each scenario assumes the on-call operator has access to the deployment's server configuration files, database credentials, and the <code>LoginServerSystem</code> management interface.</p>
 <h4 id="token-signing-key-compromise">Token Signing Key Compromise</h4>
@@ -1316,6 +1434,33 @@ cached login server list over a world server outage.</p>
 server that is down at server-select now enters this loop rather than failing on the first
 attempt, and exits it through the same <code>Max attempts exhausted → LoginScreen</code> edge —
 cancellable at any point from <code>UIReconnectDisplay</code>.</p>
+<p><strong>Every exit from the loop ends somewhere the player can act.</strong> <code>TryReconnect</code> used to test the
+stored world address <em>inside</em> the attempt-count branch with no <code>else</code>. <code>Update</code> drives
+<code>nextReconnect</code> past zero before calling it and only re-arms the timer from a <code>Stopped</code>
+transition, so a retry armed with nothing to dial returned silently and nothing was left to fire
+it again: no retry, no <code>OnReconnectFailed</code>, and therefore no <code>QuitToLogin</code>. The client sat behind
+the overlay <code>OnReconnectPending</code> had already raised, with no state that would ever change. Both
+conditions are now checked together, so a retry that cannot proceed falls through to the give-up
+branch and leaves via the <code>Max attempts exhausted → LoginScreen</code> edge like any other exhausted
+loop.</p>
+<p><strong>A teardown that never completes has to report itself.</strong> <code>ConnectToServer</code> stops the current
+connection and waits for <code>Stopped</code> before dialling the next one. Every ordinary failure from
+that point on is announced by the <code>Stopped</code> transition, which is what arms a reconnect or raises
+<code>OnConnectionAttemptFailed</code>. The three teardown timeouts in <code>OnAwaitingConnectionReady</code> are the
+exception — they are reached <em>because</em> that transition never arrived — and they released the
+in-flight guard and returned without a word, having already cleared <code>nextReconnect</code> and latched
+<code>CurrentConnectionType</code> to <code>ConnectingToWorld</code>. <code>AbortConnectAttempt(reportFailure: true)</code> now
+clears the type and raises <code>OnConnectionAttemptFailed</code>, which routes through <code>QuitToLogin</code> with a
+notice.</p>
+<p>That report is exclusive. A one-shot <code>connectFailureReported</code> marker is set before the event is
+raised; if the merely-slow transport lands its <code>Stopped</code> afterwards, the transition consumes the
+marker and returns rather than arming a second recovery for an attempt the client has already
+left the world over — which would otherwise run the whole quit-to-login teardown twice and
+reload the login scenes on top of themselves. It is deliberately not <code>forceDisconnect</code> (only
+cleared once the transport reaches <code>Stopped</code>, so latching it against one that may never get
+there is a stranding hazard) and not <code>stoppingForConnect</code> (cleared unconditionally by
+<code>ResetReconnectState</code>, which the quit-to-login this abort triggers calls immediately). It is
+cleared at the top of every <code>ConnectToServer</code> and on <code>Started</code>, where it cannot strand anything.</p>
 <p><strong>A scene transfer is a deliberate handoff, not a failure.</strong> Phase 11 hands a client back by
 releasing its character and dropping the connection, expecting it to return through the world
 server. That arrives as an ordinary <code>Scene</code> drop, so it entered the failure backoff and cost
@@ -1325,6 +1470,14 @@ leaving the player looking at an empty world. The first retry from a <code>Scene
 <code>SceneHandoffReconnectDelay</code> (0.25 s, jittered); if it fails, normal exponential backoff resumes
 from attempt 1. <code>OnReconnectPending</code> fires when a retry is <em>armed</em> rather than when it starts, so
 both loading screens hold the overlay across the whole handoff instead of dropping it in the gap.</p>
+<p><code>ClientConnectionManager.IsSceneHandoffReconnect</code> is what lets the UI tell the two apart, and
+until now only the loading screen consumed it. <code>UIReconnectDisplay</code> and <code>UITKReconnectDisplay</code>
+raised themselves — and forced <code>PlayerInputController.MouseMode = true</code>, taking the camera out
+of the player's hands — on the first attempt of <em>every</em> reconnect, so a routine teleport put a
+bare panel over the loading overlay announcing a connection loss that had not happened (the
+attempt counter and cancel button are hidden on a first attempt, so there was nothing else on
+it). Both panels now skip the first attempt of a handoff. Only the first: a handoff succeeds on
+its first retry, so anything past that is a genuine failure worth naming.</p>
 <p><strong>A wait is not a failure, and is now reported as neither.</strong> A client held in the World
 server's scene-routing queue is not disconnected and not reconnecting — it is waiting, which
 this diagram does not model because no connection state changes. Phase 9a covers it: the client
@@ -1796,6 +1949,16 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <td><code>ClientConnectionManager.cs</code></td>
 </tr>
 <tr>
+<td><code>ConnectionStopTimeoutSeconds</code></td>
+<td>10s</td>
+<td><code>ClientConnectionManager.cs</code></td>
+</tr>
+<tr>
+<td><code>ConnectionEstablishTimeoutSeconds</code></td>
+<td>20s</td>
+<td><code>ClientConnectionManager.cs</code></td>
+</tr>
+<tr>
 <td><code>PendingReplyGuard.DefaultTimeoutSeconds</code></td>
 <td>30s</td>
 <td><code>PendingReplyGuard.cs</code></td>
@@ -1812,6 +1975,20 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 </tr>
 </tbody>
 </table>
+<p>Two of these are load-bearing against each other and should be changed together:</p>
+<ul>
+<li><strong><code>saveRate</code> (30 s) against <code>combatLogoutLingerSeconds</code> (60 s).</strong> The linger is persisted at
+both ends and on every periodic save in between, so at the defaults an unattended body has its
+damage written roughly twice before it expires. Raising <code>saveRate</code> above the linger window
+reduces that to the two end writes and widens the amount of unattended combat a crash can
+refund.</li>
+<li><strong><code>CombatLogoutRoutingGraceSeconds</code> (150 s) against <code>DefaultSessionLeaseDuration</code> (2 min).</strong>
+The grace must exceed the lease. It bounds how long the World server holds a reconnecting
+player waiting for the one instance that can hand their body back; when it gives up, a dead
+server's claim must already have lapsed, or the destination will kick the player for
+contention instead of taking the character. It should also exceed
+<code>combatLogoutLingerSeconds</code>, so a live scene server always finishes the linger first.</li>
+</ul>
 <hr>
 <h2 id="operations">Operations</h2>
 <p>Common operational procedures for FishMMO game servers. These procedures assume ssh access to the deployment host and familiarity with the project's configuration and binary layout.</p>
@@ -1856,6 +2033,11 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <li><strong>Client sits on &quot;Connecting...&quot; then the login form just resets, with no message:</strong> The login server closed the connection before authenticating it — an unverifiable or expired connection token, a protocol version outside the supported range, or a tripped handshake rate limit. The server deliberately says nothing (see <a href="#a-drop-before-authentication-has-no-notice-to-carry">A drop before authentication has no notice to carry</a>); the client now reports it as <em>&quot;the connection was closed before it answered&quot;</em>. Check the login server log for the matching <code>connection-token verify FAILED</code> / <code>handshake rate-limited</code> / <code>rejected: no connection token and no known real IP</code> line.</li>
 <li><strong>Queued clients are dropped the moment they are admitted:</strong> The re-handshake cleared the credentials it still needed. <code>RetryHandshakeAsync</code> must call <code>ClientAuthenticatorCore.OnRehandshakeRequired()</code>, never <code>OnDisconnected()</code> — see <a href="#phase-5a-login-admission-queue">Phase 5a</a>.</li>
 <li><strong>Client hangs on the loading screen after the world server routes it:</strong> The scene server accepted the connection but never produced a character. Look for the residency watchdog's <code>authenticated but had no character after 60s</code> warning, and for <code>Auth callback rate-limited</code> immediately before it. A saturated main-thread queue on the scene server presents the same way — the load's own failure path is delivered through that queue.</li>
+<li><strong>Loading screen flickers off mid-world-entry, showing an empty scene:</strong> A driver gap. The overlay is held by four independent flags and comes down only when all four are clear; <code>worldEntryActive</code> is the one that spans the gaps between the scene load, the Addressable preload and the character spawn (see <a href="#phase-9-scene-server-connection">Phase 9</a>). If it reappears, check that <code>UITKLoadingScreen</code>/<code>UILoadingScreen</code> still subscribe to <code>Client.OnEnterGameWorld</code>, and that <code>Client.DismissLoadingScreen</code> calls the control's <code>Hide()</code> directly rather than <code>UIManager.Hide</code> — the latter is a no-op unless the panel is visible, so it silently skips the flag clearing.</li>
+<li><strong>Loading overlay reappears over live gameplay with nothing to take it down:</strong> A driver flag was left latched because the overlay happened to be hidden when <code>DismissLoadingScreen</code> ran. Same root cause and same fix as the entry above.</li>
+<li><strong>&quot;Reconnecting&quot; panel flashes on every teleport or channel switch, and the mouse cursor is released:</strong> A scene transfer is a deliberate handoff, and the reconnect panels must skip the first attempt when <code>ClientConnectionManager.IsSceneHandoffReconnect</code> is set. See <a href="#reconnection-flow">Reconnection Flow</a>.</li>
+<li><strong>Client stuck behind the loading overlay with no reconnect and no login screen:</strong> The retry loop exited without reaching a terminal state. Both give-up conditions in <code>TryReconnect</code> must be checked together, and the teardown timeouts in <code>OnAwaitingConnectionReady</code> must abort with <code>reportFailure: true</code>; look for <code>Connection stop wait iteration limit exceeded</code> or <code>Forced connection stop timed out</code> in the client log. See <a href="#reconnection-flow">Reconnection Flow</a>.</li>
+<li><strong>A combat-logout body's damage is refunded after a scene server restart:</strong> The linger was persisted only at its two endpoints. <code>OnPeriodicSave</code> must call <code>AppendLingeringCharacterSnapshots</code>, and <code>saveRate</code> must be shorter than <code>combatLogoutLingerSeconds</code> for it to land at all. See <a href="#phase-11-scene-transfer--character-session-ownership">Phase 11</a>.</li>
 <li><strong>Database connection errors:</strong> Verify PostgreSQL is running on <code>localhost:5432</code> and pgBouncer on <code>localhost:6432</code>. Check the <code>FISHMMO_DB_HOST</code>/<code>FISHMMO_DB_PASSWORD</code> environment variables or <code>/etc/fishmmo/db-secrets.env</code> file, and verify the database connection string in the server configuration.</li>
 </ul>
 <hr>

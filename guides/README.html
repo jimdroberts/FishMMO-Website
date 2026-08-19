@@ -1390,6 +1390,20 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 <p><strong>Security:</strong> Keep SMTP credentials out of source control. Load them via environment variables (e.g., <code>FISHMMO_SMTP_PASSWORD</code>). Application secrets (gate secret, KEK, connection token HMAC key) are stored in the database — see <a href="#fishmmo-auth--signing-keys--kek">FishMMO-Auth — Signing Keys &amp; KEK</a>. See <a href="FishMMO-Logger/README.html">FishMMO-Logger README</a> for full configuration details.</p>
 </blockquote>
 <p><strong>Runtime override:</strong> Place a modified <code>logging.json</code> in the working directory — it takes precedence over the bundled copy. The log level can also be overridden via the <code>FISHMMO_LOG_LEVEL</code> environment variable (e.g. <code>Debug</code>, <code>Verbose</code>).</p>
+<p><strong>Level policy (why it is a data-handling decision, not just noise control):</strong> <code>Warning</code> and
+above are the tiers that get shipped off-host, aggregated and retained longest. Two rules follow
+for server code, and both have been violated in this codebase before:</p>
+<ul>
+<li><em>A healthy path never logs above <code>Debug</code>.</em> Every Login→World and World→Scene hop mints a
+connection token; logging the <strong>successful</strong> mint at <code>Warning</code> produced one line per hop on a
+busy server and buried the failures the tier exists for.</li>
+<li><em>Per-player identifiers do not travel with success.</em> That same line named the client's
+resolved real IP, putting one player-attributable record into a widely-retained tier on every
+zone change, for no diagnostic gain — the failure branch already identifies the connection
+that could not be served.</li>
+</ul>
+<p>Failures keep their <code>Warning</code>/<code>Error</code> level and their identifying detail. See
+<a href="CONNECTION_PIPELINE.html#security-properties">Security Properties</a>.</p>
 <h3 id="configuration-files--fishmmo-setup">Configuration Files — <code>FishMMO-Setup/</code></h3>
 <p>All project configuration lives in <a href="https://github.com/jimdroberts/FishMMO/tree/main/FishMMO-Setup"><code>FishMMO-Setup/</code></a> as the single source of truth. <strong>Non-sensitive defaults (host, port, database name) are stored in JSON. Database credentials are set via environment variables (<code>FISHMMO_DB_*</code>) or the platform secrets file (<code>/etc/fishmmo/db-secrets.env</code>). Application secrets (gate secret, KEK, connection token HMAC key) are stored in the database and loaded by each server at startup — no env vars or secrets files are needed for them.</strong> Each template includes a <code>_comment</code> field listing the env var names to set.</p>
 <p><strong>Directory structure:</strong></p>
