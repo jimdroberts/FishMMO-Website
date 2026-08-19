@@ -116,10 +116,15 @@
 </ul>
 <p>Four architectural features keep the chat pipeline responsive under extreme load:</p>
 <ol>
-<li><strong>Lock-Free Incoming Chat Queue</strong> — Network callbacks enqueue stamped messages into a <code>ConcurrentQueue</code>; the main-thread <code>OnUpdate</code> drains up to <code>maxIncomingChatsPerFrame</code> entries per frame. A hard cap (<code>maxIncomingQueueSize</code>, default 10,000) kicks the sender when the queue is flooded, preventing memory exhaustion from DoS attacks.</li>
-<li><strong>Token Bucket Anti-Spam</strong> — Each player carries a refillable token bucket (<code>ChatTokens</code> (double), <code>ChatTokenLastRefillTicks</code>). Messages consume one token; when the bucket is empty the message is silently dropped. Float-precision tokens ensure fractional refill at sub-1-token/s rates accumulates correctly.</li>
-<li><strong>Batch DB Persistence</strong> — All persist-eligible channels enqueue into a <code>ConcurrentQueue&lt;PendingChatPersist&gt;</code>. A periodic callback drains up to <code>maxPersistBatchSize</code> (default 2,000) entries and writes the batch via <code>PersistBatchAsync</code>, reducing DB round-trips from O(N) to ~O(N/batchSize).</li>
-<li><strong>Outbound Broadcast Batching</strong> — World and Trade channel messages are buffered per-world in <code>OutboundWorldBroadcastBuffer</code>. A periodic callback flushes up to <code>maxOutboundBatchSize</code> messages per recipient per flush. A hard cap (<code>maxBufferedWorldMessages</code>, default 200) per world ID drops oldest messages if the buffer exceeds the limit.</li>
+<li><p><strong>Lock-Free Incoming Chat Queue</strong> — Network callbacks enqueue stamped messages into a <code>ConcurrentQueue</code>; the main-thread <code>OnUpdate</code> drains up to <code>maxIncomingChatsPerFrame</code> entries per frame. A hard cap (<code>maxIncomingQueueSize</code>, default 10,000) kicks the sender when the queue is flooded, preventing memory exhaustion from DoS attacks.</p>
+<p>A dequeued message whose connection has no spawned character (<code>FirstObject == null</code>) is <strong>dropped, not kicked</strong>. The queue is drained a frame or more after the message arrives, and a character despawns while its connection stays up on every scene transfer, bind-point respawn and channel switch — so a line typed just before one of those dequeues with no character attached. Kicking for it disconnected a player mid-transfer, with no notice, for typing. Anything genuinely trying to talk without a character is refused just as effectively by discarding what it sends.</p>
+</li>
+<li><p><strong>Token Bucket Anti-Spam</strong> — Each player carries a refillable token bucket (<code>ChatTokens</code> (double), <code>ChatTokenLastRefillTicks</code>). Messages consume one token; when the bucket is empty the message is silently dropped. Float-precision tokens ensure fractional refill at sub-1-token/s rates accumulates correctly.</p>
+</li>
+<li><p><strong>Batch DB Persistence</strong> — All persist-eligible channels enqueue into a <code>ConcurrentQueue&lt;PendingChatPersist&gt;</code>. A periodic callback drains up to <code>maxPersistBatchSize</code> (default 2,000) entries and writes the batch via <code>PersistBatchAsync</code>, reducing DB round-trips from O(N) to ~O(N/batchSize).</p>
+</li>
+<li><p><strong>Outbound Broadcast Batching</strong> — World and Trade channel messages are buffered per-world in <code>OutboundWorldBroadcastBuffer</code>. A periodic callback flushes up to <code>maxOutboundBatchSize</code> messages per recipient per flush. A hard cap (<code>maxBufferedWorldMessages</code>, default 200) per world ID drops oldest messages if the buffer exceeds the limit.</p>
+</li>
 </ol>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
@@ -162,7 +167,7 @@
 <ul>
 <li>Nine chat channels: World, Region, Say, Party, Guild, Tell, Trade, System, Discord</li>
 <li>Lock-free incoming chat queue (<code>ConcurrentQueue</code>) decoupling network callbacks from main-thread processing with configurable per-frame drain budget</li>
-<li>DoS protection via hard cap on incoming queue size; sender kicked when exceeded</li>
+<li>DoS protection via hard cap on incoming queue size; sender kicked when exceeded. Messages from a connection with no spawned character are dropped rather than kicked — that state is a routine scene-transfer race, not an exploit</li>
 <li>Token bucket anti-spam with configurable burst capacity (<code>chatTokenBucketCapacity</code>) and refill rate (<code>chatTokenRefillRate</code>)</li>
 <li>Legacy per-message cooldown (<code>messageRateLimit</code>) as a secondary rate-limit gate</li>
 <li>Repeat-message suppression (configurable via <code>allowRepeatMessages</code>)</li>

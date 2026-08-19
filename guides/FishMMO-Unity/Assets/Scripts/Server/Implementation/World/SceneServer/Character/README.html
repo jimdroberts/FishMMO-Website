@@ -159,7 +159,7 @@
 </table>
 <h2 id="features">Features</h2>
 <ul>
-<li>Authentication-triggered character load with per-connection rate limiting (<code>AuthCallbackCooldownSeconds = 2.0s</code>)</li>
+<li>Authentication-triggered character load with per-account rate limiting (<code>AuthCallbackCooldownSeconds = 2.0s</code>). A refused callback disconnects with <code>DisconnectNoticeReason.RateLimited</code> rather than returning silently — this callback is the only thing that starts a character load, so a quiet return left the client authenticated, in no map, and watched by nothing</li>
 <li>Async database fetch of character and 13 sub-entity data sets within a single Unit of Work for a consistent snapshot</li>
 <li>Early session claim (<code>TryClaimAsync</code>) before sub-entity hydration to fail fast if another server owns the character, with a bounded retry (5 attempts, ~1.5s) that absorbs the hand-off window during a scene transfer instead of kicking</li>
 <li>Authoritative re-read of the character row <strong>after</strong> the claim succeeds, so a transfer cannot load a snapshot that predates the source server's final save</li>
@@ -181,6 +181,8 @@
 <li>Periodic out-of-bounds check with respawn point teleportation for characters outside scene boundaries</li>
 <li>Teleport flow: teleporter validation, scene unload, immortality, position/scene update, instance flag removal, save-then-release with reconnect through world routing</li>
 <li>Transfer watchdog: a connection whose character has been handed off is force-disconnected after <code>TransferDisconnectGrace</code> (15s) if the client never reports its scene unload, so a crashed or modified client cannot idle on a server that no longer holds its character</li>
+<li>Residency watchdog: a connection that authenticated but still has no character after <code>CharacterResidencyTimeout</code> (60s) is disconnected with <code>ServerError</code>, bounding every load path that can fail without delivering its own disconnect</li>
+<li>Scene-handshake watchdog: a character parked in <code>WaitingSceneLoadCharacters</code> that never acknowledges its scene within <code>SceneLoadHandshakeTimeout</code> (90s) is disconnected with <code>SceneHandshakeTimedOut</code>, so its session claim is released instead of being held for the life of the socket</li>
 <li>Death/respawn: player marked <code>IsDead</code>, death dialog shown on client. Player chooses Respawn (teleport to bind + revive) or waits for Resurrect (revive at corpse location). A respawn into a different scene follows the same ordering as the teleporter path, so <code>OnDisconnect</code> subscribers see the scene being left rather than the one being entered. Reconnect-while-dead re-shows the death dialog. NPC despawn with corpse decay timer; pet killed event with immediate despawn</li>
 <li>Connection disconnect cleanup: waiting-scene-load character pool return with session release, spawned character mapping removal with save-then-despawn</li>
 <li>Graceful deinitialize: main-thread DTO snapshot of all characters, async persist all, release all sessions (spawned + waiting-to-load)</li>
@@ -269,7 +271,7 @@
 <tr>
 <td><code>AuthCallbackCooldownSeconds</code></td>
 <td>2.0</td>
-<td>Minimum seconds between auth-callback character load requests per connection</td>
+<td>Minimum seconds between auth-callback character load requests per account. Exceeding it disconnects with <code>RateLimited</code></td>
 </tr>
 <tr>
 <td><code>ValidatedSceneBroadcastCooldownSeconds</code></td>
@@ -295,6 +297,26 @@
 <td><code>TransferDisconnectSweepIntervalSeconds</code></td>
 <td>5.0</td>
 <td>Interval between transfer watchdog sweeps</td>
+</tr>
+<tr>
+<td><code>CharacterResidencyTimeout</code></td>
+<td>60s</td>
+<td>How long an authenticated connection may go without a character before the residency watchdog disconnects it</td>
+</tr>
+<tr>
+<td><code>CharacterResidencySweepIntervalSeconds</code></td>
+<td>10.0</td>
+<td>Interval between residency watchdog sweeps</td>
+</tr>
+<tr>
+<td><code>SceneLoadHandshakeTimeout</code></td>
+<td>90s</td>
+<td>How long a character in <code>WaitingSceneLoadCharacters</code> has to acknowledge its scene load</td>
+</tr>
+<tr>
+<td><code>SceneLoadTimeoutSweepIntervalSeconds</code></td>
+<td>10.0</td>
+<td>Interval between scene-handshake watchdog sweeps</td>
 </tr>
 <tr>
 <td><code>DefaultSessionLeaseDuration</code></td>
@@ -540,11 +562,34 @@ character themselves before disconnecting, so they never reach the linger check.
 that lingered would leave the body and its session claim on the source server while the client
 arrived at the destination, which could then not claim the character and would kick it on every
 retry until the linger expired.</p>
+<h3 id="combat-logout-linger">Combat-Logout Linger</h3>
+<p>A character whose owner disconnects mid-combat keeps its body in the world instead of being
+despawned, so closing the client is not a way to win a losing fight. <code>TryBeginCombatLinger</code>
+removes ownership (which is what stops FishNet despawning the object with its connection),
+flags the row <code>IsCombatLogged</code>, puts the body back into the scene's population count, and
+persists a snapshot immediately — the body can be damaged and killed from here with nothing
+attached to it, so a crash mid-linger must not roll that back.</p>
+<p><strong>It also cancels any activation in progress.</strong> A despawn would have done this for free —
+FishNet's <code>ResetState</code> calls <code>AbilityController.Cancel()</code> — but a lingering body is by
+definition not despawned, so an in-flight cast simply carried on: the server keeps ticking
+<code>OnReplicate</code> for an unowned object, and a tick with no input re-asserts <code>IsHeld</code> from the
+replicated flags rather than clearing it. A channelled or charged ability therefore held
+indefinitely and a plain cast ran to completion and fired, spawning projectiles and raising ECA
+events on behalf of a player who was no longer connected and could not aim, retarget or stop
+them. <code>Cancel()</code> also unlocks any consumable inventory slot the activation had reserved, which
+would otherwise follow the character into its next session — the linger's snapshot is what the
+reattach reloads.</p>
+<p>The linger ends on whichever comes first: the character leaving combat, dying, its owner
+reconnecting (<code>TryReattachLingeringCharacter</code>), or <code>combatLogoutLingerSeconds</code> elapsing. That
+last one is the guarantee that an attacker cannot pin a player in the world indefinitely by
+refusing to let their combat timer lapse.</p>
 <h3 id="character-load-pipeline">Character Load Pipeline</h3>
 <p><strong>Step 1 — Authentication callback</strong> (<code>Authenticator_OnClientAuthenticationResult</code>):</p>
 <ol>
-<li>Rate-limits per-connection auth callbacks (<code>AuthCallbackCooldownSeconds</code>).</li>
+<li>Arms the residency watchdog (<code>CharacterResidencyTimeout</code>) before any branch below can return.</li>
+<li>Rate-limits per-account auth callbacks (<code>AuthCallbackCooldownSeconds</code>); a refusal disconnects with <code>RateLimited</code>.</li>
 <li>Validates: connection not already loading, authenticated, account name resolved, <code>ISceneServerSystem</code> available, <code>ICharacterService</code> available, server ID valid.</li>
+<li>Hands off to <code>TryReattachLingeringCharacter</code> when this account left a combat-logout body on this server, which carries the existing claim into the load instead of contending with it.</li>
 <li>Enqueues <code>LoadCharacterAsync</code> to the async worker.</li>
 </ol>
 <p><strong>Step 2 — Async DB snapshot + session claim</strong> (<code>LoadCharacterAsync</code>):</p>
@@ -779,7 +824,7 @@ respawning <em>into</em> rather than the one they died in.</p>
 <h3 id="disconnect-cleanup">Disconnect Cleanup</h3>
 <p><code>OnRemoteConnectionStopped(conn)</code>:</p>
 <ol>
-<li>Removes the transfer watchdog entry, scene-unload and validated-scene rate-limit tracking for the connection.</li>
+<li>Removes the transfer watchdog entry, the residency and scene-handshake deadlines, and scene-unload and validated-scene rate-limit tracking for the connection.</li>
 <li>Removes auth callback rate-limit tracking for the account.</li>
 <li>Consumes any <code>BeginDeliberateTransfer</code> marker for the connection.</li>
 <li>Calls <code>RemoveCharacterConnectionMapping(conn, allowCombatLinger: &lt;not a deliberate transfer&gt;)</code>.</li>
@@ -796,13 +841,16 @@ respawning <em>into</em> rather than the one they died in.</p>
 <p><code>OnDeinitialize</code>:</p>
 <ol>
 <li>Unregisters all event handlers (authenticator, broadcasts, scene manager, connection state, character events, periodic callbacks).</li>
+<li>Clears every per-connection watchdog and rate-limit map. This behaviour is a <code>ScriptableObject</code>, so its fields outlive a play-session restart in the editor while FishNet reissues <code>ClientId</code>s from zero — a stale entry whose id is reissued would be read as the new connection's state, and for a deadline map one that expired long ago.</li>
+<li>Finalizes every combat-logout linger so no unattended body is left holding a claim.</li>
 <li>Snapshots all character DTOs on the main thread.</li>
 <li>Captures all session tokens (spawned + waiting-to-load).</li>
 <li>Synchronously runs async task (bounded by <code>shutdownFlushTimeoutMs</code>): persists all characters, drains the pending-flush retry queue, then releases all sessions.</li>
 </ol>
 <h3 id="failure-semantics">Failure Semantics</h3>
 <ul>
-<li>Auth rate-limited connections are silently skipped (timestamp not updated).</li>
+<li>Auth rate-limited connections are disconnected with <code>RateLimited</code> (timestamp not updated). They are <strong>not</strong> silently skipped: the auth callback is the only entry point to a character load, and every other watchdog on this server is armed downstream of it, so a quiet return left the connection authenticated, in no map, driven by nothing, and behind a client-side loading screen until the player killed the process.</li>
+<li>A connection that authenticates but never ends up in <code>WaitingSceneLoadCharacters</code> or <code>ConnectionCharacters</code> is disconnected by the residency watchdog after <code>CharacterResidencyTimeout</code>. This is the backstop for load paths whose own failure branch is delivered through <code>TryEnqueueMainThread</code>, which is bounded and drops work when saturated — precisely when the load has also failed.</li>
 <li>Invalid authentication state results in <code>Kick(UnusualActivity)</code>.</li>
 <li><code>TryClaimAsync</code> contention is retried up to 5 times before kicking; non-contention errors kick immediately. No sub-entity data is fetched in either case.</li>
 <li>A selected character that changes between the pre-claim and post-claim reads releases the claim and kicks.</li>
@@ -846,7 +894,11 @@ respawning <em>into</em> rather than the one they died in.</p>
 </tr>
 <tr>
 <td>Auth rate limiting</td>
-<td>Send rapid repeated auth callbacks from the same connection; confirm excess requests are logged as rate-limited</td>
+<td>Send rapid repeated auth callbacks from the same account; confirm excess requests are logged as rate-limited <strong>and</strong> disconnected with a <code>RateLimited</code> notice rather than left hanging</td>
+</tr>
+<tr>
+<td>Residency watchdog</td>
+<td>Force a character load to fail without disconnecting (e.g. saturate the main-thread queue); confirm the connection is dropped within <code>CharacterResidencyTimeout</code> and the client returns to world routing</td>
 </tr>
 <tr>
 <td>Character load</td>
@@ -967,10 +1019,12 @@ respawning <em>into</em> rather than the one they died in.</p>
 <h3 id="character-load-pipeline-1">Character Load Pipeline</h3>
 <pre><code>Authenticator_OnClientAuthenticationResult(conn, authenticated)
 │
-├─ 1. Rate-limit check (AuthCallbackCooldownSeconds)
-├─ 2. Validate: not already loading, authenticated, account name, dependencies
-├─ 3. Resolve serverID on main thread
-└─ 4. EnqueueAsyncWork → LoadCharacterAsync
+├─ 1. Arm residency watchdog (CharacterResidencyTimeout)
+├─ 2. Rate-limit check (AuthCallbackCooldownSeconds) → DisconnectWithNotice(RateLimited)
+├─ 3. Validate: not already loading, authenticated, account name, dependencies
+├─ 4. Resolve serverID on main thread
+├─ 5. TryReattachLingeringCharacter (combat-logout body on this server)
+└─ 6. EnqueueAsyncWork → LoadCharacterAsync
        │
        ├─ IUnitOfWorkService.BeginAsync → UoW
        ├─ ICharacterService.FetchByAccountAsync(accountName, selected: true)
@@ -1022,7 +1076,7 @@ OnClientValidatedSceneBroadcastReceived(conn, msg, channel)
 <h3 id="disconnect--save">Disconnect + Save</h3>
 <pre><code>OnRemoteConnectionStopped(conn)
 │
-├─ Remove auth rate-limit tracking
+├─ Remove auth rate-limit tracking, residency + scene-handshake deadlines
 └─ RemoveCharacterConnectionMapping(conn)
        │
        ├─ [Waiting character] Remove from WaitingSceneLoadCharacters

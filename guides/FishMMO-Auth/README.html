@@ -106,6 +106,8 @@
 <li><a href="#flow-diagram">Flow Diagram</a></li>
 <li><a href="#project-structure">Project Structure</a></li>
 <li><a href="#license">License</a></li>
+<li><a href="#re-handshaking-on-a-live-connection">Re-handshaking on a live connection</a></li>
+<li><a href="#account--connection-mapping-on-reconnect">Account ↔ connection mapping on reconnect</a></li>
 </ul>
 <h2 id="overview">Overview</h2>
 <p>FishMMO-Auth is organized into three <code>netstandard2.1</code> projects (all with <code>&lt;Nullable&gt;enable&lt;/Nullable&gt;</code>), each building to a separate DLL:</p>
@@ -150,7 +152,7 @@
 <li><code>BaseAuthenticatorCore&lt;TConnection&gt;</code> — stateless HMAC cookie challenge, X25519 ECDH key agreement, stale-auth TTL sweeps (bounded scan/remove), per-IP debounce, and global handshake-per-second cap.</li>
 <li><code>SrpAuthenticatorCore&lt;TConnection&gt;</code> — bounded-channel SRP verify/proof workers, per-IP SRP rate limiting, account-verify debouncing, TOTP two-factor gate (semaphore-limited concurrency, per-username failure lockout), kick-request tracking, and auth token issuance with hash persistence.</li>
 <li><code>TokenAuthenticatorCore&lt;TConnection&gt;</code> — bounded-channel token auth worker with timing-equalization dummy-key path and revocation check.</li>
-<li><code>ClientAuthenticatorCore</code> — full client-side auth state machine with cookie echo, ECDH, SRP verify/proof, TOTP, token path, and zeroing key material cleanup.</li>
+<li><code>ClientAuthenticatorCore</code> — full client-side auth state machine with cookie echo, ECDH, SRP verify/proof, TOTP, token path, and zeroing key material cleanup. Separates <em>connection ended</em> (<code>OnDisconnected</code>) from <em>handshake again on the same connection</em> (<code>OnRehandshakeRequired</code>) — see <a href="#re-handshaking-on-a-live-connection">Re-handshaking on a live connection</a>.</li>
 </ul>
 <h3 id="handshake-and-session-establishment">Handshake and session establishment:</h3>
 <ul>
@@ -311,6 +313,10 @@ auth.HandleConnectionStopped(conn);
     // On connect, set credentials first:
     // auth.SetLoginCredentials(username, password);
     // Then call auth.OnConnected() from your transport OnConnected callback.
+    //
+    // If the server later invites a second handshake on the SAME connection
+    // (login-queue admission), call auth.OnRehandshakeRequired() before
+    // auth.OnConnected() — NOT auth.OnDisconnected(). See the section below.
 
     protected override void SendClientHandshake(byte[] publicKey, byte[]? cookie, string? connectionToken, ushort minVersion, ushort maxVersion, string gameVersion) { /* send broadcast */ }
     protected override void SendTokenAuth(byte[] encryptedToken, uint seq) { /* send broadcast */ }
@@ -404,6 +410,7 @@ CryptographicOperations.ZeroMemory(rawToken);
 <li>Zero raw tokens and temporary sensitive byte buffers after use.</li>
 <li>Clear per-connection SRP state after successful SRP auth (<code>ClearSrpState</code>).</li>
 <li>Call <code>ClearKeyMaterial()</code> on the client after key material is no longer needed.</li>
+<li>Call <code>OnRehandshakeRequired()</code>, never <code>OnDisconnected()</code>, when re-handshaking on a still-open connection.</li>
 <li>Rotate signing keys and cookie HMAC keys according to your security policy.</li>
 </ul>
 <h3 id="2fa-checks">2FA checks:</h3>
@@ -512,6 +519,32 @@ CryptographicOperations.ZeroMemory(rawToken);
 </code></pre>
 <h2 id="license">License</h2>
 <p>See the main FishMMO repository for license information.</p>
+<h2 id="re-handshaking-on-a-live-connection">Re-handshaking on a live connection</h2>
+<p><code>OnDisconnected()</code> and <code>OnRehandshakeRequired()</code> both reset the per-connection cryptographic
+state — the ephemeral keypair, the derived session keys, the nonce contexts, the SRP state and
+the duplicate-message guards. They differ in one thing: <code>OnDisconnected()</code> also clears the
+credentials, and <code>OnRehandshakeRequired()</code> preserves them.</p>
+<p>That distinction only matters in one place, but it is load-bearing there. A server may defer a
+handshake and invite the client to send another one <strong>on the same transport connection</strong> — the
+login admission queue does exactly this, holding the client at the QUIC layer and answering with
+<code>LoginQueuePositionBroadcast</code> until it reaches the front. The queue defers <em>before</em> SRP begins,
+so at the moment of admission the username and password handed to <code>SetLoginCredentials</code> are the
+only copy in existence: SRP has not run, so nothing has derived a verifier from them, and no UI
+will ever supply them again.</p>
+<p>Reusing <code>OnDisconnected()</code> for that retry wiped them. The re-handshake completed ECDH normally
+and then reached the credential pre-validation in <code>OnServerHandshakeReceived</code>, found an empty
+username, and called <code>Disconnect()</code> — with no auth result, so the client had nothing to report.
+Every queued client was silently dropped the instant it was admitted, which made the queue
+unable to admit anyone at all.</p>
+<pre><code>Queued client, admitted:
+    OnRehandshakeRequired()   ← clears keys, KEEPS username/password/register/email/age
+    OnConnected(null)         ← new keypair, guards reset, sends ClientHandshake
+                                 (no connection token: the real IP was already
+                                  recovered by the handshake that triggered queueing)
+</code></pre>
+<p><code>OnConnected</code> is still what the caller invokes next: it regenerates the keypair and resets
+<code>cookieEchoed</code> / <code>srpVerifyProcessed</code> / <code>srpSuccessProcessed</code>, which a second handshake on one
+connection also depends on.</p>
 <h2 id="account--connection-mapping-on-reconnect">Account ↔ connection mapping on reconnect</h2>
 <p><code>AccountManager</code> keeps both directions: <code>connectionAccounts</code> (connection → account) and
 <code>accountConnections</code> (account → connection). <code>AddConnectionAccount</code> overwrites the reverse entry

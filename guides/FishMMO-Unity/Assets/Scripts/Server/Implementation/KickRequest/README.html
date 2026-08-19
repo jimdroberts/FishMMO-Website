@@ -107,7 +107,7 @@
 <li><a href="#license">License</a></li>
 </ul>
 <h2 id="overview">Overview</h2>
-<p>The Kick Request system enforces account disconnect requests issued through the database. It runs on any FishMMO server (Login, Scene, or World) as a <code>ServerBehaviour</code> and periodically polls for new kick requests using cursor-based pagination. Each request is validated against account last-login timestamps to filter stale entries (accounts that have already reconnected). Valid kick actions are marshalled to the Unity main thread through a dedicated <code>MainThreadQueueData</code> container, since FishNet's <code>NetworkConnection.Kick(...)</code> is not thread-safe.</p>
+<p>The Kick Request system enforces account disconnect requests issued through the database. It runs on any FishMMO server (Login, Scene, or World) as a <code>ServerBehaviour</code> and periodically polls for new kick requests using cursor-based pagination. Each request is validated against account last-login timestamps to filter stale entries (accounts that have already reconnected). Valid kick actions are marshalled to the Unity main thread through a dedicated <code>MainThreadQueueData</code> container, since FishNet connection operations are not thread-safe. The disconnect itself goes through <code>ServerBehaviour.DisconnectWithNotice(AdministrativeKick, terminal: true)</code> rather than <code>NetworkConnection.Kick(...)</code>.</p>
 <p>The system is split into a Core interface layer and an Implementation layer:</p>
 <ul>
 <li><strong>Core layer</strong> (<code>Server/Core/World/KickRequest/</code>) — Defines <code>IKickRequestSystem</code>, <code>IKickRequestSystemQueueData</code>, and <code>IKickRequestSystemMainThreadQueueData</code> as engine-agnostic contracts. Other systems can query or modify runtime pump parameters (<code>UpdatePumpRate</code>, <code>UpdateFetchCount</code>) without referencing the implementation.</li>
@@ -155,7 +155,8 @@
 <li><strong>Stale request filtering</strong> — For each kick request, the system fetches the account's last-login timestamp. If the last login occurred after the kick request was created, the request is considered stale (account already reconnected) and is skipped.</li>
 <li><strong>Batched last-login checks</strong> — Login timestamp queries are batched in groups of 10 using <code>Task.WhenAll</code> to avoid saturating the database connection pool while still running concurrently within each batch.</li>
 <li><strong>Overlap protection</strong> — <code>IKickRequestSystemQueueData.IsProcessing</code> is checked under a lock before each poll to prevent concurrent overlapping database fetches.</li>
-<li><strong>Main-thread kick dispatch</strong> — All <code>conn.Kick(KickReason.UnexpectedProblem)</code> calls are enqueued via <code>TryEnqueueMainThread&lt;IKickRequestSystemMainThreadQueueData&gt;</code> and drained on the main thread each frame, respecting <code>maxMainThreadActionsPerFrame</code> to avoid frame spikes.</li>
+<li><strong>Main-thread kick dispatch</strong> — All disconnects are enqueued via <code>TryEnqueueMainThread&lt;IKickRequestSystemMainThreadQueueData&gt;</code> and drained on the main thread each frame, respecting <code>maxMainThreadActionsPerFrame</code> to avoid frame spikes.</li>
+<li><strong>The player is told they were kicked</strong> — <code>DisconnectWithNotice(AdministrativeKick, terminal: true)</code>, never <code>NetworkConnection.Kick(...)</code>. FishNet does not carry a kick reason to the client, so a plain <code>Kick</code> landed the player on the login screen with no explanation <em>and</em> left the client's reconnect loop to spend all ten attempts dialling back into a server that would refuse them again. <code>Kick</code> would also have discarded the notice: it calls <code>Disconnect(true)</code>, which stops the transport immediately and throws away everything still queued for the tick. <code>Terminal = true</code> is what stops the retry loop, because an operator kick does not resolve by retrying.</li>
 <li><strong>Disconnect cleanup</strong> — When a remote connection stops, the system asynchronously deletes any pending kick request for that account from the database, preventing stale requests from re-triggering after legitimate disconnect/reconnect cycles.</li>
 <li><strong>Configurable pump rate</strong> — Poll interval (<code>updatePumpRate</code>) and fetch count (<code>updateFetchCount</code>) are exposed as serialized fields and runtime properties, tunable via the Unity Inspector or code.</li>
 <li><strong>Periodic update integration</strong> — Registers with <code>IPeriodicUpdateSystem</code> for fixed-rate polling cadence rather than relying on per-frame checks.</li>
@@ -285,7 +286,7 @@ if (database.ServiceRegistry.TryGet&lt;IKickRequestService&gt;(out var kickServi
 // 1. Poll detects kick request for &quot;targetAccount&quot;
 // 2. Last-login check confirms account hasn't reconnected
 // 3. Main-thread queue receives kick action
-// 4. On next frame drain: conn.Kick(KickReason.UnexpectedProblem)
+// 4. On next frame drain: DisconnectWithNotice(conn, AdministrativeKick, terminal: true)
 // 5. OnRemoteConnectionStopped fires → kick request deleted from DB
 </code></pre>
 <h2 id="operational-checks">Operational Checks</h2>
@@ -404,7 +405,7 @@ if (database.ServiceRegistry.TryGet&lt;IKickRequestService&gt;(out var kickServi
 │  │  AccountManager.GetConnectionByAccountName(name)     │   │
 │  │    │                                                 │   │
 │  │    ▼                                                 │   │
-│  │  conn.Kick(KickReason.UnexpectedProblem)             │   │
+│  │  DisconnectWithNotice(AdministrativeKick, terminal)  │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐   │
@@ -510,7 +511,7 @@ if (database.ServiceRegistry.TryGet&lt;IKickRequestService&gt;(out var kickServi
 </tr>
 <tr>
 <td>Main thread (via queue)</td>
-<td>FishNet <code>Kick(...)</code> operations</td>
+<td>FishNet broadcast + <code>Disconnect(false)</code> operations</td>
 </tr>
 </tbody>
 </table>

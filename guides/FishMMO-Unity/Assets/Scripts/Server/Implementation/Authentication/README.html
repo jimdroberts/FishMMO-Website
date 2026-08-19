@@ -747,6 +747,53 @@ internal override Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(
 <li>Disconnects the client after the broadcast is sent.</li>
 <li>Purges all transient auth state via <code>PurgeConnectionAuthState</code>.</li>
 </ol>
+<h4 id="pre-authentication-rejections-say-nothing-deliberately">Pre-authentication rejections say nothing, deliberately</h4>
+<p><code>RejectAndPurge</code> covers failures the server is willing to describe — a bad password, a banned
+account, a full server. The rejections in <code>OnServerClientHandshakeReceivedAsync</code> are a different
+class and are answered with a bare <code>conn.Disconnect(true)</code> and no broadcast at all:</p>
+<table>
+<thead>
+<tr>
+<th>Rejection</th>
+<th>Why it stays silent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Oversized <code>PublicKey</code> / <code>Cookie</code> / <code>ConnectionToken</code> / <code>GameVersion</code></td>
+<td>Confirming which field tripped maps the size limits</td>
+</tr>
+<tr>
+<td><code>MinVersion == 0</code>, <code>MaxVersion == 0</code>, or <code>MinVersion &gt; MaxVersion</code></td>
+<td>Confirming the accepted range hands over the negotiation window</td>
+</tr>
+<tr>
+<td>Handshake rate limit tripped (initial cookieless handshake only)</td>
+<td>An answer turns the limiter into a timing oracle for its own window and key derivation</td>
+</tr>
+<tr>
+<td>Connection-token HMAC verification failed</td>
+<td>A distinguishable response is an oracle against the token signing key</td>
+</tr>
+<tr>
+<td>No connection token <strong>and</strong> no cached real IP</td>
+<td>Same — it reveals whether an IP is already known to the server</td>
+</tr>
+<tr>
+<td><code>conn.IsAuthenticated</code> already true</td>
+<td>A duplicate handshake on an authenticated connection is not a client this server owes an answer</td>
+</tr>
+</tbody>
+</table>
+<p>This is a deliberate trade, and it has a cost: the client sees only a closed transport. The
+client is therefore responsible for reporting it — the login panels track whether <em>any</em>
+<code>ClientAuthenticationResult</code> arrived before the connection stopped, and if none did they say the
+connection was closed before it answered rather than silently resetting the form. See
+<a href="../../../../../../CONNECTION_PIPELINE.html#deliberate-disconnects-explain-themselves">Deliberate disconnects explain themselves</a>
+in the connection pipeline.</p>
+<p>Note the one rejection that is <strong>not</strong> silent: reaching authentication capacity defers to
+<code>LoginQueueSystem</code> via <code>OnHandshakeDeferred</code>, and only answers <code>ServerBusy</code> when the queue is
+also full. A deferred client keeps its connection and is told its position.</p>
 <h2 id="project-structure">Project Structure</h2>
 <h3 id="directory-tree">Directory Tree</h3>
 <pre><code># FishMMO-Auth (netstandard2.1 shared library — Assets/Dependencies/FishMMO-Auth.dll)

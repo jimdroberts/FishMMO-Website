@@ -710,6 +710,17 @@ Server.OnApplicationQuit()
     ↓
 Application.Quit()
 </code></pre>
+<blockquote>
+<p><strong><code>Deinitialize()</code> must clear a behaviour's own fields, not just its registrations.</strong>
+ServerBehaviours are ScriptableObject <em>assets</em>, so any state held in their fields survives a
+play-session restart in the editor — while FishNet reissues <code>ClientId</code>s from zero. A
+per-connection map left populated is therefore read as the <em>next</em> session's state, and for a
+deadline map every surviving entry is already expired, so the first sweep of the new run
+disconnects clients that have done nothing wrong. <code>CharacterSystem.OnDeinitialize</code> clears its
+watchdog and rate-limit maps for exactly this reason; <code>WorldSceneSystem.OnDeinitialize</code> does
+the same before its early-return guards, since that state has no dependencies to check first.
+Data containers are separate — the registry calls <code>Clear()</code> on each one for you.</p>
+</blockquote>
 <p>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
 <p><strong>SUMMARY</strong></p>
 <p>The FishMMO server initialization follows a robust multi-phase approach:</p>

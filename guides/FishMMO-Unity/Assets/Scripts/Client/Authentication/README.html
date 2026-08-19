@@ -113,6 +113,7 @@
 <li>Implements the abstract <code>Send*</code> callbacks on <code>ClientAuthenticatorCore</code> by emitting FishNet broadcasts via <code>Client.Broadcast(...)</code>.</li>
 <li>Implements <code>Disconnect()</code> by calling <code>Client.ForceDisconnect()</code>.</li>
 <li>Forwards FishNet <code>OnClientConnectionState</code> (<code>Started</code> / <code>Stopping</code> / <code>Stopped</code>) into <code>core.OnConnected()</code> / <code>core.OnDisconnected()</code>.</li>
+<li>Implements <code>RetryHandshakeAsync()</code>, the login-queue admission path, as <code>core.OnRehandshakeRequired()</code> + <code>core.OnConnected(null)</code> on the still-open connection.</li>
 <li>Forwards incoming <code>ServerHandshake</code>, <code>SrpVerifyResponseBroadcast</code>, <code>SrpSuccessBroadcast</code>, <code>ClientAuthResultBroadcast</code>, and <code>TwoFactorSetupBroadcast</code> broadcasts into the matching core handlers.</li>
 <li>Surfaces <code>OnClientAuthenticationResult</code> and <code>OnTwoFactorSetupReceived</code> as Unity-facing events.</li>
 <li>Disposes the core in <code>OnDestroy()</code>.</li>
@@ -197,6 +198,7 @@
 <li><strong>Token failure handling</strong> — <code>ClientAuthResultBroadcast</code> with <code>TokenInvalid</code>, <code>TokenExpired</code>, or <code>TokenRevoked</code> clears the stored token via <code>ClearAuthToken()</code> in the core, and <code>Client.OnAuthResult</code> additionally abandons the session and returns to the login screen. Clearing the token alone did not stop the reconnect loop, which then spent ten backoff attempts (minutes) that could not succeed with no token and no credentials.</li>
 <li><strong>Mid-session token renewal</strong> — World/Scene servers push a re-minted token on a timer (default: halfway through the token lifetime), not only at authentication. The client applies it via <code>TryApplyRenewedToken</code> after checking <code>RenewTokenResponseBroadcast.Result</code>. Without this, a session that stayed in one scene past the token lifetime hit <code>TokenExpired</code> on its next scene transfer, because a transfer re-authenticates through the World server.</li>
 <li><strong>Credential clearing</strong> — <code>username</code> and <code>password</code> are nulled immediately after <code>SrpData.GetProof()</code> (the last point of use) and again as a safety net in <code>ClearKeyMaterial()</code> on disconnect.</li>
+<li><strong>Queue re-handshake preserves credentials</strong> — <code>RetryHandshakeAsync</code> resets the per-connection crypto state with <code>OnRehandshakeRequired()</code>, <strong>not</strong> <code>OnDisconnected()</code>. The login queue defers the handshake before SRP begins, so at admission the credentials are still the only copy in existence; clearing them made the re-handshake fail its own pre-validation and disconnect with no auth result, so every queued client was dropped the instant it was admitted. A randomized 0–1s jitter precedes the retry so a drained queue does not hit the SRP verify channel in lockstep, and the connection is re-checked afterwards in case it dropped during the delay.</li>
 <li><strong>Key material zeroing</strong> — <code>clientToServerKey</code>, <code>serverToClientKey</code>, all decrypted plaintext buffers (salt, ephemeral, proof), and <code>GcmNonceContext</code> session prefixes are zeroed with <code>CryptographicOperations.ZeroMemory()</code> on disconnect or after use.</li>
 <li><strong>Duplicate-message guards</strong> — <code>srpVerifyProcessed</code>, <code>srpSuccessProcessed</code>, and <code>cookieEchoed</code> flags prevent reprocessing of critical protocol messages within a single connection.</li>
 <li><strong>Pre-validation</strong> — username length is checked client-side (3–32 characters) before consuming a sequence number, failing fast on payloads that the server would reject.</li>
@@ -484,6 +486,16 @@ networkManager.ClientManager.StopConnection();
 <td>Set username shorter than 3 or longer than 32 characters</td>
 <td>Client logs warning and calls <code>ForceDisconnect()</code> before sending any SRP broadcast</td>
 </tr>
+<tr>
+<td>Queue admission completes the login</td>
+<td>Saturate the login server's auth capacity so the next client is queued, then let it drain</td>
+<td>Client shows queue positions, re-handshakes on the same connection at position 0, and completes SRP — <strong>not</strong> a silent disconnect</td>
+</tr>
+<tr>
+<td>Unexplained drop is reported</td>
+<td>Close the connection during the handshake without sending an auth result</td>
+<td>The login panel reports that the connection was closed before it answered, rather than silently resetting the form</td>
+</tr>
 </tbody>
 </table>
 <h2 id="flow-diagram">Flow Diagram</h2>
@@ -630,6 +642,26 @@ Nonce also passed as AAD to AES-GCM, binding ciphertext to its nonce context
             
             NOTE: storedAuthToken is NOT cleared — it persists across connections.
             Call ClearAuthToken() explicitly on user logout.
+</code></pre>
+<h3 id="re-handshake-login-queue-admission">Re-handshake (login-queue admission)</h3>
+<p>The connection is <strong>not</strong> stopping here — the server invited a second handshake on it.</p>
+<pre><code>LoginQueuePositionBroadcast { QueuePosition: 0 }
+    │
+    ├── jitter 0-1s (spreads a drained queue across the SRP verify channel)
+    ├── re-check the connection is still Started
+    │
+    ├── OnRehandshakeRequired()
+    │       ├── everything ClearKeyMaterial() does...
+    │       └── ...then restores username, password, email, register, age
+    │
+    └── OnConnected(connectionToken: null)
+            ├── new X25519 ephemeral keypair
+            ├── cookieEchoed / srpVerifyProcessed / srpSuccessProcessed = 0
+            └── ClientHandshake → Phase 1
+
+            NOTE: no connection token. IPFetch mints those one per request and
+            this client has already spent its; the server accepts a tokenless
+            handshake because it already has a real IP cached for this ClientId.
 </code></pre>
 <h2 id="project-structure">Project Structure</h2>
 <h3 id="directory-tree">Directory Tree</h3>
