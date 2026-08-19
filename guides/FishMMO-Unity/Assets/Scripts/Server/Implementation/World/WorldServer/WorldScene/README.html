@@ -105,6 +105,8 @@
 <li><a href="#flow-diagram">Flow Diagram</a></li>
 <li><a href="#project-structure">Project Structure</a></li>
 <li><a href="#license">License</a></li>
+<li><a href="#scene-routing-queue-feedback">Scene-routing queue feedback</a></li>
+<li><a href="#routing-safety-nets">Routing safety nets</a></li>
 </ul>
 <h2 id="overview">Overview</h2>
 <p>The World Scene system routes authenticated world-server players into the correct scene endpoint. It supports both open-world and instance scene flows, maintains waiting queues while scenes are loading, coordinates scene-server assignment, and keeps a live connection-count metric used by world admission logic. Database work is asynchronous; all FishNet/Unity state mutations are marshalled onto the main thread through a dedicated queue container.</p>
@@ -160,7 +162,8 @@
 <li>Authentication handoff via <code>WorldServerAuthenticator.OnClientAuthenticationResult</code> triggering the instance routing flow</li>
 <li>Connection disconnect cleanup via <code>ServerManager.OnRemoteConnectionState</code> subscription removing connections from all queues</li>
 <li>Per-account instance-lookup debounce (<code>ExpiringKeyTracker&lt;string&gt;</code>) preventing DB flood from rapid reconnect attempts</li>
-<li>Waiting queue TTL purge sweeps removing stale connections that exceed <code>waitingQueueTtlSeconds</code>, kicking active stale waiters and silently cleaning inactive entries</li>
+<li>Waiting queue TTL purge sweeps removing stale connections that exceed <code>waitingQueueTtlSeconds</code>, kicking active stale waiters and silently cleaning inactive entries. The TTL measures the <strong>total</strong> wait: the arrival stamp survives re-queue cycles, and only a terminal outcome (routed, purged, disconnected) clears it</li>
+<li>Scene-routing queue feedback: waiting clients receive a periodic <code>WorldSceneQueuePositionBroadcast</code> carrying their position, the size of the queue they are in, an estimated wait, and <em>why</em> they are waiting (<code>Capacity</code>, <code>SceneLoading</code>, <code>CombatLogoutBody</code>)</li>
 <li>Defense-in-depth queue size cap (<code>MAX_WAITING_QUEUE_SIZE = 2500</code> per queue type) preventing unbounded memory growth</li>
 <li>Write-through TTL cache for scene-instance query results (<code>AvailableSceneCache</code>, default 5 s) and scene-server addresses (<code>SceneServerAddressCache</code>, default 10 s) with failure-triggered invalidation</li>
 <li>Cache-aware <code>FetchAvailableScenesAsync</code> and <code>FetchSceneServerAddressAsync</code> wrappers with bypass when TTL is set to 0</li>
@@ -283,6 +286,13 @@
 <td>Max stale queued connections purged per waiting-queue sweep</td>
 </tr>
 <tr>
+<td><code>queuePositionUpdateRateSeconds</code></td>
+<td><code>float</code></td>
+<td><code>2.0</code></td>
+<td>≥ 0.5</td>
+<td>Seconds between scene-routing queue position broadcasts sent to waiting clients</td>
+</tr>
+<tr>
 <td><code>sceneInstanceCacheTtlSeconds</code></td>
 <td><code>float</code></td>
 <td><code>5.0</code></td>
@@ -325,6 +335,16 @@
 <td><code>2500</code></td>
 <td>Per-queue-type cap preventing unbounded memory growth; effective global limit is 5000 (2 × 2500)</td>
 </tr>
+<tr>
+<td><code>CombatLogoutRoutingGraceSeconds</code></td>
+<td><code>150.0</code></td>
+<td>How long a combat-logged character is held for the one scene instance that can hand its body back. Exceeds the 2-minute database session lease so that giving up is safe</td>
+</tr>
+<tr>
+<td><code>SceneLoadWaitTtlMultiplier</code></td>
+<td><code>4.0</code></td>
+<td>Applied to <code>waitingQueueTtlSeconds</code> while the wait is on a scene instance still being created</td>
+</tr>
 </tbody>
 </table>
 <h3 id="runtime-data-defaults">Runtime Data Defaults</h3>
@@ -351,6 +371,11 @@
 <td><code>NextDebounceCleanup</code></td>
 <td>Set to <code>debounceCleanupIntervalSeconds</code></td>
 <td>Countdown until first debounce cleanup</td>
+</tr>
+<tr>
+<td><code>NextQueuePositionUpdate</code></td>
+<td><code>0.0</code></td>
+<td>Countdown until the next queue position broadcast</td>
 </tr>
 </tbody>
 </table>
@@ -432,8 +457,23 @@ await FallbackToWorldSceneAsync(conn, accountName);
 </tr>
 <tr>
 <td>TTL purge active</td>
-<td>Connection in queue &gt; <code>waitingQueueTtlSeconds</code></td>
-<td>Connection kicked with &quot;Waiting queue TTL exceeded&quot;</td>
+<td>Connection in queue &gt; its effective TTL</td>
+<td><code>WorldSceneQueuePositionBroadcast { QueuePosition = -1 }</code> sent, then the connection is closed with <code>Disconnect(false)</code> and the log shows &quot;waiting queue TTL exceeded&quot;</td>
+</tr>
+<tr>
+<td>Queue feedback flowing</td>
+<td>Client waiting on a full or loading scene</td>
+<td><code>WorldSceneQueuePositionBroadcast</code> every <code>queuePositionUpdateRateSeconds</code> with a 1-based position; the client shows a wait dialog with a Close button</td>
+</tr>
+<tr>
+<td>Scene-load wait allowance</td>
+<td>Client waiting while a scene instance loads</td>
+<td>Not purged until <code>waitingQueueTtlSeconds × SceneLoadWaitTtlMultiplier</code></td>
+</tr>
+<tr>
+<td>Combat-logout hold</td>
+<td>Character with <code>IsCombatLogged</code> whose instance is unavailable</td>
+<td>Held up to <code>CombatLogoutRoutingGraceSeconds</code>, reported to the client as <code>CombatLogoutBody</code>, then routed normally</td>
 </tr>
 <tr>
 <td>Queue cap enforced</td>
@@ -744,6 +784,81 @@ await FallbackToWorldSceneAsync(conn, accountName);
 </table>
 <h2 id="license">License</h2>
 <p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+<h2 id="scene-routing-queue-feedback">Scene-routing queue feedback</h2>
+<p>The World → Scene hop is the only leg of the connection pipeline that can legitimately wait a
+long time, and it used to do so in complete silence: the client sits behind a loading overlay
+with no panel, no position and no way to give up. That is indistinguishable from a hang, and it
+is exactly the problem the LoginServer's admission queue already solved one hop earlier.</p>
+<p><code>WorldSceneQueuePositionBroadcast</code> is that same channel applied here. <code>BroadcastQueuePositions</code>
+runs on the main thread every <code>queuePositionUpdateRateSeconds</code>, ranks each waiting connection
+within its own group — by scene name for the open-world queue, by instance id for the instance
+queue — and sends each one its position.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QueuePosition</code></td>
+<td>1-based position while waiting; <code>0</code> = routed (a <code>WorldSceneConnectBroadcast</code> follows); <code>-1</code> = the wait was abandoned and the connection is closing</td>
+</tr>
+<tr>
+<td><code>TotalQueued</code></td>
+<td>Size of the group this client is waiting in</td>
+</tr>
+<tr>
+<td><code>EstimatedWaitSeconds</code></td>
+<td>Derived from <code>routedLastCycleByScene</code>; <code>0</code> means unknown, which the client renders as &quot;Please wait…&quot; rather than as no wait</td>
+</tr>
+<tr>
+<td><code>Reason</code></td>
+<td><code>Capacity</code>, <code>SceneLoading</code>, or <code>CombatLogoutBody</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>A healthy login never sees this dialog.</strong> Every routed client passes through the queue — it
+is enqueued on authentication and emptied by the next routing cycle — so a sweep landing in
+that gap would flash &quot;Queue position: 1 of 1&quot; over a login that was never really queued.
+Connections are ranked across the whole group but only <em>notified</em> once they have waited longer
+than one full routing cycle (<code>QueueFeedbackDelayCycles</code>, floored at
+<code>QueueFeedbackDelayMinSeconds</code>), so a client that crosses the threshold still sees its true
+position.</p>
+<p>Positions go out on the unreliable channel — they are re-sent every sweep, so a lost one is
+corrected by the next. <code>0</code> and <code>-1</code> are one-shot transitions with nothing behind them and go
+reliably; losing one strands the wait dialog on screen. For the same reason the TTL purge sends
+<code>-1</code> and then calls <code>Disconnect(false)</code> rather than <code>Kick</code>, because <code>Kick</code> calls
+<code>Disconnect(true)</code>, which drops the transport immediately and discards the notice with it.</p>
+<h3 id="why-the-reason-matters">Why the reason matters</h3>
+<p>The three waits look identical to a player and mean very different things:</p>
+<ul>
+<li><strong><code>Capacity</code></strong> — every running instance of the target scene is full. Bounded by
+<code>waitingQueueTtlSeconds</code>.</li>
+<li><strong><code>SceneLoading</code></strong> — a scene instance has been requested and is still loading on a scene
+server. Bounded by <code>waitingQueueTtlSeconds × SceneLoadWaitTtlMultiplier</code>, because a large
+world scene can take longer to load than the capacity TTL allows, and purging then bounces a
+player whose zone was seconds from ready straight into a reconnect that re-enters the same
+queue.</li>
+<li><strong><code>CombatLogoutBody</code></strong> — the character's body is still standing in one specific instance and
+only the scene server holding it can hand it back. Bounded by
+<code>CombatLogoutRoutingGraceSeconds</code> instead of by the TTL, which it keeps at bay by restarting
+the wait clock on every cycle it holds.</li>
+</ul>
+<h3 id="the-ttl-had-to-be-made-real-first">The TTL had to be made real first</h3>
+<p>None of this helps if the wait is unbounded, and it was. <code>AddToQueue</code> re-stamped the arrival
+time on every add, and the routing snapshot cleared it outright — so <code>waitingQueueTtlSeconds</code>
+measured &quot;time since the last routing cycle touched this connection&quot; (≈ 2 s) and the purge could
+never fire. Meanwhile <code>SweepStrandedResidents</code> pushes its own deadline forward for any
+connection that <em>is</em> queued, so nothing else bounded it either: a client waiting on capacity
+that never arrived waited forever.</p>
+<p>The arrival stamp now survives re-queue cycles. <code>RecordQueueEntryTime</code> only stamps a connection
+that does not already have one, <code>RemoveFromQueue</code> deliberately leaves it alone, and
+<code>ClearQueueTracking</code> is called from the three terminal outcomes — routed
+(<code>BroadcastSceneConnect</code>), purged (<code>PurgeExpiredWaitingConnections</code>), and disconnected
+(<code>OnRemoteConnectionStopped</code>). <code>ResetQueueEntryTime</code> is the single documented exception, used
+only by the combat-logout hold.</p>
 <h2 id="routing-safety-nets">Routing safety nets</h2>
 <p><strong>Residency watchdog.</strong> The world server is a router: a client authenticates, receives a
 <code>WorldSceneConnectBroadcast</code>, and disconnects on its own to dial the scene server. Every step in

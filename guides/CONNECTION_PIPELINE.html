@@ -110,6 +110,7 @@ Built on QUIC/WebTransport (UDP) via MsQuic, NGINX L4 stream proxy, and FishNetw
 <li><a href="#phase-7-token-issuance--character-select">Phase 7: Token Issuance &amp; Character Select</a></li>
 <li><a href="#phase-8-world-server-connection">Phase 8: World Server Connection</a></li>
 <li><a href="#phase-9-scene-server-connection">Phase 9: Scene Server Connection</a></li>
+<li><a href="#phase-9a-scene-routing-queue">Phase 9a: Scene-Routing Queue</a></li>
 <li><a href="#phase-10-token-renewal--revocation">Phase 10: Token Renewal &amp; Revocation</a></li>
 <li><a href="#phase-11-scene-transfer--character-session-ownership">Phase 11: Scene Transfer &amp; Character Session Ownership</a></li>
 </ul>
@@ -644,6 +645,77 @@ re-enables the button if neither signal arrives.</p>
 
     Note over Client,Scene: 🎮 Gameplay active, • Prediction pipeline running, • Observer LOD system active, • All scene systems operational
 </code></pre>
+<h3 id="phase-9a-scene-routing-queue">Phase 9a: Scene-Routing Queue</h3>
+<p>Phase 9 assumes the World server has somewhere to send the client. It often does not — every
+instance of the target scene can be full, the instance may still be loading on a scene server,
+or the character's combat-logout body may be standing in one specific instance that is the only
+place it can go. All three are legitimate waits, and the client spends them sitting
+authenticated on the World server behind a loading overlay.</p>
+<p>That wait used to be both <strong>silent and unbounded</strong>, which is indistinguishable from a hang.</p>
+<pre><code class="lang-mermaid">sequenceDiagram
+    participant Client as Client
+    participant World as WorldServer
+
+    Note over Client,World: After WorldLoginSuccess, before Phase 9
+
+    World-&gt;&gt;World: ProcessOpenWorldQueueAsync, • no capacity / no instance / combat-logout hold, • connection stays in the waiting queue
+
+    loop every queuePositionUpdateRateSeconds (2s)
+        World--&gt;&gt;Client: WorldSceneQueuePositionBroadcast {, QueuePosition: n, TotalQueued, EstimatedWaitSeconds, Reason, }
+        Client-&gt;&gt;Client: Wait dialog: position + reason, Close leaves the queue → QuitToLogin
+    end
+
+    alt Capacity found
+        World--&gt;&gt;Client: WorldSceneQueuePositionBroadcast { QueuePosition: 0 }
+        World--&gt;&gt;Client: WorldSceneConnectBroadcast { Port }
+        Note over Client: Dialog dismissed, Phase 9 begins
+    else Wait exceeded its TTL
+        World--&gt;&gt;Client: WorldSceneQueuePositionBroadcast { QueuePosition: -1 }
+        World-&gt;&gt;World: conn.Disconnect(false), (not Kick — that discards the notice)
+        Client-&gt;&gt;Client: QuitToLogin + &quot;could not find room&quot;
+    end
+</code></pre>
+<p><strong>Position semantics</strong> are identical to the login queue: <code>&gt; 0</code> waiting, <code>0</code> routed, <code>-1</code>
+abandoned. Positive positions go Unreliable (re-sent every sweep); <code>0</code> and <code>-1</code> go Reliable
+because they are one-shot transitions and losing one strands the dialog on screen.</p>
+<p><strong>The three reasons have different bounds</strong>, and the client names each one:</p>
+<table>
+<thead>
+<tr>
+<th><code>Reason</code></th>
+<th>Meaning</th>
+<th>Bounded by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Capacity</code></td>
+<td>Every instance of the target scene is full</td>
+<td><code>waitingQueueTtlSeconds</code> (45 s)</td>
+</tr>
+<tr>
+<td><code>SceneLoading</code></td>
+<td>An instance was requested and is still loading</td>
+<td><code>waitingQueueTtlSeconds × SceneLoadWaitTtlMultiplier</code> (180 s) — a large world scene can take longer to load than the capacity TTL allows</td>
+</tr>
+<tr>
+<td><code>CombatLogoutBody</code></td>
+<td>Only the instance holding the character's body can hand it back</td>
+<td><code>CombatLogoutRoutingGraceSeconds</code> (150 s), which exceeds the 2-minute session lease so giving up is safe</td>
+</tr>
+</tbody>
+</table>
+<p><strong>A healthy login never sees the dialog.</strong> Every routed client passes through this queue, so a
+sweep landing between enqueue and the next routing cycle would flash a position at someone who
+was never really queued. Connections are ranked across the whole group but only notified once
+they have waited longer than one full routing cycle.</p>
+<p><strong>Making the TTL real was a prerequisite.</strong> <code>AddToQueue</code> re-stamped the arrival time on every
+add and the routing snapshot cleared it outright, so <code>waitingQueueTtlSeconds</code> measured &quot;time
+since the last routing cycle touched this connection&quot; (≈ 2 s) and the purge could never fire.
+<code>SweepStrandedResidents</code> pushes its own 90 s deadline forward for any connection that <em>is</em>
+queued, so nothing bounded the wait at all. The arrival stamp now survives re-queue cycles and
+is cleared only by a terminal outcome — routed, purged, or disconnected — with the
+combat-logout hold as the single documented exception.</p>
 <h3 id="phase-10-token-renewal--revocation">Phase 10: Token Renewal &amp; Revocation</h3>
 <p>Renewal runs on a timer, not just once at authentication. A scene transfer is a
 re-authentication — the scene server releases the character and disconnects the client,
@@ -1030,6 +1102,11 @@ leaving the player looking at an empty world. The first retry from a <code>Scene
 <code>SceneHandoffReconnectDelay</code> (0.25 s, jittered); if it fails, normal exponential backoff resumes
 from attempt 1. <code>OnReconnectPending</code> fires when a retry is <em>armed</em> rather than when it starts, so
 both loading screens hold the overlay across the whole handoff instead of dropping it in the gap.</p>
+<p><strong>A wait is not a failure, and is now reported as neither.</strong> A client held in the World
+server's scene-routing queue is not disconnected and not reconnecting — it is waiting, which
+this diagram does not model because no connection state changes. Phase 9a covers it: the client
+receives its queue position on a timer and can leave the queue at any point, and the wait is
+bounded so it ends in <code>LoginScreen</code> rather than never ending.</p>
 <p><strong>Losing the login server returns to the login screen.</strong> <code>OnConnectionAttemptFailed</code> fires only
 for a connection that stopped without being reconnectable and without being torn down on
 purpose. It invalidates the cached login server list <em>and</em> runs <code>QuitToLogin</code>. Without the

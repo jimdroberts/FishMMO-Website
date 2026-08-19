@@ -219,6 +219,46 @@ stays acquired and every later connect is refused for the life of the process �
 as a login button that silently stops working. <code>ConnectToServer</code> therefore checks the age of
 the acquisition when the CAS fails, and reclaims a guard held longer than any legitimate
 acquisition could last (stop wait × 2 + establish timeout + 30 s).</p>
+<h2 id="abort-paths-clear-stoppingforconnect">Abort paths clear <code>stoppingForConnect</code></h2>
+<p><code>ConnectToServer</code> sets <code>stoppingForConnect</code> and expects the Stopped transition it asked for to
+consume it. Every abort inside <code>OnAwaitingConnectionReady</code> is reached in exactly the cases
+where that does not happen — the teardown timed out, or the connection was already stopped so
+no transition was ever raised. <code>AbortConnectAttempt</code> therefore clears the flag along with the
+guard; leaving it latched handed it to the <em>next</em> Stopped, which is a real drop, and a drop
+marked deliberate arms no reconnect and raises no <code>OnConnectionAttemptFailed</code>, so the client
+sat disconnected with nothing driving it anywhere.</p>
+<h2 id="loop-guards-are-sized-from-the-timeout-not-a-frame-count">Loop guards are sized from the timeout, not a frame count</h2>
+<p>The waits inside <code>OnAwaitingConnectionReady</code> are bounded by <code>Time.realtimeSinceStartup</code>
+deadlines. Their iteration counters are only a backstop against a clock that stops advancing,
+so they are derived from the timeout (<code>IterationCapForSeconds</code>). Fixed frame counts made the
+counter the <em>tighter</em> bound on any client rendering faster than count ÷ timeout — routine,
+since FishNet's <code>ClientManager.FrameRate</code> defaults to 500 and the login screen renders almost
+nothing. The 20 s establish wait aborted after roughly five seconds and reported an internal
+&quot;iteration limit exceeded&quot; instead of a connection failure.</p>
+<h2 id="waiting-is-not-disconnecting">Waiting is not disconnecting</h2>
+<p>Two of the pipeline's queues hold a client on a live, authenticated connection while it waits:
+the LoginServer's admission queue, and the WorldServer's scene-routing queue (see
+<a href="../../Server/Implementation/World/WorldServer/WorldScene/README.html#scene-routing-queue-feedback">World Scene System → Scene-routing queue feedback</a>).
+Neither involves this class — no connection state changes, so nothing here fires — which is
+exactly why they need their own feedback channel. <code>Client</code> presents both through one shared
+wait dialog so they cannot drift apart or fight over the same control, and the dialog's only
+action leaves the queue via <code>QuitToLogin</code>.</p>
+<h2 id="unhandled-exceptions-from-the-networking-stack">Unhandled exceptions from the networking stack</h2>
+<p><code>Client.OnLogMessage</code> watches for exceptions raised inside the networking layer and tears the
+session down, because a connection whose reader or transport has thrown cannot be trusted. Two
+rules keep that from doing more harm than the fault it responds to:</p>
+<ul>
+<li><strong>Only the throwing frame counts.</strong> Matching the whole stack caught <code>FishNet.Managing.</code> for
+every exception raised inside <em>any</em> broadcast or RPC handler, since that is the code that
+dispatches them — so a null reference in a HUD panel was indistinguishable from a corrupted
+transport stream, and both cost the player their session. <code>IsNetworkStack</code> now reads only the
+first line of the stack trace, which is the throw site.</li>
+<li><strong>It ends somewhere.</strong> The teardown used to be <code>RevokeAndClearAuthToken</code> plus
+<code>ForceDisconnect</code>, and <code>ForceDisconnect</code> deliberately suppresses both the reconnect timer and
+<code>OnConnectionAttemptFailed</code> — so nothing ran afterwards. World scenes stayed loaded, no login
+panel appeared, and the token was already revoked, so waiting could not recover it. It routes
+through <code>QuitToLogin</code> instead.</li>
+</ul>
 <h2 id="thread-safety">Thread Safety</h2>
 <ul>
 <li><code>connectingGuard</code> uses <code>Interlocked.CompareExchange</code> for CAS-based concurrency control</li>

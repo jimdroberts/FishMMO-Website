@@ -524,6 +524,15 @@
 </tr>
 </tbody>
 </table>
+<p>It also exposes one command, <code>BeginDeliberateTransfer(conn)</code>. It marks the next disconnect on
+that connection as a hand-off to another scene server rather than a player leaving, which
+suppresses the combat-logout linger for it. Only callers that transfer a character <em>through</em>
+the ordinary disconnect pipeline need it — <code>SceneChannelSystem</code> is the one that does.
+<code>IPlayerCharacter_OnTeleport</code> and the cross-scene bind-point respawn instead release the
+character themselves before disconnecting, so they never reach the linger check. A transfer
+that lingered would leave the body and its session claim on the source server while the client
+arrived at the destination, which could then not claim the character and would kick it on every
+retry until the linger expired.</p>
 <h3 id="character-load-pipeline">Character Load Pipeline</h3>
 <p><strong>Step 1 — Authentication callback</strong> (<code>Authenticator_OnClientAuthenticationResult</code>):</p>
 <ol>
@@ -632,7 +641,7 @@
 <tr>
 <td>Claim</td>
 <td><code>TryClaimAsync(characterID, serverID)</code></td>
-<td>During <code>LoadCharacterAsync</code>, before sub-entity hydration. Succeeds only when the row is <code>Offline</code> or its lease has expired.</td>
+<td>During <code>LoadCharacterAsync</code>, before sub-entity hydration. Succeeds only when the row is <code>Offline</code> or its lease has expired. Skipped when a combat-logout reattach hands the load a claim this server already holds.</td>
 </tr>
 <tr>
 <td>Lease refresh</td>
@@ -647,6 +656,7 @@
 </tbody>
 </table>
 <p>Claim, release and lease refresh all verify the full ownership triple (character, owner server, owner token), so a stale server can neither free nor extend a claim it no longer holds.</p>
+<p>A claim handed to <code>LoadCharacterAsync</code> by a combat-logout reattach is tracked from the method's first line, alongside the character ID it belongs to, so the abandon paths that run <em>before</em> any character row has been read still have something to give back — and so a reattach whose account no longer selects that character is refused rather than installing the token under the wrong ID. The final hand-off to the main thread is checked too: it is the only step that installs the claim in <code>SessionTokens</code>, so a rejected enqueue releases instead of stranding it.</p>
 <p>All release paths follow <strong>save-then-release</strong> ordering via <code>SaveAndReleaseCharacterAsync</code> to ensure data is persisted while the session lock is still held. <code>TryExtractAndReleaseSession</code> is used for non-save release paths (waiting-to-load characters, scene validation failures), and every path ultimately routes through <code>ReleaseSessionSafely</code>.</p>
 <p>The release happens <strong>even if the save fails</strong>. Holding the claim back because a write failed strands the character far more visibly than losing one save: the destination scene server cannot claim it and kicks the player. A failed save is retried separately by the pending-flush queue, where the version guard drops it if the next owner has already written something newer.</p>
 <h4 id="pending-flush-retry">Pending flush retry</h4>
@@ -764,7 +774,8 @@ respawning <em>into</em> rather than the one they died in.</p>
 <ol>
 <li>Removes the transfer watchdog entry, scene-unload and validated-scene rate-limit tracking for the connection.</li>
 <li>Removes auth callback rate-limit tracking for the account.</li>
-<li>Calls <code>RemoveCharacterConnectionMapping(conn)</code>.</li>
+<li>Consumes any <code>BeginDeliberateTransfer</code> marker for the connection.</li>
+<li>Calls <code>RemoveCharacterConnectionMapping(conn, allowCombatLinger: &lt;not a deliberate transfer&gt;)</code>.</li>
 </ol>
 <p><code>RemoveCharacterConnectionMapping(conn, skipOnDisconnect)</code>:</p>
 <ol>

@@ -515,7 +515,7 @@ Built on Unity 6000.3.2f1, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTT
 </ol>
 <h3 id="ui-toolkit-uitk-panels--login-flow">UI Toolkit (UITK) Panels — Login Flow</h3>
 <ol start="34">
-<li><strong>Loading Screen</strong> — Addressable-loaded transition images with progress bar.</li>
+<li><strong>Loading Screen</strong> — Addressable-loaded transition images with progress bar. Visibility is driven by three independent flags — background Addressable loading, FishNet scene load/unload, and an armed reconnect — and comes down only when all three are clear, so neither driver can pull the overlay out from under the other.</li>
 <li><strong>Reconnect Display</strong> — Reconnect attempt status during network interruptions.</li>
 <li><strong>Login Panel</strong> — Username/password, TOTP/2FA code, account verification code input.</li>
 <li><strong>Register Panel</strong> — Username, password, email, age fields.</li>
@@ -556,7 +556,7 @@ Built on Unity 6000.3.2f1, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTT
 </ol>
 <h3 id="shared-ui-components">Shared UI Components</h3>
 <ol start="66">
-<li><strong>Dialog Box</strong> — Modal informational dialog.</li>
+<li><strong>Dialog Box</strong> — Modal informational dialog. Also serves as the shared wait dialog for both connection queues (login admission and World → Scene routing), live-updating its text in place via <code>SetText</code> and offering a single Close action that leaves the queue. Resolved from either the UGUI or UI Toolkit control set, so the queue messages appear whichever UI the build ships.</li>
 <li><strong>Input Dialog Box</strong> — Modal dialog with text input field.</li>
 <li><strong>Color Picker</strong> — Color selection control.</li>
 <li><strong>Custom Dropdown</strong> — Dropdown control.</li>
@@ -635,7 +635,7 @@ Built on Unity 6000.3.2f1, FishNet, PostgreSQL, .NET 8.0, WebTransport (QUIC/HTT
 <ol start="28">
 <li><strong>World Server Registration</strong> — DB registration, periodic heartbeat with character count.</li>
 <li><strong>World Server Authenticator</strong> — Token auth with per-account login debounce, server-lock check, combined admission gate (DB connection count + recently admitted usernames burst prevention), selected-character validation.</li>
-<li><strong>World Scene System</strong> — Open world and instanced scene routing, connection authentication, instance lookup with debounce and TTL caching, waiting queue management with TTL purge, DB updates.</li>
+<li><strong>World Scene System</strong> — Open world and instanced scene routing, connection authentication, instance lookup with debounce and TTL caching, waiting queue management with TTL purge, DB updates. Clients held in the routing queue receive <code>WorldSceneQueuePositionBroadcast</code> every <code>queuePositionUpdateRateSeconds</code>, carrying their 1-based position within their own scene or instance group, the group size, an estimated wait derived from how many connections the last routing pass actually placed, and a <code>WorldSceneQueueReason</code> (<code>Capacity</code>, <code>SceneLoading</code>, <code>CombatLogoutBody</code>). Position semantics and channel selection mirror <code>LoginQueuePositionBroadcast</code>: <code>&gt;0</code> waiting (Unreliable, corrected by the next sweep), <code>0</code> routed and <code>-1</code> abandoned (both Reliable, as one-shot transitions). Each reason carries its own bound — <code>waitingQueueTtlSeconds</code> for capacity, <code>× SceneLoadWaitTtlMultiplier</code> while a scene instance is still loading, and <code>CombatLogoutRoutingGraceSeconds</code> for a character whose combat-logout body only one instance can hand back. Connections are ranked across the whole group but notified only after waiting longer than one full routing cycle, so a healthy login never sees the dialog. The wait-queue TTL measures the total wait: the arrival stamp survives re-queue cycles and is cleared only by a terminal outcome (routed, purged, disconnected).</li>
 <li><strong>Kick Request System</strong> — Periodic DB polling for admin-initiated kicks, player disconnection via main-thread marshalling.</li>
 </ol>
 <h3 id="sceneserver-features">SceneServer Features</h3>
