@@ -509,16 +509,21 @@
 <h3 id="dungeon-finder">Dungeon Finder</h3>
 <p><code>OnServerDungeonFinderBroadcastReceived(conn, msg, channel)</code>:</p>
 <ol>
-<li>Validates connection, character, and ingress guard.</li>
+<li>Validates connection and character, then gates on <code>CharacterStateValidation.CanActOrMove</code> — <strong>not</strong> <code>CanAct</code>. Entering a dungeon is a voluntary move to another scene instance implemented as a disconnect, so in combat it would be both a cleaner escape than any teleporter and actively corrupting: the drop would be read as a combat logout, stranding the body and its session claim on this server while the character row says it is in an instance.</li>
+<li>Refuses if the character is already inside an instance — the entrance is not a way to hop between them.</li>
+<li>Acquires the ingress guard.</li>
 <li>Validates scene object is <code>IDungeonEntrance</code> in range.</li>
-<li>Validates dungeon scene exists in <code>WorldSceneDetailsCache</code> with respawn positions.</li>
-<li>Captures main-thread state (character ID, world server ID, party ID, dungeon name, respawn details).</li>
+<li>Validates dungeon scene exists in <code>WorldSceneDetailsCache</code> with respawn positions, and reads its <code>MaxClients</code> cap.</li>
+<li>Captures main-thread state (character ID, world server ID, party ID, dungeon name, cap, respawn details).</li>
 <li>Increments dungeon entrance achievement.</li>
 <li>Enqueues <code>ProcessDungeonFinderAsync</code> (async owns guard):
 <ul>
-<li>Checks existing character instance via <code>ISceneService.FetchCharacterInstanceAsync</code>.</li>
-<li>If no instance: checks party member instances via <code>CheckCharacterPartyInstanceAsync</code>, enqueues new scene via <code>ISceneService.EnqueueAsync</code>.</li>
-<li>Marshals to main thread: sets <code>InstanceID</code>, <code>InstancePosition</code>, <code>InstanceRotation</code>, enables <code>CharacterFlags.IsInInstance</code>, disconnects connection.</li>
+<li>Looks for this character's own instance <strong>of this dungeon</strong> via <code>ISceneService.FetchCharacterInstanceAsync</code>, which is scoped by world server and scene name. A character accumulates one instance row per dungeon it has opened, so matching on character and scene type alone returned an arbitrary one — asked for dungeon A while holding a row for dungeon B, the caller saw &quot;no instance&quot;, created a second, and left A's still-running instance stranded.</li>
+<li>Rows that are <code>Failed</code>, or of an unrecognised status, are treated as absent; <code>Pending</code> and <code>Loading</code> count as usable, because the world server holds the client in its instance queue until the scene is ready.</li>
+<li>A <strong>full</strong> instance is refused (<code>DestinationFull</code>), never worked around. Asking for a new one instead would silently hand a party member a second, empty copy of the dungeon and separate them from the group they were trying to join.</li>
+<li>Otherwise joins a party member's instance, or enqueues a new scene via <code>ISceneService.EnqueueAsync</code>.</li>
+<li>Marshals to main thread (<code>EnterInstance</code>): re-checks <code>CanActOrMove</code> — the database work above gives combat or death time to intervene — then sets <code>InstanceID</code>, <code>InstancePosition</code>, <code>InstanceRotation</code>, enables <code>CharacterFlags.IsInInstance</code>, announces the hand-off via <code>ICharacterSystem.SuppressCombatLingerOnDisconnect</code>, and disconnects.</li>
+<li>Every refusal answers with a <code>SceneTransferRefusedBroadcast</code> naming the reason. The client closes its panel the moment it sends, so a silent return read as the button having stopped working — and the natural response, clicking again, was then swallowed by the ingress guard.</li>
 </ul>
 </li>
 </ol>

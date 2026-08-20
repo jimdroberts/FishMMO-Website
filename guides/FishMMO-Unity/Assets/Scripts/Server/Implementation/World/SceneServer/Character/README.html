@@ -553,10 +553,13 @@ them — so a plain <code>?.Invoke</code> let one exception in a social system a
 invocation list and the caller, leaving a character removed from every mapping but never saved
 and never released, or its NetworkObject spawned in the world with no owner. Losing one
 subscriber's bookkeeping is recoverable; losing the teardown is not.</p>
-<p>It also exposes one command, <code>BeginDeliberateTransfer(conn)</code>. It marks the next disconnect on
-that connection as a hand-off to another scene server rather than a player leaving, which
-suppresses the combat-logout linger for it. Only callers that transfer a character <em>through</em>
-the ordinary disconnect pipeline need it — <code>SceneChannelSystem</code> is the one that does.
+<p>It also exposes one command, <code>SuppressCombatLingerOnDisconnect(conn)</code>. It marks the next
+disconnect on that connection as something the server is doing on purpose rather than a player
+walking out of a fight, which suppresses the combat-logout linger for it. Callers that transfer a
+character <em>through</em> the ordinary disconnect pipeline need it — <code>SceneChannelSystem</code> and the
+dungeon finder both do — and so does <code>KickRequestSystem</code>: an operator kick is a removal, not a
+departure, and lingering there keeps the kicked character's body in the world holding its session
+claim, which makes a kick the opposite of a remedy for a character that is stuck.
 <code>IPlayerCharacter_OnTeleport</code> and the cross-scene bind-point respawn instead release the
 character themselves before disconnecting, so they never reach the linger check. A transfer
 that lingered would leave the body and its session claim on the source server while the client
@@ -826,8 +829,8 @@ respawning <em>into</em> rather than the one they died in.</p>
 <ol>
 <li>Removes the transfer watchdog entry, the residency and scene-handshake deadlines, and scene-unload and validated-scene rate-limit tracking for the connection.</li>
 <li>Removes auth callback rate-limit tracking for the account.</li>
-<li>Consumes any <code>BeginDeliberateTransfer</code> marker for the connection.</li>
-<li>Calls <code>RemoveCharacterConnectionMapping(conn, allowCombatLinger: &lt;not a deliberate transfer&gt;)</code>.</li>
+<li>Consumes any <code>SuppressCombatLingerOnDisconnect</code> marker for the connection.</li>
+<li>Calls <code>RemoveCharacterConnectionMapping(conn, allowCombatLinger: &lt;not a server-initiated disconnect&gt;)</code>.</li>
 </ol>
 <p><code>RemoveCharacterConnectionMapping(conn, skipOnDisconnect)</code>:</p>
 <ol>

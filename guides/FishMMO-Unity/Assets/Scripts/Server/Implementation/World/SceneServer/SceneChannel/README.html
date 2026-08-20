@@ -158,7 +158,7 @@
 <li>Automatic initial channel list dispatch when a character loads into an open-world scene (<code>OnAfterLoadCharacter</code>)</li>
 <li>Explicit channel list refresh via <code>RequestSceneChannelListBroadcast</code> from the client</li>
 <li>Channel switching with database validation of target handle existence, <code>OpenWorld</code> scene type, and capacity</li>
-<li>Character <code>SceneHandle</code> update and <code>CharacterFlags.IsLoaded</code> disable before disconnect for safe transition</li>
+<li>Ordered hand-off through <code>ICharacterSystem.BeginChannelTransfer</code>: departure announced, then rebind, save, session release, disconnect</li>
 <li>Client disconnect triggering standard save/despawn/session-release pipeline via <code>CharacterSystem.OnRemoteConnectionStopped</code></li>
 <li>Auto-reconnect through world server load balancing to the scene server hosting the target channel (SceneHandle-aware routing)</li>
 <li>Per-connection, per-operation ingress guard with configurable debounce and in-flight gating (<code>RequestList</code>, <code>SelectChannel</code>)</li>
@@ -503,22 +503,25 @@
 <ol>
 <li>Validates <code>Database.ServiceRegistry</code> and <code>ISceneService</code>.</li>
 <li>Fetches available instances (cache-aware) and verifies target handle exists, is <code>OpenWorld</code>, and has capacity (<code>CharacterCount &lt; maxClients</code>).</li>
+<li>Claims the switch cooldown against the character row (<code>ICharacterService.TryBeginChannelSwitchAsync</code>). This is the cooldown that actually holds: the per-connection dictionary is wiped by the very disconnect the switch performs. Claimed only after the destination has been validated, so a player is not put on cooldown for asking about a channel that turned out to be full.</li>
 <li>Marshals to main thread:
 <ul>
-<li>Re-validates the character is still mapped to the connection.</li>
-<li>Sets <code>character.SceneHandle = targetHandle</code>.</li>
-<li>Disables <code>CharacterFlags.IsLoaded</code> to prevent gameplay during transition.</li>
-<li>Calls <code>conn.Disconnect(false)</code>.</li>
+<li>Re-validates the character is still mapped to the connection and still passes <code>CanActOrMove</code> — the database round trip above gives combat or death time to intervene.</li>
+<li>Hands the whole transfer to <code>ICharacterSystem.BeginChannelTransfer(conn, targetHandle)</code>.</li>
 </ul>
 </li>
-<li>The disconnect triggers <code>CharacterSystem.OnRemoteConnectionStopped</code> → save/despawn/session-release pipeline.</li>
+<li><code>BeginChannelTransfer</code> raises <code>OnDisconnect</code> <strong>while <code>SceneHandle</code> still names the instance being left</strong> (that event is what debits scene population), then rebinds <code>SceneHandle</code>, saves, releases the session claim, and drops the connection. Doing it in that order is the point of the method: debiting after the rebind charged the <em>destination</em> instance — often one this server does not host — and left the source permanently over-populated.</li>
 <li><code>BuildCharacterData</code> captures the updated <code>SceneHandle</code> so the character is persisted with the target channel.</li>
-<li>The client auto-reconnects to the world server, which routes through <code>ProcessOpenWorldQueueAsync</code> to the scene server hosting the target channel (SceneHandle-aware routing).</li>
+<li>The client auto-reconnects to the world server, which routes through <code>ProcessOpenWorldQueueAsync</code> to the scene server hosting the target channel.</li>
 </ol>
+<blockquote>
+<p><strong><code>SceneHandle</code> is a <code>scenes.id</code>, not a Unity scene handle.</strong> A scene-manager handle is allocated from a per-process counter, so two scene servers running the same build routinely produce the same value for different scenes — it cannot identify an instance across processes. The row id is unique by construction. <code>ChannelAddress.SceneHandle</code> carries the same row id.</p>
+</blockquote>
 <h3 id="failure-semantics">Failure Semantics</h3>
 <ul>
 <li>Invalid requests fail closed with no mutation.</li>
-<li>Instanced scene requests are silently rejected.</li>
+<li><strong>Every request is answered.</strong> A channel-list request always produces a <code>SceneChannelListBroadcast</code>, even when the list is empty (instanced scene, no other instances, database unavailable) — the picker opens on the player's click and only fills in or closes when a list arrives, so a silent failure left an empty window over the game. A refused switch always produces a <code>SceneTransferRefusedBroadcast</code> naming the reason, including <code>AlreadyAtDestination</code>.</li>
+<li>The list carries <code>CurrentSceneHandle</code> so the client can mark the channel the player is already on. It cannot work this out for itself: <code>IPlayerCharacter.SceneHandle</code> is server-side state and is never replicated.</li>
 <li>Capacity and scene-type checks are enforced before state changes.</li>
 <li>Async failures are caught, logged, and do not block the main thread.</li>
 <li>Main-thread completion paths revalidate connection activity and character mapping before mutating or broadcasting.</li>
@@ -563,16 +566,20 @@
 <td>Send <code>RequestSceneChannelListBroadcast</code> from an authenticated client in an open-world scene; confirm <code>SceneChannelListBroadcast</code> reply with <code>List&lt;ChannelAddress&gt;</code></td>
 </tr>
 <tr>
-<td>Instanced scene rejection (request)</td>
-<td>Send <code>RequestSceneChannelListBroadcast</code> from a character in an instanced scene; confirm request is silently dropped</td>
+<td>Instanced scene request</td>
+<td>Send <code>RequestSceneChannelListBroadcast</code> from a character in an instanced scene; confirm an <strong>empty</strong> <code>SceneChannelListBroadcast</code> is returned so the client can close its picker</td>
 </tr>
 <tr>
 <td>Channel switch</td>
-<td>Send <code>SceneChannelSelectBroadcast</code> with a valid target handle; confirm character <code>SceneHandle</code> is updated and client is disconnected</td>
+<td>Send <code>SceneChannelSelectBroadcast</code> with a valid target handle; confirm <code>OnDisconnect</code> fires before the rebind, <code>SceneHandle</code> is updated, the session is released, and the client is disconnected</td>
 </tr>
 <tr>
 <td>Same-channel rejection</td>
-<td>Send <code>SceneChannelSelectBroadcast</code> with <code>targetHandle == currentHandle</code>; confirm request is silently dropped</td>
+<td>Send <code>SceneChannelSelectBroadcast</code> with <code>targetHandle == currentHandle</code>; confirm a <code>SceneTransferRefusedBroadcast</code> with <code>AlreadyAtDestination</code> is returned</td>
+</tr>
+<tr>
+<td>Combat gate</td>
+<td>Send <code>SceneChannelSelectBroadcast</code> while in combat; confirm <code>SceneTransferRefusedBroadcast</code> with <code>CharacterStateChanged</code> and that no combat-logout body is left behind</td>
 </tr>
 <tr>
 <td>Target validation</td>

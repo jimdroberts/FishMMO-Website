@@ -170,9 +170,11 @@
 <li>DoS protection via hard cap on incoming queue size; sender kicked when exceeded. Messages from a connection with no spawned character are dropped rather than kicked — that state is a routine scene-transfer race, not an exploit</li>
 <li>Token bucket anti-spam with configurable burst capacity (<code>chatTokenBucketCapacity</code>) and refill rate (<code>chatTokenRefillRate</code>)</li>
 <li>Legacy per-message cooldown (<code>messageRateLimit</code>) as a secondary rate-limit gate</li>
-<li>Repeat-message suppression (configurable via <code>allowRepeatMessages</code>)</li>
+<li>Repeat-message suppression (configurable via <code>allowRepeatMessages</code>), applied to chat only — a repeated <strong>slash command</strong> is never suppressed, because repeating one is the normal response to a command that was refused for a reason that has since cleared</li>
 <li>Rich text tag sanitization (skipped when message contains no <code>&lt;</code> for zero-allocation fast path)</li>
-<li>Command extraction and routing via <code>ChatHelper</code> command registry</li>
+<li>Command extraction and routing via <code>ChatHelper</code> command registry, keyed <strong>including</strong> the leading slash and matched case-insensitively</li>
+<li><strong>Per-command access levels</strong> — commands are registered with a minimum <code>AccessLevel</code>, enforced in <code>ChatHelper.TryParseCommand</code> against the character's own level as loaded from its database row. A command the sender may not run is <em>consumed</em>, not rejected: it is neither executed nor echoed to a channel, and the response is indistinguishable from an unknown command, so command names cannot be probed. Every refusal is reported through <code>ChatHelper.OnCommandRefused</code> and logged with the character and account that tried it</li>
+<li><strong>Authoritative sender resolution</strong> — the sender is taken from <code>ICharacterMappingData.ConnectionCharacters</code> (populated by the character load pipeline from the database) rather than from <code>conn.FirstObject</code>, so a command's authorisation can never be decided from a network-deserialised payload</li>
 <li>Post-prepend length enforcement capped at <code>maxMessageLength + MaxChannelIdPrefixLength</code> (22 chars)</li>
 <li>Synchronous immediate channels: Region (scene-scoped broadcast), Say (observer-scoped broadcast)</li>
 <li>Synchronous outbound-batched channels: World and Trade (buffered per-world, flushed periodically)</li>
@@ -213,6 +215,7 @@
 <li>On initialize, <code>ChatSystem</code> builds the channel → handler command map, initializes <code>ChatHelper</code>, registers the <code>ChatBroadcast</code> network handler, and registers three periodic callbacks (message pump, persist flush, outbound broadcast flush).</li>
 <li>On deinitialize, it flushes remaining outbound buffers, signals shutdown, flushes the persist queue synchronously, drains the incoming chat queue and main-thread queue, unregisters the broadcast handler, and unregisters all periodic callbacks.</li>
 <li>Clients send a <code>ChatBroadcast</code> with text prefixed by a channel command (e.g., <code>/s</code>, <code>/w</code>, <code>/p</code>, <code>/g</code>, <code>/t</code>, <code>/tr</code>). The server validates, rate-limits, parses the command, routes to the channel handler, and broadcasts results.</li>
+<li>Text beginning with a registered <strong>slash command</strong> (<code>/leaveinstance</code>, <code>/gi</code>, <code>/pi</code>, <code>/admin</code>, …) is dispatched to that command instead and never reaches a channel. <code>ChatHelper.GetCommandAndTrim</code> returns the command <em>with</em> its leading slash, which is how every registration is keyed.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
 <h3 id="inspector-parameters">Inspector Parameters</h3>
@@ -387,7 +390,7 @@
 <tbody>
 <tr>
 <td>Main thread</td>
-<td>Incoming queue drain, validation, token bucket, rate limit, repeat filter, sanitization, command parse, channel routing, broadcast dispatch, outbound flush, main-thread queue drain</td>
+<td>Incoming queue drain, sender resolution from <code>ConnectionCharacters</code>, validation, token bucket, rate limit, repeat filter, sanitization, command parse and access-level check, channel routing, broadcast dispatch, outbound flush, main-thread queue drain</td>
 </tr>
 <tr>
 <td>Async worker</td>

@@ -162,6 +162,12 @@
 <li><strong>Scene handle reuse safety</strong> — all handle→details mappings are removed on unload; documented at both Add and Remove sites to prevent stale resolution after handle reuse</li>
 <li><strong>PendingSceneInfo struct</strong> — merges <code>SceneData</code> + <code>EnqueuedUtc</code> into a single map entry, eliminating dual-map sync risk</li>
 <li><strong>Enumerate-then-remove safety</strong> — <code>SweepExpiredPendingScenes</code> collects IDs into a buffer before removal; pattern documented inline</li>
+<li><strong>Per-type stale timeouts</strong> — open-world scenes and instanced (Group/PvP) scenes are aged out on separate, independently configurable clocks; see <code>StaleInstanceSceneTimeout</code></li>
+<li><strong>Operator control state</strong> — the <code>scene_servers</code> row is the authority for this server's <code>locked</code> and <code>shutdown_at_utc</code>; the pulse <em>reads them back</em> (<code>UPDATE ... RETURNING</code>) rather than writing them, so anything that can write the row controls the server</li>
+<li><strong>Drain on lock</strong> — a locked scene server stops dequeuing scene-load requests and is skipped by the world server's open-world routing, while the players already on it keep playing</li>
+<li><strong>Scheduled shutdown</strong> — players are warned as the countdown crosses 15m/10m/5m/2m/1m/30s/10s, then disconnected with a maintenance notice one tick before the process stops, so the notice reaches them</li>
+<li><strong>World-shutdown awareness</strong> — the pulse also reads the control state of every world this server hosts scenes for, so a world-wide shutdown clears that world's characters from this server without taking down scenes belonging to other worlds</li>
+<li><strong>In-game <code>/admin</code> commands</strong> — <code>SceneServerSystem.AdminCommands</code> registers a single <code>/admin</code> command at <code>AccessLevel.Admin</code>; see the root README for the full command table</li>
 <li><strong>Database registration and cleanup</strong> — registers this scene server node in the database during initialization and deletes stale scene rows from previous runs; performs blocking cleanup on deinitialization</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
@@ -274,7 +280,12 @@
 <tr>
 <td><code>StaleSceneTimeout</code></td>
 <td><code>int</code></td>
-<td>Minutes before a stale (empty) scene is unloaded; checked via <code>Server.Configuration.TryGetInt</code></td>
+<td>Minutes before a stale (empty) <strong>open-world</strong> scene is unloaded; checked via <code>Server.Configuration.TryGetInt</code>. Code fallback <code>60</code></td>
+</tr>
+<tr>
+<td><code>StaleInstanceSceneTimeout</code></td>
+<td><code>int</code></td>
+<td>Minutes before a stale (empty) <strong>Group/PvP (instanced)</strong> scene is unloaded. Deliberately shorter — a dungeon instance belongs to one character or party, so once it empties it is unlikely to be wanted again, while each one holds a full physics scene. Code fallback <code>5</code>; the templates ship <code>2</code></td>
 </tr>
 </tbody>
 </table>
@@ -329,7 +340,7 @@ sceneServerSystem.UnloadScene(sceneHandle);
 </tr>
 <tr>
 <td>Stale scene unloaded</td>
-<td>Empty scene exceeds <code>StaleSceneTimeout</code> minutes</td>
+<td>Empty scene exceeds the timeout for its <code>SceneType</code> (<code>StaleSceneTimeout</code> for open world, <code>StaleInstanceSceneTimeout</code> for Group/PvP)</td>
 <td>Scene unloaded and removed from database and local mappings</td>
 </tr>
 <tr>
@@ -439,7 +450,7 @@ sceneServerSystem.UnloadScene(sceneHandle);
 │              Scene Unload Flow                               │
 │                                                              │
 │  UnloadScene(handle) [explicit]                              │
-│    │ 1. TryEnqueueAsyncWork → DeleteSceneByHandleAsync       │
+│    │ 1. TryEnqueueAsyncWork → DeleteSceneAsync           │
 │    │ 2. FishNet UnloadConnectionScenes                       │
 │    ▼                                                         │
 │  SceneManager_OnUnloadEnd(args)                              │
