@@ -107,6 +107,10 @@
 <li><a href="#securing-appsettingsjson">Securing appsettings.json</a></li>
 <li><a href="#flow-diagram">Flow Diagram</a></li>
 <li><a href="#notes">Notes</a></li>
+<li><a href="#character-session-ownership">Character session ownership</a></li>
+<li><a href="#scene-instance-identity">Scene instance identity</a></li>
+<li><a href="#scene-rows-are-reaped-not-just-written">Scene rows are reaped, not just written</a></li>
+<li><a href="#the-channel-switch-cooldown-lives-on-the-character">The channel-switch cooldown lives on the character</a></li>
 </ul>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
@@ -549,6 +553,83 @@ var factory = new NpgsqlDbContextFactory(config);
 an expired claim. Without it, a scene server that died holding characters locked those accounts
 out of login <strong>permanently</strong> with &quot;already online&quot;, against a session that no longer existed and
 a character any server was free to claim.</p>
+<h3 id="scene-instance-identity">Scene instance identity</h3>
+<p><code>characters.scene_handle</code> and <code>scenes.scene_handle</code> look like the same thing and are not.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scenes.id</code></td>
+<td><strong>The</strong> identity of a scene instance. Unique by construction, and the only value that means the same thing in every process.</td>
+</tr>
+<tr>
+<td><code>characters.scene_handle</code> (<code>bigint</code>)</td>
+<td>The <code>scenes.id</code> of the instance the character belongs to. <code>0</code> means &quot;no preference&quot; — the world server assigns any instance with capacity.</td>
+</tr>
+<tr>
+<td><code>scenes.scene_handle</code> (<code>integer</code>)</td>
+<td>Diagnostic only: the hosting scene server's own scene-manager handle for the loaded scene.</td>
+</tr>
+</tbody>
+</table>
+<p>A scene-manager handle is drawn from a per-process counter, so two scene servers running the
+same build and loading the same scenes in the same order routinely allocate identical values.
+Used as a cross-process identity that made two different instances indistinguishable: the world
+server's routing map collapsed them into a single entry and double-counted its capacity, a scene
+server accepted a character routed to a <em>different</em> server's instance whenever handle and scene
+name both matched, and <code>PulseAsync</code> had two servers overwriting each other's population — the
+very number routing and load-balancing decide on. Every cross-process API (<code>SetReadyAsync</code>,
+<code>PulseAsync</code>, <code>PulseBatchAsync</code>, <code>DeleteAsync</code>, <code>UpdateSceneAsync</code>) is addressed by row ID;
+<code>DeleteByHandleAsync</code> survives for administrative use only.</p>
+<p><code>SetReadyAsync</code> names the row explicitly rather than claiming &quot;the oldest loading row with this
+name&quot;. Ordering was ambiguous whenever two loads of one scene overlapped, so each could stamp its
+server and handle onto the other's row — and because an instanced row keeps the <code>character_id</code>
+it was created for, that handed a character the dungeon created for somebody else.</p>
+<h3 id="scene-rows-are-reaped-not-just-written">Scene rows are reaped, not just written</h3>
+<p>Scene rows are ephemeral runtime registrations, and two sweeps own the cases nothing else covers:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Removes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DeleteStaleUnreadyAsync(worldServerId, olderThanUtc, maxRows)</code></td>
+<td>Rows that never reached <code>Ready</code> and are older than the grace period. A <code>Loading</code> row orphaned by a scene server that died between dequeue and load still has <code>scene_server_id = 0</code>, so that server's own restart cleanup (<code>DeleteBySceneServerAsync</code>, which matches on its id) never removes it. Left alone, the row keeps its <code>character_id</code> and the character it belongs to is routed at an instance that will never exist.</td>
+</tr>
+<tr>
+<td><code>DeleteByStaleSceneServersAsync(worldServerId, pulseOlderThanUtc, maxRows)</code></td>
+<td><code>Ready</code> rows whose host has stopped pulsing or deregistered. A crashed scene server deletes nothing on its way out, so every scene it hosted stays advertised as available and clients are routed to an address that refuses them — or, once a replacement reuses the port, to a server that does not have the scene and bounces them straight back.</td>
+</tr>
+</tbody>
+</table>
+<p>Both use <code>FOR UPDATE SKIP LOCKED</code> so a row a scene server is concurrently dequeuing is left to
+it rather than deleted out from under an in-flight load. <code>Ready</code> rows with a live host are never
+touched here — they belong to the scene server that owns them.</p>
+<h3 id="the-channel-switch-cooldown-lives-on-the-character">The channel-switch cooldown lives on the character</h3>
+<p><code>characters.last_channel_switch_utc</code> is claimed by <code>TryBeginChannelSwitchAsync</code>, which checks and
+stamps in <strong>one</strong> statement:</p>
+<pre><code class="lang-sql">UPDATE characters
+SET last_channel_switch_utc = @now
+WHERE id = @id AND deleted = false AND last_channel_switch_utc &lt;= @eligibleBefore
+</code></pre>
+<p>Zero rows affected means the switch is still on cooldown. Reading the timestamp and writing it
+back separately would let two scene servers each observe an elapsed cooldown and each allow a
+switch — which is precisely the case that matters, because consecutive switches land on
+different servers by design.</p>
+<p>It is persisted rather than held in memory because a channel switch <strong>is</strong> a disconnect: the
+scene server releases the character and drops the connection, and the client returns through the
+world server on a fresh connection id. A cooldown kept per connection is erased by the action it
+exists to limit, so it only ever delayed retries after a switch that had already been refused.
+The write is deliberately not version-gated — this is a rate limit, not gameplay state, and it
+must neither lose to a concurrent save nor bump the version a save is guarding on.</p>
 <h3 id="kick-requests-expire">Kick requests expire</h3>
 <p><code>HasPendingAsync</code> ignores requests older than <code>PendingKickRequestTtl</code> (3 minutes). A kick request
 is deleted by whichever game server acts on it, so the normal lifetime is seconds — but if that

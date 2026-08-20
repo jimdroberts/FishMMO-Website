@@ -94,7 +94,11 @@ MMO architecture with:</p>
 <li><strong>Client:</strong> Unity-based game client with launcher, auto-updater, and WebTransport networking</li>
 <li><strong>Login Server:</strong> SRP-6a zero-knowledge password authentication with TOTP two-factor auth</li>
 <li><strong>World Server:</strong> Player management, world state, and cross-scene coordination</li>
-<li><strong>Scene Server:</strong> Per-zone/scene gameplay logic and entity simulation</li>
+<li><strong>Scene Server:</strong> Per-zone/scene gameplay logic and entity simulation. Hosts any number of
+scene <em>instances</em> — multiple instances of one open-world scene are channels, and instanced
+content (dungeons) is a private instance per character or party. A scene server is not owned
+by a world server; it pulls from one global pending-scene queue and may host scenes for
+several at once.</li>
 <li><strong>Web Servers:</strong> IPFetch (server discovery), Patcher (auto-update), WebGL (browser client hosting)</li>
 <li><strong>Database:</strong> PostgreSQL via Entity Framework Core with Npgsql provider and pgBouncer connection pooling</li>
 <li><strong>Reverse Proxy:</strong> NGINX with L4 UDP stream forwarding for game traffic and L7 HTTPS for API/WebGL</li>
@@ -130,6 +134,14 @@ connection flow from client launch through authentication to gameplay.</p>
 <tr>
 <td><strong>HMAC-signed auth tokens</strong></td>
 <td>Stateless World/Scene server auth; no LoginServer dependency after login</td>
+</tr>
+<tr>
+<td><strong>No server-to-server character handover</strong></td>
+<td>Every scene transfer releases the character, routes the client back through the World server, and re-claims it at the destination. One code path for teleports, channel switches, dungeon entry and reconnects — and a database-backed session claim, rather than trust between servers, decides who owns a character</td>
+</tr>
+<tr>
+<td><strong>Scene instances identified by database row, not process handle</strong></td>
+<td>A scene-manager handle is only unique inside the process that allocated it, so it cannot name an instance across servers</td>
 </tr>
 </tbody>
 </table>

@@ -738,6 +738,39 @@ enough for a player to hit by picking a different character straight after an
 
     Note over Client,Scene: 🎮 Gameplay active, • Prediction pipeline running, • Observer LOD system active, • All scene systems operational
 </code></pre>
+<h4 id="the-scene-handshake-does-not-depend-on-which-half-arrives-first">The scene handshake does not depend on which half arrives first</h4>
+<p><code>ClientValidatedSceneBroadcast</code> — the message that tells the client to begin its world preload,
+and so the only thing that leads to a character being spawned — is sent by
+<code>CharacterSystem.ValidateSceneAndAcknowledge</code>. Reaching it needs two independent things to have
+happened, and they arrive in an order the server does not control:</p>
+<table>
+<thead>
+<tr>
+<th>Half</th>
+<th>Arrives when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Start-scene acknowledgement (<code>SceneManager.OnClientLoadedStartScenes</code>)</td>
+<td>One round trip after authentication. <code>ServerManager.ClientAuthenticated</code> solicits it <em>before</em> the authenticator's result event even starts the character load, and with no global scenes configured the client answers immediately. FishNet raises the event <strong>once per connection</strong> and never again.</td>
+</tr>
+<tr>
+<td>Character registered in <code>WaitingSceneLoadCharacters</code></td>
+<td>After <code>LoadCharacterAsync</code> — a session claim with up to five retries, fourteen sub-entity fetches in one transaction, and a main-thread queue drain.</td>
+</tr>
+</tbody>
+</table>
+<p>The acknowledgement normally wins, and it cannot be replayed. Driving the handshake off it
+alone therefore made world entry a race with two losing outcomes: an acknowledgement that
+arrived before the character was registered found nothing waiting and <strong>disconnected a healthy
+login</strong> with <code>CharacterUnavailable</code>, while a load that finished afterwards had no event left to
+drive it and sat in <code>WaitingSceneLoadCharacters</code> holding its session claim until the 90 s
+handshake timeout. Under any database latency the first is the common case.</p>
+<p><code>startScenesAckedClientIds</code> records the acknowledgement instead of acting on it. Whichever half
+lands second calls <code>ValidateSceneAndAcknowledge</code>, and exactly one of them does, because both run
+on the main thread. A bare acknowledgement with no character is no longer an error — the
+residency watchdog below is what bounds a load that genuinely never arrives.</p>
 <p><strong>Nothing in Phase 9 may fail quietly.</strong> The client is behind a loading overlay from the moment
 it leaves the world server until its character actually spawns, so a scene server that stops
 making progress without closing the connection is indistinguishable from a hang. Three watchdogs
@@ -887,6 +920,13 @@ because they are one-shot transitions and losing one strands the dialog on scree
 </tr>
 </tbody>
 </table>
+<p><strong>Open-world routing places players only in <code>OpenWorld</code> instances.</strong> <code>ISceneService.FetchAvailableAsync</code>
+selects on world, scene name, capacity and <code>Ready</code> — it says nothing about <code>SceneType</code> — so a
+<code>Group</code> row for a scene that is <em>also</em> reachable as an ordinary destination (a dungeon named as
+a teleporter's <code>ToScene</code>, or as a character's <code>BindScene</code>) came back as a routing candidate and
+would drop the player into somebody else's private instance, <code>character_id</code> and all.
+<code>ProcessOpenWorldQueueAsync</code> filters the type, as <code>SceneChannelSystem</code> already did when building
+a channel list.</p>
 <p><strong>A healthy login never sees the dialog.</strong> Every routed client passes through this queue, so a
 sweep landing between enqueue and the next routing cycle would flash a position at someone who
 was never really queued. Connections are ranked across the whole group but only notified once
@@ -898,6 +938,26 @@ since the last routing cycle touched this connection&quot; (≈ 2 s) and the pur
 queued, so nothing bounded the wait at all. The arrival stamp now survives re-queue cycles and
 is cleared only by a terminal outcome — routed, purged, or disconnected — with the
 combat-logout hold as the single documented exception.</p>
+<h4 id="a-scene-instance-is-identified-by-its-row-never-by-a-scene-handle">A scene instance is identified by its row, never by a scene handle</h4>
+<p>Routing decisions, population counts and the character's own <code>SceneHandle</code> all name a scene
+instance by its <code>scenes.id</code>. A scene-manager handle is drawn from a per-process counter, so two
+scene servers running the same build and loading the same scenes in the same order routinely
+allocate identical values — and as a cross-process identity that made two different instances
+indistinguishable:</p>
+<ul>
+<li>the world server's routing maps collapsed them into one entry and double-counted its capacity;</li>
+<li>a scene server accepted a character routed to a <em>different</em> server's instance whenever the
+handle and scene name both matched;</li>
+<li><code>PulseAsync</code> had two servers overwriting each other's population — the number routing and
+load-balancing decide on.</li>
+</ul>
+<p>The local handle survives only where it is genuinely local: <code>SceneInstanceByHandle</code>, because
+FishNet's unload callbacks report handles, and the scene manager itself. <code>scenes.scene_handle</code>
+is retained for diagnostics only.</p>
+<p><strong>A scene server hosts scenes for every world server.</strong> <code>ISceneService.DequeueAsync</code> serves one
+global pending queue, so world-scoped state — instance registries, availability caches,
+failed-load kicks — is keyed by world server ID as well as scene name. A cache keyed on scene
+name alone served one world's channel list to another world's players.</p>
 <h3 id="phase-10-token-renewal--revocation">Phase 10: Token Renewal &amp; Revocation</h3>
 <p>Renewal runs on a timer, not just once at authentication. A scene transfer is a
 re-authentication — the scene server releases the character and disconnects the client,
@@ -1040,12 +1100,12 @@ is gone. <code>OnConnectionAttemptFailed</code> now stages an <code>Unspecified<
 from firing on a first connect attempt that never reached the server, where the panel's own
 message is both more specific and more accurate.</p>
 <h3 id="phase-11-scene-transfer--character-session-ownership">Phase 11: Scene Transfer &amp; Character Session Ownership</h3>
-<p>Walking into a <code>SceneTeleporter</code>, or respawning at a bind point in a different scene, moves
-a player between scene servers. There is no server-to-server handover: the source server
-saves and releases the character, the client goes back through the World server, and the
-destination server claims the character fresh. The client therefore re-authenticates
-mid-transfer, which is why Phase 10's periodic renewal is a prerequisite for transfers to
-work at all.</p>
+<p>Walking into a <code>SceneTeleporter</code>, respawning at a bind point in a different scene, switching
+open-world channel, entering a dungeon, or leaving one all move a player between scene servers.
+There is no server-to-server handover: the source server saves and releases the character, the
+client goes back through the World server, and the destination server claims the character
+fresh. The client therefore re-authenticates mid-transfer, which is why Phase 10's periodic
+renewal is a prerequisite for transfers to work at all.</p>
 <pre><code class="lang-mermaid">sequenceDiagram
     participant Client as Client
     participant SceneA as SceneServer A
@@ -1122,6 +1182,80 @@ Online in the database, so the destination server cannot claim it and kicks the 
 repeatedly, until the lease expires. Every abandoned-load path therefore routes through
 <code>ReleaseSessionSafely</code>, and anything that fails lands on a retry queue that is also drained
 on shutdown.</p>
+<h4 id="every-voluntary-transfer-follows-the-same-ordering-contract">Every voluntary transfer follows the same ordering contract</h4>
+<p>Five paths move a character to another scene instance, and each one performs the same five steps
+in the same order. The order is the contract, not an implementation detail.</p>
+<table>
+<thead>
+<tr>
+<th>Transfer</th>
+<th>Entry point</th>
+<th>Announced as a transfer by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Teleporter</td>
+<td><code>IPlayerCharacter_OnTeleport</code></td>
+<td>Releasing before the client reports its scene unload; <code>ArmTransferDisconnect</code> covers a client that never reports</td>
+</tr>
+<tr>
+<td>Bind-point respawn (different scene)</td>
+<td><code>OnClientRespawnAtBindPointBroadcastReceived</code></td>
+<td>Releasing before <code>conn.Disconnect</code></td>
+</tr>
+<tr>
+<td>Channel switch</td>
+<td><code>SceneChannelSystem</code> → <code>ICharacterSystem.BeginChannelTransfer</code></td>
+<td><code>BeginDeliberateTransfer</code></td>
+</tr>
+<tr>
+<td>Dungeon entry</td>
+<td><code>InteractableSystem</code> → <code>EnterInstance</code></td>
+<td><code>BeginDeliberateTransfer</code></td>
+</tr>
+<tr>
+<td>Leave instance</td>
+<td><code>RequestLeaveInstanceBroadcast</code> / <code>/leaveinstance</code> → <code>TryLeaveInstance</code></td>
+<td><code>BeginDeliberateTransfer</code></td>
+</tr>
+</tbody>
+</table>
+<ol>
+<li><strong>Gate on <code>CanActOrMove</code></strong> — refused while dead, teleporting, frozen, mid-load or in combat.
+Combat matters most: every one of these is instant and lands the player where their attacker
+is not, making it a cleaner escape than any teleporter.</li>
+<li><strong>Re-check on the authoritative side.</strong> All of them validate asynchronously against the
+database, and a character can be pulled into combat or killed while that runs — so the state
+is checked again on the main thread, immediately before the transfer commits.</li>
+<li><strong>Announce the departure <em>before</em> rewriting where the character is going.</strong> <code>OnDisconnect</code> is
+what debits the scene instance's population, and party, guild and chat all reason about the
+scene being left. Rewriting <code>SceneHandle</code> first debited the <em>destination</em> — an instance this
+server frequently does not even host — while the source kept a resident it no longer had.
+Neither error self-corrects: the source's phantom population stops it ever being seen as
+empty, so it is never unloaded, understates its free capacity, and eventually reads as full,
+at which point players queue for a scene instance that is in fact deserted.</li>
+<li><strong>Save and fully release before the connection drops.</strong> The destination's <code>TryClaimAsync</code>
+requires <code>session_state = Offline</code> or an expired lease, so a transfer that lingers cannot be
+claimed on arrival.</li>
+<li><strong>Mark the disconnect as deliberate.</strong> Combat-logout linger exists to punish a dropped
+connection, and a transfer <em>is</em> a dropped connection. A transfer that lingered would leave
+the body — and its claim — on the source server while the row says the character belongs to
+the destination, which then loses the claim race and kicks the arriving client on every
+retry until the linger expires. The marker is consumed by the disconnect it describes, so it
+cannot leak onto a later session on a recycled connection id.</li>
+</ol>
+<p><strong>Leaving instanced content is a system guarantee, not content data.</strong> A dungeon is expected to
+provide an exit teleporter, but a character bound to an instance is routed straight back into it
+on every login, so quitting is not an escape — a dungeon shipped without a reachable exit would
+strand its occupants permanently. <code>RequestLeaveInstanceBroadcast</code> and the <code>/leaveinstance</code> chat
+command both reach <code>TryLeaveInstance</code>; the command exists so the escape hatch does not depend on
+a client UI having been authored.</p>
+<p><strong>Instance bookkeeping is cleared on every path out.</strong> <code>InstanceID</code>, <code>InstanceSceneName</code> and
+<code>InstanceSceneHandle</code> are what the world server reads to decide a character belongs in an
+instance. A stale value left behind is a standing invitation to route a later session back into
+a dungeon the player already walked out of, so the teleporter, bind-point and leave-instance
+paths all clear them and restore <code>LastWorldPosition</code> as the open-world position.</p>
 <h4 id="combat-logout-bodies">Combat-logout bodies</h4>
 <p>A character whose owner disconnects mid-combat is not despawned. <code>TryBeginCombatLinger</code> removes
 ownership — which is what takes the object out of <code>connection.Objects</code> before FishNet's
@@ -1924,6 +2058,36 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <td><code>WorldSceneSystem.cs</code></td>
 </tr>
 <tr>
+<td><code>SceneLoadWaitTtlMultiplier</code></td>
+<td>4× <code>waitingQueueTtlSeconds</code></td>
+<td><code>WorldSceneSystem.cs</code></td>
+</tr>
+<tr>
+<td><code>InstanceReadyGraceSeconds</code></td>
+<td>180s</td>
+<td><code>WorldSceneSystem.cs</code></td>
+</tr>
+<tr>
+<td><code>StaleSceneRowGraceSeconds</code></td>
+<td>300s</td>
+<td><code>WorldSceneSystem.cs</code></td>
+</tr>
+<tr>
+<td><code>SceneServerPulseStaleSeconds</code></td>
+<td>60s</td>
+<td><code>WorldSceneSystem.cs</code></td>
+</tr>
+<tr>
+<td><code>channelSwitchCooldownSeconds</code></td>
+<td>10s (configurable)</td>
+<td><code>SceneChannelSystem.cs</code></td>
+</tr>
+<tr>
+<td><code>InFlightStaleAfter</code></td>
+<td>5 min</td>
+<td><code>IngressGuard.cs</code></td>
+</tr>
+<tr>
 <td><code>RecentAdmitTtlSeconds</code></td>
 <td>15s</td>
 <td><code>LoginQueueSystem.cs</code></td>
@@ -1975,7 +2139,7 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 </tr>
 </tbody>
 </table>
-<p>Two of these are load-bearing against each other and should be changed together:</p>
+<p>Several of these are load-bearing against each other and should be changed together:</p>
 <ul>
 <li><strong><code>saveRate</code> (30 s) against <code>combatLogoutLingerSeconds</code> (60 s).</strong> The linger is persisted at
 both ends and on every periodic save in between, so at the defaults an unattended body has its
@@ -1988,6 +2152,20 @@ player waiting for the one instance that can hand their body back; when it gives
 server's claim must already have lapsed, or the destination will kick the player for
 contention instead of taking the character. It should also exceed
 <code>combatLogoutLingerSeconds</code>, so a live scene server always finishes the linger first.</li>
+<li><strong><code>InstanceReadyGraceSeconds</code> (180 s) against <code>StaleSceneRowGraceSeconds</code> (300 s).</strong> The
+routing path gives up on a non-ready instance first, releasing the character to the open world
+with a specific log line; only later does the sweep delete the row. Both outcomes are correct
+— a deleted row makes the instance fetch fail, which routes to the same fallback — but the
+ordering is what makes the failure diagnosable. <code>InstanceReadyGraceSeconds</code> must also exceed
+the scene server's <code>pendingSceneTimeoutSeconds</code> (60 s) plus a cold scene load, so a merely
+slow load is never mistaken for a dead one.</li>
+<li><strong><code>SceneServerPulseStaleSeconds</code> (60 s) against <code>DefaultSessionLeaseDuration</code> (2 min).</strong> A
+scene server is presumed dead an order of magnitude above its 5 s pulse rate, so a slow pulse
+or a brief database stall never evicts a healthy host — and well under the lease, so a
+conclusion drawn about liveness cannot outlive the claim it reasons about.</li>
+<li><strong><code>CharacterResidencyTimeout</code> (60 s) against <code>SceneLoadHandshakeTimeout</code> (90 s).</strong> The two
+watchdogs must not overlap: residency stops the moment the character is registered, which is
+the same moment the handshake watchdog starts.</li>
 </ul>
 <hr>
 <h2 id="operations">Operations</h2>
@@ -2018,10 +2196,19 @@ contention instead of taking the character. It should also exceed
 <ul>
 <li><strong>Create a new SceneServer.cfg</strong> based on the Production template, assigning a unique port in the 7790-7999 range.</li>
 <li><strong>Deploy the SceneServer binary</strong> with the new config to the target host or container.</li>
-<li><strong>Register the scene</strong> in the database via <code>world_scenes</code> table: set the scene's <code>WorldServerID</code>, <code>Handle</code>, <code>Name</code>, <code>Address</code>, and <code>Port</code>. The WorldServer discovers scene servers through this table.</li>
 <li><strong>Add an NGINX stream block</strong> for the new UDP port if not already open, then reload NGINX.</li>
-<li><strong>Restart the WorldServer</strong> so it picks up the new scene registration (or wait for the next heartbeat cycle if runtime discovery is implemented).</li>
+<li><strong>Start it.</strong> No manual database registration is required and none should be performed. On startup the scene server registers itself through <code>ISceneServerService.PersistAsync</code> (name, address, port, load, lock state), deletes any scene rows left over from a previous run under its own id, and begins pulsing every <code>PulseRate</code> seconds. World servers discover it from that registration and treat it as a candidate only while <code>last_pulse</code> is recent.</li>
+<li><strong>No restart of the WorldServer is needed.</strong> Discovery is continuous: the World server re-reads available scenes each routing cycle (behind a short TTL cache) and enqueues new scene instances on demand.</li>
 </ul>
+<blockquote>
+<p>Scene servers are <strong>not</strong> bound to a world server. Each pulls from one global pending-scene
+queue via <code>ISceneService.DequeueAsync</code>, so a given scene server may host scenes for several
+world servers at once. Adding capacity is therefore a matter of starting another process; you
+do not partition scenes between them by hand.</p>
+</blockquote>
+<p>To retire one, stop it gracefully — that deletes its registration and its scene rows. If it
+crashes instead, both survive, and the world server's <code>DeleteByStaleSceneServersAsync</code> sweep
+reaps its scene rows once <code>last_pulse</code> is older than <code>SceneServerPulseStaleSeconds</code> (60 s).</p>
 <h3 id="common-troubleshooting">Common Troubleshooting</h3>
 <ul>
 <li><strong>Server fails to start (&quot;Initialization Complete&quot; not logged):</strong> Check the <code>.cfg</code> file path and format. Verify <code>CertificatePath</code> and <code>PrivateKeyPath</code> exist and are readable. Ensure <code>Address</code>/<code>Port</code> are not already in use.</li>
@@ -2038,6 +2225,14 @@ contention instead of taking the character. It should also exceed
 <li><strong>&quot;Reconnecting&quot; panel flashes on every teleport or channel switch, and the mouse cursor is released:</strong> A scene transfer is a deliberate handoff, and the reconnect panels must skip the first attempt when <code>ClientConnectionManager.IsSceneHandoffReconnect</code> is set. See <a href="#reconnection-flow">Reconnection Flow</a>.</li>
 <li><strong>Client stuck behind the loading overlay with no reconnect and no login screen:</strong> The retry loop exited without reaching a terminal state. Both give-up conditions in <code>TryReconnect</code> must be checked together, and the teardown timeouts in <code>OnAwaitingConnectionReady</code> must abort with <code>reportFailure: true</code>; look for <code>Connection stop wait iteration limit exceeded</code> or <code>Forced connection stop timed out</code> in the client log. See <a href="#reconnection-flow">Reconnection Flow</a>.</li>
 <li><strong>A combat-logout body's damage is refunded after a scene server restart:</strong> The linger was persisted only at its two endpoints. <code>OnPeriodicSave</code> must call <code>AppendLingeringCharacterSnapshots</code>, and <code>saveRate</code> must be shorter than <code>combatLogoutLingerSeconds</code> for it to land at all. See <a href="#phase-11-scene-transfer--character-session-ownership">Phase 11</a>.</li>
+<li><strong>Client is disconnected with &quot;character unavailable&quot; seconds after authenticating to a scene server, worse under database load:</strong> The scene handshake was driven by the start-scene acknowledgement alone. That event fires once per connection, one round trip after authentication — before the character load has finished — so it must be <em>recorded</em> (<code>startScenesAckedClientIds</code>) rather than acted on, with <code>ValidateSceneAndAcknowledge</code> called by whichever half lands second. See <a href="#phase-9-scene-server-connection">Phase 9</a>.</li>
+<li><strong>A scene instance reports itself full while standing empty, and is never unloaded:</strong> Its population was credited by <code>OnAfterLoadCharacter</code> and never debited, because a teardown path removed the character without raising <code>OnDisconnect</code>. Both scene-validation failure branches must raise it; <code>RemoveCharacterConnectionMapping</code> returns immediately once the connection is in neither mapping table, so it cannot cover for them. Symptom order is diagnostic: the instance stops being unloaded first, then starts refusing arrivals.</li>
+<li><strong>The channel picker lists channels the player cannot switch to, or shows the wrong populations:</strong> The availability cache was keyed by scene name alone. A scene server hosts scenes for every world server, so the key must include the world server ID — see <a href="#phase-9a-scene-routing-queue">Phase 9a</a>.</li>
+<li><strong>Players are routed into another player's dungeon instance:</strong> Open-world routing accepted a <code>Group</code> scene row. <code>FetchAvailableAsync</code> does not filter <code>SceneType</code>, so <code>ProcessOpenWorldQueueAsync</code> must; the case is reachable whenever a dungeon scene name is also a teleporter's <code>ToScene</code> or a character's <code>BindScene</code>.</li>
+<li><strong>Clicking a dungeon entrance appears to do nothing:</strong> Every refusal is reported through <code>SceneTransferRefusedBroadcast</code> — check the client is registered for it, and the log for the matching reason. A second click while the first request is in flight is rejected by the ingress guard as a duplicate, which is why the dungeon-finder panel closes on send.</li>
+<li><strong>A party member entering a dungeon lands in an empty copy instead of joining the group:</strong> The party's instance was full and the request fell through to &quot;create a new instance&quot;. A full instance must refuse with <code>DestinationFull</code>; see <a href="#phase-11-scene-transfer--character-session-ownership">Phase 11</a>.</li>
+<li><strong>A player is repeatedly kicked while trying to enter a scene, with no bound on the retries:</strong> Its instance row names a scene server that is registered but no longer pulsing. <code>IsSceneServerLiveAsync</code>/<code>IsSceneServerLive</code> is what distinguishes &quot;routed to the wrong server, will be corrected&quot; from &quot;routed at a corpse&quot;; without a liveness check the client is redirected forever, since a <code>Ready</code> row's age says nothing.</li>
+<li><strong>A character can never re-enter a dungeon, and every attempt costs a full disconnect:</strong> A <code>Failed</code> scene row is still returned by <code>FetchCharacterInstanceAsync</code>, which matches on <code>character_id</code> alone. <code>IsUsableInstance</code> must treat anything that is not <code>Ready</code>/<code>Pending</code>/<code>Loading</code> as absent, and <code>DeleteStaleUnreadyAsync</code> reaps the row.</li>
 <li><strong>Database connection errors:</strong> Verify PostgreSQL is running on <code>localhost:5432</code> and pgBouncer on <code>localhost:6432</code>. Check the <code>FISHMMO_DB_HOST</code>/<code>FISHMMO_DB_PASSWORD</code> environment variables or <code>/etc/fishmmo/db-secrets.env</code> file, and verify the database connection string in the server configuration.</li>
 </ul>
 <hr>

@@ -848,9 +848,27 @@ dotnet run
 <h3 id="creating-new-migrations">Creating New Migrations</h3>
 <p>When your data model changes, create a new migration via the Installer (Database menu, option <code>5</code> — <em>Create New Database Migration</em>) or manually:</p>
 <pre><code class="lang-bash">cd FishMMO-Database/FishMMO-DB
-dotnet ef migrations add YourMigrationName
+dotnet ef migrations add YourMigrationName \
+  --startup-project ../FishMMO-DB-Migrator \
+  --output-dir ../../Migrations
+
+# The scaffolder writes the model snapshot to the project default rather than
+# --output-dir, where the SDK glob also compiles it — move it and remove the folder.
+mv Migrations/NpgsqlDbContextModelSnapshot.cs ../../Migrations/
+rmdir Migrations
+
 cd ../FishMMO-DB-Migrator
 dotnet run
+</code></pre>
+<p>Three things about this are not obvious:</p>
+<ul>
+<li><strong><code>--startup-project</code> is mandatory.</strong> <code>FishMMO-DB</code> targets <code>netstandard2.1</code>, which has no runtime, so the EF tooling refuses to run against it alone. <code>FishMMO-DB-Migrator</code> is the only executable project that references it.</li>
+<li><strong>Migrations live at the monorepo root</strong>, in <code>Migrations/</code>, which is <code>.gitignore</code>d and compiled into <code>FishMMO-DB</code> via <code>&lt;Compile Include=&quot;..\..\Migrations\*.cs&quot; /&gt;</code>. Hence <code>--output-dir ../../Migrations</code> and the snapshot move above.</li>
+<li><strong>Review the scaffold before running it.</strong> The model currently carries two pre-existing drifts (<code>character_pet.abilities</code> and <code>character_abilities.ability_events</code> are <code>text</code> in the database but <code>List&lt;int&gt;</code> in the model) that every new migration re-scaffolds as a destructive <code>ALTER … TYPE integer[]</code>. Strip those from <code>Up</code> and <code>Down</code> unless you are deliberately converting them.</li>
+</ul>
+<p>To review the generated SQL without touching a database — <code>dotnet ef database update</code> ignores <code>FISHMMO_CONNECTION_STRING</code> and resolves the design-time factory, which points at your <strong>live</strong> local database:</p>
+<pre><code class="lang-bash">dotnet ef migrations script PreviousMigration YourMigrationName \
+  --startup-project ../FishMMO-DB-Migrator --idempotent
 </code></pre>
 <h3 id="database-configuration">Database Configuration</h3>
 <p><strong>Environment-based overrides:</strong> The database library supports layered configuration in this priority order:</p>
@@ -1245,7 +1263,7 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 </tr>
 <tr>
 <td><code>StaleSceneTimeout</code></td>
-<td>Seconds before idle scenes are unloaded</td>
+<td><strong>Minutes</strong> an empty scene instance stays loaded before it is unloaded and its scene row deleted. SceneServer only. The templates ship <code>5</code>; the code's fallback when the key is missing is <code>60</code></td>
 <td>5</td>
 </tr>
 <tr>
@@ -2054,6 +2072,9 @@ ServerName=Scene Server B
 Port=7791
 </code></pre>
 <p>Launch each with <code>./GameServer SCENE</code> from its own working directory (or pass a custom config path). The WorldServer will distribute characters across all registered scene servers.</p>
+<p><strong>Scene servers are not bound to a world server.</strong> Each one pulls from a single global pending-scene queue, so any scene server may end up hosting scenes for any world server. This is what lets you scale zone capacity independently of world instances, and it is why scene rows, population counts and routing caches are all keyed by world server ID as well as scene name.</p>
+<p><strong>Multiple instances of one open-world scene are channels.</strong> When every instance of a scene is at its authored <code>MaxClients</code>, the WorldServer enqueues another and holds arriving clients in its routing queue (they see a position and a reason) until it is ready. Players move between instances of their current scene through the channel picker; the switch is refused in combat and rate-limited per character via <code>characters.last_channel_switch_utc</code>, so it survives the disconnect the switch performs.</p>
+<p>An empty instance is unloaded once it has been stale for <code>StaleSceneTimeout</code> minutes (the templates ship <code>5</code>), which also deletes its scene row.</p>
 <hr>
 <h2 id="fishmmo-apphealthmonitor">FishMMO-AppHealthMonitor</h2>
 <p>The AppHealthMonitor is a daemon that monitors, auto-restarts, and health-checks your server processes. It performs <strong>process liveness checks, TCP/UDP/WebSocket port probes, CPU and memory threshold monitoring, exponential-backoff restarts, and circuit breaker protection</strong>.</p>
@@ -2701,7 +2722,11 @@ sudo install -m 755 certbot-fishmmo.sh \
 </tr>
 <tr>
 <td>9. Scene Server</td>
-<td>Same token auth flow, gameplay begins</td>
+<td>Same token auth flow, order-independent scene handshake, gameplay begins</td>
+</tr>
+<tr>
+<td>9a. Scene-Routing Queue</td>
+<td>When there is nowhere to route yet — capacity, a scene still loading, or a combat-logout body only one instance can return — the client waits on the World server and is told its position and the reason</td>
 </tr>
 <tr>
 <td>10. Token Lifecycle</td>
