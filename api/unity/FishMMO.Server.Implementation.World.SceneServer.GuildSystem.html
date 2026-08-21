@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class GuildSystem | FishMMO Documentation ">
       
-      <meta name="description" content="Manages guild creation, membership, ranks, invitations, and updates with database synchronization. Game logic and Broadcasts run synchronously on the main thread. Database operations are async to avoid blocking the main thread. Results from async DB queries that require main-thread state changes or Broadcasts are marshalled via IGuildSystemMainThreadQueueData.">
+      <meta name="description" content="Guild permission resolution: the single place the server decides what a character may do in a guild, and the lazy migration that gives a pre-permissions guild its rank ladder.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -97,11 +97,8 @@ Class GuildSystem  <a class="header-action link-secondary" title="View source" h
   <dl><dt>Assembly</dt><dd>FishMMO.Server.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Manages guild creation, membership, ranks, invitations, and updates with database synchronization.
-Game logic and Broadcasts run synchronously on the main thread.
-Database operations are async to avoid blocking the main thread.
-Results from async DB queries that require main-thread state changes or Broadcasts are marshalled
-via IGuildSystemMainThreadQueueData.</p>
+  <div class="markdown summary"><p>Guild permission resolution: the single place the server decides what a character may do
+in a guild, and the lazy migration that gives a pre-permissions guild its rank ladder.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -433,6 +430,20 @@ public class GuildSystem : ServerBehaviour, IServerBehaviour&lt;INetworkManagerW
 
 
 
+  <h2 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+Split out of <code>GuildSystem.cs</code> because it is the security surface of the whole feature.
+Every operation in the main file now funnels through
+<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">ResolveGuildAuthorityAsync(long, long)</a>, and a reviewer asking "can a member kick a
+leader?" should be able to answer it from one file rather than from thirty scattered
+comparisons.
+</p>
+<p>
+The old model compared a <code>GuildRank</code> enum: <code>Rank &gt;= GuildRank.Officer</code> and
+friends. That is gone. A rank is a row a guild owns, carrying a name it chose and a
+permission mask; the row's ORDER is used for seniority alone.
+</p>
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -442,11 +453,10 @@ public class GuildSystem : ServerBehaviour, IServerBehaviour&lt;INetworkManagerW
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_GuildCreateAchievementTemplate" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.GuildCreateAchievementTemplate">
   GuildCreateAchievementTemplate
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L108"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L184"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Achievement to increment when a player creates a guild.</p>
-</div>
+  <div class="markdown level1 summary"></div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
@@ -474,7 +484,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_GuildJoinAchievementTemplate" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.GuildJoinAchievementTemplate">
   GuildJoinAchievementTemplate
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L113"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L189"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Achievement to increment when a player joins a guild.</p>
@@ -510,7 +520,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_MaxGuildSize" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.MaxGuildSize">
   MaxGuildSize
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L137"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L227"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Maximum number of members allowed in a guild.</p>
@@ -542,7 +552,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_UpdatePumpRate" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.UpdatePumpRate">
   UpdatePumpRate
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L132"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L222"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Gets the update pump rate for guild synchronization.</p>
@@ -578,7 +588,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_AddGuildCharacterTracker_System_Int64_System_Int64_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.AddGuildCharacterTracker(System.Int64,System.Int64)">
   AddGuildCharacterTracker(long, long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L568"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L770"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Adds a mapping for the Guild to Guild Members connected to this Scene Server.</p>
@@ -614,7 +624,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_CharacterSystem_OnConnect_FishNet_Connection_NetworkConnection_FishMMO_Shared_Core_IPlayerCharacter_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.CharacterSystem_OnConnect(FishNet.Connection.NetworkConnection,FishMMO.Shared.Core.IPlayerCharacter)">
   CharacterSystem_OnConnect(NetworkConnection, IPlayerCharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L622"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L824"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles character connect event, adding the character to the guild tracker and persisting guild update.</p>
@@ -650,7 +660,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_CharacterSystem_OnDisconnect_FishNet_Connection_NetworkConnection_FishMMO_Shared_Core_IPlayerCharacter_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.CharacterSystem_OnDisconnect(FishNet.Connection.NetworkConnection,FishMMO.Shared.Core.IPlayerCharacter)">
   CharacterSystem_OnDisconnect(NetworkConnection, IPlayerCharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L657"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L859"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles character disconnect event, removing the character from the guild tracker and persisting guild update.</p>
@@ -686,7 +696,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_InitializeOnce" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.InitializeOnce">
   InitializeOnce()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L169"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L259"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes the guild system, registering chat commands and broadcast handlers, and character events.</p>
@@ -718,7 +728,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnDeinitialize" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnDeinitialize">
   OnDeinitialize()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L241"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L349"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Cleans up the guild system, unregistering broadcast handlers and character events.</p>
@@ -745,7 +755,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnGuildInvite_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_ChatBroadcast_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnGuildInvite(FishMMO.Shared.Core.IPlayerCharacter,FishMMO.Shared.ChatBroadcast)">
   OnGuildInvite(IPlayerCharacter, ChatBroadcast)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L145"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L235"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles guild invite chat commands.</p>
@@ -787,7 +797,7 @@ public AchievementTemplate GuildCreateAchievementTemplate</code></pre>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildAcceptInviteBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildAcceptInviteBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildAcceptInviteBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildAcceptInviteBroadcast,FishNet.Transporting.Channel)">
   OnServerGuildAcceptInviteBroadcastReceived(NetworkConnection, GuildAcceptInviteBroadcast, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1039"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1379"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles acceptance of a guild invitation, validates the invite, fires an async task to check capacity,
@@ -823,11 +833,94 @@ persist membership, and marshal results back to the main thread.</p>
 
 
 
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildApplicationListRequestBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildApplicationListRequestBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildApplicationListRequestBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildApplicationListRequestBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildApplicationListRequestBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildApplicationListRequestBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildApplicationListRequestBroadcastReceived(NetworkConnection, GuildApplicationListRequestBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Recruitment.cs/#L427"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request for the guild's pending application queue.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildApplicationListRequestBroadcastReceived(NetworkConnection conn, GuildApplicationListRequestBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildApplicationListRequestBroadcast.html">GuildApplicationListRequestBroadcast</a></dt>
+    <dd><p>The request. Carries nothing.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildApplyBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildApplyBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildApplyBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildApplyBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildApplyBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildApplyBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildApplyBroadcastReceived(NetworkConnection, GuildApplyBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Recruitment.cs/#L282"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to apply to a guild found in the directory.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildApplyBroadcastReceived(NetworkConnection conn, GuildApplyBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The applying connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildApplyBroadcast.html">GuildApplyBroadcast</a></dt>
+    <dd><p>The guild and the applicant's message.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildApplyBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildApplyBroadcast_FishNet_Transporting_Channel__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Refused for a character who is already in a guild — checked here on the cheap side, and
+again in the SQL, because the controller's guild ID is main-thread state and the
+membership row is the truth.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildChangeRankBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildChangeRankBroadcastReceived*"></a>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildChangeRankBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildChangeRankBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildChangeRankBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildChangeRankBroadcast,FishNet.Transporting.Channel)">
   OnServerGuildChangeRankBroadcastReceived(NetworkConnection, GuildChangeRankBroadcast, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1564"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L2178"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles guild rank change broadcast, validates leader and target, and fires an async task
@@ -868,7 +961,7 @@ Only guild leaders can promote another member to a new rank.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildCreateBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildCreateBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildCreateBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildCreateBroadcast,FishNet.Transporting.Channel)">
   OnServerGuildCreateBroadcastReceived(NetworkConnection, GuildCreateBroadcast, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L744"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L968"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles guild creation broadcast, validates and creates a new guild for the requesting character.
@@ -905,11 +998,50 @@ and marshals the result back to the main thread.</p>
 
 
 
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildCreateRankBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildCreateRankBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildCreateRankBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildCreateRankBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildCreateRankBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildCreateRankBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildCreateRankBroadcastReceived(NetworkConnection, GuildCreateRankBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Ranks.cs/#L201"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to add a rank to the ladder.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildCreateRankBroadcastReceived(NetworkConnection conn, GuildCreateRankBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildCreateRankBroadcast.html">GuildCreateRankBroadcast</a></dt>
+    <dd><p>The requested position, name and mask.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDeclineInviteBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildDeclineInviteBroadcastReceived*"></a>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDeclineInviteBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildDeclineInviteBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildDeclineInviteBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildDeclineInviteBroadcast,FishNet.Transporting.Channel)">
   OnServerGuildDeclineInviteBroadcastReceived(NetworkConnection, GuildDeclineInviteBroadcast, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1188"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1643"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles decline of a guild invitation, removes pending invitation for the character.</p>
@@ -944,11 +1076,173 @@ and marshals the result back to the main thread.</p>
 
 
 
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDeleteRankBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildDeleteRankBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDeleteRankBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildDeleteRankBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildDeleteRankBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildDeleteRankBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildDeleteRankBroadcastReceived(NetworkConnection, GuildDeleteRankBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Ranks.cs/#L318"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to remove a rank from the ladder.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildDeleteRankBroadcastReceived(NetworkConnection conn, GuildDeleteRankBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildDeleteRankBroadcast.html">GuildDeleteRankBroadcast</a></dt>
+    <dd><p>The rank to remove.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDirectoryRequestBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildDirectoryRequestBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDirectoryRequestBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildDirectoryRequestBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildDirectoryRequestBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildDirectoryRequestBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildDirectoryRequestBroadcastReceived(NetworkConnection, GuildDirectoryRequestBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Recruitment.cs/#L166"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request for a page of the recruitment directory.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildDirectoryRequestBroadcastReceived(NetworkConnection conn, GuildDirectoryRequestBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildDirectoryRequestBroadcast.html">GuildDirectoryRequestBroadcast</a></dt>
+    <dd><p>The optional search term.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDirectoryRequestBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildDirectoryRequestBroadcast_FishNet_Transporting_Channel__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The ONE guild request a non-member may make, so it does not go through
+<code>TryBeginGuildRequest</code> — which requires a guild — and instead does the
+connection checks itself. Browsing is deliberately open to members too: a player
+shopping for a new guild has not left their old one yet.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDisbandBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildDisbandBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildDisbandBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildDisbandBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildDisbandBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildDisbandBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildDisbandBroadcastReceived(NetworkConnection, GuildDisbandBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L2730"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to disband the guild.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildDisbandBroadcastReceived(NetworkConnection conn, GuildDisbandBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>Network connection of the leader.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildDisbandBroadcast.html">GuildDisbandBroadcast</a></dt>
+    <dd><p>The broadcast carrying the confirmation name.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildEditRankBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildEditRankBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildEditRankBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildEditRankBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildEditRankBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildEditRankBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildEditRankBroadcastReceived(NetworkConnection, GuildEditRankBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Ranks.cs/#L74"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to rename a rank or change its permissions.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildEditRankBroadcastReceived(NetworkConnection conn, GuildEditRankBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildEditRankBroadcast.html">GuildEditRankBroadcast</a></dt>
+    <dd><p>The requested name and mask.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildInviteBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildInviteBroadcastReceived*"></a>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildInviteBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildInviteBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildInviteBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildInviteBroadcast,FishNet.Transporting.Channel)">
   OnServerGuildInviteBroadcastReceived(NetworkConnection, GuildInviteBroadcast, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L912"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1147"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles guild invitation broadcast, validates inviter and target, and sends invitation to the target character.
@@ -989,7 +1283,7 @@ Fires an async task to verify guild capacity before sending the invite.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildLeaveBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildLeaveBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildLeaveBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildLeaveBroadcast,FishNet.Transporting.Channel)">
   OnServerGuildLeaveBroadcastReceived(NetworkConnection, GuildLeaveBroadcast, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1226"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1688"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles guild leave broadcast, validates character, captures necessary data,
@@ -1025,11 +1319,99 @@ and fires an async task that handles leadership transfer, member removal, and gu
 
 
 
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildLogRequestBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildLogRequestBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildLogRequestBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildLogRequestBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildLogRequestBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildLogRequestBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildLogRequestBroadcastReceived(NetworkConnection, GuildLogRequestBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L2975"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request for the guild's recent activity log.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildLogRequestBroadcastReceived(NetworkConnection conn, GuildLogRequestBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>Network connection of the requester.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildLogRequestBroadcast.html">GuildLogRequestBroadcast</a></dt>
+    <dd><p>The request broadcast.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildLogRequestBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildLogRequestBroadcast_FishNet_Transporting_Channel__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The guild is taken from the requester's SERVER-side controller, never from the message.
+The request carries no guild id precisely so that there is nothing to forge: a player
+can only ever ask for the log of the guild the server already believes they are in.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildRankListRequestBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildRankListRequestBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildRankListRequestBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildRankListRequestBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildRankListRequestBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildRankListRequestBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildRankListRequestBroadcastReceived(NetworkConnection, GuildRankListRequestBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Ranks.cs/#L38"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request for the guild's rank ladder.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildRankListRequestBroadcastReceived(NetworkConnection conn, GuildRankListRequestBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildRankListRequestBroadcast.html">GuildRankListRequestBroadcast</a></dt>
+    <dd><p>The request. Carries nothing.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildRankListRequestBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildRankListRequestBroadcast_FishNet_Transporting_Channel__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Any member may read the ladder — a player cannot be expected to work within rules they
+are not allowed to see, and the permission masks in it are already implied by which
+buttons every other member visibly has.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildRemoveBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildRemoveBroadcastReceived*"></a>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildRemoveBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildRemoveBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildRemoveBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildRemoveBroadcast,FishNet.Transporting.Channel)">
   OnServerGuildRemoveBroadcastReceived(NetworkConnection, GuildRemoveBroadcast, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1428"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L1997"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles guild member removal broadcast, validates and removes a member from the guild.
@@ -1065,11 +1447,255 @@ Only officers and leaders can remove other members.</p>
 
 
 
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildResolveApplicationBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildResolveApplicationBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildResolveApplicationBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildResolveApplicationBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildResolveApplicationBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildResolveApplicationBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildResolveApplicationBroadcastReceived(NetworkConnection, GuildResolveApplicationBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Recruitment.cs/#L546"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles an accept or decline of one pending application.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildResolveApplicationBroadcastReceived(NetworkConnection conn, GuildResolveApplicationBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildResolveApplicationBroadcast.html">GuildResolveApplicationBroadcast</a></dt>
+    <dd><p>The application and the decision.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetMemberNoteBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildSetMemberNoteBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetMemberNoteBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildSetMemberNoteBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildSetMemberNoteBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildSetMemberNoteBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildSetMemberNoteBroadcastReceived(NetworkConnection, GuildSetMemberNoteBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Ranks.cs/#L421"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to set one of a member's two notes.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildSetMemberNoteBroadcastReceived(NetworkConnection conn, GuildSetMemberNoteBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildSetMemberNoteBroadcast.html">GuildSetMemberNoteBroadcast</a></dt>
+    <dd><p>The member, the note and which note it is.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetMemberNoteBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildSetMemberNoteBroadcast_FishNet_Transporting_Channel__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>E6. The two notes are separately permissioned, and the officer note is separately
+permissioned for READING as well — a rank may be allowed to write public notes without
+being allowed to see the officer ones.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetMessageOfTheDayBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildSetMessageOfTheDayBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetMessageOfTheDayBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildSetMessageOfTheDayBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildSetMessageOfTheDayBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildSetMessageOfTheDayBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildSetMessageOfTheDayBroadcastReceived(NetworkConnection, GuildSetMessageOfTheDayBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L2347"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to change the guild message of the day.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildSetMessageOfTheDayBroadcastReceived(NetworkConnection conn, GuildSetMessageOfTheDayBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>Network connection of the requester.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildSetMessageOfTheDayBroadcast.html">GuildSetMessageOfTheDayBroadcast</a></dt>
+    <dd><p>The requested message of the day.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetNoticeBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildSetNoticeBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetNoticeBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildSetNoticeBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildSetNoticeBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildSetNoticeBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildSetNoticeBroadcastReceived(NetworkConnection, GuildSetNoticeBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L2358"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to change the guild notice.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildSetNoticeBroadcastReceived(NetworkConnection conn, GuildSetNoticeBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>Network connection of the requester.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildSetNoticeBroadcast.html">GuildSetNoticeBroadcast</a></dt>
+    <dd><p>The requested notice text.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetRecruitmentBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildSetRecruitmentBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildSetRecruitmentBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildSetRecruitmentBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildSetRecruitmentBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildSetRecruitmentBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildSetRecruitmentBroadcastReceived(NetworkConnection, GuildSetRecruitmentBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.Recruitment.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to change the guild's recruitment advertisement.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildSetRecruitmentBroadcastReceived(NetworkConnection conn, GuildSetRecruitmentBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>The requesting connection.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildSetRecruitmentBroadcast.html">GuildSetRecruitmentBroadcast</a></dt>
+    <dd><p>The proposed blurb, tags and recruiting flag.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildTransferLeadershipBroadcastReceived_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildTransferLeadershipBroadcastReceived*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildTransferLeadershipBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildTransferLeadershipBroadcast_FishNet_Transporting_Channel_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnServerGuildTransferLeadershipBroadcastReceived(FishNet.Connection.NetworkConnection,FishMMO.Shared.GuildTransferLeadershipBroadcast,FishNet.Transporting.Channel)">
+  OnServerGuildTransferLeadershipBroadcastReceived(NetworkConnection, GuildTransferLeadershipBroadcast, Channel)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L2573"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a request to transfer guild leadership to another member.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnServerGuildTransferLeadershipBroadcastReceived(NetworkConnection conn, GuildTransferLeadershipBroadcast msg, Channel channel)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">NetworkConnection</span></dt>
+    <dd><p>Network connection of the current leader.</p>
+</dd>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildTransferLeadershipBroadcast.html">GuildTransferLeadershipBroadcast</a></dt>
+    <dd><p>The broadcast naming the successor.</p>
+</dd>
+    <dt><code>channel</code> <span class="xref">Channel</span></dt>
+    <dd><p>Network channel used for the broadcast.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnServerGuildTransferLeadershipBroadcastReceived_FishNet_Connection_NetworkConnection_FishMMO_Shared_GuildTransferLeadershipBroadcast_FishNet_Transporting_Channel__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The successor may be OFFLINE. Leadership is a database rank, not a session, and a guild
+whose leader can only hand over while the successor happens to be logged in is a guild
+that stays stuck for exactly the reason S5 describes.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnUpdate_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnUpdate*"></a>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_OnUpdate_System_Single_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.OnUpdate(System.Single)">
   OnUpdate(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L299"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L422"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Drains the main-thread queue each frame.</p>
@@ -1101,7 +1727,7 @@ Only officers and leaders can remove other members.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_GuildSystem_RemoveGuildCharacterTracker_System_Int64_System_Int64_" data-uid="FishMMO.Server.Implementation.World.SceneServer.GuildSystem.RemoveGuildCharacterTracker(System.Int64,System.Int64)">
   RemoveGuildCharacterTracker(long, long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L594"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Guild/GuildSystem.cs/#L796"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes the mapping of Guild to Guild Members connected to this Scene Server.</p>

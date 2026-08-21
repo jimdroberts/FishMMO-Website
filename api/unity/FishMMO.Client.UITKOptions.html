@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKOptions" data-uid="FishMMO.Client.UITKOptions" class="text-break">
-Class UITKOptions  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L27"><i class="bi bi-code-slash"></i></a>
+Class UITKOptions  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L51"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -183,12 +183,6 @@ of per-option components, so a configuration key cannot be lost by editing a sce
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_BindListChrome_UnityEngine_UIElements_VisualElement_UnityEngine_UIElements_Label_UnityEngine_UIElements_Label_UnityEngine_UIElements_Label_System_String_System_String_">UITKControl.BindListChrome(VisualElement, Label, Label, Label, string, string)</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnAfterStarting">UITKControl.OnAfterStarting()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnDestroying">UITKControl.OnDestroying()</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnClientSet">UITKControl.OnClientSet()</a>
     </div>
     <div>
@@ -196,9 +190,6 @@ of per-option components, so a configuration key cannot be lost by editing a sce
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_SetClient_FishMMO_Client_Client_">UITKControl.SetClient(Client)</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnTick">UITKControl.OnTick()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnQuitToLogin">UITKControl.OnQuitToLogin()</a>
@@ -214,9 +205,6 @@ of per-option components, so a configuration key cannot be lost by editing a sce
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Hide">UITKControl.Hide()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Hide_System_Boolean_">UITKControl.Hide(bool)</a>
     </div>
     <div>
       <span class="xref">MonoBehaviour.IsInvoking()</span>
@@ -644,14 +632,33 @@ of per-option components, so a configuration key cannot be lost by editing a sce
 
 
   <h2 id="FishMMO_Client_UITKOptions_remarks">Remarks</h2>
-  <div class="markdown level0 remarks"><p>Three groups of settings live here:</p>
+  <div class="markdown level0 remarks"><p>Four groups of settings live here:</p>
 <p>• <b>Screen</b> — resolution, refresh rate, fullscreen, brightness, VSync.</p>
+<p>• <b>Controls</b> — every rebindable action in the Player map, with conflict detection and
+per-binding and whole-map reset.</p>
 <p>• <b>Gameplay</b> — five toggles whose keys used to be set per GameObject in the scene
 rather than in code. <code>ShowDamage</code> and <code>ShowHeals</code> are read live by
 ClientCombatDisplay; the other three are stored for consumers that do not exist yet.</p>
 <p>• <b>Colours</b> — the thirteen themeable colours, opened through the shared colour picker.
 The values feed <a class="xref" href="FishMMO.Client.UITKThemeManager.html">UITKThemeManager</a> and are stored under the same config keys
 the Canvas UI used, so a config written by an older client still applies.</p>
+<p><b>Display settings are staged, not live.</b> Every other setting here can be undone
+by the control that set it. A display mode cannot: pick one the monitor will not show and
+the player cannot see the panel that would put it back. So the three display dropdowns
+write to a pending selection, Apply commits it, and Apply then arms a countdown that
+restores the previous mode unless the player presses Keep. Nothing is written to the
+configuration file until Keep, so a mode that blacked out the screen is not still there
+after a restart.</p>
+<p><b>Writes to disk are debounced.</b> Every control used to call
+<code>Configuration.Save()</code> directly, which serialises and rewrites the whole file. On a
+slider that is once per frame — around sixty full-file writes a second while dragging —
+and the colour picker did that <em>plus</em> a complete theme reload across every
+registered panel. Both are now coalesced onto a short quiet period and flushed on close.</p>
+<p><b>Values read from the file are clamped.</b> A configuration file is a text file a
+player can edit, and it can also be truncated by a crash. An out-of-range brightness used
+to be written straight into <code>RenderSettings.ambientLight</code>, and an out-of-range
+fullscreen value straight into <code>Screen.fullScreenMode</code>. Startup must survive a corrupt
+settings file.</p>
 </div>
 
 
@@ -663,7 +670,7 @@ the Canvas UI used, so a config written by an older client still applies.</p>
 
   <h3 id="FishMMO_Client_UITKOptions_Layer" data-uid="FishMMO.Client.UITKOptions.Layer">
   Layer
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L30"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L54"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Draw order tier for this panel. See <a class="xref" href="FishMMO.Client.UITKPanelLayer.html">UITKPanelLayer</a>.</p>
@@ -695,11 +702,136 @@ the Canvas UI used, so a config written by an older client still applies.</p>
 </h2>
 
 
+  <a id="FishMMO_Client_UITKOptions_Hide_" data-uid="FishMMO.Client.UITKOptions.Hide*"></a>
+
+  <h3 id="FishMMO_Client_UITKOptions_Hide_System_Boolean_" data-uid="FishMMO.Client.UITKOptions.Hide(System.Boolean)">
+  Hide(bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L364"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Flushes anything pending and cancels an in-progress rebind when the panel closes.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void Hide(bool overrideIsAlwaysOpen)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>overrideIsAlwaysOpen</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKOptions_Hide_System_Boolean__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A rebind left listening after the panel is gone would capture the next key the player
+pressed — in the world, with no prompt on screen — and assign it to whichever action
+the row belonged to.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKOptions_OnAfterShow_" data-uid="FishMMO.Client.UITKOptions.OnAfterShow*"></a>
+
+  <h3 id="FishMMO_Client_UITKOptions_OnAfterShow" data-uid="FishMMO.Client.UITKOptions.OnAfterShow">
+  OnAfterShow()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L351"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Puts the display prompt back into the right state on every open.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterShow()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_UITKOptions_OnAfterStarting_" data-uid="FishMMO.Client.UITKOptions.OnAfterStarting*"></a>
+
+  <h3 id="FishMMO_Client_UITKOptions_OnAfterStarting" data-uid="FishMMO.Client.UITKOptions.OnAfterStarting">
+  OnAfterStarting()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L342"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Re-applies state after the visual tree has been rebuilt.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterStarting()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKOptions_OnAfterStarting_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The panel starts hidden, so its tree is cloned afresh on every open and every element
+cached above belongs to the previous one. <code>OnStarting</code> re-runs from
+<code>ReinitializeIfTreeReplaced</code> and rebuilds all four sections; this only has to put
+the display prompt back into whatever state the countdown is in, because that state
+lives across an open and close.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKOptions_OnDestroying_" data-uid="FishMMO.Client.UITKOptions.OnDestroying*"></a>
+
+  <h3 id="FishMMO_Client_UITKOptions_OnDestroying" data-uid="FishMMO.Client.UITKOptions.OnDestroying">
+  OnDestroying()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L378"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Flushes anything still pending when the panel is destroyed.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnDestroying()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKOptions_OnStarting_" data-uid="FishMMO.Client.UITKOptions.OnStarting*"></a>
 
   <h3 id="FishMMO_Client_UITKOptions_OnStarting" data-uid="FishMMO.Client.UITKOptions.OnStarting">
   OnStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L132"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L271"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Ensures configuration is loaded, resolves all controls, populates choices and binds callbacks.</p>
@@ -708,6 +840,33 @@ the Canvas UI used, so a config written by an older client still applies.</p>
 
   <div class="codewrapper">
     <pre><code class="lang-csharp hljs">public override void OnStarting()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_UITKOptions_OnTick_" data-uid="FishMMO.Client.UITKOptions.OnTick*"></a>
+
+  <h3 id="FishMMO_Client_UITKOptions_OnTick" data-uid="FishMMO.Client.UITKOptions.OnTick">
+  OnTick()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options/UITKOptions.cs/#L388"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Drives the debounced writes and the display auto-revert countdown.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnTick()</code></pre>
   </div>
 
 

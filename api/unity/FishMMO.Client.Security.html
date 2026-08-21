@@ -137,6 +137,12 @@ active.</p>
 </dd>
     </dl>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Client.Security.Ed25519ManifestVerifier.html">Ed25519ManifestVerifier</a></dt>
+      <dd><p>Verifies an Ed25519 signature carried inside a JSON document, against a public key
+embedded in the client at build time.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Client.Security.GeneratedClientSecret.html">GeneratedClientSecret</a></dt>
       <dd><p>IL-embedded client gate secret. The real value is substituted at
 build time by CI from the FISHMMO_CLIENT_GATE_SECRET env var.</p>
@@ -159,6 +165,48 @@ Always returns &quot;no update available&quot;. Never downgrades the static pin 
       <dt><a class="xref" href="FishMMO.Client.Security.PinUpdateManifest.html">PinUpdateManifest</a></dt>
       <dd><p>Result of a successful pin update fetch. Fields are intentionally minimal
 to constrain what a compromised sidecar can express.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryCrypto.html">TwoFactorRecoveryCrypto</a></dt>
+      <dd><p>Password-based authenticated encryption for the local 2FA recovery-code payload.</p>
+<p><b>Why the account password and not a machine-bound key.</b> The obvious alternative
+is a key sealed to the machine (DPAPI, keychain, a file next to the payload). That protects
+the codes from another local process, but it dies with the installation — and a reinstall,
+a new machine or a wiped profile is precisely the situation in which a player reaches for
+recovery codes. A machine-bound key would therefore trade a confidentiality problem for an
+availability one, and locking a player out of their own account is the worse failure of the
+two. The account password is in hand at exactly the two moments that matter — when the codes
+are written at 2FA setup, and when the player legitimately asks to read them back — and it
+is the one secret that survives a reinstall.</p>
+<p><b>Primitives.</b> Argon2id and AES-256-GCM, both from the BouncyCastle build this
+project already ships (<code>Assets/Dependencies/BouncyCastle.Cryptography.dll</code>) and already
+depends on for all of its other crypto. No new dependency. BouncyCastle rather than
+<code>System.Security.Cryptography.AesGcm</code> for the same reason
+<code>CryptoHelper.EncryptAES</code> uses it: it behaves identically on every Unity player target,
+where the BCL AEAD types are not uniformly available.</p>
+<p><b>Why Argon2id rather than the PBKDF2 the server uses for recovery-code hashing.</b>
+<code>CryptoHelper.TwoFactor.HashRecoveryCode</code> is PBKDF2-HMAC-SHA256 at 600k iterations
+because it runs server-side, once per verification, against a high-entropy random code. This
+runs client-side, twice per account lifetime, against a human-chosen password, and the
+attacker is someone who already has the file. Memory-hardness is the property that matters
+there, and the parameters are recorded in the envelope so they can be raised later without
+stranding files written by an older client.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryStore.html">TwoFactorRecoveryStore</a></dt>
+      <dd><p>The local, on-disk copy of the 2FA setup payload (otpauth URI + recovery codes) written
+during account creation so the player still has the codes if the client dies before they
+finish writing them down.</p>
+<p>The payload used to be a plaintext <code>.txt</code>. Randomising the filename and tightening
+the permissions — the previous pass — removed the account-name leak and the guessable path,
+but the contents were still readable by anything that could open the file: another local
+user on a machine where the chmod did not take, a backup agent, a sync client, a stolen
+disk. This class encrypts the payload under the account password; see
+<a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryCrypto.html">TwoFactorRecoveryCrypto</a> for why the password and not a machine-bound key.</p>
+<p>Every method here is deliberately non-destructive on failure. The one thing this
+storage must never do is destroy a payload the player has not yet copied down.</p>
 </dd>
     </dl>
     <h3 id="interfaces">
@@ -186,6 +234,14 @@ so the bootstrap can reject stale manifests.</li>
 <p>The bootstrap MUST treat sidecar failures as advisory only and never
 downgrade pinning below what was statically configured. A compromised
 sidecar host must not be able to remove pins — only narrow them.</p>
+</dd>
+    </dl>
+    <h3 id="enums">
+Enums
+</h3>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryReadResult.html">TwoFactorRecoveryReadResult</a></dt>
+      <dd><p>The outcome of an attempt to open a recovery-code envelope.</p>
 </dd>
     </dl>
 

@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKHtmlContentRenderer" data-uid="FishMMO.Client.UITKHtmlContentRenderer" class="text-break">
-Class UITKHtmlContentRenderer  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Launcher/UITKHtmlContentRenderer.cs/#L25"><i class="bi bi-code-slash"></i></a>
+Class UITKHtmlContentRenderer  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Launcher/UITKHtmlContentRenderer.cs/#L50"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -148,14 +148,36 @@ Class UITKHtmlContentRenderer  <a class="header-action link-secondary" title="Vi
 
 
   <h2 id="FishMMO_Client_UITKHtmlContentRenderer_remarks">Remarks</h2>
-  <div class="markdown level0 remarks"><p>Builds elements rather than a rich-text string. UI Toolkit's rich text has no equivalent
+  <div class="markdown level0 remarks"><p>
+Builds elements rather than a rich-text string. UI Toolkit's rich text has no equivalent
 of a link tag, so a news link cannot be a span of styled text — it has to be an element
-that can receive a click, which means the tree has to be walked rather than flattened.</p>
+that can receive a click, which means the tree has to be walked rather than flattened.
+</p>
 <p>
-Building elements rather than markup also removes an escaping problem. Composing a
-markup string means remote content is concatenated into a string that is then parsed,
-so a news page containing tag-like text can alter the formatting of everything after
-it. Text assigned to a <span class="xref">UnityEngine.UIElements.Label</span> is never parsed as markup.
+<b>Correction to a previous remark.</b> This class used to claim that "text assigned to a
+<span class="xref">UnityEngine.UIElements.Label</span> is never parsed as markup", and used that as the reason building
+elements removed the escaping problem. That is false, and it was load-bearing.
+<span class="xref">UnityEngine.UIElements.TextElement.enableRichText</span> defaults to <code>true</code> on every
+<span class="xref">UnityEngine.UIElements.Label</span>, so assigning remote text to one hands it straight to Unity's
+rich-text parser. Worse, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.net.webutility.htmldecode#system-net-webutility-htmldecode(system-string)">HtmlDecode(string)</a> below turns an escaped
+<code>&amp;lt;color=#0f0&amp;gt;</code> — which a feed author reasonably believes is inert —
+back into a live tag. A compromised or merely sloppy news feed could therefore forge
+authoritative-looking launcher chrome ("Verified by FishMMO — enter your key at…") or
+<code>&lt;size=2000&gt;</code> the pane into uselessness.
+</p>
+<p>
+Every label produced here now goes through <a class="xref" href="FishMMO.Client.RemoteText.html">RemoteText</a>, which turns rich
+text off and strips control characters. Building elements is still the right shape — it
+is what makes links possible — but it is not what makes the content safe.
+</p>
+<p>
+<b>Bounded and incremental.</b> The document is fetched from a URL this client does not
+control, so its size, breadth and depth are all attacker-chosen. Rendering used to be one
+synchronous recursive pass over the whole thing on the main thread: a large feed froze
+the launcher, and a hostile one could keep it frozen. Traversal is now an explicit work
+stack driven by <a class="xref" href="FishMMO.Client.UITKHtmlContentRenderer.html#FishMMO_Client_UITKHtmlContentRenderer_RenderIncremental_HtmlAgilityPack_HtmlNode_UnityEngine_UIElements_VisualElement_System_Action_System_String__">RenderIncremental(HtmlNode, VisualElement, Action&lt;string&gt;)</a>, which yields every
+<span class="xref">FishMMO.Client.UITKHtmlContentRenderer.NodesPerFrame</span> nodes, and it stops dead on every budget rather than merely
+declining to add more elements.
 </p>
 </div>
 
@@ -168,10 +190,11 @@ it. Text assigned to a <span class="xref">UnityEngine.UIElements.Label</span> is
 
   <h3 id="FishMMO_Client_UITKHtmlContentRenderer_Render_HtmlAgilityPack_HtmlNode_UnityEngine_UIElements_VisualElement_System_Action_System_String__" data-uid="FishMMO.Client.UITKHtmlContentRenderer.Render(HtmlAgilityPack.HtmlNode,UnityEngine.UIElements.VisualElement,System.Action{System.String})">
   Render(HtmlNode, VisualElement, Action&lt;string&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Launcher/UITKHtmlContentRenderer.cs/#L85"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Launcher/UITKHtmlContentRenderer.cs/#L183"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Clears <code class="paramref">container</code> and rebuilds it from <code class="paramref">root</code>.</p>
+  <div class="markdown level1 summary"><p>Clears <code class="paramref">container</code> and rebuilds it from <code class="paramref">root</code>,
+synchronously.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -201,6 +224,63 @@ itself, so the allowlist stays in one place.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKHtmlContentRenderer_Render_HtmlAgilityPack_HtmlNode_UnityEngine_UIElements_VisualElement_System_Action_System_String___remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Retained for callers with no coroutine host and for small, locally-authored trees.
+Anything rendering a fetched document should prefer
+<a class="xref" href="FishMMO.Client.UITKHtmlContentRenderer.html#FishMMO_Client_UITKHtmlContentRenderer_RenderIncremental_HtmlAgilityPack_HtmlNode_UnityEngine_UIElements_VisualElement_System_Action_System_String__">RenderIncremental(HtmlNode, VisualElement, Action&lt;string&gt;)</a> — the budgets are identical, but this form spends the
+whole of them inside one frame.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKHtmlContentRenderer_RenderIncremental_" data-uid="FishMMO.Client.UITKHtmlContentRenderer.RenderIncremental*"></a>
+
+  <h3 id="FishMMO_Client_UITKHtmlContentRenderer_RenderIncremental_HtmlAgilityPack_HtmlNode_UnityEngine_UIElements_VisualElement_System_Action_System_String__" data-uid="FishMMO.Client.UITKHtmlContentRenderer.RenderIncremental(HtmlAgilityPack.HtmlNode,UnityEngine.UIElements.VisualElement,System.Action{System.String})">
+  RenderIncremental(HtmlNode, VisualElement, Action&lt;string&gt;)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Launcher/UITKHtmlContentRenderer.cs/#L206"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Clears <code class="paramref">container</code> and rebuilds it from <code class="paramref">root</code>,
+spreading the work across frames.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static IEnumerator RenderIncremental(HtmlNode root, VisualElement container, Action&lt;string&gt; onLinkActivated)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>root</code> <span class="xref">HtmlNode</span></dt>
+    <dd><p>The extracted news fragment. Null renders an empty pane.</p>
+</dd>
+    <dt><code>container</code> <span class="xref">VisualElement</span></dt>
+    <dd><p>The element to populate.</p>
+</dd>
+    <dt><code>onLinkActivated</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action-1">Action</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a>&gt;</dt>
+    <dd><p>Invoked with the raw href when a link is clicked.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.ienumerator">IEnumerator</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKHtmlContentRenderer_RenderIncremental_HtmlAgilityPack_HtmlNode_UnityEngine_UIElements_VisualElement_System_Action_System_String___remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Drive this with <code>StartCoroutine</code>. It yields <code>null</code> (one frame) every
+<span class="xref">FishMMO.Client.UITKHtmlContentRenderer.NodesPerFrame</span> nodes, so a document large enough to be a problem
+becomes a pane that fills in progressively instead of a launcher that stops
+responding.</p>
+</div>
 
 
 

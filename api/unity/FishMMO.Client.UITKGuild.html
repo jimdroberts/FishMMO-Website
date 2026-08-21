@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class UITKGuild | FishMMO Documentation ">
       
-      <meta name="description" content="UI Toolkit guild panel. Renders guild members as dynamic rows with name/rank context dropdowns, and handles create/leave/invite actions. The shared dialog and dropdown overlays are resolved by name through the  rather than referenced directly.">
+      <meta name="description" content="UI Toolkit guild panel. Two pages — a filterable member roster and an information page carrying the guild&#39;s notice, message of the day and leadership actions — plus a per-member context menu and hover card. The shared dialog and context-menu overlays are resolved by name through the  rather than referenced directly.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKGuild" data-uid="FishMMO.Client.UITKGuild" class="text-break">
-Class UITKGuild  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L16"><i class="bi bi-code-slash"></i></a>
+Class UITKGuild  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L33"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,10 +97,10 @@ Class UITKGuild  <a class="header-action link-secondary" title="View source" hre
   <dl><dt>Assembly</dt><dd>FishMMO.Client.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>UI Toolkit guild panel. Renders guild members as dynamic rows with name/rank context
-dropdowns, and handles create/leave/invite actions. The shared dialog and dropdown
-overlays are resolved by name through the <a class="xref" href="FishMMO.Client.UIManager.html">UIManager</a> rather than referenced
-directly.</p>
+  <div class="markdown summary"><p>UI Toolkit guild panel. Two pages — a filterable member roster and an information page
+carrying the guild's notice, message of the day and leadership actions — plus a per-member
+context menu and hover card. The shared dialog and context-menu overlays are resolved by
+name through the <a class="xref" href="FishMMO.Client.UIManager.html">UIManager</a> rather than referenced directly.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -140,16 +140,7 @@ directly.</p>
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_Character">UITKCharacterControl.Character</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPreSetCharacter">UITKCharacterControl.OnPreSetCharacter()</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_SetCharacter_FishMMO_Shared_Core_IPlayerCharacter_">UITKCharacterControl.SetCharacter(IPlayerCharacter)</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnAfterStarting">UITKCharacterControl.OnAfterStarting()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPostUnsetCharacter">UITKCharacterControl.OnPostUnsetCharacter()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_UnsetCharacter">UITKCharacterControl.UnsetCharacter()</a>
@@ -221,9 +212,6 @@ directly.</p>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_SetClient_FishMMO_Client_Client_">UITKControl.SetClient(Client)</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnTick">UITKControl.OnTick()</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnQuitToLogin">UITKControl.OnQuitToLogin()</a>
     </div>
     <div>
@@ -231,6 +219,9 @@ directly.</p>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Show">UITKControl.Show()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnAfterShow">UITKControl.OnAfterShow()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ResetPosition">UITKControl.ResetPosition()</a>
@@ -666,6 +657,23 @@ directly.</p>
 
 
 
+  <h2 id="FishMMO_Client_UITKGuild_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>The roster is held in two halves that must not be confused:</p>
+<ul>
+<li><span class="xref">FishMMO.Client.UITKGuild.roster</span> is the MODEL — plain data, no <code>VisualElement</code> anywhere in it.
+It is owned by the character, not by the visual tree, so it survives a tree rebuild and
+is cleared only when the character is unset.</li>
+<li><span class="xref">FishMMO.Client.UITKGuild.rows</span> is the VIEW — the elements currently rendering the model. Every entry
+in it belongs to one specific visual tree.</li>
+</ul>
+<p><code>UIDocument</code> re-clones the UXML every time the document is enabled, so the entire view
+is thrown away on each hide/show. The previous version of this panel kept ONLY the view;
+after one close the rows were orphaned in a dead tree and the roster could never come back,
+because the data that would have rebuilt it had gone with the elements. That is why
+<a class="xref" href="FishMMO.Client.UITKGuild.html#FishMMO_Client_UITKGuild_OnStarting">OnStarting()</a> drops the view and <a class="xref" href="FishMMO.Client.UITKGuild.html#FishMMO_Client_UITKGuild_OnAfterStarting">OnAfterStarting()</a> rebuilds it from
+the model — and why the guild text, the active tab and the filter state are all fields
+rather than element reads.</p>
+</div>
 
 
   <h2 class="section" id="methods">Methods
@@ -674,9 +682,9 @@ directly.</p>
 
   <a id="FishMMO_Client_UITKGuild_GuildController_OnAddGuildMember_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnAddGuildMember*"></a>
 
-  <h3 id="FishMMO_Client_UITKGuild_GuildController_OnAddGuildMember_System_Int64_System_Int64_FishMMO_Shared_GuildRank_System_String_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnAddGuildMember(System.Int64,System.Int64,FishMMO.Shared.GuildRank,System.String)">
-  GuildController_OnAddGuildMember(long, long, GuildRank, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L197"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Client_UITKGuild_GuildController_OnAddGuildMember_FishMMO_Shared_GuildAddBroadcast_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnAddGuildMember(FishMMO.Shared.GuildAddBroadcast)">
+  GuildController_OnAddGuildMember(GuildAddBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L729"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Adds a member row and refreshes the guild name label.</p>
@@ -684,22 +692,13 @@ directly.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void GuildController_OnAddGuildMember(long characterID, long guildID, GuildRank rank, string location)</code></pre>
+    <pre><code class="lang-csharp hljs">public void GuildController_OnAddGuildMember(GuildAddBroadcast msg)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>characterID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>The member's character ID.</p>
-</dd>
-    <dt><code>guildID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>The guild ID.</p>
-</dd>
-    <dt><code>rank</code> <a class="xref" href="FishMMO.Shared.GuildRank.html">GuildRank</a></dt>
-    <dd><p>The member's guild rank.</p>
-</dd>
-    <dt><code>location</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd><p>The member's location.</p>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildAddBroadcast.html">GuildAddBroadcast</a></dt>
+    <dd><p>The roster row as the server sent it.</p>
 </dd>
   </dl>
 
@@ -716,29 +715,23 @@ directly.</p>
 
   <a id="FishMMO_Client_UITKGuild_GuildController_OnAddMember_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnAddMember*"></a>
 
-  <h3 id="FishMMO_Client_UITKGuild_GuildController_OnAddMember_System_Int64_FishMMO_Shared_GuildRank_System_String_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnAddMember(System.Int64,FishMMO.Shared.GuildRank,System.String)">
-  GuildController_OnAddMember(long, GuildRank, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L249"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Client_UITKGuild_GuildController_OnAddMember_FishMMO_Shared_GuildAddBroadcast_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnAddMember(FishMMO.Shared.GuildAddBroadcast)">
+  GuildController_OnAddMember(GuildAddBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L804"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Adds or updates a guild member row.</p>
+  <div class="markdown level1 summary"><p>Adds or updates a guild member.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void GuildController_OnAddMember(long characterID, GuildRank rank, string location)</code></pre>
+    <pre><code class="lang-csharp hljs">public void GuildController_OnAddMember(GuildAddBroadcast msg)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>characterID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>The member's character ID.</p>
-</dd>
-    <dt><code>rank</code> <a class="xref" href="FishMMO.Shared.GuildRank.html">GuildRank</a></dt>
-    <dd><p>The member's guild rank.</p>
-</dd>
-    <dt><code>location</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd><p>The member's location.</p>
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildAddBroadcast.html">GuildAddBroadcast</a></dt>
+    <dd><p>The roster row as the server sent it.</p>
 </dd>
   </dl>
 
@@ -757,7 +750,7 @@ directly.</p>
 
   <h3 id="FishMMO_Client_UITKGuild_GuildController_OnLeaveGuild" data-uid="FishMMO.Client.UITKGuild.GuildController_OnLeaveGuild">
   GuildController_OnLeaveGuild()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L228"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L784"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resets the guild label and clears all member rows when leaving the guild.</p>
@@ -780,11 +773,58 @@ directly.</p>
 
 
 
+  <a id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildInfo_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildInfo*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildInfo_System_Int64_System_String_System_String_System_String_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildInfo(System.Int64,System.String,System.String,System.String)">
+  GuildController_OnReceiveGuildInfo(long, string, string, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L753"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Stores and displays the guild's descriptive text.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void GuildController_OnReceiveGuildInfo(long guildID, string name, string notice, string messageOfTheDay)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>guildID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>The guild the text belongs to.</p>
+</dd>
+    <dt><code>name</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The guild's display name.</p>
+</dd>
+    <dt><code>notice</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The guild's notice text.</p>
+</dd>
+    <dt><code>messageOfTheDay</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The guild's message of the day.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildInfo_System_Int64_System_String_System_String_System_String__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Held in fields, not read back out of the labels: the labels belong to the visual tree
+and this text arrives once on join and then only when somebody edits it, so a tree
+rebuild between edits would otherwise blank it until the next edit.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildInvite_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildInvite*"></a>
 
   <h3 id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildInvite_System_Int64_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildInvite(System.Int64)">
   GuildController_OnReceiveGuildInvite(long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L171"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L700"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Prompts the local player to accept or decline a received guild invite.</p>
@@ -809,6 +849,87 @@ directly.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildInvite_System_Int64__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The inviter's ID is carried back on the accept broadcast. The server used to resolve
+&quot;whatever invite is pending for this character&quot; from an empty struct, so a dialog left
+open past the invitation TTL joined whichever guild invited the player NEXT. Sending
+the identity the dialog was actually raised for lets the server refuse the mismatch.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildLog_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildLog*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildLog_System_Int64_FishMMO_Shared_GuildLogEntry___" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildLog(System.Int64,FishMMO.Shared.GuildLogEntry[])">
+  GuildController_OnReceiveGuildLog(long, GuildLogEntry[])
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L1293"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Stores and renders the guild's activity log.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void GuildController_OnReceiveGuildLog(long guildID, GuildLogEntry[] entries)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>guildID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>The guild the log belongs to.</p>
+</dd>
+    <dt><code>entries</code> <a class="xref" href="FishMMO.Shared.GuildLogEntry.html">GuildLogEntry</a>[]</dt>
+    <dd><p>The entries, newest first.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildRanks_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildRanks*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildRanks_FishMMO_Shared_GuildRankListBroadcast_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildRanks(FishMMO.Shared.GuildRankListBroadcast)">
+  GuildController_OnReceiveGuildRanks(GuildRankListBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L2253"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Stores the guild's rank ladder and re-renders everything that depends on it.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void GuildController_OnReceiveGuildRanks(GuildRankListBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.GuildRankListBroadcast.html">GuildRankListBroadcast</a></dt>
+    <dd><p>The ladder, and the viewer's own standing in it.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildRanks_FishMMO_Shared_GuildRankListBroadcast__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The viewer's permissions are taken from the message rather than derived by looking the
+viewer's rank up in the ladder that arrived with it. The server computed them; deriving
+them again here would be a second implementation of the permission rules, and the one
+that drew the buttons would be the one that was wrong.</p>
+</div>
 
 
 
@@ -817,7 +938,7 @@ directly.</p>
 
   <h3 id="FishMMO_Client_UITKGuild_GuildController_OnReceiveGuildResult_FishMMO_Shared_GuildResultType_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnReceiveGuildResult(FishMMO.Shared.GuildResultType)">
   GuildController_OnReceiveGuildResult(GuildResultType)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L285"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L873"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Displays chat feedback for the result of a guild operation.</p>
@@ -850,10 +971,10 @@ directly.</p>
 
   <h3 id="FishMMO_Client_UITKGuild_GuildController_OnRemoveMember_System_Int64_" data-uid="FishMMO.Client.UITKGuild.GuildController_OnRemoveMember(System.Int64)">
   GuildController_OnRemoveMember(long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L271"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L850"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Removes a guild member row.</p>
+  <div class="markdown level1 summary"><p>Removes a guild member.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -883,7 +1004,7 @@ directly.</p>
 
   <h3 id="FishMMO_Client_UITKGuild_GuildController_OnValidateGuildMembers_System_Collections_Generic_HashSet_System_Int64__" data-uid="FishMMO.Client.UITKGuild.GuildController_OnValidateGuildMembers(System.Collections.Generic.HashSet{System.Int64})">
   GuildController_OnValidateGuildMembers(HashSet&lt;long&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L214"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L770"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes member rows that are no longer in the validated member set.</p>
@@ -912,11 +1033,45 @@ directly.</p>
 
 
 
+  <a id="FishMMO_Client_UITKGuild_OnAfterStarting_" data-uid="FishMMO.Client.UITKGuild.OnAfterStarting*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_OnAfterStarting" data-uid="FishMMO.Client.UITKGuild.OnAfterStarting">
+  OnAfterStarting()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L576"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Re-applies the roster, guild text, tab and filters after the visual tree was rebuilt.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterStarting()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKGuild_OnAfterStarting_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>This is the hook that closes CRIT-5. The base implementation re-runs the character
+pre/post pair, which is what re-subscribes this panel to the guild controller; the
+rebuild below then re-renders whatever the model already holds, so a guild that was on
+screen before the panel was closed is on screen again when it reopens — without
+waiting for the next server pump.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Client_UITKGuild_OnButtonCreateGuild_" data-uid="FishMMO.Client.UITKGuild.OnButtonCreateGuild*"></a>
 
   <h3 id="FishMMO_Client_UITKGuild_OnButtonCreateGuild" data-uid="FishMMO.Client.UITKGuild.OnButtonCreateGuild">
   OnButtonCreateGuild()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L312"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L918"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Prompts for a guild name and broadcasts a create-guild request.</p>
@@ -939,11 +1094,98 @@ directly.</p>
 
 
 
+  <a id="FishMMO_Client_UITKGuild_OnButtonDisbandGuild_" data-uid="FishMMO.Client.UITKGuild.OnButtonDisbandGuild*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_OnButtonDisbandGuild" data-uid="FishMMO.Client.UITKGuild.OnButtonDisbandGuild">
+  OnButtonDisbandGuild()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L1105"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Confirms by name, then broadcasts a disband request.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnButtonDisbandGuild()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKGuild_OnButtonDisbandGuild_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Typing the guild's name is the confirmation. Disbanding cannot be undone and destroys
+something other people belong to, so a single Yes button is the wrong instrument — the
+name has to be produced deliberately. The server compares it against the guild the
+requester is actually in, so this is a real check rather than a client-side ritual.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKGuild_OnButtonEditMessageOfTheDay_" data-uid="FishMMO.Client.UITKGuild.OnButtonEditMessageOfTheDay*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_OnButtonEditMessageOfTheDay" data-uid="FishMMO.Client.UITKGuild.OnButtonEditMessageOfTheDay">
+  OnButtonEditMessageOfTheDay()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L1020"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Prompts for and submits a new guild message of the day.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnButtonEditMessageOfTheDay()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_UITKGuild_OnButtonEditNotice_" data-uid="FishMMO.Client.UITKGuild.OnButtonEditNotice*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_OnButtonEditNotice" data-uid="FishMMO.Client.UITKGuild.OnButtonEditNotice">
+  OnButtonEditNotice()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L1036"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Prompts for and submits a new guild notice.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void OnButtonEditNotice()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKGuild_OnButtonInviteToGuild_" data-uid="FishMMO.Client.UITKGuild.OnButtonInviteToGuild*"></a>
 
   <h3 id="FishMMO_Client_UITKGuild_OnButtonInviteToGuild" data-uid="FishMMO.Client.UITKGuild.OnButtonInviteToGuild">
   OnButtonInviteToGuild()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L356"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L962"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Invites the current target, or prompts for a name, to the guild.</p>
@@ -970,7 +1212,7 @@ directly.</p>
 
   <h3 id="FishMMO_Client_UITKGuild_OnButtonLeaveGuild" data-uid="FishMMO.Client.UITKGuild.OnButtonLeaveGuild">
   OnButtonLeaveGuild()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L337"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L943"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Confirms then broadcasts a leave-guild request.</p>
@@ -997,7 +1239,7 @@ directly.</p>
 
   <h3 id="FishMMO_Client_UITKGuild_OnDestroying" data-uid="FishMMO.Client.UITKGuild.OnDestroying">
   OnDestroying()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L126"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L598"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears the guild member list when the control is destroyed.</p>
@@ -1024,7 +1266,7 @@ directly.</p>
 
   <h3 id="FishMMO_Client_UITKGuild_OnPostSetCharacter" data-uid="FishMMO.Client.UITKGuild.OnPostSetCharacter">
   OnPostSetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L134"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L624"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Subscribes to guild controller events after the character is set.</p>
@@ -1047,11 +1289,78 @@ directly.</p>
 
 
 
+  <a id="FishMMO_Client_UITKGuild_OnPostUnsetCharacter_" data-uid="FishMMO.Client.UITKGuild.OnPostUnsetCharacter*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_OnPostUnsetCharacter" data-uid="FishMMO.Client.UITKGuild.OnPostUnsetCharacter">
+  OnPostUnsetCharacter()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L662"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Drops the roster once the character is gone.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnPostUnsetCharacter()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKGuild_OnPostUnsetCharacter_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The model outlives the visual tree on purpose, which means nothing else would ever
+clear it. Without this, quitting to login and coming back on a different character
+showed the PREVIOUS character's guild until the next server pump overwrote it — and
+showed it permanently if the new character has no guild at all, because a guildless
+character generates no roster traffic to correct it.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKGuild_OnPreSetCharacter_" data-uid="FishMMO.Client.UITKGuild.OnPreSetCharacter*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_OnPreSetCharacter" data-uid="FishMMO.Client.UITKGuild.OnPreSetCharacter">
+  OnPreSetCharacter()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L614"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Unsubscribes from the outgoing character's guild controller.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnPreSetCharacter()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKGuild_OnPreSetCharacter_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code>UITKCharacterControl.OnAfterStarting</code> calls Pre then Post on every tree rebuild
+specifically so the pair cancels out. Leaving this un-overridden — as this panel used
+to — made the Pre call a no-op, so every reopen stacked another subscription and each
+roster update ran the handlers one more time than the last.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Client_UITKGuild_OnPreUnsetCharacter_" data-uid="FishMMO.Client.UITKGuild.OnPreUnsetCharacter*"></a>
 
   <h3 id="FishMMO_Client_UITKGuild_OnPreUnsetCharacter" data-uid="FishMMO.Client.UITKGuild.OnPreUnsetCharacter">
   OnPreUnsetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L152"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L645"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unsubscribes from guild controller events before the character is unset.</p>
@@ -1078,7 +1387,7 @@ directly.</p>
 
   <h3 id="FishMMO_Client_UITKGuild_OnStarting" data-uid="FishMMO.Client.UITKGuild.OnStarting">
   OnStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L88"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L430"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Queries elements and wires up the action buttons.</p>
@@ -1087,6 +1396,39 @@ directly.</p>
 
   <div class="codewrapper">
     <pre><code class="lang-csharp hljs">public override void OnStarting()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKGuild_OnStarting_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Runs against a FRESH tree every time, including after a rebuild, so the first thing it
+does is drop the old view. The elements in it belong to a tree that no longer exists;
+keeping them would leave the panel writing into orphaned elements forever.
+The buttons are new objects too, so <code>+=</code> here cannot accumulate handlers.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKGuild_OnTick_" data-uid="FishMMO.Client.UITKGuild.OnTick*"></a>
+
+  <h3 id="FishMMO_Client_UITKGuild_OnTick" data-uid="FishMMO.Client.UITKGuild.OnTick">
+  OnTick()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Guild/UITKGuild.cs/#L1200"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Applies any pending view rebuild, at most once per frame.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnTick()</code></pre>
   </div>
 
 

@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Class TwoFactorRecoveryStore | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Class TwoFactorRecoveryStore | FishMMO Documentation ">
+      
+      <meta name="description" content="The local, on-disk copy of the 2FA setup payload (otpauth URI + recovery codes) written during account creation so the player still has the codes if the client dies before they finish writing them down. The payload used to be a plaintext .txt. Randomising the filename and tightening the permissions — the previous pass — removed the account-name leak and the guessable path, but the contents were still readable by anything that could open the file: another local user on a machine where the chmod did not take, a backup agent, a sync client, a stolen disk. This class encrypts the payload under the account password; see  for why the password and not a machine-bound key. Every method here is deliberately non-destructive on failure. The one thing this storage must never do is destroy a payload the player has not yet copied down.">
+      <link rel="icon" href="../../images/favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/new/dev/apiSpec/new?filename=FishMMO_Client_Security_TwoFactorRecoveryStore.md&amp;value=---%0Auid%3A%20FishMMO.Client.Security.TwoFactorRecoveryStore%0Asummary%3A%20&#39;*You%20can%20override%20summary%20for%20the%20API%20here%20using%20*MARKDOWN*%20syntax&#39;%0A---%0A%0A*Please%20type%20below%20more%20information%20about%20this%20API%3A*%0A%0A">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="ManagedReference">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore">
+
+
+
+  <h1 id="FishMMO_Client_Security_TwoFactorRecoveryStore" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore" class="text-break">
+Class TwoFactorRecoveryStore  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L24"><i class="bi bi-code-slash"></i></a>
+  </h1>
+
+  <div class="facts text-secondary">
+    <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Client.html">Client</a>.<a class="xref" href="FishMMO.Client.Security.html">Security</a></dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO.Client.dll</dd></dl>
+  </div>
+
+  <div class="markdown summary"><p>The local, on-disk copy of the 2FA setup payload (otpauth URI + recovery codes) written
+during account creation so the player still has the codes if the client dies before they
+finish writing them down.</p>
+<p>The payload used to be a plaintext <code>.txt</code>. Randomising the filename and tightening
+the permissions — the previous pass — removed the account-name leak and the guessable path,
+but the contents were still readable by anything that could open the file: another local
+user on a machine where the chmod did not take, a backup agent, a sync client, a stolen
+disk. This class encrypts the payload under the account password; see
+<a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryCrypto.html">TwoFactorRecoveryCrypto</a> for why the password and not a machine-bound key.</p>
+<p>Every method here is deliberately non-destructive on failure. The one thing this
+storage must never do is destroy a payload the player has not yet copied down.</p>
+</div>
+  <div class="markdown conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static class TwoFactorRecoveryStore</code></pre>
+  </div>
+
+
+
+
+  <dl class="typelist inheritance">
+    <dt>Inheritance</dt>
+    <dd>
+      <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object">object</a></div>
+      <div><span class="xref">TwoFactorRecoveryStore</span></div>
+    </dd>
+  </dl>
+
+
+
+  <dl class="typelist inheritedMembers">
+    <dt>Inherited Members</dt>
+    <dd>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object)">object.Equals(object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object-system-object)">object.Equals(object, object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gethashcode">object.GetHashCode()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gettype">object.GetType()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.memberwiseclone">object.MemberwiseClone()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.referenceequals">object.ReferenceEquals(object, object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.tostring">object.ToString()</a>
+    </div>
+  </dd></dl>
+
+
+
+
+
+
+  <h2 class="section" id="fields">Fields
+</h2>
+
+
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_DirectoryName" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.DirectoryName">
+  DirectoryName
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L30"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Subdirectory of the client's persistent data path holding recovery payloads. Its own
+directory so the directory permissions can be tightened as well as each file's.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const string DirectoryName = &quot;2fa-recovery&quot;</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_EnvelopeExtension" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.EnvelopeExtension">
+  EnvelopeExtension
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L33"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Extension for an encrypted envelope.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const string EnvelopeExtension = &quot;.2fa&quot;</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_LegacyExtension" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.LegacyExtension">
+  LegacyExtension
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L36"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Extension of the superseded plaintext payload, still recognised for migration.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const string LegacyExtension = &quot;.txt&quot;</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+  <h2 class="section" id="methods">Methods
+</h2>
+
+
+  <a id="FishMMO_Client_Security_TwoFactorRecoveryStore_Delete_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.Delete*"></a>
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_Delete_System_String_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.Delete(System.String)">
+  Delete(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L260"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Deletes a stored recovery file, ignoring failures.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static void Delete(string path)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>path</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The file to remove.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_Security_TwoFactorRecoveryStore_EnsureDirectory_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.EnsureDirectory*"></a>
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_EnsureDirectory_System_String_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.EnsureDirectory(System.String)">
+  EnsureDirectory(string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L43"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Creates the recovery directory if needed and tightens its permissions.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static string EnsureDirectory(string persistentDataPath)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>persistentDataPath</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The client's persistent data path.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The full path of the recovery directory.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_Security_TwoFactorRecoveryStore_List_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.List*"></a>
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_List_System_String_System_Boolean_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.List(System.String,System.Boolean)">
+  List(string, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L122"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Lists the recovery files currently on disk, newest first.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static List&lt;string&gt; List(string directory, bool legacyPlaintext = false)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>directory</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The recovery directory. May not exist.</p>
+</dd>
+    <dt><code>legacyPlaintext</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> to list the superseded unencrypted payloads instead of the envelopes.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a>&gt;</dt>
+    <dd><p>Full paths; empty if the directory is absent or unreadable.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryMigrateLegacy_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.TryMigrateLegacy*"></a>
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryMigrateLegacy_System_String_System_String_System_String_System_String__" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.TryMigrateLegacy(System.String,System.String,System.String,System.String@)">
+  TryMigrateLegacy(string, string, string, out string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L216"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Re-writes a superseded plaintext payload as an encrypted envelope.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool TryMigrateLegacy(string directory, string legacyPath, string password, out string newPath)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>directory</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The recovery directory.</p>
+</dd>
+    <dt><code>legacyPath</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The plaintext file to migrate.</p>
+</dd>
+    <dt><code>password</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The account password. This must be a password the caller has just had <b>confirmed by
+the server</b>, not merely one the player typed — see the remarks.</p>
+</dd>
+    <dt><code>newPath</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Receives the path of the new envelope on success.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> if the payload is now stored encrypted and the plaintext is gone.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryMigrateLegacy_System_String_System_String_System_String_System_String___remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><b>Order matters and it is not negotiable.</b> The envelope is written and proven
+readable first (<a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryStore.html#FishMMO_Client_Security_TwoFactorRecoveryStore_TrySave_System_String_System_String_System_String_System_String__">TrySave(string, string, string, out string)</a> does not publish an unverified file), and only then
+is the plaintext deleted. Deleting first, or deleting on a partial success, would take a
+payload the player can definitely read and replace it with one they possibly cannot.</p>
+<p><b>Why a confirmed password.</b> Encrypting under a password that turns out to be
+wrong does not fail — it succeeds, and produces a file nobody can ever open. That would
+silently destroy the codes while reporting success. So migration is only ever driven from
+a point in the flow where the server has already accepted the password.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryRead_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.TryRead*"></a>
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryRead_System_String_System_String_System_String__" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.TryRead(System.String,System.String,System.String@)">
+  TryRead(string, string, out string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L160"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads one stored recovery file.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static TwoFactorRecoveryReadResult TryRead(string path, string password, out string payload)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>path</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The file to read.</p>
+</dd>
+    <dt><code>password</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The account password.</p>
+</dd>
+    <dt><code>payload</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Receives the recovered text on <a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryReadResult.html#FishMMO_Client_Security_TwoFactorRecoveryReadResult_Success">Success</a>, or the
+file's contents verbatim on <a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryReadResult.html#FishMMO_Client_Security_TwoFactorRecoveryReadResult_LegacyPlaintext">LegacyPlaintext</a> —
+an unencrypted file needs no password to read, which is the entire problem with it.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryReadResult.html">TwoFactorRecoveryReadResult</a></dt>
+    <dd><p>Why the read succeeded or failed.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryRead_System_String_System_String_System_String___remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryReadResult.html#FishMMO_Client_Security_TwoFactorRecoveryReadResult_Empty">Empty</a> also covers &quot;the file is not there&quot;,
+which is the distinction a caller needs: &quot;nothing is stored&quot; is a normal state,
+&quot;something is stored and would not open&quot; is not, and the second must never be treated
+as the first — that is how a good envelope gets deleted after one mistyped password.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryRestrictPermissions_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.TryRestrictPermissions*"></a>
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryRestrictPermissions_System_String_System_String_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.TryRestrictPermissions(System.String,System.String)">
+  TryRestrictPermissions(string, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L315"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Best-effort tightening of a path's permissions so other local users cannot read it.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static void TryRestrictPermissions(string path, string mode)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>path</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The file or directory to restrict.</p>
+</dd>
+    <dt><code>mode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The chmod mode, e.g. <code>600</code> for a file or <code>700</code> for a directory.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Security_TwoFactorRecoveryStore_TryRestrictPermissions_System_String_System_String__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>POSIX only, and best effort even there — which is exactly why the contents are now
+encrypted rather than relying on this.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_Security_TwoFactorRecoveryStore_TrySave_" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.TrySave*"></a>
+
+  <h3 id="FishMMO_Client_Security_TwoFactorRecoveryStore_TrySave_System_String_System_String_System_String_System_String__" data-uid="FishMMO.Client.Security.TwoFactorRecoveryStore.TrySave(System.String,System.String,System.String,System.String@)">
+  TrySave(string, string, string, out string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Security/TwoFactorRecoveryStore.cs/#L66"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Encrypts and stores a recovery payload.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool TrySave(string directory, string password, string payload, out string path)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>directory</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The recovery directory, from <a class="xref" href="FishMMO.Client.Security.TwoFactorRecoveryStore.html#FishMMO_Client_Security_TwoFactorRecoveryStore_EnsureDirectory_System_String_">EnsureDirectory(string)</a>.</p>
+</dd>
+    <dt><code>password</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The account password. Never written to disk and never logged.</p>
+</dd>
+    <dt><code>payload</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The text to protect.</p>
+</dd>
+    <dt><code>path</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Receives the path of the stored envelope on success.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> if an envelope is on disk that has been proven readable.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Security_TwoFactorRecoveryStore_TrySave_System_String_System_String_System_String_System_String___remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The write is <b>verified before it is published</b>: the envelope goes to a temporary
+file, is read back off the disk, is decrypted with the same password, and is only moved
+into place if the round trip reproduced the payload byte for byte. A recovery-code file
+that cannot be decrypted is worse than no file at all, because the player believes they
+have a copy. If anything fails the temporary file is removed and nothing is published.</p>
+</div>
+
+
+
+
+
+</article>
+
+
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

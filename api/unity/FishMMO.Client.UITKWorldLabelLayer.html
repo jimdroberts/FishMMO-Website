@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKWorldLabelLayer" data-uid="FishMMO.Client.UITKWorldLabelLayer" class="text-break">
-Class UITKWorldLabelLayer  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L38"><i class="bi bi-code-slash"></i></a>
+Class UITKWorldLabelLayer  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L71"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -570,6 +570,32 @@ top of one right in front of the player.</p>
 walls by the depth buffer, and a screen-space panel has none. <a class="xref" href="FishMMO.Client.UITKWorldLabelLayer.html#FishMMO_Client_UITKWorldLabelLayer_OccludeBehindGeometry">OccludeBehindGeometry</a>
 restores it with a physics raycast per label, off by default because it costs a raycast per
 label per frame and most labels are on targets the player can already see.</p>
+<p><b>Why this class is written the way it is.</b> It runs once per label per frame in
+the middle of combat, which makes it the client's hottest UI code, and the obvious
+implementation of every one of its jobs is the expensive one:</p>
+<p>• <b>Position goes through <code>translate</code>, never <code>left</code>/<code>top</code>.</b> Writing
+<code>left</code>/<code>top</code> marks the element's layout dirty, and Yoga then re-solves the
+whole container — every frame, for every label. <code>translate</code> is a transform: it moves
+the painted result and touches no layout at all. Centring on the anchor still needs a
+percentage of the label's own size, and one element gets one translate, so each label is
+an <em>anchor</em> element carrying the per-frame position and a <em>text</em> child
+carrying the static <code>-50% / -100%</code> centring. The extra element buys back a full
+relayout per frame.</p>
+<p>• <b>Elements are pooled.</b> The GameObject side was already pooled; the elements were not,
+so every damage number allocated a <code>Label</code>, an anchor and (previously) an
+interpolated element name. That was the combat GC spike. Released elements go back to
+<span class="xref">FishMMO.Client.UITKWorldLabelLayer.elementPool</span> with their per-label state cleared.</p>
+<p>• <b>Style writes are diffed.</b> Colour, font size and text are compared against what was
+last pushed and only written when they actually differ, so a nameplate that is not
+changing costs one translate write per frame and nothing else.</p>
+<p>• <b>Depth order uses <code>VisualElement.Sort</code>.</b> Re-adding every child to reorder is
+O(N²) inside the hierarchy list and dirties the tree N times; <code>Sort</code> is one
+O(N log N) pass and one dirty. It is also skipped entirely unless the existing order is
+actually wrong, which is checked in a single allocation-free walk.</p>
+<p>• <b>There is a draw budget.</b> <a class="xref" href="FishMMO.Client.UITKWorldLabelLayer.html#FishMMO_Client_UITKWorldLabelLayer_MaxVisibleLabels">MaxVisibleLabels</a> caps how many labels are
+drawn at once; over budget, the nearest survive and the rest are hidden. Combined with
+the spawn budget in <a class="xref" href="FishMMO.Client.UITKLabelMaker.html">UITKLabelMaker</a> this bounds the cost of a large AoE —
+or of a server that sends more labels than a client can reasonably draw.</p>
 </div>
 
 
@@ -578,9 +604,81 @@ label per frame and most labels are on targets the player can already see.</p>
 
 
 
+  <h3 id="FishMMO_Client_UITKWorldLabelLayer_DistantLodDistance" data-uid="FishMMO.Client.UITKWorldLabelLayer.DistantLodDistance">
+  DistantLodDistance
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L246"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Beyond this distance a label is repositioned every <a class="xref" href="FishMMO.Client.UITKWorldLabelLayer.html#FishMMO_Client_UITKWorldLabelLayer_DistantUpdateInterval">DistantUpdateInterval</a>
+frames instead of every frame. Zero disables the level of detail.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Distance past which labels reposition every Nth frame instead of every frame. 0 = off.&quot;)]
+[Min(0)]
+public float DistantLodDistance</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKWorldLabelLayer_DistantLodDistance_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A label 60 metres away moves a fraction of a panel point per frame, so updating it at a
+third of the rate is invisible and removes two thirds of its per-frame cost. Nearby
+labels — the ones a player is actually reading — are never staggered.</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Client_UITKWorldLabelLayer_DistantUpdateInterval" data-uid="FishMMO.Client.UITKWorldLabelLayer.DistantUpdateInterval">
+  DistantUpdateInterval
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L251"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Frame stride used for labels past <a class="xref" href="FishMMO.Client.UITKWorldLabelLayer.html#FishMMO_Client_UITKWorldLabelLayer_DistantLodDistance">DistantLodDistance</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Frame stride for distant labels. 1 = every frame.&quot;)]
+[Min(1)]
+public int DistantUpdateInterval</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
   <h3 id="FishMMO_Client_UITKWorldLabelLayer_MaxFontSize" data-uid="FishMMO.Client.UITKWorldLabelLayer.MaxFontSize">
   MaxFontSize
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L133"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L287"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Largest font size, in panel points, a label is allowed to grow to.</p>
@@ -613,7 +711,7 @@ public float MaxFontSize</code></pre>
 
   <h3 id="FishMMO_Client_UITKWorldLabelLayer_MaxVisibleDistance" data-uid="FishMMO.Client.UITKWorldLabelLayer.MaxVisibleDistance">
   MaxVisibleDistance
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L110"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L219"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Labels further than this from the camera are hidden. Zero disables the cutoff.</p>
@@ -644,9 +742,49 @@ public float MaxVisibleDistance</code></pre>
 
 
 
+  <h3 id="FishMMO_Client_UITKWorldLabelLayer_MaxVisibleLabels" data-uid="FishMMO.Client.UITKWorldLabelLayer.MaxVisibleLabels">
+  MaxVisibleLabels
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L233"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Hard cap on how many labels are drawn at once. Zero disables the cap.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Maximum labels drawn per frame; the nearest win. 0 = no limit.&quot;)]
+[Min(0)]
+public int MaxVisibleLabels</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKWorldLabelLayer_MaxVisibleLabels_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The draw half of the label budget. When more labels than this want to be on screen the
+nearest ones win and the rest are hidden for the frame — a player standing in a large
+AoE sees the numbers that matter rather than paying for hundreds of overlapping ones.
+The spawn half lives in <a class="xref" href="FishMMO.Client.UITKLabelMaker.html">UITKLabelMaker</a>; both are needed, because this cap
+alone still leaves the GameObjects allocated.</p>
+</div>
+
+
+
+
+
   <h3 id="FishMMO_Client_UITKWorldLabelLayer_MinFontSize" data-uid="FishMMO.Client.UITKWorldLabelLayer.MinFontSize">
   MinFontSize
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L128"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L282"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Smallest font size, in panel points, a label is allowed to shrink to.</p>
@@ -679,7 +817,7 @@ public float MinFontSize</code></pre>
 
   <h3 id="FishMMO_Client_UITKWorldLabelLayer_OccludeBehindGeometry" data-uid="FishMMO.Client.UITKWorldLabelLayer.OccludeBehindGeometry">
   OccludeBehindGeometry
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L119"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L273"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>When true, a label with scene geometry between it and the camera is hidden.</p>
@@ -714,7 +852,7 @@ public bool OccludeBehindGeometry</code></pre>
 
   <h3 id="FishMMO_Client_UITKWorldLabelLayer_OcclusionMask" data-uid="FishMMO.Client.UITKWorldLabelLayer.OcclusionMask">
   OcclusionMask
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L123"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L277"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Layers treated as occluders when <a class="xref" href="FishMMO.Client.UITKWorldLabelLayer.html#FishMMO_Client_UITKWorldLabelLayer_OccludeBehindGeometry">OccludeBehindGeometry</a> is on.</p>
@@ -744,9 +882,48 @@ public LayerMask OcclusionMask</code></pre>
 
 
 
+  <h3 id="FishMMO_Client_UITKWorldLabelLayer_OffScreenMargin" data-uid="FishMMO.Client.UITKWorldLabelLayer.OffScreenMargin">
+  OffScreenMargin
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L264"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Panel-point margin outside the panel within which a label is still drawn.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Panel-point margin outside the viewport within which labels are still drawn.&quot;)]
+[Min(0)]
+public float OffScreenMargin</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKWorldLabelLayer_OffScreenMargin_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A label whose anchor is just off the edge can still have visible text, because the text
+is centred on the anchor and extends past it. The margin keeps that case correct while
+still culling the labels that are genuinely nowhere near the screen — which, with a
+wide draw distance, is most of them.</p>
+</div>
+
+
+
+
+
   <h3 id="FishMMO_Client_UITKWorldLabelLayer_ProjectionCamera" data-uid="FishMMO.Client.UITKWorldLabelLayer.ProjectionCamera">
   ProjectionCamera
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L103"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L212"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Camera used for projection. Falls back to <span class="xref">UnityEngine.Camera.main</span> when unset.</p>
@@ -783,7 +960,7 @@ public Camera ProjectionCamera</code></pre>
 
   <h3 id="FishMMO_Client_UITKWorldLabelLayer_Instance" data-uid="FishMMO.Client.UITKWorldLabelLayer.Instance">
   Instance
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L59"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L106"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The active layer, or null when no client scene is loaded.</p>
@@ -815,7 +992,7 @@ public Camera ProjectionCamera</code></pre>
 
   <h3 id="FishMMO_Client_UITKWorldLabelLayer_ScreenContainer" data-uid="FishMMO.Client.UITKWorldLabelLayer.ScreenContainer">
   ScreenContainer
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L78"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKWorldLabelLayer.cs/#L125"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Container for labels positioned in screen space rather than projected from the world.</p>

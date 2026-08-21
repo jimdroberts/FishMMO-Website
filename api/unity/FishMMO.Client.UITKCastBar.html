@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKCastBar" data-uid="FishMMO.Client.UITKCastBar" class="text-break">
-Class UITKCastBar  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L13"><i class="bi bi-code-slash"></i></a>
+Class UITKCastBar  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L35"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -139,16 +139,7 @@ Progress is driven as a percentage of the fill element's width.</p>
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_Character">UITKCharacterControl.Character</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnDestroying">UITKCharacterControl.OnDestroying()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPreSetCharacter">UITKCharacterControl.OnPreSetCharacter()</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_SetCharacter_FishMMO_Shared_Core_IPlayerCharacter_">UITKCharacterControl.SetCharacter(IPlayerCharacter)</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnAfterStarting">UITKCharacterControl.OnAfterStarting()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPostUnsetCharacter">UITKCharacterControl.OnPostUnsetCharacter()</a>
@@ -218,12 +209,6 @@ Progress is driven as a percentage of the fill element's width.</p>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_SetClient_FishMMO_Client_Client_">UITKControl.SetClient(Client)</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnTick">UITKControl.OnTick()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnQuitToLogin">UITKControl.OnQuitToLogin()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ToggleVisibility">UITKControl.ToggleVisibility()</a>
@@ -665,6 +650,27 @@ Progress is driven as a percentage of the fill element's width.</p>
 
 
 
+  <h2 id="FishMMO_Client_UITKCastBar_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+The bar is a pure readout of one fact — "an activation is in progress" — and the previous
+version only ever learned that the fact had stopped being true down ONE of the several
+routes that can end an activation. It subscribed to <code>OnCancel</code> alone, but
+<code>AbilityController.ProcessInterrupt</code> fires <code>OnInterrupt</code> and then calls
+<code>Cancel(state, suppressCancelEvent: true)</code> precisely so that a subscriber to both
+does not double-handle the end of the cast — so a bar listening only to the suppressed
+event was left on screen after every single interrupt, filled to whatever fraction the
+cast had reached, until the next cast overwrote it.
+</p>
+<p>
+The other routes are just as real and none of them raise <code>OnCancel</code> either: a reply
+the server never sends (<code>OnUpdate</code> simply stops arriving), the character dying,
+the ability being denied after the client already predicted it, a zone change, and
+quit-to-login. Rather than enumerate hide-triggers one by one and hope the list is
+complete, this panel keeps a <span class="xref">FishMMO.Client.UITKCastBar.lastUpdateTime</span> stamp and treats "no progress
+report for <span class="xref">FishMMO.Client.UITKCastBar.CastTimeoutSeconds</span> seconds" as the catch-all: any end-of-cast
+nobody explicitly told us about still closes the bar within a bounded time.
+</p>
+</div>
 
 
   <h2 class="section" id="properties">Properties
@@ -675,7 +681,7 @@ Progress is driven as a percentage of the fill element's width.</p>
 
   <h3 id="FishMMO_Client_UITKCastBar_Layer" data-uid="FishMMO.Client.UITKCastBar.Layer">
   Layer
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L16"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L38"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Draw order tier for this panel. See <a class="xref" href="FishMMO.Client.UITKPanelLayer.html">UITKPanelLayer</a>.</p>
@@ -707,11 +713,44 @@ Progress is driven as a percentage of the fill element's width.</p>
 </h2>
 
 
+  <a id="FishMMO_Client_UITKCastBar_AbilityController_OnAbilityDenied_" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnAbilityDenied*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_AbilityController_OnAbilityDenied_System_Int64_" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnAbilityDenied(System.Int64)">
+  AbilityController_OnAbilityDenied(long)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L318"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles the server denying an ability this client already began predicting.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void AbilityController_OnAbilityDenied(long abilityID)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>abilityID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>The denied ability's reference ID.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKCastBar_AbilityController_OnCancel_" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnCancel*"></a>
 
   <h3 id="FishMMO_Client_UITKCastBar_AbilityController_OnCancel" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnCancel">
   AbilityController_OnCancel()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L123"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L288"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles ability cancel by hiding the cast bar.</p>
@@ -734,11 +773,70 @@ Progress is driven as a percentage of the fill element's width.</p>
 
 
 
+  <a id="FishMMO_Client_UITKCastBar_AbilityController_OnInterrupt_" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnInterrupt*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_AbilityController_OnInterrupt" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnInterrupt">
+  AbilityController_OnInterrupt()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L301"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles ability interrupt by hiding the cast bar.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void AbilityController_OnInterrupt()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKCastBar_AbilityController_OnInterrupt_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The reason this subscription has to exist: <code>ProcessInterrupt</code> suppresses
+<code>OnCancel</code> on the interrupt path, so a panel listening only to cancel never
+learns that the cast ended.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKCastBar_AbilityController_OnReset_" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnReset*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_AbilityController_OnReset" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnReset">
+  AbilityController_OnReset()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L309"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Handles a full ability-state reset (character reload / re-sync) by hiding the bar.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void AbilityController_OnReset()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKCastBar_AbilityController_OnUpdate_" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnUpdate*"></a>
 
   <h3 id="FishMMO_Client_UITKCastBar_AbilityController_OnUpdate_System_String_System_Single_System_Single_" data-uid="FishMMO.Client.UITKCastBar.AbilityController_OnUpdate(System.String,System.Single,System.Single)">
   AbilityController_OnUpdate(string, float, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L83"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L247"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the cast bar fill and label based on the remaining and total cast time.</p>
@@ -773,19 +871,154 @@ Progress is driven as a percentage of the fill element's width.</p>
 
 
 
+  <a id="FishMMO_Client_UITKCastBar_OnAfterShow_" data-uid="FishMMO.Client.UITKCastBar.OnAfterShow*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_OnAfterShow" data-uid="FishMMO.Client.UITKCastBar.OnAfterShow">
+  OnAfterShow()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L207"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Called at the end of <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Show">Show()</a>, against the tree the player will actually
+see. Override to write content that changes from one opening to the next.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterShow()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKCastBar_OnAfterShow_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>This exists because &quot;set the text, then Show&quot; does not work and fails silently.
+<span class="xref">UnityEngine.UIElements.UIDocument</span> clones the UXML on enable, so a panel that fills in its
+message, list rows or icon before calling <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Show">Show()</a> writes into a tree that
+is thrown away microseconds later, and the player sees whatever the UXML declares —
+an empty dialog, a blank tooltip, a selector with no rows.</p>
+<p>
+Distinct from <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnAfterStarting">OnAfterStarting()</a>, which re-applies state after the tree is
+rebuilt. This one runs on every show, rebuilt tree or not.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKCastBar_OnAfterStarting_" data-uid="FishMMO.Client.UITKCastBar.OnAfterStarting*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_OnAfterStarting" data-uid="FishMMO.Client.UITKCastBar.OnAfterStarting">
+  OnAfterStarting()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L213"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Re-applies the character once the visual tree exists.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterStarting()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKCastBar_OnAfterStarting_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>World entry calls <span class="xref">FishMMO.Client.UIManager.SetCharacter(FishMMO.Shared.Core.IPlayerCharacter)</span> for every control at once, and
+a control that starts hidden has no visual tree until something shows it — so
+<a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPostSetCharacter">OnPostSetCharacter()</a> can run before <code>OnStarting</code> has cached any
+elements. Overrides that write into those elements would then dereference null, and
+even a null-safe one would leave the panel showing nothing, because the only call
+that had data already happened. Running it again here is what makes the two orders
+equivalent.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKCastBar_OnDestroying_" data-uid="FishMMO.Client.UITKCastBar.OnDestroying*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_OnDestroying" data-uid="FishMMO.Client.UITKCastBar.OnDestroying">
+  OnDestroying()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L115"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Releases the global lifecycle subscriptions.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnDestroying()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKCastBar_OnPostSetCharacter_" data-uid="FishMMO.Client.UITKCastBar.OnPostSetCharacter*"></a>
 
   <h3 id="FishMMO_Client_UITKCastBar_OnPostSetCharacter" data-uid="FishMMO.Client.UITKCastBar.OnPostSetCharacter">
   OnPostSetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L49"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L134"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Subscribes to ability controller cast update and cancel events for the new character.</p>
+  <div class="markdown level1 summary"><p>Subscribes to ability controller cast update, cancel, interrupt, deny and reset events.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
     <pre><code class="lang-csharp hljs">public override void OnPostSetCharacter()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKCastBar_OnPostSetCharacter_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code>UITKCharacterControl.OnAfterStarting</code> calls <a class="xref" href="FishMMO.Client.UITKCastBar.html#FishMMO_Client_UITKCastBar_OnPreSetCharacter">OnPreSetCharacter()</a> then
+<a class="xref" href="FishMMO.Client.UITKCastBar.html#FishMMO_Client_UITKCastBar_OnPostSetCharacter">OnPostSetCharacter()</a> on every tree rebuild so the pair cancels out. The
+unsubscribe therefore has to live in the PRE hook, not only in the unset hook, or each
+rebuild adds another copy of every handler.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKCastBar_OnPreSetCharacter_" data-uid="FishMMO.Client.UITKCastBar.OnPreSetCharacter*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_OnPreSetCharacter" data-uid="FishMMO.Client.UITKCastBar.OnPreSetCharacter">
+  OnPreSetCharacter()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L151"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Unsubscribes from the outgoing character's ability controller before a new one is set.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnPreSetCharacter()</code></pre>
   </div>
 
 
@@ -804,7 +1037,7 @@ Progress is driven as a percentage of the fill element's width.</p>
 
   <h3 id="FishMMO_Client_UITKCastBar_OnPreUnsetCharacter" data-uid="FishMMO.Client.UITKCastBar.OnPreUnsetCharacter">
   OnPreUnsetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L63"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L159"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unsubscribes from ability controller events and hides the cast bar before the character changes.</p>
@@ -827,11 +1060,39 @@ Progress is driven as a percentage of the fill element's width.</p>
 
 
 
+  <a id="FishMMO_Client_UITKCastBar_OnQuitToLogin_" data-uid="FishMMO.Client.UITKCastBar.OnQuitToLogin*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_OnQuitToLogin" data-uid="FishMMO.Client.UITKCastBar.OnQuitToLogin">
+  OnQuitToLogin()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L373"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Called when the client quits to the login screen.
+Override to perform cleanup such as stopping coroutines.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnQuitToLogin()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKCastBar_OnStarting_" data-uid="FishMMO.Client.UITKCastBar.OnStarting*"></a>
 
   <h3 id="FishMMO_Client_UITKCastBar_OnStarting" data-uid="FishMMO.Client.UITKCastBar.OnStarting">
   OnStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L34"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L88"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Queries the fill and label elements from the document root.</p>
@@ -850,6 +1111,38 @@ Progress is driven as a percentage of the fill element's width.</p>
 
 
 
+
+
+
+
+  <a id="FishMMO_Client_UITKCastBar_OnTick_" data-uid="FishMMO.Client.UITKCastBar.OnTick*"></a>
+
+  <h3 id="FishMMO_Client_UITKCastBar_OnTick" data-uid="FishMMO.Client.UITKCastBar.OnTick">
+  OnTick()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Ability/UITKCastBar.cs/#L228"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Closes a cast bar whose activation stopped reporting progress.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnTick()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKCastBar_OnTick_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>This is the catch-all for every ending nobody announced: a server reply that never
+arrived, a despawn, a scene server hand-off mid-cast. Uses <code>unscaledTime</code> so a
+paused or time-scaled client still recovers.</p>
+</div>
 
 
 

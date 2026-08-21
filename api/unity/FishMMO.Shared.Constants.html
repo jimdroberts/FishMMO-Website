@@ -191,7 +191,7 @@ Class Constants  <a class="header-action link-secondary" title="View source" hre
 
   <h3 id="FishMMO_Shared_Constants_GetPatchFileName_System_String_System_String_" data-uid="FishMMO.Shared.Constants.GetPatchFileName(System.String,System.String)">
   GetPatchFileName(string, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Constants.cs/#L79"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Constants.cs/#L119"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Builds the patch archive file name for an upgrade from
@@ -214,7 +214,9 @@ Class Constants  <a class="header-action link-secondary" title="View source" hre
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd></dd>
+    <dd><p>The archive file name, or <code>null</code> when either version is missing or contains
+anything that is not a version character. Callers MUST null-check.</p>
+</dd>
   </dl>
 
 
@@ -224,9 +226,28 @@ Class Constants  <a class="header-action link-secondary" title="View source" hre
 
 
   <h4 class="section" id="FishMMO_Shared_Constants_GetPatchFileName_System_String_System_String__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>This naming scheme is a three-way contract between the patch generator, the
+  <div class="markdown level1 remarks"><p>
+This naming scheme is a three-way contract between the patch generator, the
 patcher web server's index regex, and the Updater's lookup. Changing it
-requires changing all three.</p>
+requires changing all three.
+</p>
+<p>
+<b>Security:</b> <code class="paramref">toVersion</code> comes from the update server, and the
+result is fed straight to <code>Path.Combine</code> by the launcher's download path. A bare
+interpolation therefore made the server the author of a filesystem path — a version
+carrying <code>../</code> put the downloaded archive wherever the server liked, and since
+the same response supplies the expected SHA-256, the integrity check passed and the
+file was kept.
+</p>
+<p>
+<a class="xref" href="FishMMO.Shared.VersionConfig.html#FishMMO_Shared_VersionConfig_Parse_System_String_">Parse(string)</a> now rejects those version strings at the grammar
+level, which is the first line of defence. This is the second, and it is here rather
+than only there because the two are separated by several call frames and a serialized
+field: this function's contract is "produce a file name", and a file name containing
+a separator is not one. It returns null rather than throwing so the caller can report
+a normal update failure; a null is a programming-visible refusal, not a crash in front
+of the player.
+</p>
 </div>
 
 

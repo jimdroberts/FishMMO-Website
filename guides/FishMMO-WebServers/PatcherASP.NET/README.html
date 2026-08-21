@@ -326,6 +326,79 @@ document would be saved as if it were the patch and handed to the Updater.</p>
 <li><code>1.0.0-1.0.1.zip</code></li>
 <li><code>1.0.0.alpha-1.0.0.beta.zip</code></li>
 </ul>
+<h2 id="release-signing-ed25519">Release Signing (Ed25519)</h2>
+<p>Every JSON payload <code>/latest_version</code> returns carries a <code>signature</code> field, and the client verifies
+it before reading any other field — the version, the patch name and the SHA-256 it will check the
+download against all come from this document, so an unsigned one is an instruction to the launcher
+from whoever answered the request.</p>
+<p><strong>This is a two-part deployment. The client half ships already; until the server is given a key,
+nothing is signed.</strong> That state is deliberate rather than fail-closed: making an unkeyed server
+refuse to serve would have bricked every existing deployment the moment this shipped. It logs
+loudly on every release build instead, and the build validator warns.</p>
+<h3 id="1-generate-a-keypair">1. Generate a keypair</h3>
+<pre><code class="lang-bash">dotnet run --project Tools/ManifestSigner -- keygen --out-dir ./keys
+</code></pre>
+<p>Writes <code>./keys/version-manifest-signing.key</code> (base64 private seed, mode 600 where supported) and
+<code>./keys/version-manifest-signing.pub</code>. With no <code>--out-dir</code> the keys are printed to stdout and
+<strong>nothing is written</strong>. The private key belongs only on the patch server; it is never committed,
+never logged, and never leaves the release host.</p>
+<h3 id="2-configure-the-server">2. Configure the server</h3>
+<p>One of, in order of preference:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Signing:VersionManifestPrivateKeyFile</code></td>
+<td><strong>Preferred.</strong> Path to a file holding the base64 key.</td>
+</tr>
+<tr>
+<td><code>FISHMMO_VERSION_MANIFEST_SIGNING_KEY</code></td>
+<td>Environment variable.</td>
+</tr>
+<tr>
+<td><code>Signing:VersionManifestPrivateKeyBase64</code></td>
+<td>Least preferred — the key ends up in configuration.</td>
+</tr>
+</tbody>
+</table>
+<p>A configured-but-unreadable or malformed key <strong>throws</strong> rather than quietly downgrading to
+unsigned.</p>
+<h3 id="3-ship-the-public-half-to-clients">3. Ship the public half to clients</h3>
+<p>Put the public key in <code>GeneratedPinSet.VersionManifestPublicKeyBase64</code>
+(<code>Assets/Scripts/Client/Security/CertificatePins.generated.cs</code>). It is a <strong>separate</strong> key from the
+certificate-pin manifest key; do not reuse one for both.</p>
+<h3 id="rollout-order">Rollout order</h3>
+<ol>
+<li>Deploy the signing server first, with the key configured.</li>
+<li>Then ship clients carrying the public key.</li>
+</ol>
+<p>Clients without the public key configured do not verify, so the reverse order — clients first —
+means every one of them fails closed against a server that is not yet signing. To check a document
+the server produced, save the response and verify it locally:</p>
+<pre><code class="lang-bash">curl -s https://your-host/latest_version &gt; latest.json
+dotnet run --project Tools/ManifestSigner -- verify --public-file ./keys/version-manifest-signing.pub --in latest.json
+# exit code 0 = valid, 1 = invalid
+</code></pre>
+<p>To sign a manifest offline, note that the <strong>output</strong> is the signed artifact — <code>sign</code> re-serialises
+into the canonical spacing, so deploy the file it writes, not the one you fed it:</p>
+<pre><code class="lang-bash">dotnet run --project Tools/ManifestSigner -- sign --key ./keys/version-manifest-signing.key --in manifest.json --out manifest.signed.json
+</code></pre>
+<blockquote>
+<p><strong>Why this exists.</strong> The verifier previously appended the signature to the message being signed,
+which requires solving <code>sig = Sign(sk, stripped ‖ base64(sig))</code> — a fixed point of a hash-driven
+function over a 64-byte value, roughly 2^256 work. It was unsatisfiable, and went unnoticed
+because nothing had ever signed a manifest, so the verifier had never been handed a document that
+was supposed to pass. <code>ApiPinUpdateSidecar</code> used the identical construction, so certificate pin
+updates could not have verified either. Both now share the corrected canonical form: the document
+with its <code>signature</code> value blanked, compared <strong>as received</strong> rather than re-serialised, so signer
+and verifier cannot disagree about key order or spacing.</p>
+</blockquote>
+<hr>
 <h2 id="configuration">Configuration</h2>
 <p><code>appsettings.json</code>:</p>
 <pre><code class="lang-json">{

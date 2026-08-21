@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKHotkeyBar" data-uid="FishMMO.Client.UITKHotkeyBar" class="text-break">
-Class UITKHotkeyBar  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L19"><i class="bi bi-code-slash"></i></a>
+Class UITKHotkeyBar  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L38"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -141,22 +141,7 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_Character">UITKCharacterControl.Character</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPreSetCharacter">UITKCharacterControl.OnPreSetCharacter()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPostSetCharacter">UITKCharacterControl.OnPostSetCharacter()</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_SetCharacter_FishMMO_Shared_Core_IPlayerCharacter_">UITKCharacterControl.SetCharacter(IPlayerCharacter)</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnAfterStarting">UITKCharacterControl.OnAfterStarting()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPreUnsetCharacter">UITKCharacterControl.OnPreUnsetCharacter()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_OnPostUnsetCharacter">UITKCharacterControl.OnPostUnsetCharacter()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKCharacterControl.html#FishMMO_Client_UITKCharacterControl_UnsetCharacter">UITKCharacterControl.UnsetCharacter()</a>
@@ -219,16 +204,13 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_SetClient_FishMMO_Client_Client_">UITKControl.SetClient(Client)</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnTick">UITKControl.OnTick()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnQuitToLogin">UITKControl.OnQuitToLogin()</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ToggleVisibility">UITKControl.ToggleVisibility()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Show">UITKControl.Show()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnAfterShow">UITKControl.OnAfterShow()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ResetPosition">UITKControl.ResetPosition()</a>
@@ -664,6 +646,25 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
 
 
 
+  <h2 id="FishMMO_Client_UITKHotkeyBar_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+<b>Model / view split.</b> <span class="xref">FishMMO.Client.UITKHotkeyBar.bindings</span> is plain data describing what is bound to
+each slot and belongs to the character; <span class="xref">FishMMO.Client.UITKHotkeyBar.slots</span> holds the elements currently
+rendering it and belongs to ONE visual tree. <code>UIDocument</code> re-clones the UXML on every
+enable, so any element cached across a hide/show is a pointer into a discarded tree — the
+old code kept its slot state exclusively in those elements and rebuilt them by APPENDING to
+a list it never cleared, so a rebuilt tree produced twelve more orphaned slots and a bar
+whose bindings had quietly detached from what the player could see.
+</p>
+<p>
+<b>Change-driven, not per-frame.</b> This panel used to rewrite all twelve slots' icons and
+display styles on every single frame from <code>Update</code> — twelve <code>TryGet</code> calls,
+twelve dictionary probes and up to twenty-four inline style writes at frame rate for a bar
+that changes a handful of times per session. Refreshes are now driven by the events that
+can actually invalidate a binding (container slot updates, equip/unequip, ability learned,
+hotkey broadcast) and coalesced to at most one sweep per frame.
+</p>
+</div>
 
 
   <h2 class="section" id="properties">Properties
@@ -674,7 +675,7 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
 
   <h3 id="FishMMO_Client_UITKHotkeyBar_Layer" data-uid="FishMMO.Client.UITKHotkeyBar.Layer">
   Layer
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L22"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L41"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Draw order tier for this panel. See <a class="xref" href="FishMMO.Client.UITKPanelLayer.html">UITKPanelLayer</a>.</p>
@@ -706,11 +707,38 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
 </h2>
 
 
+  <a id="FishMMO_Client_UITKHotkeyBar_OnAfterStarting_" data-uid="FishMMO.Client.UITKHotkeyBar.OnAfterStarting*"></a>
+
+  <h3 id="FishMMO_Client_UITKHotkeyBar_OnAfterStarting" data-uid="FishMMO.Client.UITKHotkeyBar.OnAfterStarting">
+  OnAfterStarting()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L177"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Re-renders the bar from the binding model after the visual tree was rebuilt.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterStarting()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKHotkeyBar_OnClientSet_" data-uid="FishMMO.Client.UITKHotkeyBar.OnClientSet*"></a>
 
   <h3 id="FishMMO_Client_UITKHotkeyBar_OnClientSet" data-uid="FishMMO.Client.UITKHotkeyBar.OnClientSet">
   OnClientSet()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L102"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L202"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Registers the hotkey assignment broadcasts when the client connection is set.</p>
@@ -737,7 +765,7 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
 
   <h3 id="FishMMO_Client_UITKHotkeyBar_OnClientUnset" data-uid="FishMMO.Client.UITKHotkeyBar.OnClientUnset">
   OnClientUnset()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L111"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L211"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unregisters the hotkey assignment broadcasts when the client connection is unset.</p>
@@ -764,7 +792,7 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
 
   <h3 id="FishMMO_Client_UITKHotkeyBar_OnDestroying" data-uid="FishMMO.Client.UITKHotkeyBar.OnDestroying">
   OnDestroying()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L92"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L188"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unsubscribes from cooldown events when the control is destroyed.</p>
@@ -787,11 +815,153 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
 
 
 
+  <a id="FishMMO_Client_UITKHotkeyBar_OnPostSetCharacter_" data-uid="FishMMO.Client.UITKHotkeyBar.OnPostSetCharacter*"></a>
+
+  <h3 id="FishMMO_Client_UITKHotkeyBar_OnPostSetCharacter" data-uid="FishMMO.Client.UITKHotkeyBar.OnPostSetCharacter">
+  OnPostSetCharacter()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L228"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Subscribes to the events that can invalidate a hotkey binding.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnPostSetCharacter()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_UITKHotkeyBar_OnPostUnsetCharacter_" data-uid="FishMMO.Client.UITKHotkeyBar.OnPostUnsetCharacter*"></a>
+
+  <h3 id="FishMMO_Client_UITKHotkeyBar_OnPostUnsetCharacter" data-uid="FishMMO.Client.UITKHotkeyBar.OnPostUnsetCharacter">
+  OnPostUnsetCharacter()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L257"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Clears the binding model so one character's bar cannot appear on the next one's.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnPostUnsetCharacter()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKHotkeyBar_OnPostUnsetCharacter_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The model deliberately outlives the visual tree, which means it also outlives the
+character unless it is cleared here. A newly selected character with an empty bar
+generates no hotkey traffic at all, so nothing would ever overwrite the previous
+character's bindings.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKHotkeyBar_OnPreSetCharacter_" data-uid="FishMMO.Client.UITKHotkeyBar.OnPreSetCharacter*"></a>
+
+  <h3 id="FishMMO_Client_UITKHotkeyBar_OnPreSetCharacter" data-uid="FishMMO.Client.UITKHotkeyBar.OnPreSetCharacter">
+  OnPreSetCharacter()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L220"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Drops the previous character's subscriptions before a new character is applied.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnPreSetCharacter()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_UITKHotkeyBar_OnPreUnsetCharacter_" data-uid="FishMMO.Client.UITKHotkeyBar.OnPreUnsetCharacter*"></a>
+
+  <h3 id="FishMMO_Client_UITKHotkeyBar_OnPreUnsetCharacter" data-uid="FishMMO.Client.UITKHotkeyBar.OnPreUnsetCharacter">
+  OnPreUnsetCharacter()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L241"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Drops this character's subscriptions before it is cleared.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnPreUnsetCharacter()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_UITKHotkeyBar_OnQuitToLogin_" data-uid="FishMMO.Client.UITKHotkeyBar.OnQuitToLogin*"></a>
+
+  <h3 id="FishMMO_Client_UITKHotkeyBar_OnQuitToLogin" data-uid="FishMMO.Client.UITKHotkeyBar.OnQuitToLogin">
+  OnQuitToLogin()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L263"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Called when the client quits to the login screen.
+Override to perform cleanup such as stopping coroutines.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnQuitToLogin()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKHotkeyBar_OnStarting_" data-uid="FishMMO.Client.UITKHotkeyBar.OnStarting*"></a>
 
   <h3 id="FishMMO_Client_UITKHotkeyBar_OnStarting" data-uid="FishMMO.Client.UITKHotkeyBar.OnStarting">
   OnStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L74"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L147"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Queries the list container, builds the hotkey slots and subscribes to cooldown events.</p>
@@ -810,6 +980,45 @@ shared <a class="xref" href="FishMMO.Client.UITKDragObject.html">UITKDragObject<
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKHotkeyBar_OnStarting_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Runs again on every tree rebuild, so everything here is written to be idempotent: the
+slot list is cleared before it is rebuilt, and the static cooldown subscriptions are
+removed before they are added. A bare <code>+=</code> on a static event from a hook that can
+re-run is an unbounded handler leak.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKHotkeyBar_OnTick_" data-uid="FishMMO.Client.UITKHotkeyBar.OnTick*"></a>
+
+  <h3 id="FishMMO_Client_UITKHotkeyBar_OnTick" data-uid="FishMMO.Client.UITKHotkeyBar.OnTick">
+  OnTick()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/HotkeyBar/UITKHotkeyBar.cs/#L503"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Per-frame hook. Consumes a pending refresh, animates cooldown sweeps and polls input.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnTick()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKHotkeyBar_OnTick_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>This used to be <code>private void Update()</code>. <a class="xref" href="FishMMO.Client.UITKControl.html">UITKControl</a> declares its own
+<code>Update</code> and Unity binds only the MOST DERIVED one, so declaring a second in a
+subclass silently killed <code>PollLoseFocus</code> and <code>OnTick</code> for this panel — the
+exact failure the base class's own comment warns about.</p>
+</div>
 
 
 

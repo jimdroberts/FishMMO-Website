@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKLabelMaker" data-uid="FishMMO.Client.UITKLabelMaker" class="text-break">
-Class UITKLabelMaker  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L22"><i class="bi bi-code-slash"></i></a>
+Class UITKLabelMaker  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L41"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -558,6 +558,22 @@ TextMeshPro component, a MeshRenderer and a material, so it had to be authored a
 a label is now a transform plus two plain components, which this builds on demand. That
 removes the &quot;labels silently do nothing because the prefab reference was lost&quot; failure the
 old pool had, and takes <code>Cached3DLabel.prefab</code> out of the project with it.</p>
+<p><b>The budget.</b> The pool used to be bounded and nothing else was: the cap only
+limited how many <em>idle</em> labels were kept, and <a class="xref" href="FishMMO.Client.UITKLabelMaker.html#FishMMO_Client_UITKLabelMaker_Dequeue_FishMMO_Client_UITKWorldLabel__System_Boolean_">Dequeue(out UITKWorldLabel, bool)</a> built a new
+GameObject whenever the pool ran dry. Nothing bounded how many labels could be live at once
+or how fast they could be created, so a large area-of-effect hit — or a server sending
+combat events faster than a client can draw them — allocated GameObjects without limit
+until the client stalled. That is reachable from the network, so it is a denial of service
+and not merely a performance note.</p>
+<p>Two limits close it. <span class="xref">FishMMO.Client.UITKLabelMaker.maxLiveLabels</span> caps how many labels exist at once;
+past the cap the oldest auto-expiring label is recycled instead of a new one being built,
+which for damage numbers is also the behaviour a player wants — the newest hit is the one
+worth reading. <span class="xref">FishMMO.Client.UITKLabelMaker.maxSpawnsPerSecond</span> is a token bucket that caps the rate, so a
+burst that would churn the whole cap in one frame is dropped rather than served. Labels the
+caller holds itself (<code>manualCache</code>, used by nameplates and the target frame) are never
+recycled out from under it.</p>
+<p>The draw half of the budget lives in <a class="xref" href="FishMMO.Client.UITKWorldLabelLayer.html">UITKWorldLabelLayer</a>; both are
+needed, because capping the draw alone still leaves the GameObjects allocated.</p>
 </div>
 
 
@@ -569,7 +585,7 @@ old pool had, and takes <code>Cached3DLabel.prefab</code> out of the project wit
 
   <h3 id="FishMMO_Client_UITKLabelMaker_Cache_FishMMO_Client_UITKWorldLabel_" data-uid="FishMMO.Client.UITKLabelMaker.Cache(FishMMO.Client.UITKWorldLabel)">
   Cache(UITKWorldLabel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L196"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L390"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns the given label to the pool for reuse.</p>
@@ -602,7 +618,7 @@ old pool had, and takes <code>Cached3DLabel.prefab</code> out of the project wit
 
   <h3 id="FishMMO_Client_UITKLabelMaker_Clear" data-uid="FishMMO.Client.UITKLabelMaker.Clear">
   Clear()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L209"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L403"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears all cached labels from the pool.</p>
@@ -629,7 +645,7 @@ old pool had, and takes <code>Cached3DLabel.prefab</code> out of the project wit
 
   <h3 id="FishMMO_Client_UITKLabelMaker_ClearCache" data-uid="FishMMO.Client.UITKLabelMaker.ClearCache">
   ClearCache()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L155"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L338"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears all cached labels from the pool and destroys their game objects.</p>
@@ -648,37 +664,48 @@ old pool had, and takes <code>Cached3DLabel.prefab</code> out of the project wit
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKLabelMaker_ClearCache_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Live labels are released first. Leaving them out would strand every label currently on
+screen: nothing else holds them, so they would tick forever against a pool that no
+longer knows about them.</p>
+</div>
 
 
 
 
   <a id="FishMMO_Client_UITKLabelMaker_Dequeue_" data-uid="FishMMO.Client.UITKLabelMaker.Dequeue*"></a>
 
-  <h3 id="FishMMO_Client_UITKLabelMaker_Dequeue_FishMMO_Client_UITKWorldLabel__" data-uid="FishMMO.Client.UITKLabelMaker.Dequeue(FishMMO.Client.UITKWorldLabel@)">
-  Dequeue(out UITKWorldLabel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L115"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Client_UITKLabelMaker_Dequeue_FishMMO_Client_UITKWorldLabel__System_Boolean_" data-uid="FishMMO.Client.UITKLabelMaker.Dequeue(FishMMO.Client.UITKWorldLabel@,System.Boolean)">
+  Dequeue(out UITKWorldLabel, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L220"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Retrieves a label from the pool or builds a new one if the pool is empty.
-Skips any pool entries that have been externally destroyed.</p>
+  <div class="markdown level1 summary"><p>Retrieves a label from the pool, recycles the oldest timed label when the live cap is
+reached, or builds a new one.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public bool Dequeue(out UITKWorldLabel label)</code></pre>
+    <pre><code class="lang-csharp hljs">public bool Dequeue(out UITKWorldLabel label, bool persistent = false)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>label</code> <a class="xref" href="FishMMO.Client.UITKWorldLabel.html">UITKWorldLabel</a></dt>
-    <dd><p>The dequeued or newly created label.</p>
+    <dd><p>The dequeued, recycled or newly created label.</p>
+</dd>
+    <dt><code>persistent</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True for a label the caller will hold and cache itself. Persistent labels bypass the
+rate limit, because the budget exists to bound transient combat spam and a nameplate
+that silently fails to appear because a damage burst exhausted the bucket is a worse
+outcome than the spam it was protecting against. They are still subject to the live cap.</p>
 </dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
-    <dd><p>True if a label is provided, false otherwise.</p>
+    <dd><p>True if a label is provided, false when the budget refuses one.</p>
 </dd>
   </dl>
 
@@ -688,6 +715,11 @@ Skips any pool entries that have been externally destroyed.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKLabelMaker_Dequeue_FishMMO_Client_UITKWorldLabel__System_Boolean__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Returning false is a normal outcome, not an error: it is how the rate limit and the
+live cap are enforced, and <a class="xref" href="FishMMO.Client.UITKLabelMaker.html#FishMMO_Client_UITKLabelMaker_Display3D_System_String_UnityEngine_Vector3_UnityEngine_Color_System_Single_System_Single_System_Boolean_System_Int32_">Display3D(string, Vector3, Color, float, float, bool, int)</a> turns it into a dropped label rather
+than a stall.</p>
+</div>
 
 
 
@@ -696,7 +728,7 @@ Skips any pool entries that have been externally destroyed.</p>
 
   <h3 id="FishMMO_Client_UITKLabelMaker_Display3D_System_String_UnityEngine_Vector3_UnityEngine_Color_System_Single_System_Single_System_Boolean_System_Int32_" data-uid="FishMMO.Client.UITKLabelMaker.Display3D(System.String,UnityEngine.Vector3,UnityEngine.Color,System.Single,System.Single,System.Boolean,System.Int32)">
   Display3D(string, Vector3, Color, float, float, bool, int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L177"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L370"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Displays a world-anchored label at the specified position with the given properties.</p>
@@ -735,7 +767,7 @@ Skips any pool entries that have been externally destroyed.</p>
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="FishMMO.Client.UITKWorldLabel.html">UITKWorldLabel</a></dt>
-    <dd><p>The displayed label, or null if the instance is unavailable.</p>
+    <dd><p>The displayed label, or null if the instance is unavailable or the budget refused one.</p>
 </dd>
   </dl>
 
@@ -753,7 +785,7 @@ Skips any pool entries that have been externally destroyed.</p>
 
   <h3 id="FishMMO_Client_UITKLabelMaker_Enqueue_FishMMO_Client_UITKWorldLabel_" data-uid="FishMMO.Client.UITKLabelMaker.Enqueue(FishMMO.Client.UITKWorldLabel)">
   Enqueue(UITKWorldLabel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L133"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/WorldLabels/UITKLabelMaker.cs/#L295"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns a label to the pool for reuse, or destroys it if the pool has reached maximum capacity.</p>
@@ -778,6 +810,13 @@ Skips any pool entries that have been externally destroyed.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKLabelMaker_Enqueue_FishMMO_Client_UITKWorldLabel__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Re-entrant by design. The old version enqueued unconditionally, so a label that was
+cached twice — trivially reachable, because the expiry path cached it and a caller
+holding the same reference could cache it again — sat in the pool twice and was then
+handed to two different callers at once, each overwriting the other's text. The pooled
+flag on the label makes the second call a no-op.</p>
+</div>
 
 
 

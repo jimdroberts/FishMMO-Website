@@ -165,15 +165,16 @@ Implements <a class="xref" href="FishMMO.Shared.Core.ITooltip.html">ITooltip</a>
 
   <h3 id="FishMMO_Shared_Item__ctor_FishMMO_Shared_BaseItemTemplate_System_UInt32_" data-uid="FishMMO.Shared.Item.#ctor(FishMMO.Shared.BaseItemTemplate,System.UInt32)">
   Item(BaseItemTemplate, uint)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L91"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L106"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Constructs an item from a template and amount, initializing stackable logic if needed.</p>
+  <div class="markdown level1 summary"><p>Constructs an item from a template and amount, initializing all components.</p>
 <p>
-IMPORTANT: This constructor creates items with ID=0. It must only be used for
-temporary or display-only items. For gameplay items that will be persisted, use
-<a class="xref" href="FishMMO.Shared.Item.html#FishMMO_Shared_Item__ctor_System_Int64_System_Int32_FishMMO_Shared_BaseItemTemplate_System_UInt32_">Item(long, int, BaseItemTemplate, uint)</a> instead to ensure a unique
-database-safe ID is assigned.
+IMPORTANT: This constructor creates items with ID=0. The ID is assigned by the database
+on first persist, so an item built here is not yet a database row. It is still a fully
+formed gameplay item: every server-side grant path (merchant purchase, quest and
+achievement rewards, gathering nodes, world pickups, <code>GiveItemAction</code>) builds items
+through here.
 </p>
 </div>
   <div class="markdown level1 conceptual"></div>
@@ -199,6 +200,20 @@ database-safe ID is assigned.
 
 
 
+  <h4 class="section" id="FishMMO_Shared_Item__ctor_FishMMO_Shared_BaseItemTemplate_System_UInt32__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>This used to construct only the stackable component, leaving <a class="xref" href="FishMMO.Shared.Item.html#FishMMO_Shared_Item_Equippable">Equippable</a> and
+<a class="xref" href="FishMMO.Shared.Item.html#FishMMO_Shared_Item_Generator">Generator</a> null. <a class="xref" href="FishMMO.Shared.EquipmentController.html">EquipmentController</a> refuses any item whose
+<a class="xref" href="FishMMO.Shared.Item.html#FishMMO_Shared_Item_IsEquippable">IsEquippable</a> is false, so a sword you had just bought or looted could not be
+equipped at all until you relogged and the item came back through
+<a class="xref" href="FishMMO.Shared.Item.html#FishMMO_Shared_Item__ctor_System_Int64_System_Int32_System_Int32_System_UInt32_">Item(long, int, int, uint)</a>, which does call <a class="xref" href="FishMMO.Shared.Item.html#FishMMO_Shared_Item_Initialize_System_Int64_System_UInt32_System_Int32_">Initialize(long, uint, int)</a>. Both
+constructors now go through the same initialization; there is no second, weaker kind of Item.</p>
+<p>
+The seed is passed as 0 deliberately. <a class="xref" href="FishMMO.Shared.Item.html#FishMMO_Shared_Item_Initialize_System_Int64_System_UInt32_System_Int32_">Initialize(long, uint, int)</a> derives a seed from the item
+ID, and the ID is not known until the row is written, so a generated item created here gets
+its seed on the round trip through the database — which is the behaviour the persistence
+layer already assumed (<code>seed: item.IsGenerated ? item.Generator.Seed : 0</code>).
+</p>
+</div>
 
 
 
@@ -207,7 +222,7 @@ database-safe ID is assigned.
 
   <h3 id="FishMMO_Shared_Item__ctor_System_Int64_System_Int32_FishMMO_Shared_BaseItemTemplate_System_UInt32_" data-uid="FishMMO.Shared.Item.#ctor(System.Int64,System.Int32,FishMMO.Shared.BaseItemTemplate,System.UInt32)">
   Item(long, int, BaseItemTemplate, uint)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L108"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L126"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Constructs an item from an ID, seed, template, and amount, initializing all components.</p>
@@ -249,7 +264,7 @@ database-safe ID is assigned.
 
   <h3 id="FishMMO_Shared_Item__ctor_System_Int64_System_Int32_System_Int32_System_UInt32_" data-uid="FishMMO.Shared.Item.#ctor(System.Int64,System.Int32,System.Int32,System.UInt32)">
   Item(long, int, int, uint)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L124"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L142"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Constructs an item from an ID, seed, template ID, and amount, initializing all components.</p>
@@ -682,7 +697,7 @@ Incremented whenever the item's state changes in a way that requires client upda
 
   <h3 id="FishMMO_Shared_Item_BuildTooltip_FishMMO_Shared_TooltipBuilder_" data-uid="FishMMO.Shared.Item.BuildTooltip(FishMMO.Shared.TooltipBuilder)">
   BuildTooltip(TooltipBuilder)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L270"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L294"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Populates the tooltip builder with this item's tooltip lines.</p>
@@ -715,7 +730,7 @@ Incremented whenever the item's state changes in a way that requires client upda
 
   <h3 id="FishMMO_Shared_Item_Destroy" data-uid="FishMMO.Shared.Item.Destroy">
   Destroy()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L216"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L234"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Destroys the item, cleaning up generator, equippable, and stackable components and detaching events.</p>
@@ -742,7 +757,7 @@ Incremented whenever the item's state changes in a way that requires client upda
 
   <h3 id="FishMMO_Shared_Item_Initialize_System_Int64_System_UInt32_System_Int32_" data-uid="FishMMO.Shared.Item.Initialize(System.Int64,System.UInt32,System.Int32)">
   Initialize(long, uint, int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L140"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L158"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes the item, setting up stackable, equippable, and generator components as needed.
@@ -782,7 +797,7 @@ Handles seed logic for random generation and event wiring for attribute changes.
 
   <h3 id="FishMMO_Shared_Item_IsMatch_FishMMO_Shared_Item_" data-uid="FishMMO.Shared.Item.IsMatch(FishMMO.Shared.Item)">
   IsMatch(Item)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L245"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L269"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Determines if this item matches another item, comparing template ID and generation seed.
@@ -822,7 +837,7 @@ Used for stacking and item comparison logic.</p>
 
   <h3 id="FishMMO_Shared_Item_ItemEquippable_OnEquip_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Item.ItemEquippable_OnEquip(FishMMO.Shared.Core.ICharacter)">
   ItemEquippable_OnEquip(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L282"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L306"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Event handler called when the item is equipped by a character. Applies generated attributes.</p>
@@ -855,7 +870,7 @@ Used for stacking and item comparison logic.</p>
 
   <h3 id="FishMMO_Shared_Item_ItemEquippable_OnUnequip_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Item.ItemEquippable_OnUnequip(FishMMO.Shared.Core.ICharacter)">
   ItemEquippable_OnUnequip(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L294"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L318"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Event handler called when the item is unequipped by a character. Removes generated attributes.</p>
@@ -888,7 +903,7 @@ Used for stacking and item comparison logic.</p>
 
   <h3 id="FishMMO_Shared_Item_Tooltip" data-uid="FishMMO.Shared.Item.Tooltip">
   Tooltip()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L257"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Item/Item.cs/#L281"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns the formatted tooltip string for this item, including ID, slot, template tooltip, and generator info.</p>

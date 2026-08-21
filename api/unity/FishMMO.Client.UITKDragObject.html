@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class UITKDragObject | FishMMO Documentation ">
       
-      <meta name="description" content="UI Toolkit drag object. Displays a dragged icon that follows the cursor and handles drop logic for items.">
+      <meta name="description" content="UI Toolkit drag object. Displays a dragged icon that follows the cursor and carries the identity of whatever the drag was started from until something drops or cancels it.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKDragObject" data-uid="FishMMO.Client.UITKDragObject" class="text-break">
-Class UITKDragObject  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L12"><i class="bi bi-code-slash"></i></a>
+Class UITKDragObject  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L37"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,8 +97,8 @@ Class UITKDragObject  <a class="header-action link-secondary" title="View source
   <dl><dt>Assembly</dt><dd>FishMMO.Client.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>UI Toolkit drag object. Displays a dragged icon that follows the cursor and handles
-drop logic for items.</p>
+  <div class="markdown summary"><p>UI Toolkit drag object. Displays a dragged icon that follows the cursor and carries the
+identity of whatever the drag was started from until something drops or cancels it.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -182,12 +182,6 @@ drop logic for items.</p>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_BindListChrome_UnityEngine_UIElements_VisualElement_UnityEngine_UIElements_Label_UnityEngine_UIElements_Label_UnityEngine_UIElements_Label_System_String_System_String_">UITKControl.BindListChrome(VisualElement, Label, Label, Label, string, string)</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnAfterStarting">UITKControl.OnAfterStarting()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnDestroying">UITKControl.OnDestroying()</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnClientSet">UITKControl.OnClientSet()</a>
     </div>
     <div>
@@ -195,12 +189,6 @@ drop logic for items.</p>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_SetClient_FishMMO_Client_Client_">UITKControl.SetClient(Client)</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnTick">UITKControl.OnTick()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnQuitToLogin">UITKControl.OnQuitToLogin()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ToggleVisibility">UITKControl.ToggleVisibility()</a>
@@ -213,9 +201,6 @@ drop logic for items.</p>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Hide">UITKControl.Hide()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Hide_System_Boolean_">UITKControl.Hide(bool)</a>
     </div>
     <div>
       <span class="xref">MonoBehaviour.IsInvoking()</span>
@@ -642,6 +627,30 @@ drop logic for items.</p>
 
 
 
+  <h2 id="FishMMO_Client_UITKDragObject_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+THE DRAG IS NOT AUTHORITATIVE AND MUST NEVER BE TREATED AS IF IT WERE. What it holds is a
+record of what the player picked up and where they picked it up from, taken at the moment
+they clicked. The containers underneath it are replicated from the server and can change at
+any point during the drag — a loot broadcast, another panel's swap echo, a scene handover —
+so by the time the player releases, the slot named in <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_ReferenceID">ReferenceID</a> may hold a
+completely different item. Submitting the slot index alone at that point moves the wrong
+item, and the player watches something they never touched go somewhere they never put it.
+</p>
+<p>
+The fix is identity, not optimism: <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_SetItemReference_UnityEngine_Sprite_System_Int32_FishMMO_Client_ReferenceButtonType_FishMMO_Shared_Item_">SetItemReference(Sprite, int, ReferenceButtonType, Item)</a> records which item the
+drag started from, and <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_MatchesSource_FishMMO_Shared_Item_">MatchesSource(Item)</a> re-checks that the source slot still
+holds it before the drop is allowed to submit anything. A drag that no longer matches is
+cancelled rather than guessed at.
+</p>
+<p>
+The payload is also cleared on every teardown path — <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_Hide_System_Boolean_">Hide(bool)</a> (which covers
+Escape via <code>UIManager.CloseNext</code> and quit-to-login via <code>Hide(false)</code>),
+<a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_OnQuitToLogin">OnQuitToLogin()</a>, and <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_NotifySlotChanged_FishMMO_Client_ReferenceButtonType_System_Int32_FishMMO_Shared_Item_">NotifySlotChanged(ReferenceButtonType, int, Item)</a> from the panels — because a
+payload that survives its own panel is a drag the player cannot see and cannot cancel, and
+the next click anywhere completes it.
+</p>
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -651,7 +660,7 @@ drop logic for items.</p>
 
   <h3 id="FishMMO_Client_UITKDragObject_DropDistance" data-uid="FishMMO.Client.UITKDragObject.DropDistance">
   DropDistance
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L45"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L121"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Maximum distance for drop raycast.</p>
@@ -682,7 +691,7 @@ drop logic for items.</p>
 
   <h3 id="FishMMO_Client_UITKDragObject_LayerMask" data-uid="FishMMO.Client.UITKDragObject.LayerMask">
   LayerMask
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L40"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L116"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Layer mask used for raycasting when dropping items.</p>
@@ -711,9 +720,45 @@ drop logic for items.</p>
 
 
 
+  <h3 id="FishMMO_Client_UITKDragObject_NULL_ITEM_ID" data-uid="FishMMO.Client.UITKDragObject.NULL_ITEM_ID">
+  NULL_ITEM_ID
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L55"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Constant representing &quot;no item identity&quot; for <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_ItemID">ItemID</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const long NULL_ITEM_ID = 0</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_NULL_ITEM_ID_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Zero rather than -1 because <code>Item.ID</code> defaults to 0 for the display-only
+constructor, so an item that never received a server-issued ID is indistinguishable
+from no item at all — and must be treated as such rather than matching everything.</p>
+</div>
+
+
+
+
+
   <h3 id="FishMMO_Client_UITKDragObject_NULL_REFERENCE_ID" data-uid="FishMMO.Client.UITKDragObject.NULL_REFERENCE_ID">
   NULL_REFERENCE_ID
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L20"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L45"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Constant representing a null reference ID for drag objects.</p>
@@ -744,7 +789,7 @@ drop logic for items.</p>
 
   <h3 id="FishMMO_Client_UITKDragObject_ReferenceID" data-uid="FishMMO.Client.UITKDragObject.ReferenceID">
   ReferenceID
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L30"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L69"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The reference ID associated with the dragged object.</p>
@@ -768,6 +813,10 @@ drop logic for items.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_ReferenceID_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A container slot index for item drags, a database ID for ability and hotkey drags.
+Which of the two it is depends entirely on <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_Type">Type</a>.</p>
+</div>
 
 
 
@@ -775,7 +824,7 @@ drop logic for items.</p>
 
   <h3 id="FishMMO_Client_UITKDragObject_Type" data-uid="FishMMO.Client.UITKDragObject.Type">
   Type
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L74"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The type of reference button (e.g., inventory, skill, etc.).</p>
@@ -807,11 +856,50 @@ drop logic for items.</p>
 </h2>
 
 
+  <a id="FishMMO_Client_UITKDragObject_HasItemIdentity_" data-uid="FishMMO.Client.UITKDragObject.HasItemIdentity*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_HasItemIdentity" data-uid="FishMMO.Client.UITKDragObject.HasItemIdentity">
+  HasItemIdentity
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L111"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>True when this drag was seeded from a container item and therefore carries an
+identity that a drop can validate against.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool HasItemIdentity { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_HasItemIdentity_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Not every drag source has one: ability and hotkey drags carry a database ID in
+<a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_ReferenceID">ReferenceID</a> rather than a slot index, and have no item behind them.
+An item whose <code>ID</code> is still <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_NULL_ITEM_ID">NULL_ITEM_ID</a> also does not get one,
+because zero is the default and would otherwise match every other unsaved item.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Client_UITKDragObject_IconSprite_" data-uid="FishMMO.Client.UITKDragObject.IconSprite*"></a>
 
   <h3 id="FishMMO_Client_UITKDragObject_IconSprite" data-uid="FishMMO.Client.UITKDragObject.IconSprite">
   IconSprite
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L59"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L147"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The sprite currently displayed by the drag object, or null when inactive.</p>
@@ -839,11 +927,127 @@ drop logic for items.</p>
 
 
 
+  <a id="FishMMO_Client_UITKDragObject_IsDragging_" data-uid="FishMMO.Client.UITKDragObject.IsDragging*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_IsDragging" data-uid="FishMMO.Client.UITKDragObject.IsDragging">
+  IsDragging
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L157"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>True while a drag is actually carrying something.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool IsDragging { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_IsDragging_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Panels used to test <code>Visible</code>, which is a statement about the document rather
+than about the payload: a panel shown with no reference in it reads as an active drag
+and the next click &quot;completes&quot; a drag that never started.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_ItemID_" data-uid="FishMMO.Client.UITKDragObject.ItemID*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_ItemID" data-uid="FishMMO.Client.UITKDragObject.ItemID">
+  ItemID
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L88"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Instance ID of the item this drag was started from, or <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_NULL_ITEM_ID">NULL_ITEM_ID</a>
+when the drag carries no item identity.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public long ItemID { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_ItemID_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_ReferenceID">ReferenceID</a> alone is a container slot index, and a slot index is only
+meaningful for as long as the container does not change underneath the drag. The
+server can write to that slot at any moment — a loot broadcast, a queued swap echo,
+a trade — and the drop would then submit the slot the player picked, holding an item
+they never picked up. Recording which item the drag actually started from is what
+makes that detectable at drop time.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_ItemVersion_" data-uid="FishMMO.Client.UITKDragObject.ItemVersion*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_ItemVersion" data-uid="FishMMO.Client.UITKDragObject.ItemVersion">
+  ItemVersion
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L99"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Version of the item this drag was started from, paired with <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_ItemID">ItemID</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public long ItemVersion { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_ItemVersion_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Client-side items are currently constructed without a version (it stays 0), so this
+contributes nothing today. It is carried and compared anyway so that the drop-time
+validation starts rejecting stale drags for free the moment the server begins
+sending a real version, rather than needing this code to be revisited.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Client_UITKDragObject_Layer_" data-uid="FishMMO.Client.UITKDragObject.Layer*"></a>
 
   <h3 id="FishMMO_Client_UITKDragObject_Layer" data-uid="FishMMO.Client.UITKDragObject.Layer">
   Layer
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L15"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L40"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Draw order tier for this panel. See <a class="xref" href="FishMMO.Client.UITKPanelLayer.html">UITKPanelLayer</a>.</p>
@@ -879,7 +1083,7 @@ drop logic for items.</p>
 
   <h3 id="FishMMO_Client_UITKDragObject_Clear" data-uid="FishMMO.Client.UITKDragObject.Clear">
   Clear()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L145"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L359"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears the drag object state, hides it, and resets reference data.</p>
@@ -902,11 +1106,267 @@ drop logic for items.</p>
 
 
 
+  <a id="FishMMO_Client_UITKDragObject_Hide_" data-uid="FishMMO.Client.UITKDragObject.Hide*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_Hide_System_Boolean_" data-uid="FishMMO.Client.UITKDragObject.Hide(System.Boolean)">
+  Hide(bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L400"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Hides the drag overlay and drops whatever it was carrying.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void Hide(bool overrideIsAlwaysOpen)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>overrideIsAlwaysOpen</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>When true, the call is a no-op.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_Hide_System_Boolean__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code>Hide(bool)</code> rather than <code>Hide()</code>, because <code>Hide()</code> is only one of the
+routes here. Escape arrives through <code>UIManager.CloseNext</code> and quit-to-login
+through <code>Hide(false)</code>; overriding the parameterless form would miss the second and
+leave a payload armed on the login screen, ready to complete itself against whatever
+character logs in next.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_MatchesSource_" data-uid="FishMMO.Client.UITKDragObject.MatchesSource*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_MatchesSource_FishMMO_Shared_Item_" data-uid="FishMMO.Client.UITKDragObject.MatchesSource(FishMMO.Shared.Item)">
+  MatchesSource(Item)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L312"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reports whether <code class="paramref">item</code> is still the item this drag was started from.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool MatchesSource(Item item)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>item</code> <a class="xref" href="FishMMO.Shared.Item.html">Item</a></dt>
+    <dd><p>The item currently occupying the source slot, or null if empty.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True when the drop may proceed.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_MatchesSource_FishMMO_Shared_Item__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Call this at drop time against a fresh read of the source slot, never against the
+value the drag was seeded with. When the drag carries no identity the best that can be
+said is &quot;the slot is still occupied&quot;, which is what an empty item fails and anything
+else passes.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_NotifySlotChanged_" data-uid="FishMMO.Client.UITKDragObject.NotifySlotChanged*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_NotifySlotChanged_FishMMO_Client_ReferenceButtonType_System_Int32_FishMMO_Shared_Item_" data-uid="FishMMO.Client.UITKDragObject.NotifySlotChanged(FishMMO.Client.ReferenceButtonType,System.Int32,FishMMO.Shared.Item)">
+  NotifySlotChanged(ReferenceButtonType, int, Item)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L340"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Cancels the drag if a container write has invalidated its source slot.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void NotifySlotChanged(ReferenceButtonType type, int slotIndex, Item item)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>type</code> <a class="xref" href="FishMMO.Client.ReferenceButtonType.html">ReferenceButtonType</a></dt>
+    <dd><p>Container the write landed in.</p>
+</dd>
+    <dt><code>slotIndex</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>Slot the write landed in.</p>
+</dd>
+    <dt><code>item</code> <a class="xref" href="FishMMO.Shared.Item.html">Item</a></dt>
+    <dd><p>The item now in that slot, or null if it was emptied.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_NotifySlotChanged_FishMMO_Client_ReferenceButtonType_System_Int32_FishMMO_Shared_Item__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Called by the item panels from their slot-updated handlers. This is the half of the
+lifecycle a drop-time check cannot cover on its own: without it the icon keeps
+following the cursor while the thing it represents has already gone, and the player is
+aiming a drop they are about to be told is invalid. Cancelling as it happens is both
+more honest and much easier to understand.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_OnAfterShow_" data-uid="FishMMO.Client.UITKDragObject.OnAfterShow*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_OnAfterShow" data-uid="FishMMO.Client.UITKDragObject.OnAfterShow">
+  OnAfterShow()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L200"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Re-applies the drag icon on every show, including the first one.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterShow()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_OnAfterShow_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code>OnAfterStarting</code> alone is not enough. On the very first open <code>hasStarted</code> is
+still false, so <code>ReinitializeIfTreeReplaced</code> returns before re-running it, and the
+icon written before Show is lost with the discarded tree.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_OnAfterStarting_" data-uid="FishMMO.Client.UITKDragObject.OnAfterStarting*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_OnAfterStarting" data-uid="FishMMO.Client.UITKDragObject.OnAfterStarting">
+  OnAfterStarting()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L187"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Re-applies the drag icon after the visual tree has been rebuilt.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterStarting()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_OnAfterStarting_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Per THE CONTRACT: <code>UIDocument</code> clones the UXML afresh on every enable, so the
+element <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_SetReference_UnityEngine_Sprite_System_Int64_FishMMO_Client_ReferenceButtonType_">SetReference(Sprite, long, ReferenceButtonType)</a> wrote the icon into is discarded the moment the
+panel is shown. Without this the very first drag of a session is invisible — the
+classic symptom — and every drag after a hide/show is too.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_OnDestroying_" data-uid="FishMMO.Client.UITKDragObject.OnDestroying*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_OnDestroying" data-uid="FishMMO.Client.UITKDragObject.OnDestroying">
+  OnDestroying()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L428"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Drops the payload when the overlay is destroyed.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnDestroying()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_OnQuitToLogin_" data-uid="FishMMO.Client.UITKDragObject.OnQuitToLogin*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_OnQuitToLogin" data-uid="FishMMO.Client.UITKDragObject.OnQuitToLogin">
+  OnQuitToLogin()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L419"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Drops the payload when the client returns to the login screen.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnQuitToLogin()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_OnQuitToLogin_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Belt and braces: <code>CloseOnQuitToMenu</code> is set on this panel in the scene, so the
+base class already routes quit-to-login through <code>Hide(false)</code>. That is a scene
+setting an editor can change, and a drag surviving into the next session is not
+something that should depend on one.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Client_UITKDragObject_OnStarting_" data-uid="FishMMO.Client.UITKDragObject.OnStarting*"></a>
 
   <h3 id="FishMMO_Client_UITKDragObject_OnStarting" data-uid="FishMMO.Client.UITKDragObject.OnStarting">
   OnStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L64"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L162"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resolves cached elements and prepares the drag icon for absolute positioning.</p>
@@ -929,14 +1389,90 @@ drop logic for items.</p>
 
 
 
+  <a id="FishMMO_Client_UITKDragObject_OnTick_" data-uid="FishMMO.Client.UITKDragObject.OnTick*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_OnTick" data-uid="FishMMO.Client.UITKDragObject.OnTick">
+  OnTick()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L214"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Per-frame update for the drag object. Handles drag visuals and drop logic.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnTick()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_OnTick_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>An <code>OnTick</code> override rather than a private <code>Update</code>. Unity binds the
+most-derived <code>Update</code> only, so declaring one here silently replaced
+<a class="xref" href="FishMMO.Client.UITKControl.html">UITKControl</a>'s — taking <code>PollLoseFocus</code> with it — which is the exact
+failure that method's own comment warns about.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_UITKDragObject_SetItemReference_" data-uid="FishMMO.Client.UITKDragObject.SetItemReference*"></a>
+
+  <h3 id="FishMMO_Client_UITKDragObject_SetItemReference_UnityEngine_Sprite_System_Int32_FishMMO_Client_ReferenceButtonType_FishMMO_Shared_Item_" data-uid="FishMMO.Client.UITKDragObject.SetItemReference(UnityEngine.Sprite,System.Int32,FishMMO.Client.ReferenceButtonType,FishMMO.Shared.Item)">
+  SetItemReference(Sprite, int, ReferenceButtonType, Item)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L285"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Sets the reference data for a drag started from a container slot, recording which
+item it was started from so the drop can re-validate it.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void SetItemReference(Sprite icon, int slotIndex, ReferenceButtonType type, Item item)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>icon</code> <span class="xref">Sprite</span></dt>
+    <dd><p>Sprite to display while dragging.</p>
+</dd>
+    <dt><code>slotIndex</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>Slot index within the source container.</p>
+</dd>
+    <dt><code>type</code> <a class="xref" href="FishMMO.Client.ReferenceButtonType.html">ReferenceButtonType</a></dt>
+    <dd><p>Which container the slot belongs to.</p>
+</dd>
+    <dt><code>item</code> <a class="xref" href="FishMMO.Shared.Item.html">Item</a></dt>
+    <dd><p>The item in that slot at the moment the drag began.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Client_UITKDragObject_SetReference_" data-uid="FishMMO.Client.UITKDragObject.SetReference*"></a>
 
   <h3 id="FishMMO_Client_UITKDragObject_SetReference_UnityEngine_Sprite_System_Int64_FishMMO_Client_ReferenceButtonType_" data-uid="FishMMO.Client.UITKDragObject.SetReference(UnityEngine.Sprite,System.Int64,FishMMO.Client.ReferenceButtonType)">
   SetReference(Sprite, long, ReferenceButtonType)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L124"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/Shared/DragObject/UITKDragObject.cs/#L272"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Sets the reference data for the drag object and positions it at the mouse cursor.</p>
+  <div class="markdown level1 summary"><p>Sets the reference data for a drag that carries no item identity.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -964,6 +1500,11 @@ drop logic for items.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKDragObject_SetReference_UnityEngine_Sprite_System_Int64_FishMMO_Client_ReferenceButtonType__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>For ability and hotkey drags, whose <code class="paramref">referenceID</code> is a database ID
+rather than a container slot and which therefore have nothing to re-validate against.
+Item panels must use <a class="xref" href="FishMMO.Client.UITKDragObject.html#FishMMO_Client_UITKDragObject_SetItemReference_UnityEngine_Sprite_System_Int32_FishMMO_Client_ReferenceButtonType_FishMMO_Shared_Item_">SetItemReference(Sprite, int, ReferenceButtonType, Item)</a> instead.</p>
+</div>
 
 
 
