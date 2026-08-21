@@ -106,8 +106,8 @@ connection type — <code>World</code>, <code>Scene</code>, or <code>ConnectingT
 is not reconnectable and raises <code>OnConnectionAttemptFailed</code> instead. <code>Client</code> responds to that
 by invalidating the cached login server list (so the next attempt re-probes IPFetch) <strong>and</strong>
 running <code>QuitToLogin</code>. Without the second half, a client kicked or timed out on the login
-server was left with no visible panel at all: <code>UICharacterSelect</code> hides itself on any stop and
-<code>UILogin</code> never re-showed, so the only recovery was restarting the client.</p>
+server was left with no visible panel at all: <code>UITKCharacterSelect</code> hides itself on any stop and
+<code>UITKLogin</code> never re-showed, so the only recovery was restarting the client.</p>
 <p>That teardown also stages an <code>Unspecified</code> disconnect notice when the client is holding a
 session token, so the player is told <em>something</em> — a login server that restarts or times a
 connection out sends nothing, and <code>QuitToLogin</code> only surfaces a reason the server supplied. The
@@ -153,7 +153,7 @@ with no path forward. <code>OnConnectionAttemptFailed</code> fired in its place,
 cached login server list over what was a world server outage.</p>
 <p>The same gate covers the initial Login→World hop, which is also typed <code>ConnectingToWorld</code>.
 A world server that is down at server-select now retries with backoff behind the cancellable
-<code>UIReconnectDisplay</code> and ends in quit-to-login, rather than failing silently on the first try.</p>
+<code>UITKReconnectDisplay</code> and ends in quit-to-login, rather than failing silently on the first try.</p>
 <h2 id="connection-type-transitions">Connection Type Transitions</h2>
 <table>
 <thead>
@@ -262,12 +262,12 @@ that re-enables it, so the two cannot drift apart.</p>
 <ul>
 <li><strong>Non-destructive.</strong> The timeout re-enables the control and says so. Nothing is torn down and
 no connection is dropped, so a late reply is still handled normally when it lands.</li>
-<li><strong>It must not end the auth flow.</strong> <code>UILogin</code> and <code>UIRegister</code> gate their auth-result handler on
-<code>isAuthFlowActive</code>, which their <em>unlock</em> clears — so routing the timeout through the unlock
-would make the panel ignore a reply that arrives after the deadline, turning a slow login into
-a permanently stuck one. The timeout calls <code>ReleaseControls</code> instead, which touches only the
-widgets. A genuine disconnect still goes through the unlock, because then the flow really is
-over.</li>
+<li><strong>It must not end the auth flow.</strong> <code>UITKLogin</code> and <code>UITKRegister</code> gate their auth-result
+handler on <code>isAuthFlowActive</code>, which their <em>unlock</em> clears — so routing the timeout through
+the unlock would make the panel ignore a reply that arrives after the deadline, turning a
+slow login into a permanently stuck one. The timeout calls <code>ReleaseControls</code> instead, which
+only flips <code>SetEnabled</code> on the panel's own controls. A genuine disconnect still goes through
+the unlock, because then the flow really is over.</li>
 <li><strong>Progress refreshes it.</strong> Any auth result at all is proof the server is still working the
 request — the SRP exchange and the two-factor prompt both report progress before they finish,
 and a client can sit in the login queue for minutes. Each one buys the deadline again.</li>
