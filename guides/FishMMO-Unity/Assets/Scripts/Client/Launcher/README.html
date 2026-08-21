@@ -140,8 +140,21 @@
 <td><code>IUpdaterLauncher</code></td>
 <td><code>SystemUpdaterLauncher</code></td>
 </tr>
+<tr>
+<td>Presentation</td>
+<td><code>ILauncherView</code></td>
+<td><code>UGUILauncherView</code></td>
+</tr>
 </tbody>
 </table>
+<p>Rendering is behind <code>ILauncherView</code> so the state machine, version check, and patch flow exist
+once regardless of which UI technology draws them. <code>ClientLauncher</code> falls back to
+<code>UGUILauncherView</code> — built from the element references already serialized on it — whenever no
+view component is assigned, so existing scenes keep working untouched.</p>
+<p>The interface deliberately expresses intent (<em>show this status</em>) rather than widget
+manipulation (<em>set this label, activate that group</em>). The uGUI view has no dedicated status
+element and has to borrow the progress label and reveal its parent group to be seen at all;
+encoding that quirk in the interface would export one view's limitation to every other.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
 <thead>
@@ -237,6 +250,61 @@
 <blockquote>
 <p><strong>Why <code>htmlViewURL</code> defaults to empty.</strong> A non-empty default gets baked into the scene the first time it is saved, and the serialized copy then silently wins over the build-time configured value for every subsequent build — which is exactly how a stale hard-coded URL once shipped. Resolution happens at read time instead: <code>HtmlViewURL</code> falls back to <code>Constants.Configuration.LauncherHtmlUrl</code> whenever the override is blank.</p>
 </blockquote>
+<h3 id="player-settings">Player settings</h3>
+<p>Persisted in the shared <code>Configuration.GlobalSettings</code> file, the same store the in-game Options
+panel uses. The launcher loads it itself — only the Options panels did previously, and those
+live in the world scene, so nothing had read a settings file this early.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Launcher.AutoUpdate</code></td>
+<td><code>true</code></td>
+<td>Off stops at <code>UpdateAvailable</code> with the download size instead of patching straight away</td>
+</tr>
+<tr>
+<td><code>Launcher.RequestTimeout</code></td>
+<td>inspector value</td>
+<td>Per-request timeout, clamped 5–300s</td>
+</tr>
+<tr>
+<td><code>Launcher.MaxRetries</code></td>
+<td>inspector value</td>
+<td>Retries after a failure, clamped 0–10. Patch downloads only — the news fetcher stays at 0</td>
+</tr>
+<tr>
+<td><code>Launcher.RetryDelay</code></td>
+<td>inspector value</td>
+<td>Seconds between retries, clamped 0–30</td>
+</tr>
+<tr>
+<td><code>Launcher.PatchDirectory</code></td>
+<td>empty</td>
+<td>Where patch archives are stored. Empty uses the install's own <code>Patches</code> folder</td>
+</tr>
+<tr>
+<td><code>Launcher.WindowWidth</code> / <code>Height</code></td>
+<td>unset</td>
+<td>Last windowed size, restored on next launch</td>
+</tr>
+</tbody>
+</table>
+<p>The transfer tunables take the component's serialized value as their fallback, so an install
+where nothing has been changed behaves exactly as it did before these existed.</p>
+<p><code>Launcher.PatchDirectory</code> is <strong>not</strong> a &quot;move the game&quot; setting and cannot be one — the Updater
+patches files relative to its own location and ships beside the client binaries, so the install
+root is fixed by construction. It exists to keep large, transient archives off a small system
+drive. It must be an absolute path; anything unusable falls back to the default, and both the
+launcher and the Updater apply that same rule so they fall back together.</p>
+<p>Unity exposes no receive-buffer setting for <code>DownloadHandlerFile</code>, and on desktop
+<code>UnityWebRequest</code> defers to the platform HTTP stack — timeout, retry count and retry delay are
+the only real throughput controls available, which is why nothing else is offered.</p>
 <h3 id="ui-text">UI text</h3>
 <p>All player-facing strings are constants on the nested <code>UIText</code> class — status labels (<code>StatusPatchUnavailable</code>, <code>StatusServerRejectedVersion</code>, …), long-form explanations (<code>DetailPatchUnavailable</code>, <code>DetailApplyingPatch</code>, …), and log format strings. Change copy there, not at the call sites.</p>
 <h2 id="state-machine">State Machine</h2>
@@ -355,7 +423,7 @@
 <p><code>VersionConfig.Parse</code> returns <code>null</code> for malformed input rather than throwing, so both versions are null-checked explicitly. A null client version would otherwise compare as older than everything and start downloading a patch for a version the server has never heard of.</p>
 <p><code>PlayButtonUpdate()</code> then:</p>
 <ol>
-<li>Computes the destination as <code>Constants.GetPatchesDirectory()</code> + <code>Constants.GetPatchFileName(currentVersion, latestVersion)</code> — i.e. <code>&lt;install root&gt;/Patches/&lt;from&gt;-&lt;to&gt;.zip</code>. <strong>This path is a contract.</strong> The Updater resolves the same location from its own base directory and looks nowhere else; if the archive is not exactly there it reports &quot;patch file not found&quot;, relaunches the client unchanged, and the launcher detects the same mismatch on the next run. See the <a href="../../../../../FishMMO-Patcher/Updater/README.html">Updater README</a>.</li>
+<li>Computes the destination as <code>LauncherSettings.ResolvePatchDirectory(Constants.GetPatchesDirectory())</code> + <code>Constants.GetPatchFileName(currentVersion, latestVersion)</code> — by default <code>&lt;install root&gt;/Patches/&lt;from&gt;-&lt;to&gt;.zip</code>. <strong>This path is a contract</strong>, and it is now passed to the Updater as <code>-patches=&lt;dir&gt;</code> rather than derived independently on both sides. A disagreement fails silently: the Updater reports &quot;patch file not found&quot;, relaunches the client unchanged, and the launcher detects the same mismatch on the next run, forever. See the <a href="../../../../../FishMMO-Patcher/Updater/README.html">Updater README</a>.</li>
 <li>Downloads from the pinned host, verifying the SHA-256 when the server supplied one.</li>
 <li>If the server answers <strong>204 No Content</strong> mid-flight — the version we checked against was superseded, or we raced a deployment — no archive is written and the launcher goes straight to <code>ReadyToPlay</code> instead of invoking the Updater on a file that does not exist.</li>
 <li>Otherwise enters <code>ApplyingPatch</code> and starts the Updater. The archive is deliberately <strong>not</strong> deleted here: the Updater is about to read it, and removes it itself once applied.</li>
@@ -469,14 +537,19 @@
 </code></pre>
 <h2 id="project-structure">Project Structure</h2>
 <pre><code>Client/Launcher/
-├── ClientLauncher.cs            # MonoBehaviour: UI, state machine, orchestration
+├── ClientLauncher.cs            # MonoBehaviour: state machine, orchestration
 ├── LauncherState.cs             # The 15 UI/process states
 ├── PatchInfo.cs                 # Server patch metadata: UpToDate, PatchAvailable, Sha256, Size
 ├── VersionFetch.cs              # Version response parsing
 │
+├── ILauncherView.cs             # Contract: the presentation surface the state machine drives
+├── UGUILauncherView.cs          #   → legacy uGUI/TextMeshPro implementation
+├── HtmlToTmpTextConverter.cs    # News node tree → TextMeshPro rich text (uGUI view only)
+├── LauncherLinkPolicy.cs        # Scheme allowlist for opening news links (shared by all views)
+│
 ├── IPatchServerService.cs       # Contract: GetLatestVersion, DownloadPatch
 ├── HttpPatchServerService.cs    #   → HTTP implementation with SHA-256 verification
-├── IHtmlContentFetcher.cs       # Contract: fetch a page, extract a div's text
+├── IHtmlContentFetcher.cs       # Contract: fetch a page, extract a div as a parsed node
 ├── UnityHtmlContentFetcher.cs   #   → UnityWebRequest implementation
 ├── IUpdaterLauncher.cs          # Contract: start the external updater and hand off
 ├── SystemUpdaterLauncher.cs     #   → Process.Start implementation

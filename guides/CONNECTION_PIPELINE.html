@@ -1007,21 +1007,35 @@ than halfway through its life regardless of how long it has been standing still.
 them silently disables renewal for the rest of that session, which surfaces much later as a
 player dropped to the login screen on their next scene transfer.</p>
 <ol>
-<li><strong>Encrypt last.</strong> <code>EncryptTokenForSend</code> takes a sequence number from the connection's
+<li><p><strong>Encrypt last.</strong> <code>EncryptTokenForSend</code> takes a sequence number from the connection's
 server→client nonce context, and the client derives its decryption nonce from its own
 receive counter — the two advance in lock step and nothing on the wire re-synchronises
 them. A token that is encrypted but never delivered desynchronises them permanently. So
 every step that can fail (real-IP resolution, signing-key fetch, token build, DB write)
 must complete <em>before</em> encryption. If the broadcast itself throws, the connection is
-dropped so the client re-authenticates on a fresh channel.</li>
-<li><strong>One renewal at a time per connection.</strong> Two overlapping renewals take sequence numbers
+dropped so the client re-authenticates on a fresh channel.</p>
+</li>
+<li><p><strong>One renewal at a time per connection.</strong> Two overlapping renewals take sequence numbers
 <code>N</code> and <code>N+1</code> and may reach the main thread in either order. The client rejects anything
 that is not exactly the next sequence, so an inverted pair breaks both messages and every
-one after them. An in-flight guard per connection serialises them.</li>
-<li><strong>Never mint a token without a verified real IP.</strong> Scene <code>TokenAuth</code> requires <code>RealIp</code>
-(v4+), so a token minted without one is guaranteed to be rejected at the next hop.
-Aborting the renewal leaves the client holding its current, still-valid token — strictly
-better than replacing it with one that cannot work.</li>
+one after them. An in-flight guard per connection serialises them.</p>
+</li>
+<li><p><strong>Never mint a token without a verified real IP.</strong> Scene <code>TokenAuth</code> requires <code>RealIp</code>
+(v4+) wherever <code>requireTokenRealIp</code> is left enabled, so a token minted without one is
+guaranteed to be rejected at the next hop. Aborting the renewal leaves the client holding
+its current, still-valid token — strictly better than replacing it with one that cannot
+work.</p>
+<p><code>requireTokenRealIp</code> is a serialized field on <code>TokenServerAuthenticator</code>, default <strong>on</strong>,
+and should stay on for any deployment behind the L4 proxy: there <code>conn.GetAddress()</code> is the
+proxy's loopback for every client, so the token-embedded IP is the only one the handshake
+limiter can key off, and disabling it would put every pre-authentication client in a single
+bucket that one attacker can saturate. Turn it off only where clients reach the server
+directly. The Login Server recovers a real IP solely from an IPFetch-issued connection
+token, and that token is <em>optional</em> at the handshake — so a stack running without the proxy
+issues entirely valid auth tokens that carry no IP, and with the requirement on, every
+player is refused at world entry with <code>missing real IP</code>. Connecting directly is a supported
+local-testing configuration.</p>
+</li>
 </ol>
 <p><code>RenewTokenResponseBroadcast.Seq</code> is informational only; the client must not decrypt against
 it. A desynchronised counter has to surface as a decryption failure rather than as a
@@ -1070,6 +1084,16 @@ message until the retries run out.</p>
 <p>The notice is shown at the end of <code>QuitToLogin</code>, after the login panels are restored — a dialog
 opened before that is closed again by the panels' own quit-to-login handlers. It is cleared on
 any successful connection, so it can never outlive the session it describes.</p>
+<p><strong>A failed character-list fetch is a disconnect, not an empty list.</strong> The character-list
+request used to answer a database failure by sending an empty <code>CharacterListBroadcast</code>, which is
+byte-identical to what an account with no characters receives — so an unreachable database, or a
+schema missing a column the entity model expects, reached the player as <em>their characters having
+been deleted</em>, with nothing logged client-side because from the client's point of view the
+request succeeded. Both failure paths now send a <code>DisconnectNoticeReason.ServerError</code> notice,
+which prevents the client hanging just as effectively and says something true. It is
+deliberately <strong>non-terminal</strong> — a fetch can fail for reasons that clear on their own, such as a
+database restart — so the client stays free to retry. The genuinely-empty account is untouched
+and still receives its empty list.</p>
 <p><strong>Administrative kicks go through the same path.</strong> <code>KickRequestSystem</code> used <code>conn.Kick(...)</code>,
 which carries nothing to the client, so an operator kick landed the player on the login screen
 with no explanation <em>and</em> left their reconnect loop to spend all ten attempts dialling back into
@@ -1523,6 +1547,17 @@ zone change.</li>
 │  └─ Async worker backpressure + bounded channels            │
 └──────────────────────────────────────────────────────────────┘
 </code></pre>
+<p><strong>A disconnect clears the connection's own window, and only that.</strong> <code>ClearHandshakeRateLimit</code>
+is called on the connection-stopped path so a recycled <code>ClientId</code> — FishNet reuses them — does
+not inherit the previous occupant's 100 ms block on its first handshake. It clears the
+<code>conn:{ClientId}</code> key alone. The IP-keyed window deliberately <strong>survives the disconnect</strong>: it is
+a property of the address, not of the connection, and clearing it there would let any client
+reset its own per-IP handshake budget simply by reconnecting, which is exactly the flood the
+limiter exists to stop. The stopped path also never resolves an address-derived key, because the
+transport has already dropped its id mapping by then and the lookup would make FishNet log
+<code>TransportIdData could not be found</code> on every disconnect. The one place the window is cleared
+wholesale is login-queue admission, where the server is inviting a re-handshake on a connection
+that is still live.</p>
 <p><strong>A rate limit that refuses a client must also close the connection.</strong> Every limiter above is
 applied to a connection that is either not yet authenticated (dropped outright) or mid-request
 (answered with <code>ServerBusy</code> / <code>RateLimited</code>). The one exception was the scene server's
