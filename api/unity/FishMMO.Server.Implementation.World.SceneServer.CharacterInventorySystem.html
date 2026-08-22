@@ -528,7 +528,7 @@ public class CharacterInventorySystem : ServerBehaviour, IServerBehaviour&lt;INe
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterInventorySystem_SwapContainerItems_FishMMO_Shared_Core_IItemContainer_FishMMO_Shared_Core_IItemContainer_System_Int32_System_Int32_System_Collections_Generic_List_FishMMO_Shared_Item___System_Collections_Generic_List_System_Int64___System_Collections_Generic_List_FishMMO_Shared_Item___" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterInventorySystem.SwapContainerItems(FishMMO.Shared.Core.IItemContainer,FishMMO.Shared.Core.IItemContainer,System.Int32,System.Int32,System.Collections.Generic.List{FishMMO.Shared.Item}@,System.Collections.Generic.List{System.Int64}@,System.Collections.Generic.List{FishMMO.Shared.Item}@)">
   SwapContainerItems(IItemContainer, IItemContainer, int, int, out List&lt;Item&gt;, out List&lt;long&gt;, out List&lt;Item&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/CharacterInventory/CharacterInventorySystem.cs/#L1299"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/CharacterInventory/CharacterInventorySystem.cs/#L1340"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Swaps items between two containers and collects affected items and deleted slots.</p>
@@ -625,6 +625,71 @@ public class CharacterInventorySystem : ServerBehaviour, IServerBehaviour&lt;INe
 
 
 
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_CharacterInventorySystem_SwapContainerItems_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterInventorySystem.SwapContainerItems*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterInventorySystem_SwapContainerItems_FishMMO_Shared_Core_IItemContainer_System_Int32_System_Int32_System_Collections_Generic_List_FishMMO_Shared_Item___System_Int32__" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterInventorySystem.SwapContainerItems(FishMMO.Shared.Core.IItemContainer,System.Int32,System.Int32,System.Collections.Generic.List{FishMMO.Shared.Item}@,System.Int32@)">
+  SwapContainerItems(IItemContainer, int, int, out List&lt;Item&gt;, out int)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/CharacterInventory/CharacterInventorySystem.cs/#L1302"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Swaps two items within the same container, reporting both the affected items and any
+slot the swap left empty.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool SwapContainerItems(IItemContainer container, int fromIndex, int toIndex, out List&lt;Item&gt; affectedItems, out int vacatedSlot)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>container</code> <a class="xref" href="FishMMO.Shared.Core.IItemContainer.html">IItemContainer</a></dt>
+    <dd><p>Item container to swap items in.</p>
+</dd>
+    <dt><code>fromIndex</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>Source slot index.</p>
+</dd>
+    <dt><code>toIndex</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>Target slot index.</p>
+</dd>
+    <dt><code>affectedItems</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<a class="xref" href="FishMMO.Shared.Item.html">Item</a>&gt;</dt>
+    <dd><p>Out: list of items whose slots changed.</p>
+</dd>
+    <dt><code>vacatedSlot</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>Out: slot the swap emptied, or -1 when both slots stay filled.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if swap succeeded, false otherwise.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_CharacterInventorySystem_SwapContainerItems_FishMMO_Shared_Core_IItemContainer_System_Int32_System_Int32_System_Collections_Generic_List_FishMMO_Shared_Item___System_Int32___remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The vacated slot is the whole reason this overload exists. Item rows are keyed
+<code>(character_id, slot)</code>, so a move onto an EMPTY slot writes the item at its new
+index and leaves the row at the old index untouched — the same item persisted twice.
+Only the write side was emitted here before, because <code class="paramref">affectedItems</code>
+collects non-null items and a move-to-empty produces exactly one of them, which reads
+like a complete description of the change and is not.</p>
+<p>
+The 60-second snapshot prunes the stale row, so this never survived a clean shutdown —
+but "duplicated until the next snapshot, permanently if the scene server dies first" is
+not a guarantee worth relying on when the delete costs one list entry.
+</p>
+</div>
 
 
 

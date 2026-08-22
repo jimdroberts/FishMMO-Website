@@ -659,6 +659,21 @@ failed&quot;, and left the character-select deadline armed underneath it. The re
 (<code>TryBeginInFlightRequest</code>) is answered too — its cooldown is two seconds, comfortably short
 enough for a player to hit by picking a different character straight after an
 <code>OtherCharacterInWorld</code> refusal.</p>
+<p><strong>The character list and the selection hold separate gates.</strong> Both are per-connection
+in-flight/cooldown pairs, and they used to be <em>one</em> pair, shared. The client requests the
+character list automatically on arrival and the player clicks Play immediately afterwards —
+well inside the two seconds the list request had just armed — so the selection was refused by
+the list's cooldown and reached the player as &quot;Character selection failed. Please try again.&quot;
+Waiting a moment and clicking again worked, which is exactly what made it look intermittent
+rather than systematic: the selection failed <em>because</em> it followed the list promptly, which is
+the normal way to arrive at it.</p>
+<p>They are different operations and are rate-limited separately. The list is worth throttling —
+a player can hold down Refresh — whereas a selection is a single deliberate act that follows
+the list immediately by design. <code>TryBeginListRequest</code>/<code>EndListRequest</code> own
+<code>InFlightListRequests</code> and <code>NextAllowedListRequestUtc</code>; <code>TryBeginInFlightRequest</code>/
+<code>EndInFlightRequest</code> continue to own <code>InFlightRequests</code> and <code>NextAllowedRequestUtc</code> for select
+and delete. Both pairs are released when the connection drops, since either leaks the same way
+if it is not.</p>
 <h3 id="phase-8-world-server-connection">Phase 8: World Server Connection</h3>
 <pre><code class="lang-mermaid">sequenceDiagram
     participant Client as Client
