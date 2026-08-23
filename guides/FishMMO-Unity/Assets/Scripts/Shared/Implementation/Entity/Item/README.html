@@ -224,7 +224,7 @@
 <tr>
 <td><code>Slot</code></td>
 <td><code>ItemSlot</code></td>
-<td>Equipment slot (Head, Chest, Legs, etc.)</td>
+<td>Equipment slot (Head, Chest, Legs, etc.) — see <a href="#itemslot-is-numbered-by-contract">ItemSlot is numbered by contract</a></td>
 </tr>
 <tr>
 <td><code>MaxItemAttributes</code></td>
@@ -279,6 +279,77 @@
 </tr>
 </tbody>
 </table>
+<h3 id="itemslot-is-numbered-by-contract">ItemSlot is numbered by contract</h3>
+<p><strong>Every member of <code>ItemSlot</code> is explicitly numbered, and must stay that way.</strong></p>
+<p>Item templates are ScriptableObjects and serialize this enum as its <strong>integer</strong>, so the number
+is the contract — not the name and not the position in the declaration.</p>
+<p>Inserting <code>Shoulders</code> at index 2 once shifted every slot below <code>Hands</code> in every already-authored
+asset: leggings became shoulders, boots became legs, a sword became feet and a shield became
+back. Nothing errored, because each value was still a valid slot — the items simply equipped to
+the wrong part of the body, and the only symptom was a sword on someone's feet.</p>
+<table>
+<thead>
+<tr>
+<th>Slot</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Head</code></td>
+<td>0</td>
+</tr>
+<tr>
+<td><code>Chest</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>Shoulders</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td><code>Hands</code></td>
+<td>3</td>
+</tr>
+<tr>
+<td><code>Legs</code></td>
+<td>4</td>
+</tr>
+<tr>
+<td><code>Feet</code></td>
+<td>5</td>
+</tr>
+<tr>
+<td><code>Back</code></td>
+<td>6</td>
+</tr>
+<tr>
+<td><code>Primary</code></td>
+<td>7</td>
+</tr>
+<tr>
+<td><code>Secondary</code></td>
+<td>8</td>
+</tr>
+<tr>
+<td><code>Accessory</code></td>
+<td>9</td>
+</tr>
+</tbody>
+</table>
+<p>Add new slots at the <strong>end</strong> with the next free number. Never insert, never reorder, and never
+reuse the number of a slot that has been removed.</p>
+<p>Two consequences worth knowing:</p>
+<ul>
+<li><strong>Renumbering does not migrate saved data.</strong> A character's equipment is persisted with
+whatever integer the template held when it was saved, so correcting a template does not
+correct rows already written against the old numbering.</li>
+<li><strong><code>FishMMO &gt; Validate &gt; Equipment Item Slots</code></strong> cross-checks every equippable template's
+<code>Slot</code> against the folder it is filed under, because the folder independently records what a
+human meant when they filed the asset. It reports mismatches rather than correcting them: a
+template deliberately filed somewhere that does not match its slot is legitimate, and the tool
+cannot tell that apart from a mistake.</li>
+</ul>
 <h3 id="container-sizes">Container Sizes</h3>
 <table>
 <thead>
@@ -306,6 +377,11 @@
 </tr>
 </tbody>
 </table>
+<p>Containers are pre-sized with empty slots at <code>OnAwake</code> (<code>AddSlots(null, count)</code>), so
+<code>Items.Count</code> <strong>is</strong> the capacity and an empty slot is a <code>null</code> entry rather than a missing one.
+The inventory and bank panels size their grids from that count rather than from how many slots
+hold something: an empty slot is what a player drops an item onto, and what shows them the room
+they have.</p>
 <h2 id="usage-examples">Usage Examples</h2>
 <h3 id="data-model">Data Model</h3>
 <h4 id="item-instance">Item Instance</h4>

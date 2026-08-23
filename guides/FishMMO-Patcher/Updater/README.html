@@ -473,13 +473,43 @@ player's only view of what happened. Run the updater from a terminal when
 diagnosing a failed update.</p>
 <hr>
 <h2 id="build">Build</h2>
-<pre><code class="lang-bash">dotnet build Updater.sln -c Release
-# Or publish a self-contained single-file binary for shipping:
-dotnet publish Updater/Updater.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
-dotnet publish Updater/Updater.csproj -c Release -r win-x64   --self-contained true -p:PublishSingleFile=true
+<p>The .NET apphost is platform- <strong>and</strong> architecture-specific, so there is no single
+binary that serves both a Windows and a Linux client — each target needs its own
+publish. All targets cross-publish from any host, so one machine produces the whole
+set.</p>
+<pre><code class="lang-bash"># From FishMMO-Patcher/ — publishes win-x64 and linux-x64, the two targets Unity
+# builds a standalone client for.
+./publish-updater.sh
+
+./publish-updater.sh --all              # every RID in Updater.csproj
+./publish-updater.sh linux-arm64        # an explicit list
 </code></pre>
-<p>Ship the resulting binary alongside the launcher, plus the <code>Patches/</code> directory
-populated by the patch generator.</p>
+<p><code>publish-updater.ps1</code> is the same script for Windows hosts.</p>
+<p>Under the hood that is one <code>dotnet publish</code> per RID:</p>
+<pre><code class="lang-bash">dotnet publish Updater/Updater.csproj -c Release -r win-x64
+dotnet publish Updater/Updater.csproj -c Release -r linux-x64
+</code></pre>
+<p>No <code>--self-contained</code> / <code>-p:PublishSingleFile</code> flags are needed: <code>Updater.csproj</code>
+applies the shipping shape (self-contained, single-file, compressed, invariant
+globalization) automatically whenever a RuntimeIdentifier is set. A plain
+<code>dotnet build Updater.sln -c Release</code> still produces a framework-dependent build for
+local development.</p>
+<p>Output lands in <code>Updater/bin/Release/net8.0/&lt;rid&gt;/publish/Updater[.exe]</code>.</p>
+<p><strong>Self-contained is a requirement, not an optimisation.</strong> The updater runs on player
+machines with no .NET runtime installed, at the one moment the client cannot report an
+error — the launcher has already shut itself down. A framework-dependent updater fails
+there with a bare &quot;you must install .NET&quot; on a stdout nobody is reading.</p>
+<p><strong>Portable RIDs only.</strong> A distro-specific RID — an Arch/CachyOS SDK reports its own as
+<code>arch-x64</code> — has no runtime pack on nuget.org and would pin the output to that distro.
+<code>linux-x64</code> runs on Arch and every other glibc distro precisely because it is not
+distro-specific.</p>
+<h3 id="shipping">Shipping</h3>
+<p>The FishMMO Dashboard does this for you: a Client build copies the matching per-RID
+publish output into the build root (and publishes it on demand if it is missing or
+older than the Updater sources). See
+<code>BuildExecutor.CopyUpdaterToBuild</code> in the Unity project.</p>
+<p>Shipping by hand: put the binary alongside the client executable, plus the <code>Patches/</code>
+directory populated by the patch generator.</p>
 <hr>
 <h2 id="flow-diagram">Flow Diagram</h2>
 <pre><code class="lang-mermaid">flowchart TD
