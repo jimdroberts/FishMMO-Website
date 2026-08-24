@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>AI System (NPC &amp; Pet) | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="AI System (NPC &amp; Pet) | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="ai-system-npc--pet">AI System (NPC &amp; Pet)</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Server-authoritative NPC brain — a tick-driven state machine over data-defined archetypes, with a shared combat decision core, threat tracking, NavMesh movement with stuck recovery, multi-attacker spacing, and distance-based level of detail.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guide">Quick Start Guide</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>Every NPC and pet is driven by one <code>AIController</code>, which runs a <code>BaseAIState</code> machine on the FishNet <code>TimeManager</code> tick. The controller is server-only — it disables itself on any peer that is not running a server.</p>
+<p>The system is layered so that <strong>archetypes are data, not code</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIArchetypeTemplate</code></td>
+<td>One asset that is a whole brain: which states, which personality, which threat tuning, which LOD profile.</td>
+</tr>
+<tr>
+<td><code>BaseAIState</code> machine</td>
+<td>Execution. What the NPC is doing right now.</td>
+</tr>
+<tr>
+<td><code>AICombatDecision</code></td>
+<td>A pure function over plain floats that every attacking state shares.</td>
+</tr>
+<tr>
+<td><code>AICombatPersonality</code></td>
+<td>Ability preferences, flee threshold, targeting mode.</td>
+</tr>
+<tr>
+<td><code>AIAbilityRotation</code></td>
+<td>Optional condition-driven ability selection, evaluated before the default scorer.</td>
+</tr>
+<tr>
+<td><code>AIBehaviorTree</code></td>
+<td>Optional decision layer above the state machine, for scripted and boss encounters.</td>
+</tr>
+<tr>
+<td><code>AggressionController</code></td>
+<td>Threat table and target selection.</td>
+</tr>
+</tbody>
+</table>
+<p>Melee, archer, caster, healer, defender and rogue behaviour all fall out of four serialized numbers fed into the shared decision — <code>PreferredDistance</code>, <code>MinComfortDistance</code>, <code>EmergencyRetreatThreshold</code>, and the controller's personality. A designer builds a new archetype by creating an asset, not by writing a class. Only three archetypes carry code, because they need something the numbers cannot express: healers scan for injured allies, defenders body-block for one, and rogues open from a target's rear arc.</p>
+<p>Because the decision is a pure function over plain floats, an archetype's behaviour is directly assertable in an EditMode test — a &quot;pathetic&quot; critter can be proven to flee where a &quot;raging&quot; one does not, without a scene.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Server-authoritative; the controller disables itself on clients</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Server-authoritative</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only system</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Unity Version:</strong> Unity 6.3 LTS</li>
+<li><strong>Scripting Backend:</strong> IL2CPP</li>
+</ul>
+<h2 id="features">Features</h2>
+<h3 id="timing">Timing</h3>
+<ul>
+<li><strong>Tick-driven, not frame-driven.</strong> The brain runs on <code>TimeManager.OnTick</code>, the same fixed 30 Hz clock as prediction, cooldowns and ability activation. <code>AiTickRate</code> (default 8 Hz) is rounded to a whole divisor of the network tick so the brain is phase-locked and never drifts. <code>EffectiveAiTickRate</code> reports what a requested rate resolved to.</li>
+<li><strong>Exact deltas.</strong> Elapsed time per AI tick is computed from the fixed tick rate, not measured from a variable frame. There is no drift to correct and no spike to clamp.</li>
+<li><strong>Facing runs on the network tick</strong>, matching the <code>NetworkTransform</code> send rate — faster is work nobody sees, slower makes an NPC's head snap between orientations while its position interpolates smoothly. Smoothing is <code>1 - e^(-rate * dt)</code>, which is identical at any step size.</li>
+<li><strong>Deterministic stagger.</strong> NPCs are spread across the tick interval by a monotonic AI tick index, so the spread is identical on a server running at 200 FPS and one at 30.</li>
+</ul>
+<h3 id="level-of-detail">Level of detail</h3>
+<ul>
+<li>Four tiers by distance to the nearest player observer, each with its own update interval in AI ticks: <strong>Active</strong> (full pipeline), <strong>Nearby</strong> (no behaviour tree, no boss script, no proactive sweep — combat still works, entry is event-driven), <strong>Far</strong> (movement only, combat disengages), <strong>Dormant</strong> (wake-up check only).</li>
+<li>Three profiles ship: <code>Standard AI LOD</code>, <code>Dense Population AI LOD</code>, <code>Companion AI LOD</code> (pets stay responsive — they are always beside the player and always on screen).</li>
+</ul>
+<h3 id="combat">Combat</h3>
+<ul>
+<li>One <code>BaseAttackingState</code> shared by every archetype, plus <code>HealerAttackingState</code>, <code>DefenderAttackingState</code> and <code>RogueAttackingState</code> where behaviour cannot be expressed as tuning.</li>
+<li><strong>Range hysteresis.</strong> An NPC already attacking tolerates a target drifting 10% past its ability range before giving chase. Without it a strafing target flips the NPC between Attack and CloseDistance every tick, toggling <code>isStopped</code> and making it shudder in place.</li>
+<li><strong>Combat slots.</strong> Several attackers on one target claim distinct angular slots around it rather than all pathing to the same point. Ring capacity is derived from geometry — how many agents of a given radius fit on a circle — and overflow attackers form a staggered second rank.</li>
+<li><strong>Unreachable-target break-off.</strong> A target standing somewhere the NPC cannot path to produces a partial path; the NPC gives up after <code>UnreachableTargetTimeout</code> and drops that target's threat so the next sweep does not immediately re-acquire it.</li>
+<li>Personality styles: Balanced, Aggressive, Defensive, Cautious, Berserker, <strong>Pathetic</strong>, <strong>Determined</strong>, <strong>Rampaging</strong>. A Pathetic personality is guaranteed a retreat threshold even if the field is left at zero; fearless styles ignore one entirely.</li>
+<li>Targeting modes: Threat, Random, Weakest, Nearest. Rampaging forces Random and re-rolls onto a new victim mid-fight, so it cannot be held by threat or by a taunt.</li>
+</ul>
+<h3 id="movement">Movement</h3>
+<ul>
+<li>Destination requests report what actually happened: <code>Complete</code>, <code>Partial</code>, <code>Failed</code> or <code>Throttled</code>. Unity does not fail a path to an unreachable destination — it silently returns the closest reachable point — so callers need to tell those apart.</li>
+<li><code>HasArrived</code> requires a complete path to exist. An agent whose destination never took reports zero remaining distance and no pending path, which the naive test reads as &quot;arrived&quot;.</li>
+<li>NavMesh sampling widens on retry rather than silently doing nothing.</li>
+<li><strong>Stuck detection and escalating recovery</strong>: re-sample and repath first, warp only after the NPC has visibly failed to walk out. Every combat manoeuvre is time-bounded so it can give up.</li>
+<li><code>WarpTo</code> is used on spawn and pool reuse, because a recycled NPC's agent still believes it is where the previous occupant died.</li>
+</ul>
+<h3 id="pets">Pets</h3>
+<ul>
+<li>A pet's <code>Home</code> <strong>is its owner</strong> — the property resolves to the owner's live position, so every leash check, wander radius and return-home destination tracks them automatically. A Stay order pins it to the held position instead.</li>
+<li>Pet-specific combat rules live in <code>BaseAttackingState</code>, not a subclass, so a pet healer, defender or rogue behaves like a pet without inheriting from the wrong place.</li>
+<li>Follow uses a hysteresis band, a distance leash, and a time-based stuck teleport — a pet jammed behind a crate five metres from its owner never trips a distance check.</li>
+</ul>
+<h3 id="threat">Threat</h3>
+<ul>
+<li><code>AggressionDispatcher</code> takes <strong>one</strong> global subscription for the process. Damage dispatches by dictionary lookup on the defender — O(1) regardless of NPC count. Previously every NPC subscribed individually, so one sword swing invoked one delegate per NPC alive.</li>
+<li>Threat decay and staleness share a single tick-advanced <code>Clock</code>, so expiry means &quot;this many seconds of AI time without an event&quot; rather than wall-clock time that disagreed with the decay whenever LOD throttled the NPC.</li>
+<li><code>ApplyTauntAction</code> and <code>ApplyThreatAction</code> are ECA actions that let abilities generate threat: a taunt guarantees top threat rather than adding a flat bonus a long fight has already outgrown.</li>
+</ul>
+<h3 id="behaviour-trees">Behaviour trees</h3>
+<ul>
+<li>Optional layer above the state machine, edited visually via <code>FishMMO &gt; Behavior Tree Editor</code> or the Open button on a tree in the FishMMO Dashboard.</li>
+<li>The editor refuses connections that would make a tree cyclic, and the runtime carries a depth guard so a hand-edited or badly-merged asset degrades to a failed evaluation instead of a stack overflow that terminates the server process.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.3 LTS</strong></li>
+<li><strong>Unity AI Navigation</strong> — <code>NavMeshAgent</code>, <code>NavMesh</code></li>
+<li><strong>FishNetworking</strong> — <code>NetworkBehaviour</code>, <code>TimeManager</code>, object pooling</li>
+<li><strong>FishMMO Shared Core</strong> — <code>ICharacter</code>, <code>IAIController</code>, <code>IAbilityController</code>, <code>ICooldownController</code>, <code>ICharacterDamageController</code>, <code>IFactionController</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>Integrated module within the FishMMO Shared assembly. No separate installation.</p>
+<p>An NPC prefab requires <code>AIController</code>, <code>CharacterPredictionController</code>, <code>AbilityController</code>, <code>CooldownController</code> and <code>EnablePrediction</code> on its <code>NetworkObject</code>. <code>NPC</code>'s <code>RequireComponent</code> attributes add the components automatically; <code>FishMMO &gt; AI &gt; Repair NPC Prefabs For Combat</code> migrates existing prefabs and enables prediction.</p>
+<h2 id="quick-start-guide">Quick Start Guide</h2>
+<ol>
+<li>Create an archetype: <code>FishMMO &gt; Character &gt; NPC &gt; AI &gt; Archetype</code>, or start from one of the 16 shipped assets under <code>Assets/Templates/Entity/NPCs/AI/Archetypes/</code>.</li>
+<li>Assign it to <code>AIController.Archetype</code> on the NPC prefab. Every other state and tuning slot fills itself in at spawn; anything left null on the archetype keeps whatever the prefab already had.</li>
+<li>Populate <code>NPC.Abilities</code> with <code>AbilityTemplate</code>s — <strong>an NPC with no abilities will chase its target and never strike</strong>.</li>
+<li>Run <code>FishMMO &gt; AI &gt; Audit NPC Prefabs</code> to confirm the prefab is wired for combat.</li>
+<li>Run <code>FishMMO &gt; AI &gt; Validate Archetypes</code> to confirm the archetype is internally consistent.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="aicontroller">AIController</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Archetype</code></td>
+<td><code>null</code></td>
+<td>Fills every state and tuning slot below</td>
+</tr>
+<tr>
+<td><code>AiTickRate</code></td>
+<td><code>8</code></td>
+<td>Brain updates per second; 5–10 is the useful band</td>
+</tr>
+<tr>
+<td><code>TurnRate</code></td>
+<td><code>8</code></td>
+<td>Facing smoothing rate; higher is snappier</td>
+</tr>
+<tr>
+<td><code>EnemySweepRate</code></td>
+<td><code>1.5</code></td>
+<td>Seconds between out-of-combat hostile sweeps</td>
+</tr>
+<tr>
+<td><code>RepathInterval</code></td>
+<td><code>0.5</code></td>
+<td>Minimum seconds between throttled <code>SetDestination</code> calls</td>
+</tr>
+<tr>
+<td><code>StuckTimeout</code></td>
+<td><code>2.5</code></td>
+<td>Seconds of no progress before the NPC counts as stuck</td>
+</tr>
+<tr>
+<td><code>StuckWarpTimeout</code></td>
+<td><code>8.0</code></td>
+<td>Seconds stuck before it is warped free; 0 disables</td>
+</tr>
+<tr>
+<td><code>AvoidancePriority</code></td>
+<td><code>Medium</code></td>
+<td>NavMeshAgent avoidance priority</td>
+</tr>
+<tr>
+<td><code>AggressionDamageWeight</code></td>
+<td><code>1.0</code></td>
+<td>Threat per point of damage taken</td>
+</tr>
+<tr>
+<td><code>AggressionHealingWeight</code></td>
+<td><code>0.6</code></td>
+<td>Threat per point of healing witnessed</td>
+</tr>
+<tr>
+<td><code>AggressionHitBonus</code></td>
+<td><code>5.0</code></td>
+<td>Flat threat per hit</td>
+</tr>
+<tr>
+<td><code>AggressionDecayRate</code></td>
+<td><code>3.0</code></td>
+<td>Threat lost per second</td>
+</tr>
+<tr>
+<td><code>AggressionStaleTimeout</code></td>
+<td><code>30.0</code></td>
+<td>Seconds before a drained entry is forgotten</td>
+</tr>
+<tr>
+<td><code>AggressionVarietyChance</code></td>
+<td><code>0.15</code></td>
+<td>Chance of picking the second-highest threat</td>
+</tr>
+</tbody>
+</table>
+<h3 id="baseattackingstate">BaseAttackingState</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PreferredDistance</code></td>
+<td><code>0</code></td>
+<td>Working distance; 0 = close to melee reach</td>
+</tr>
+<tr>
+<td><code>MinComfortDistance</code></td>
+<td><code>0</code></td>
+<td>Distance below which the NPC backs away; 0 = never</td>
+</tr>
+<tr>
+<td><code>EmergencyRetreatThreshold</code></td>
+<td><code>0.5</code></td>
+<td>Fraction of comfort distance that triggers an interrupt-and-run</td>
+</tr>
+<tr>
+<td><code>AttackCooldown</code> / <code>AttackCooldownJitter</code></td>
+<td><code>1.5</code> / <code>0.5</code></td>
+<td>Pacing between activations</td>
+</tr>
+<tr>
+<td><code>TargetReevaluationRate</code></td>
+<td><code>3.0</code></td>
+<td>Seconds between mid-combat re-targeting</td>
+</tr>
+<tr>
+<td><code>AggressionSwitchThreshold</code></td>
+<td><code>50</code></td>
+<td>Threat lead required to switch targets</td>
+</tr>
+<tr>
+<td><code>VarietyStates</code> / <code>MovementVarietyChance</code></td>
+<td><code>[]</code> / <code>0</code></td>
+<td>Optional positioning manoeuvres</td>
+</tr>
+<tr>
+<td><code>UseCombatSlots</code></td>
+<td><code>true</code></td>
+<td>Spread multiple attackers into a ring</td>
+</tr>
+<tr>
+<td><code>UnreachableTargetTimeout</code></td>
+<td><code>6.0</code></td>
+<td>Seconds before breaking off an unreachable target</td>
+</tr>
+<tr>
+<td><code>OwnerLeashRange</code></td>
+<td><code>30</code></td>
+<td>Pets only: distance from owner before breaking off</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ailodsettings">AILodSettings</h3>
+<p>Intervals are counted in <strong>AI ticks</strong>, not frames. At the default 8 Hz brain, the <code>Standard AI LOD</code> intervals of 1 / 3 / 10 / 40 give roughly 8 Hz, 2.7 Hz, 0.8 Hz and 0.2 Hz.</p>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="editor-tooling">Editor tooling</h3>
+<table>
+<thead>
+<tr>
+<th>Menu</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FishMMO &gt; AI &gt; Repair NPC Prefabs For Combat</code></td>
+<td>Adds missing ability-pipeline components and enables prediction</td>
+</tr>
+<tr>
+<td><code>FishMMO &gt; AI &gt; Audit NPC Prefabs</code></td>
+<td>Reports prefabs that cannot fight, and why</td>
+</tr>
+<tr>
+<td><code>FishMMO &gt; AI &gt; Validate Archetypes</code></td>
+<td>Reports archetypes whose configuration cannot behave as described</td>
+</tr>
+<tr>
+<td><code>FishMMO &gt; AI &gt; Organize AI Assets</code></td>
+<td>Files every AI asset into the canonical folder layout</td>
+</tr>
+<tr>
+<td><code>FishMMO &gt; AI &gt; Re-serialize AI Assets</code></td>
+<td>Writes newly added serialized fields into the asset YAML</td>
+</tr>
+<tr>
+<td><code>FishMMO &gt; Behavior Tree Editor</code></td>
+<td>Visual behaviour tree graph editor</td>
+</tr>
+<tr>
+<td><code>FishMMO &gt; Validate Network Timing</code></td>
+<td>Confirms every scene agrees on tick rate</td>
+</tr>
+</tbody>
+</table>
+<h3 id="asset-layout">Asset layout</h3>
+<pre><code>Assets/Templates/Entity/NPCs/AI/
+├── Archetypes/        # AIArchetypeTemplate — the asset to assign to a prefab
+├── Personalities/     # AICombatPersonality
+├── States/
+│   ├── Attack/        # BaseAttackingState and subclasses
+│   ├── Combat/        # Orbit, flank, flee — combat positioning sub-states
+│   ├── Movement/      # Idle, wander, patrol, return home
+│   └── Pet/           # Pet follow states
+├── Rotations/         # AIAbilityRotation
+├── Conditions/        # AIAbilityCondition
+├── BehaviorTrees/     # AIBehaviorTree
+├── BehaviorNodes/     # AIBehaviorNode
+├── Boss/              # BossScript
+└── LOD/               # AILodSettings
+</code></pre>
+<h3 id="shipped-archetypes">Shipped archetypes</h3>
+<p><strong>Enemy</strong> — Melee, Brute, Pathetic Critter, Raging Beast, Archer, Caster, Crowd Controller, Healer, Defender, Rogue.
+<strong>Pet</strong> — Melee, Archer, Caster, Healer, Defender, Rogue.</p>
+<h3 id="combat-sub-states-and-keepscombattarget">Combat sub-states and <code>KeepsCombatTarget</code></h3>
+<p>A state entered mid-fight for positioning (orbit, flank, flee) must have <code>KeepsCombatTarget</code> enabled. <code>BaseAttackingState.Exit</code> clears the combat target and interrupts the cast, which is correct on a disengage and catastrophic on a manoeuvre — the sub-state is handed a null target and bails straight to idle, silently ending the fight. <code>Validate</code> reports any variety or retreat state missing the flag.</p>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Brain is ticking</td>
+<td><code>AIController.EffectiveAiTickRate</code> reports the resolved rate; at 30 Hz network tick and 8 Hz requested it is 7.5</td>
+</tr>
+<tr>
+<td>Archetype applied</td>
+<td>State slots on the controller are populated at spawn even when the prefab left them empty</td>
+</tr>
+<tr>
+<td>NPC can fight</td>
+<td><code>FishMMO &gt; AI &gt; Audit NPC Prefabs</code> reports no problems</td>
+</tr>
+<tr>
+<td>Archetypes valid</td>
+<td><code>FishMMO &gt; AI &gt; Validate Archetypes</code> reports all valid</td>
+</tr>
+<tr>
+<td>LOD engaged</td>
+<td>Move a player away from an NPC; its update rate should drop through Nearby, Far and Dormant</td>
+</tr>
+<tr>
+<td>Threat dispatch</td>
+<td>Damage an NPC and confirm only that NPC's threat table changes</td>
+</tr>
+<tr>
+<td>Taunt</td>
+<td>Attach <code>ApplyTauntAction</code> to an ability's on-hit event; confirm the target switches to the taunter and stays</td>
+</tr>
+<tr>
+<td>Multi-attacker spacing</td>
+<td>Pull three or more melee NPCs onto one target; they should form a ring, not a scrum</td>
+</tr>
+<tr>
+<td>Pet follow</td>
+<td>Run a player through doorways and around props; the pet should keep up without wedging</td>
+</tr>
+<tr>
+<td>Pet stance</td>
+<td>Passive never engages, Defensive answers an attack on the owner, Aggressive hunts</td>
+</tr>
+<tr>
+<td>Stuck recovery</td>
+<td>Wedge an NPC against geometry; it should repath, then warp free after <code>StuckWarpTimeout</code></td>
+</tr>
+<tr>
+<td>Behaviour tree cycle safety</td>
+<td>Connect a node to its own ancestor in the editor; the connection is refused</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="tick-pipeline">Tick pipeline</h3>
+<pre><code class="lang-mermaid">flowchart TD
+    Tick[TimeManager.OnTick 30 Hz] --&gt; Face[FaceLookTarget]
+    Tick --&gt; Gate{AI tick gate&lt;br/&gt;every Nth network tick}
+    Gate --&gt;|no| Done[return]
+    Gate --&gt;|yes| Lod{LOD tier}
+    Lod --&gt;|Dormant| Done
+    Lod --&gt;|Far| Far[Leash + movement state]
+    Lod --&gt;|Nearby| Near[Leash + state + camera + threat]
+    Lod --&gt;|Active| Act[Sweep + leash + BT + boss + state + camera + threat]
+</code></pre>
+<h3 id="combat-decision">Combat decision</h3>
+<pre><code>BaseAttackingState.UpdateState
+│
+├─ 1. Tick attack pacing timer
+├─ 2. Pet leash check (Home tracks the owner)
+├─ 3. Target lost or dead?  → sweep for a new one, else OnCombatEnded
+├─ 4. TryAttack
+│      ├─ Activation in progress? → hold and auto-release charged abilities
+│      ├─ Roll for a movement-variety manoeuvre
+│      ├─ PickAbility (rotation → personality-weighted scorer)
+│      ├─ BuildContext (distance, spacing, health, personality, was-attacking)
+│      ├─ AICombatDecision.Plan → intent
+│      └─ ExecutePlan
+│           ├─ Flee              → RetreatState
+│           ├─ EmergencyRetreat  → interrupt, break away
+│           ├─ BackAway          → retreat, optionally firing on the way out
+│           ├─ Attack            → stop and activate
+│           ├─ CloseDistance     → move to a claimed combat slot
+│           └─ HoldPosition      → stand and wait
+└─ 5. ReevaluateTarget (threat lead, or rampage re-roll)
+</code></pre>
+<h3 id="movement-outcome">Movement outcome</h3>
+<pre><code>TryMoveTo(destination)
+│
+├─ Agent unusable      → Failed
+├─ Repath throttled    → Throttled
+├─ NavMesh sample fails (widening retries) → Failed
+├─ Path is partial     → Partial   (destination unreachable; do NOT treat stopping as arriving)
+└─ Path is complete    → Complete
+
+GetMovementProgress(dt)
+│
+├─ Stopped / no path            → Idle
+├─ Path pending                 → Computing
+├─ Complete path within tolerance → Arrived
+├─ Wants to move but is not,
+│  or stranded on a partial path → Stuck (after StuckTimeout)
+└─ otherwise                    → Moving
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>AI/
+├── AIController.cs                # Brain: tick pipeline, state machine, LOD, threat wiring
+├── AIController.Movement.cs       # Destination requests, arrival, stuck detection and recovery
+├── AIArchetypeTemplate.cs         # One asset = one complete brain, plus Validate()
+├── AICombatPersonality.cs         # Styles, ability weights, flee threshold, targeting mode
+├── AITargetingMode.cs
+├── AIAbilityRotation.cs           # Condition-driven ability selection
+├── AILodSettings.cs               # Distance tiers and per-tier tick intervals
+├── AggressionController.cs        # Threat table, tick-advanced clock, target scoring
+├── AggressionState.cs             # Per-NPC threat state and combat-entry event
+├── AggressionDispatcher.cs        # One global subscription; O(1) damage routing
+├── AggressionEntry.cs
+├── AgentAvoidancePriority.cs
+├── PackTactic.cs
+├── AIUtility.cs
+├── Combat/
+│   ├── AICombatDecision.cs        # The shared, Unity-free combat decision
+│   ├── AICombatIntent.cs
+│   ├── AICombatSlots.cs           # Ring slotting so attackers do not converge on one point
+│   ├── AIMovementResult.cs
+│   └── AITargetSelection.cs       # Random / weakest / nearest picking
+├── States/
+│   ├── BaseAttackingState.cs      # The one attacking state; archetypes are its tuning
+│   ├── MeleeAttackingState.cs     # Preset
+│   ├── RangedAttackingState.cs    # Preset
+│   ├── CasterAttackingState.cs    # Preset
+│   ├── PetAttackingState.cs       # Preset
+│   ├── HealerAttackingState.cs    # Scans for injured allies
+│   ├── DefenderAttackingState.cs  # Taunts and body-blocks
+│   ├── RogueAttackingState.cs     # Opens from the target's rear arc
+│   ├── PetIdleState.cs            # Pet follow, stance engagement, stuck escape
+│   ├── IdleState.cs / WanderState.cs / PatrolState.cs / ReturnHomeState.cs
+│   └── OrbitState.cs / GetBehindState.cs / RetreatState.cs
+├── Conditions/                    # AIAbilityCondition subclasses
+├── BehaviorTree/                  # Tree, nodes, composites, decorators
+├── Boss/                          # Phases and timed mechanics
+└── Group/                         # NPCGroup, roles, pack tactics
+</code></pre>
+<h3 id="related">Related</h3>
+<ul>
+<li>ECA actions: <code>Entity/ECA/Actions/Character/ApplyTauntAction.cs</code>, <code>ApplyThreatAction.cs</code></li>
+<li>Editor tooling: <code>Tools/Extensions/Unity/Editor/AI/</code></li>
+<li>Tests: <code>Assets/UnitTests/AI/</code></li>
+</ul>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

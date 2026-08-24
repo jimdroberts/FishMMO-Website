@@ -560,6 +560,82 @@ lifecycle events that must live on the root GameObject.</p>
 
 
 
+  <h3 id="FishMMO_Client_Client_MaximumTargetFrameRate" data-uid="FishMMO.Client.Client.MaximumTargetFrameRate">
+  MaximumTargetFrameRate
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Client.cs/#L1970"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Absolute ceiling on the render rate, before the display's own limit is applied.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const int MaximumTargetFrameRate = 500</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Client_MaximumTargetFrameRate_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>500 is also FishNet's own <code>NetworkManager.MAXIMUM_FRAMERATE</code>, which
+<code>ClientManager.SetFrameRate</code> clamps to. Matching it means the two never disagree
+about what was requested. The effective ceiling is normally lower — see
+<a class="xref" href="FishMMO.Client.Client.html#FishMMO_Client_Client_ResolveMaximumFrameRate">ResolveMaximumFrameRate()</a>.</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Client_Client_MinimumTargetFrameRate" data-uid="FishMMO.Client.Client.MinimumTargetFrameRate">
+  MinimumTargetFrameRate
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Client.cs/#L1959"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Lowest render rate a client may be capped to.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const int MinimumTargetFrameRate = 30</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Client_MinimumTargetFrameRate_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The floor exists because of the tick, not because of visual quality. FishNet derives
+ticks from the update loop, so a frame rate below the tick rate cannot deliver them on
+time: ticks bunch up several to a frame and the client falls behind the server's
+timeline. 30 matches the project's tick rate, and
+<a class="xref" href="FishMMO.Client.Client.html#FishMMO_Client_Client_ResolveMinimumFrameRate">ResolveMinimumFrameRate()</a> raises it automatically if the tick rate is ever
+increased.</p>
+</div>
+
+
+
+
+
   <h3 id="FishMMO_Client_Client_NetworkManager" data-uid="FishMMO.Client.Client.NetworkManager">
   NetworkManager
   <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Client.cs/#L199"><i class="bi bi-code-slash"></i></a>
@@ -901,10 +977,10 @@ teleports. The flag is now checked only on the Addressable path.</p>
 
   <h3 id="FishMMO_Client_Client_ApplyTargetFrameRate_System_Int32_" data-uid="FishMMO.Client.Client.ApplyTargetFrameRate(System.Int32)">
   ApplyTargetFrameRate(int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Client.cs/#L1966"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Client.cs/#L2020"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Caps how fast the client renders, and keeps FishNet from overriding the cap.</p>
+  <div class="markdown level1 summary"><p>Caps how fast the client renders.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -915,8 +991,9 @@ teleports. The flag is now checked only on the Addressable path.</p>
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>framesPerSecond</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>Target frames per second, normally the user's saved &quot;Refresh Rate&quot; preference.
-Values outside 1..500 are ignored.</p>
+    <dd><p>Target frames per second, normally the user's saved frame-rate preference. Clamped
+between <a class="xref" href="FishMMO.Client.Client.html#FishMMO_Client_Client_ResolveMinimumFrameRate">ResolveMinimumFrameRate()</a> and <a class="xref" href="FishMMO.Client.Client.html#FishMMO_Client_Client_ResolveMaximumFrameRate">ResolveMaximumFrameRate()</a>
+— that is, no slower than the tick rate and no faster than the display can present.</p>
 </dd>
   </dl>
 
@@ -928,13 +1005,37 @@ Values outside 1..500 are ignored.</p>
 
 
   <h4 class="section" id="FishMMO_Client_Client_ApplyTargetFrameRate_System_Int32__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Setting <span class="xref">UnityEngine.Application.targetFrameRate</span> alone is not enough to make a
-preference stick. FishNet's <code>NetworkManager.UpdateFramerate</code> writes
-<code>targetFrameRate</code> from <code>ClientManager.FrameRate</code> — 500 by default —
-every time the connection state changes, so a value set here would be discarded
-at the next connect or server hop. Pushing the same number into
-<code>ClientManager.SetFrameRate</code> makes FishNet's own value agree, so the cap
-survives every later <code>UpdateFramerate</code> call.</p>
+  <div class="markdown level1 remarks"><p>
+<b>Render rate and tick rate are independent.</b> This sets only how often the client
+draws. Simulation runs on the FishNet <code>TimeManager</code> tick — a fixed 30 Hz, set
+per-scene and identical on client and server — and every authoritative system rides it:
+prediction, reconciliation, cooldowns, ability activation and NPC brains. A player at
+500 FPS and one at 30 FPS send the same number of packets, simulate the same number of
+physics steps, and reconcile against the same ticks. The only things a higher frame rate
+buys are smoother interpolation between ticks and slightly fresher input sampling
+within one.
+</p>
+<p>
+The single point where the two touch is the floor above: the frame rate must clear the
+tick rate for ticks to be delivered on schedule. That is a one-way dependency — the
+tick rate is never derived from the render rate.
+</p>
+<p>
+Clamped rather than rejected. The previous version returned without doing anything for
+an out-of-range value, so a monitor reporting an unusual refresh rate left the cap at
+whatever it happened to be — silently ignoring the user's setting instead of honouring
+it as closely as it can.
+</p>
+<p>
+Setting <span class="xref">UnityEngine.Application.targetFrameRate</span> alone is not reliably enough. FishNet's
+<code>NetworkManager.UpdateFramerate</code> writes <code>targetFrameRate</code> from
+<code>ClientManager.FrameRate</code> every time the connection state changes, so a value set
+here can be discarded at the next connect or server hop. The client scene now ships with
+<code>ChangeFrameRate</code> disabled so FishNet leaves the render rate alone entirely, but
+the matching <code>ClientManager.SetFrameRate</code> call below is kept: it costs nothing, and
+it keeps the preference intact if the flag is ever re-enabled or the client runs as a
+host, where FishNet takes the higher of the client and server rates.
+</p>
 <p>Applying the screen refresh rate via <code>Screen.SetResolution</code> changes the
 display mode only; with vSync off it does not limit the render loop.</p>
 </div>
@@ -1371,6 +1472,132 @@ Backward-compatible overload accepting LocalConnectionState.</p>
 obtained before the current connection is torn down, because it is the only party
 that knows this client's real IP; that is why it cannot be fetched from inside the
 connect coroutine, which runs after StopConnection.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_Client_ResolveDisplayRefreshRate_" data-uid="FishMMO.Client.Client.ResolveDisplayRefreshRate*"></a>
+
+  <h3 id="FishMMO_Client_Client_ResolveDisplayRefreshRate" data-uid="FishMMO.Client.Client.ResolveDisplayRefreshRate">
+  ResolveDisplayRefreshRate()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Client.cs/#L2067"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The fastest refresh rate the current display reports.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static int ResolveDisplayRefreshRate()</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The highest reported refresh rate in hertz, or a safe fallback.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Client_ResolveDisplayRefreshRate_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Scans every supported display mode rather than reading the current one: a player
+running windowed at a lower mode still has the panel's full refresh rate available, and
+capping them to whatever mode they happen to be in would be wrong.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_Client_ResolveMaximumFrameRate_" data-uid="FishMMO.Client.Client.ResolveMaximumFrameRate*"></a>
+
+  <h3 id="FishMMO_Client_Client_ResolveMaximumFrameRate" data-uid="FishMMO.Client.Client.ResolveMaximumFrameRate">
+  ResolveMaximumFrameRate()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Client.cs/#L2053"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The highest frame rate this client may be capped to: the monitor's fastest mode, or
+<a class="xref" href="FishMMO.Client.Client.html#FishMMO_Client_Client_MaximumTargetFrameRate">MaximumTargetFrameRate</a>, whichever is lower.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static int ResolveMaximumFrameRate()</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The maximum frames per second.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Client_ResolveMaximumFrameRate_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Frames drawn faster than the display can present them are never seen. They cost GPU
+time, power and heat to produce and are then discarded at scan-out, so the ceiling is
+the panel's own capability rather than an arbitrary number.
+</p>
+<p>
+Enforced here rather than only in the options UI so the bound holds for every caller —
+a saved preference from a machine with a faster monitor, or a config edited by hand,
+clamps down to what the current display can actually show.
+</p>
+<p>
+The 500 ceiling still applies on top, both because it is FishNet's own limit and
+because a display reporting something implausible should not be taken at its word.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_Client_ResolveMinimumFrameRate_" data-uid="FishMMO.Client.Client.ResolveMinimumFrameRate*"></a>
+
+  <h3 id="FishMMO_Client_Client_ResolveMinimumFrameRate" data-uid="FishMMO.Client.Client.ResolveMinimumFrameRate">
+  ResolveMinimumFrameRate()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/Client.cs/#L2099"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The lowest frame rate this client may be capped to, given the live tick rate.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static int ResolveMinimumFrameRate()</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The minimum frames per second.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_Client_ResolveMinimumFrameRate_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Reads the tick rate from the TimeManager when one exists so the floor tracks the actual
+configuration rather than a constant that can drift away from it. Falls back to
+<a class="xref" href="FishMMO.Client.Client.html#FishMMO_Client_Client_MinimumTargetFrameRate">MinimumTargetFrameRate</a> before the network is up.</p>
 </div>
 
 

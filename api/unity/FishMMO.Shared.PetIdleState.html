@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class PetIdleState | FishMMO Documentation ">
       
-      <meta name="description" content="AI state for pet idle behavior. Handles following owner, path correction, and idle logic for pets.">
+      <meta name="description" content="A pet&#39;s out-of-combat state: heel near its owner, hold position on a Stay order, and enter combat when the pet&#39;s  says it should.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_PetIdleState" data-uid="FishMMO.Shared.PetIdleState" class="text-break">
-Class PetIdleState  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L9"><i class="bi bi-code-slash"></i></a>
+Class PetIdleState  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L27"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,7 +97,8 @@ Class PetIdleState  <a class="header-action link-secondary" title="View source" 
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>AI state for pet idle behavior. Handles following owner, path correction, and idle logic for pets.</p>
+  <div class="markdown summary"><p>A pet's out-of-combat state: heel near its owner, hold position on a Stay order, and enter
+combat when the pet's <a class="xref" href="FishMMO.Shared.PetStance.html">PetStance</a> says it should.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -151,7 +152,19 @@ public class PetIdleState : BaseAIState, ICachedObject</code></pre>
       <a class="xref" href="FishMMO.Shared.BaseAIState.html#FishMMO_Shared_BaseAIState_LineOfSightBlockingLayers">BaseAIState.LineOfSightBlockingLayers</a>
     </div>
     <div>
+      <a class="xref" href="FishMMO.Shared.BaseAIState.html#FishMMO_Shared_BaseAIState_KeepsCombatTarget">BaseAIState.KeepsCombatTarget</a>
+    </div>
+    <div>
       <a class="xref" href="FishMMO.Shared.BaseAIState.html#FishMMO_Shared_BaseAIState_GetUpdateRate">BaseAIState.GetUpdateRate()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Shared.BaseAIState.html#FishMMO_Shared_BaseAIState_GetUpdateRate_FishMMO_Shared_AIController_">BaseAIState.GetUpdateRate(AIController)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Shared.BaseAIState.html#FishMMO_Shared_BaseAIState_RandomizeRate_FishMMO_Shared_AIController_System_Single_System_Single_">BaseAIState.RandomizeRate(AIController, float, float)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Shared.BaseAIState.html#FishMMO_Shared_BaseAIState_ReturnToCombatOrIdle_FishMMO_Shared_AIController_">BaseAIState.ReturnToCombatOrIdle(AIController)</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Shared.BaseAIState.html#FishMMO_Shared_BaseAIState_HasLineOfSight_FishMMO_Shared_AIController_FishMMO_Shared_Core_ICharacter_">BaseAIState.HasLineOfSight(AIController, ICharacter)</a>
@@ -416,6 +429,203 @@ public class PetIdleState : BaseAIState, ICachedObject</code></pre>
 
 
 
+  <h2 id="FishMMO_Shared_PetIdleState_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+Following is driven off <a class="xref" href="FishMMO.Shared.AIController.html#FishMMO_Shared_AIController_Home">Home</a>, which for a pet resolves to its
+owner's live position. It is deliberately not driven off <a class="xref" href="FishMMO.Shared.AIController.html#FishMMO_Shared_AIController_Target">Target</a> —
+that means "the thing I am fighting" everywhere else in the AI, and the two meanings cannot
+share one field. They used to, and the result was a pet that stopped following its owner
+permanently the moment a fight ended, because ending a fight clears the target.
+</p>
+<p>
+<b>Not getting stuck</b> is the other half of this state's job. A pet chases a player who
+runs through doorways, off ledges and around props, so it meets every NavMesh failure mode
+there is. Three layers handle it: a follow band so the pet is not repathing every tick, a
+stuck detector that walks it out of geometry, and a distance leash that teleports it when
+the owner has simply gone somewhere the pet cannot walk.
+</p>
+</div>
+
+
+  <h2 class="section" id="fields">Fields
+</h2>
+
+
+
+  <h3 id="FishMMO_Shared_PetIdleState_AggressiveSweepRate" data-uid="FishMMO.Shared.PetIdleState.AggressiveSweepRate">
+  AggressiveSweepRate
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L75"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>How often (seconds) an aggressive pet sweeps for something to attack.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Header(&quot;Engagement&quot;)]
+[Tooltip(&quot;Seconds between hostile sweeps while in the Aggressive stance.&quot;)]
+public float AggressiveSweepRate</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_PetIdleState_FollowDistance" data-uid="FishMMO.Shared.PetIdleState.FollowDistance">
+  FollowDistance
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>How far the pet is allowed to drift from its owner before it moves back.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Header(&quot;Following&quot;)]
+[Tooltip(&quot;Distance from the owner at which the pet starts catching up.&quot;)]
+public float FollowDistance</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_PetIdleState_FollowHysteresis" data-uid="FishMMO.Shared.PetIdleState.FollowHysteresis">
+  FollowHysteresis
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L46"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>How far inside <a class="xref" href="FishMMO.Shared.PetIdleState.html#FishMMO_Shared_PetIdleState_FollowDistance">FollowDistance</a> the pet closes before it stops again.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Extra distance the pet closes past the follow distance before stopping.&quot;)]
+public float FollowHysteresis</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_PetIdleState_FollowHysteresis_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Without a band, a pet sitting exactly at the follow distance flickers between &quot;close
+enough, stop&quot; and &quot;too far, move&quot; on alternating ticks, which reads as a stutter and
+repaths constantly.</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_PetIdleState_StuckTeleportSeconds" data-uid="FishMMO.Shared.PetIdleState.StuckTeleportSeconds">
+  StuckTeleportSeconds
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L68"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Seconds the pet may be wedged before it teleports to its owner.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Seconds wedged on geometry before the pet teleports to its owner. 0 disables.&quot;)]
+public float StuckTeleportSeconds</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_PetIdleState_StuckTeleportSeconds_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The distance leash alone is not enough: a pet jammed behind a crate five metres from its
+owner is stuck indefinitely without ever exceeding <a class="xref" href="FishMMO.Shared.PetIdleState.html#FishMMO_Shared_PetIdleState_TeleportDistance">TeleportDistance</a>. This
+is the escape hatch for that case, and it only fires after the generic recovery has
+already tried to walk the pet out.</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_PetIdleState_TeleportDistance" data-uid="FishMMO.Shared.PetIdleState.TeleportDistance">
+  TeleportDistance
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L56"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>If the pet ends up further than this from its owner, it teleports rather than walking.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Distance from the owner beyond which the pet teleports instead of walking. 0 disables.&quot;)]
+public float TeleportDistance</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_PetIdleState_TeleportDistance_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Covers what pathing cannot: the owner mounting and riding away, a teleport, a zone
+transition, or a pet left on the wrong side of a chasm.</p>
+</div>
+
+
 
 
   <h2 class="section" id="methods">Methods
@@ -426,10 +636,10 @@ public class PetIdleState : BaseAIState, ICachedObject</code></pre>
 
   <h3 id="FishMMO_Shared_PetIdleState_Enter_FishMMO_Shared_AIController_" data-uid="FishMMO.Shared.PetIdleState.Enter(FishMMO.Shared.AIController)">
   Enter(AIController)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L16"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L81"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Called when entering the Pet Idle state. Sets agent speed to run.</p>
+  <div class="markdown level1 summary"><p>Prepares the pet to heel. Run speed, because it has to be able to catch a sprinting owner.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -459,10 +669,10 @@ public class PetIdleState : BaseAIState, ICachedObject</code></pre>
 
   <h3 id="FishMMO_Shared_PetIdleState_Exit_FishMMO_Shared_AIController_" data-uid="FishMMO.Shared.PetIdleState.Exit(FishMMO.Shared.AIController)">
   Exit(AIController)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L25"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L93"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Called when exiting the Pet Idle state. No cleanup needed by default.</p>
+  <div class="markdown level1 summary"><p>Called when exiting the Pet Idle state.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -492,10 +702,10 @@ public class PetIdleState : BaseAIState, ICachedObject</code></pre>
 
   <h3 id="FishMMO_Shared_PetIdleState_UpdateState_FishMMO_Shared_AIController_System_Single_" data-uid="FishMMO.Shared.PetIdleState.UpdateState(FishMMO.Shared.AIController,System.Single)">
   UpdateState(AIController, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L34"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/States/PetIdleState.cs/#L102"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Called every frame to update the Pet Idle state. Handles owner following and path correction.</p>
+  <div class="markdown level1 summary"><p>Heels, holds, or engages depending on the pet's orders.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -509,7 +719,7 @@ public class PetIdleState : BaseAIState, ICachedObject</code></pre>
     <dd><p>The AI controller.</p>
 </dd>
     <dt><code>deltaTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>Frame time.</p>
+    <dd><p>Seconds since the previous AI tick.</p>
 </dd>
   </dl>
 

@@ -859,17 +859,22 @@ Fixing this once is not enough, because the batched and single-row writes are se
 </ol>
 <h3 id="ai-system-npc">AI System (NPC)</h3>
 <ol start="63">
-<li><strong>State Machine</strong> — <code>BaseAIState</code> subclasses: Idle, Wander, Patrol, ReturnHome, Retreat, MeleeAttacking, RangedAttacking, CasterAttacking, HealerAttacking (via <code>BaseAttackingState</code>), GetBehind, Orbit, PetIdle, BossScript, plus <code>AggressionState</code>.</li>
-<li><strong>Behavior Tree</strong> — <code>AIBehaviorTree</code> of <code>AIBehaviorNode</code>s: <code>AISelector</code>, <code>AISequence</code>, <code>AIInverter</code>, <code>AIRepeater</code>, <code>AICompositeNode</code>, <code>AIConditionNode</code>, plus game-specific leaves <code>AIHasTargetNode</code>, <code>AIIsDeadNode</code>, <code>AIGroupInCombatNode</code>, <code>AIAdoptGroupTargetNode</code>, <code>AIStateTransitionNode</code>.</li>
-<li><strong>Group Combat</strong> — <code>NPCGroup</code> with roles, pack tactics, aggression management.</li>
+<li><strong>State Machine</strong> — <code>BaseAIState</code> subclasses: Idle, Wander, Patrol, ReturnHome, Retreat, GetBehind, Orbit, PetIdle, and the attacking family (<code>BaseAttackingState</code> plus Melee/Ranged/Caster/Pet presets and the Healer/Defender/Rogue subclasses), plus <code>AggressionState</code> and <code>BossScript</code>.</li>
+<li><strong>Archetypes Are Data</strong> — <code>AIArchetypeTemplate</code> is one asset that is a whole brain: states, personality, ability rotation, behaviour tree, threat tuning and LOD profile. Assign it to <code>AIController.Archetype</code> and every other slot fills itself in at spawn. <code>Validate()</code> reports configurations that spawn and then quietly misbehave. 16 archetypes ship (10 enemy, 6 pet).</li>
+<li><strong>Shared Combat Decision</strong> — <code>AICombatDecision.Plan</code> is a pure function over plain floats that every attacking state runs. Melee, archer, caster, defender and rogue behaviour fall out of four serialized numbers, so an archetype's behaviour is assertable in an EditMode test without a scene.</li>
+<li><strong>Tick-Driven Brain</strong> — The AI runs on the FishNet <code>TimeManager</code> tick, not <code>Update</code>. <code>AiTickRate</code> (default 8 Hz) is rounded to a whole divisor of the 30 Hz network tick so the brain is phase-locked and its rate does not move with server load. Elapsed time per tick is computed, not measured.</li>
+<li><strong>Level of Detail</strong> — Four distance tiers with per-tier intervals counted in AI ticks: Active (full pipeline), Nearby (no BT/boss/sweep; combat entry is event-driven), Far (movement only), Dormant (wake-up check). Three profiles ship, including a responsive one for pets.</li>
+<li><strong>Combat Slots</strong> — <code>AICombatSlots</code> gives each attacker on a shared target its own angular slot, with ring capacity derived from agent geometry and a staggered second rank for overflow. Unity's local avoidance stops agents overlapping but has no say in where they are going; several NPCs sent to one point shove each other around it regardless of tuning.</li>
+<li><strong>Movement Correctness</strong> — <code>AIController.Movement</code> reports <code>Complete</code> / <code>Partial</code> / <code>Failed</code> / <code>Throttled</code> rather than assuming success. Unity returns a <em>partial</em> path to an unreachable destination instead of failing, so an NPC that only checks arrival distance stops at the near side of an obstacle and reports success. Includes widening NavMesh sampling, stuck detection, and escalating recovery that warps only after visibly failing to walk out.</li>
+<li><strong>Group Combat</strong> — <code>NPCGroup</code> with roles and pack tactics (Surround, Flank, FocusFire, Kite) that assign each member a distinct orbit angle and ring radius.</li>
 <li><strong>Boss Mechanics</strong> — <code>BossPhase</code>, <code>BossScript</code>, <code>BossTimedMechanic</code>.</li>
-<li><strong>Navigation</strong> — NavMeshAgent-based with waypoints, avoidance priorities, LOD settings.</li>
-<li><strong>Deterministic RNG</strong> — Seeded per-NPC for reproducible behavior.</li>
-<li><strong>Ability Rotation</strong> — <code>AIAbilityRotation</code> for combat ability selection.</li>
-<li><strong>Combat Personality</strong> — <code>AICombatPersonality</code> configuration for varied NPC combat styles.</li>
+<li><strong>Behavior Tree</strong> — <code>AIBehaviorTree</code> of <code>AIBehaviorNode</code>s: <code>AISelector</code>, <code>AISequence</code>, <code>AIInverter</code>, <code>AIRepeater</code>, <code>AICompositeNode</code>, <code>AIConditionNode</code>, plus game-specific leaves <code>AIHasTargetNode</code>, <code>AIIsDeadNode</code>, <code>AIGroupInCombatNode</code>, <code>AIAdoptGroupTargetNode</code>, <code>AIStateTransitionNode</code>. The editor refuses cyclic connections and the runtime carries a depth guard, so a hand-edited asset degrades to a failed evaluation instead of a stack overflow that terminates the server.</li>
+<li><strong>Deterministic RNG</strong> — Seeded per-NPC for reproducible behavior, now paired with tick-driven timing so <em>when</em> a roll is drawn is reproducible too.</li>
+<li><strong>Ability Rotation</strong> — <code>AIAbilityRotation</code> for condition-driven combat ability selection, evaluated before the default scorer.</li>
+<li><strong>Combat Personality</strong> — <code>AICombatPersonality</code> styles: Balanced, Aggressive, Defensive, Cautious, Berserker, Pathetic, Determined, Rampaging. Targeting modes: Threat, Random, Weakest, Nearest. A Pathetic personality is guaranteed a retreat threshold even if the field is left at zero; Rampaging forces random re-targeting so it cannot be held by threat.</li>
 </ol>
 <h3 id="interactable-system">Interactable System</h3>
-<ol start="71">
+<ol start="76">
 <li><strong>16 Interactable Types</strong> — All derive from <code>Interactable : NetworkBehaviour, IInteractable, ISpawnable</code>: <code>AbilityCrafter</code>, <code>Banker</code>, <code>Bindstone</code>, <code>CapturePoint</code>, <code>Container</code>, <code>DialogueInteractable</code>, <code>DungeonEntrance</code>, <code>GatheringNode</code>, <code>LoreObject</code>, <code>Mailbox</code>, <code>Merchant</code>, <code>QuestInteractable</code>, <code>Shrine</code>, <code>Switch</code>, <code>Teleporter</code>, <code>WorldItem</code>.</li>
 <li><strong>Base Interaction — ECA-Authored, No Handler Plugins</strong> — <code>InteractionRange</code> 3.5u default, <code>INTERACT_RATE_LIMIT</code> of 60ms (overridable per type via <code>InteractRateLimit</code>). Behaviour is authored entirely as a <code>List&lt;Trigger&gt; OnInteractTriggers</code> on the interactable prefab and fired via <code>IInteractable.ExecuteOnInteract(EventData)</code>. There is <strong>no</strong> server-side handler-plugin architecture — no handler interface, no registration attribute, and no handler initializer exists anywhere in the codebase.</li>
 <li><strong>Server-Side Validation</strong> — The server's <code>InteractableSystem</code> validates the scene, runs <code>ValidateSceneObject</code> against the character's scene handle, resolves the <code>IInteractable</code> component, checks <code>CanInteract()</code> (which covers <code>InRange()</code> and the rate limit), then invokes <code>ExecuteOnInteract</code> with a <code>PlayerInteractionEventData</code> — all inside an <code>IngressGuard</code>.</li>
@@ -879,33 +884,35 @@ Fixing this once is not enough, because the batched and single-row writes are se
 <li><strong>Merchant Tabs</strong> — Categorized merchant inventory tabs (<code>MerchantTabType</code>, <code>MerchantTemplate</code>).</li>
 </ol>
 <h3 id="faction-system">Faction System</h3>
-<ol start="78">
+<ol start="83">
 <li><strong>Faction Standing</strong> — Per-faction integer standing with Allied/Neutral/Hostile classification.</li>
 <li><strong>Faction Matrices</strong> — Template-driven faction relationship matrices with editor tooling.</li>
 </ol>
 <h3 id="quest-system">Quest System</h3>
-<ol start="80">
+<ol start="85">
 <li><strong>Quest Lifecycle</strong> — Inactive → Active → Complete → TurnedIn / Failed.</li>
 <li><strong>Objective Tracking</strong> — Per-objective progress with required amounts.</li>
 <li><strong>Attribute Requirements</strong> — Pre-requisite attribute checks before acceptance.</li>
 </ol>
 <h3 id="social-systems">Social Systems</h3>
-<ol start="83">
+<ol start="88">
 <li><strong>Friends</strong> — Friend list management with online status.</li>
 <li><strong>Guilds</strong> — Membership, invites, ranks, join/leave ECA triggers.</li>
 <li><strong>Parties</strong> — Creation, invites, member tracking, leader ranks.</li>
 </ol>
 <h3 id="world-system">World System</h3>
-<ol start="86">
+<ol start="91">
 <li><strong>World Scene Details</strong> — Per-scene configuration: max clients, spawn/respawn positions, teleporters, boundaries.</li>
 <li><strong>Day/Night Cycle</strong> — Configurable cycle durations, skybox transitions, object activation/deactivation, material alpha fading, ECA triggers for day/night transitions.</li>
 <li><strong>Spawner System</strong> — Linear/Random/Weighted spawning with respawn conditions (OR/AND), initial/max counts, pooling (<code>ObjectSpawner</code>). NPC corpse decay with per-spawner override. Re-rolled attributes on each spawn.</li>
+<li><strong>Deterministic Memory Footprint</strong> — <code>ObjectSpawnerPool</code> reserves <code>MaxSpawnCount + PrewarmHeadroom</code> instances of every prefab a spawner can select, at scene load, de-duplicated across spawners sharing a prefab. Entities are cached and recycled through FishNet's pool rather than destroyed; the pre-warm converts a heap that grew as players explored into a one-time load cost you can plan capacity against.</li>
+<li><strong>Per-Spawner Entity Overrides</strong> — <code>NPCSpawnableSettings</code> rolls attributes, AI archetype, additional or replacement abilities, faction, corpse decay and a random uniform scale. <code>ItemSpawnableSettings</code> carries a weighted roll table. One prefab serves a zone's worth of variants, which matters for memory as well as content: a duplicated prefab is a second pool bucket and a second fixed slice of the budget.</li>
 <li><strong>Teleporter System</strong> — Cross-scene and same-scene teleportation with cached destinations.</li>
 <li><strong>Region System</strong> — Zone definitions for area effects (fog, skybox, audio, buffs, attributes, region name display).</li>
 <li><strong>Scene Boundaries</strong> — Terrain and custom boundary definitions.</li>
 </ol>
 <h3 id="character-appearance--visual-equipment">Character Appearance &amp; Visual Equipment</h3>
-<ol start="92">
+<ol start="99">
 <li><strong>Modular Character System</strong> — One shared humanoid skeleton, one Animator, one animation library for all races and equipment.</li>
 <li><strong>Body Region System</strong> — Body mesh split into 6 hideable regions (Head, Torso, Arms, Hands, Legs, Feet). <code>BodyVisibilityManager</code> with per-slot reference counting for overlapping equipment hides.</li>
 <li><strong>Character Customization</strong> — Bone scaling for Height, ArmLength, LegLength, TorsoLength, ShoulderWidth, HeadScale. Race presets (Human/Dwarf/Elf). Blend shapes for Weight, MuscleMass, ChestSize, WaistSize.</li>
@@ -917,14 +924,17 @@ Fixing this once is not enough, because the batched and single-row writes are se
 <li><strong>Ability Animation</strong> — <code>TriggerAbilityAnimation</code> maps <code>AbilityType</code> to animation: Physical→Attack, Magic→Cast, Block→SetBlocking, Roll→TriggerRoll. Death animation suppresses all other state.</li>
 </ol>
 <h3 id="ai-threat-system">AI Threat System</h3>
-<ol start="101">
+<ol start="108">
 <li><strong>Threat Table</strong> — <code>AggressionController</code> with damage, healing, resource expenditure threat. Configurable weights per category.</li>
 <li><strong>Vulnerability Scoring</strong> — Low-health targets (&lt;30%) get 1.5x threat multiplier. Low-mana targets (&lt;20%) get 1.3x multiplier. AI intelligently pressures weakened enemies.</li>
 <li><strong>Replay-Safe Events</strong> — <code>AggressionState.IsSpawnedAndAuthoritative()</code> guard prevents threat double-counting during client-side prediction replay.</li>
 <li><strong>Object-Pooled Aggression Entries</strong> — Stack-based pool for <code>AggressionEntry</code> to avoid per-event allocations.</li>
+<li><strong>Single-Dispatch Routing</strong> — <code>AggressionDispatcher</code> holds one global subscription for the whole process and routes damage by dictionary lookup on the defender, so a hit costs O(1) rather than one delegate invocation per NPC alive. Heal and kill walk a list and skip anyone whose table is empty with a field read.</li>
+<li><strong>Tick-Derived Staleness Clock</strong> — Decay and expiry share one clock advanced only by <code>Tick</code>, so &quot;stale&quot; means <em>seconds of AI time without an event</em>. Wall-clock expiry disagreed with tick-driven decay whenever LOD throttled an NPC or the server hitched.</li>
+<li><strong>Taunts and Threat Abilities</strong> — <code>ApplyTauntAction</code> and <code>ApplyThreatAction</code> are ECA actions attachable to ability events. The taunt guarantees top threat rather than adding a flat bonus a long fight has already outgrown, and can force an immediate target switch. <code>ApplyThreatAction</code> is the caller that finally gives <code>ResourceWeight</code> meaning.</li>
 </ol>
 <h3 id="network-broadcasts-30-types">Network Broadcasts (30+ types)</h3>
-<ol start="105">
+<ol start="115">
 <li><strong>Auth</strong> — Authentication request/response, token sync.</li>
 <li><strong>Character</strong> — Character data, abilities, achievements, archetype, factions, friends, guild, party, pet, quest, hotkeys.</li>
 <li><strong>Inventory</strong> — Inventory, equipment, bank slot sync.</li>
@@ -936,7 +946,7 @@ Fixing this once is not enough, because the batched and single-row writes are se
 <li><strong>Server Select</strong> — Server list and connection info.</li>
 </ol>
 <h3 id="bootstrap--tools">Bootstrap &amp; Tools</h3>
-<ol start="114">
+<ol start="124">
 <li><strong>Bootstrap System</strong> — Multi-environment asset/scene preloading (Editor, Standalone, WebGL), version management, graceful shutdown. Each phase enqueues its work and completes on its own <code>batch.Completed</code> signal rather than a shared global event.</li>
 <li><strong>Addressable Integration</strong> — <code>AddressableLoadProcessor</code> for async prefab/sprite/mesh/scene loading with caching.</li>
 <li><strong>Per-Caller Load Batches</strong> — <code>BeginProcessQueue()</code> returns an <code>AddressableLoadBatch</code> claiming exactly the items that caller enqueued, with its own <code>Completed</code> event, <code>Progressed</code> event, <code>TotalItems</code>/<code>CompletedItems</code>/<code>Progress</code>, and <code>FailedItems</code>/<code>HasFailures</code>. This replaces completion signalling through the processor's global <code>OnProgressUpdate</code> multicast delegate, which reported &quot;done&quot; to every bootstrap system and loading screen whenever <em>any</em> drain finished and could double-invoke subscribers that resubscribed during dispatch. <code>OnProgressUpdate</code> remains as a display-only progress feed. A batch counts an item finished whether it succeeded, failed, or was dropped — failures surface via <code>FailedItems</code> instead of withholding completion and stalling boot. Handlers subscribing after completion are invoked immediately, so a fully-cached batch that completes inside <code>BeginProcessQueue</code> cannot be missed.</li>
@@ -946,11 +956,13 @@ Fixing this once is not enough, because the batched and single-row writes are se
 <li><strong>Version Management</strong> — <code>VersionBuilder</code> with <code>VersionConfig</code> ScriptableObject; increments major/minor/patch, writes <code>version.txt</code> at build time.</li>
 </ol>
 <h3 id="editor-tools">Editor Tools</h3>
-<ol start="121">
+<ol start="131">
 <li><strong>FishMMO Dashboard</strong> — The single editor hub (<code>FishMMO &gt; FishMMO Dashboard</code>, Ctrl+Shift+D), a UI Toolkit window whose panels are Build &amp; Version, Categories, Game Settings, Inspector, and Patcher. Most FishMMO editor workflows are panels inside this window, not separate menu items. Backed by the custom build tool suite: AddressableManager, BuildConfigurator, BuildExecutor, LinkerGenerator. <code>BuildExecutor</code> additionally performs two post-build copies: <code>CopyRemoteAddressablesToBuild</code> stages <code>ServerData/[BuildTarget]/</code> bundles into the built player's <code>StreamingAssets/ServerData/[BuildTarget]/</code> for server builds (so <code>DynamicAddressableLoadPathSystem</code> can load them over <code>file://</code>), and <code>CopyUpdaterToBuild</code> copies the standalone Updater executable and its runtime dependencies into standalone client builds — without it the launcher's <code>Constants.Configuration.UpdaterExecutable</code> lookup fails and players are stranded on an unpatchable version. Both are skipped for build types that do not need them (server/WebGL for the updater).</li>
 <li><strong>Patch Generator</strong> — <code>PatchGeneratorWindow</code> (<code>EditorWindow</code>) for creating delta patches between builds with manifest generation, surfaced through the Dashboard's <strong>Patcher</strong> panel (<code>FishMMODashboard.Patcher.cs</code>). It has no menu item of its own.</li>
 <li><strong>Addressables Dashboard</strong> — Analysis, build, categorization, and tree view for addressable assets. Menu: <code>FishMMO &gt; Addressables Dashboard</code>.</li>
-<li><strong>Behavior Tree Editor</strong> — Visual editor for NPC behaviour trees. Menu: <code>FishMMO &gt; Behavior Tree Editor</code> (spelled &quot;Behavior&quot;).</li>
+<li><strong>Behavior Tree Editor</strong> — Visual editor for NPC behaviour trees. Menu: <code>FishMMO &gt; Behavior Tree Editor</code> (spelled &quot;Behavior&quot;), or the Open button on a tree selected in the FishMMO Dashboard. Refuses connections that would make the tree cyclic.</li>
+<li><strong>AI Prefab Tooling</strong> — <code>FishMMO &gt; AI &gt; Repair NPC Prefabs For Combat</code> adds the ability-pipeline components and enables prediction; <code>Audit NPC Prefabs</code> reports prefabs that cannot fight and why; <code>Validate Archetypes</code> reports archetypes whose configuration cannot behave as described; <code>Organize AI Assets</code> and <code>Re-serialize AI Assets</code> maintain the canonical asset layout.</li>
+<li><strong>Network Timing Validator</strong> — <code>FishMMO &gt; Validate Network Timing</code> confirms every scene's <code>NetworkManager</code> agrees on tick rate. FishNet does not synchronise it — <code>SetTickRate</code> says so explicitly — and a mismatch does not throw or refuse the connection, it just makes the client simulate on a different timeline and present as latency.</li>
 <li><strong>Dialogue Tree Editor</strong> — Visual editor for NPC dialogue trees. Menu: <code>FishMMO &gt; Dialogue Tree Editor</code>.</li>
 <li><strong>World Scene Details Cache Builder</strong> — Builds cached world scene details at edit time. Menu: <code>FishMMO &gt; Rebuild World Scene Details</code>.</li>
 <li><strong>Custom Property Drawers</strong> — <code>[ShowReadonly]</code>, <code>[SubclassSelector]</code>, <code>[TemplateReference]</code>, serializable dictionary drawers.</li>

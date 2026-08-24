@@ -90,7 +90,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p><strong>Short description:</strong> Server-authoritative, condition-driven framework for spawning and respawning networked objects in FishMMO with configurable selection strategies, conditional gating, and physics-based placement.</p>
+<p><strong>Short description:</strong> Server-authoritative, condition-driven framework for spawning and respawning networked objects in FishMMO with configurable selection strategies, conditional gating, physics-based placement, and a pre-warmed object pool that gives a map a fixed memory footprint.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
 <li><a href="#overview">Overview</a></li>
@@ -108,6 +108,10 @@
 </ul>
 <h2 id="overview">Overview</h2>
 <p>The Spawner system is a server-authoritative, condition-driven framework for spawning and respawning networked objects in FishMMO. It provides configurable spawn selection (linear, random, weighted), conditional respawn gating (OR and AND condition lists), bounding-box placement with physics-based ground detection, object pooling via FishNet, and per-object respawn timers. Spawners are placed in scenes as <code>NetworkBehaviour</code> components and manage the full lifecycle of spawned entities.</p>
+<h3 id="deterministic-memory-footprint">Deterministic memory footprint</h3>
+<p>Objects are never destroyed and re-instantiated on respawn — they are returned to FishNet's object pool with <code>DespawnType.Pool</code> and drawn back out with <code>GetPooledInstantiated</code>. That recycling alone is not enough to make a map's cost predictable, because the pool fills <em>lazily</em>: the first NPC of each kind is instantiated the moment a player walks into range, so a freshly loaded map hitches as it is explored and only reaches its true heap size once every spawner has fired at least once.</p>
+<p><code>ObjectSpawnerPool</code> closes that. Each spawner reserves <code>MaxSpawnCount + PrewarmHeadroom</code> instances of every prefab it can select, at scene start, de-duplicated across spawners that share a prefab. The result is a one-time load cost and a footprint you can plan capacity against, rather than one discovered under load.</p>
+<p>This is also why the per-spawner override settings matter for memory and not only for content: one NPC prefab that becomes a weak variant at one spawner and an elite at another is <strong>one</strong> pool bucket. Duplicating the prefab to make the variant would be a second bucket and a second fixed slice of the budget.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
 <thead>
@@ -145,11 +149,15 @@
 <li>Three spawn selection strategies: Linear (sequential), Random (uniform), Weighted (proportional odds via <code>SpawnChance</code>)</li>
 <li>Conditional respawn gating with OR and AND condition lists (<code>BaseRespawnCondition</code>)</li>
 <li>Bounding-box placement with physics SphereCast ground detection</li>
-<li>FishNet object pooling via <code>GetPooledInstantiated()</code> / <code>Despawn(DespawnType.Pool)</code></li>
+<li>FishNet object pooling via <code>GetPooledInstantiated()</code> / <code>Despawn(DespawnType.Pool)</code> — spawned entities are cached and recycled, never destroyed and re-instantiated</li>
+<li>Object pool pre-warming via <code>ObjectSpawnerPool.Reserve(...)</code>, giving a map a fixed memory footprint decided at load rather than discovered during play</li>
+<li>Per-spawner NPC overrides: attribute database, AI archetype, additional or replacement abilities, faction, corpse decay, and a random uniform scale range</li>
+<li>Weighted item roll tables so one world-item prefab can serve every ground pickup in the game from a single pool bucket</li>
+<li>NavMeshAgent re-seating on reuse: <code>IAIController.Initialize</code> warps the agent onto the NavMesh at the spawn position, because a recycled NPC's agent otherwise still believes it is where the previous occupant died</li>
 <li>Per-object configurable respawn timers (fixed or randomized between min/max)</li>
 <li>Auto-calculated vertical offset (<code>YOffset</code>) from prefab collider dimensions</li>
 <li>Initial spawn count with clamping to max concurrent limit</li>
-<li>AI controller initialization with home position on spawn</li>
+<li>AI controller initialization with home position on spawn, performed after the scene move and activation</li>
 <li>Scene-aware spawning via <code>SceneManager.MoveGameObjectToScene()</code></li>
 <li>Editor gizmo visualization of bounding box and spawn area</li>
 <li>Extensible respawn condition system (e.g., <code>DeadNPCRespawnCondition</code> for boss encounters)</li>
@@ -252,8 +260,21 @@
 <td>—</td>
 <td>All conditions must be true (logical AND)</td>
 </tr>
+<tr>
+<td><code>PrewarmPool</code></td>
+<td><code>bool</code></td>
+<td>true</td>
+<td>Instantiate this spawner's prefabs into the pool at scene start</td>
+</tr>
+<tr>
+<td><code>PrewarmHeadroom</code></td>
+<td><code>int</code></td>
+<td>1</td>
+<td>Extra pooled instances beyond <code>MaxSpawnCount</code>, covering corpses that have not yet decayed</td>
+</tr>
 </tbody>
 </table>
+<p>Turn <code>PrewarmPool</code> off only for spawners whose prefabs are large and rarely used, where paying the cost on demand is preferable to paying it always.</p>
 <h3 id="spawnablesettings">SpawnableSettings</h3>
 <p>Serializable configuration for each spawnable object in the spawner's list.</p>
 <table>
@@ -299,6 +320,102 @@
 </tbody>
 </table>
 <p><code>OnValidate()</code> ensures the <code>NetworkObject</code> is marked spawnable and auto-calculates <code>YOffset</code> from the prefab's collider dimensions.</p>
+<h3 id="npcspawnablesettings">NPCSpawnableSettings</h3>
+<p>Per-spawner overrides that let one NPC prefab serve a whole zone's worth of variants. Applied in <code>OnSpawned</code>, which runs after the object leaves the pool and before <code>ServerManager.Spawn</code> — that is, before <code>NPC.OnStartServer</code> rolls attributes and learns abilities, and before the spawn payload is written to clients.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AttributeBonusOverride</code></td>
+<td><code>NPCAttributeDatabase</code></td>
+<td>—</td>
+<td>Replaces the prefab's attribute database</td>
+</tr>
+<tr>
+<td><code>CorpseDecayDurationOverride</code></td>
+<td><code>float</code></td>
+<td>0</td>
+<td>Corpse decay seconds; 0 = prefab default</td>
+</tr>
+<tr>
+<td><code>ArchetypeOverride</code></td>
+<td><code>AIArchetypeTemplate</code></td>
+<td>—</td>
+<td>Replaces the prefab's whole AI brain</td>
+</tr>
+<tr>
+<td><code>AdditionalAbilities</code></td>
+<td><code>List&lt;AbilityTemplate&gt;</code></td>
+<td>—</td>
+<td>Abilities granted on top of the prefab's list</td>
+</tr>
+<tr>
+<td><code>ReplacePrefabAbilities</code></td>
+<td><code>bool</code></td>
+<td>false</td>
+<td>Replace the prefab's ability list rather than extending it</td>
+</tr>
+<tr>
+<td><code>FactionOverride</code></td>
+<td><code>RaceTemplate</code></td>
+<td>—</td>
+<td>Replaces the prefab's race template / faction source</td>
+</tr>
+<tr>
+<td><code>MinimumScale</code> / <code>MaximumScale</code></td>
+<td><code>float</code></td>
+<td>1 / 1</td>
+<td>Random uniform scale range; 1..1 leaves the prefab scale alone</td>
+</tr>
+</tbody>
+</table>
+<p>The archetype is re-applied here rather than relying on <code>AIController.InitializeOnce</code>, which only runs on an instance's very first Awake — without this a recycled NPC would keep the previous spawner's brain.</p>
+<p>The scale is deliberately uniform: a non-uniform scale would desynchronise the NavMeshAgent's radius and height from the collider.</p>
+<h3 id="itemspawnablesettings">ItemSpawnableSettings</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ItemTemplate</code></td>
+<td><code>BaseItemTemplate</code></td>
+<td>—</td>
+<td>Item spawned when <code>RollTable</code> is empty</td>
+</tr>
+<tr>
+<td><code>MinimumAmount</code> / <code>MaximumAmount</code></td>
+<td><code>int</code></td>
+<td>1 / 1</td>
+<td>Stack size range</td>
+</tr>
+<tr>
+<td><code>RollTable</code></td>
+<td><code>List&lt;ItemRoll&gt;</code></td>
+<td>—</td>
+<td>Optional weighted table; when non-empty, one entry is rolled per spawn</td>
+</tr>
+<tr>
+<td><code>AchievementTemplateID</code></td>
+<td><code>int</code></td>
+<td>0</td>
+<td>Achievement granted on pickup; 0 = none</td>
+</tr>
+</tbody>
+</table>
+<p>Each <code>ItemRoll</code> carries its own template, stack range and weight. <code>OnValidate</code> repairs inverted stack ranges and negative weights, which would otherwise be a spawn-time exception on a live server rather than a bad item.</p>
 <h3 id="objectspawntype-enum">ObjectSpawnType Enum</h3>
 <pre><code>ObjectSpawnType : byte
 ├── Linear   = 0   # Sequential cycling through the list
@@ -568,6 +685,7 @@
 ├── ISpawnable.cs              # Interface for entities managed by an ObjectSpawner
 ├── ObjectSpawnType.cs          # Enum for spawn selection strategy (Linear, Random, Weighted)
 ├── ObjectSpawner.cs            # Core spawner component (NetworkBehaviour)
+├── ObjectSpawnerPool.cs        # Pool pre-warming; fixes a map's memory footprint at load
 ├── Settings/
 │   ├── SpawnableSettings.cs        # Per-object spawn configuration (respawn times, chance, offset)
 │   ├── ItemSpawnableSettings.cs    # Item-specific spawnable settings

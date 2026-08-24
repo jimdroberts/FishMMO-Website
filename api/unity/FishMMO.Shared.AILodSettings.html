@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class AILodSettings | FishMMO Documentation ">
       
-      <meta name="description" content="Configuration asset for AI LOD (Level-of-Detail) distance thresholds and update rates. Assign to  to override the default values.  The system uses the NPC&#39;s FishNet NetworkObject.Observers to determine how many players can see the NPC. If no observers exist, the NPC is . When at least one observer exists, a fast squared-distance check against the nearest observer determines the tier.   Tick scheduling: Each tier has a frame stagger modulus that spreads NPC updates evenly across frames. At 60 FPS the approximate update intervals are: TierModulus → Approx. IntervalActive3 → ~50 ms (full AI pipeline)Nearby12 → ~200 ms (simplified — no BT, no boss, no sweep)Far60 → ~1 s (minimal — no combat, wander/idle only)Dormant120 → ~2 s (wake-up check only)   Behavior simplification: Lower tiers run progressively simpler AI: TierSystems RunningActiveBehaviorTree, StateMachine, Abilities, Threat, GroupAI, BossScripts, EnemySweepNearbyStateMachine, Abilities, Threat, GroupAI (no BT, no BossScript, no EnemySweep — relies on event-driven combat entry)FarStateMachine only (wander/idle/return home — no combat, no threat, no sweep)DormantDisabled — only periodic LOD re-evaluation to wake up when a player approaches">
+      <meta name="description" content="Distance thresholds and per-tier update intervals for AI level-of-detail. Assign to .">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_AILodSettings" data-uid="FishMMO.Shared.AILodSettings" class="text-break">
-Class AILodSettings  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L52"><i class="bi bi-code-slash"></i></a>
+Class AILodSettings  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L45"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,23 +97,8 @@ Class AILodSettings  <a class="header-action link-secondary" title="View source"
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Configuration asset for AI LOD (Level-of-Detail) distance thresholds and update rates.
-Assign to <a class="xref" href="FishMMO.Shared.AIController.html#FishMMO_Shared_AIController_LodSettings">LodSettings</a> to override the default values.</p>
-<p>
-The system uses the NPC's FishNet <code>NetworkObject.Observers</code> to determine how
-many players can see the NPC. If no observers exist, the NPC is <a class="xref" href="FishMMO.Shared.AILodTier.html#FishMMO_Shared_AILodTier_Dormant">Dormant</a>.
-When at least one observer exists, a fast squared-distance check against the nearest
-observer determines the tier.
-</p>
-<p>
-<b>Tick scheduling:</b> Each tier has a frame stagger modulus that spreads NPC updates
-evenly across frames. At 60 FPS the approximate update intervals are:
-<table><thead><tr><th class="term">Tier</th><th class="description">Modulus → Approx. Interval</th></tr></thead><tbody><tr><td class="term">Active</td><td class="description">3 → ~50 ms (full AI pipeline)</td></tr><tr><td class="term">Nearby</td><td class="description">12 → ~200 ms (simplified — no BT, no boss, no sweep)</td></tr><tr><td class="term">Far</td><td class="description">60 → ~1 s (minimal — no combat, wander/idle only)</td></tr><tr><td class="term">Dormant</td><td class="description">120 → ~2 s (wake-up check only)</td></tr></tbody></table>
-
-<p>
-<b>Behavior simplification:</b> Lower tiers run progressively simpler AI:
-<table><thead><tr><th class="term">Tier</th><th class="description">Systems Running</th></tr></thead><tbody><tr><td class="term">Active</td><td class="description">BehaviorTree, StateMachine, Abilities, Threat, GroupAI, BossScripts, EnemySweep</td></tr><tr><td class="term">Nearby</td><td class="description">StateMachine, Abilities, Threat, GroupAI (no BT, no BossScript, no EnemySweep — relies on event-driven combat entry)</td></tr><tr><td class="term">Far</td><td class="description">StateMachine only (wander/idle/return home — no combat, no threat, no sweep)</td></tr><tr><td class="term">Dormant</td><td class="description">Disabled — only periodic LOD re-evaluation to wake up when a player approaches</td></tr></tbody></table>
-
+  <div class="markdown summary"><p>Distance thresholds and per-tier update intervals for AI level-of-detail.
+Assign to <a class="xref" href="FishMMO.Shared.AIController.html#FishMMO_Shared_AIController_LodSettings">LodSettings</a>.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -370,6 +355,26 @@ public class AILodSettings : ScriptableObject</code></pre>
 
 
 
+  <h2 id="FishMMO_Shared_AILodSettings_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+Intervals are counted in <b>AI ticks</b>, not frames. The AI runs on the FishNet
+<code>TimeManager</code> at a fixed rate derived from <a class="xref" href="FishMMO.Shared.AIController.html#FishMMO_Shared_AIController_AiTickRate">AiTickRate</a>, so an
+interval of 3 means "one update every 3 AI ticks" and converts to a wall-clock rate that
+does not move when the server's frame rate does.
+</p>
+<p>
+This replaced a frame-count modulus. Under that scheme the real AI rate was whatever the
+server's frame rate happened to be divided by the modulus — so a loaded server did not just
+render less often, its NPCs also thought, leashed, swept and decayed threat more slowly,
+exactly when the load that caused it needed them to behave predictably. Tuning was equally
+hopeless, because "modulus 12" meant a different number of updates per second on every
+machine.
+</p>
+<p>
+At the default 8 Hz AI tick, intervals of 1 / 3 / 10 / 40 give roughly 8 Hz, 2.7 Hz,
+0.8 Hz and 0.2 Hz.
+</p>
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -379,7 +384,7 @@ public class AILodSettings : ScriptableObject</code></pre>
 
   <h3 id="FishMMO_Shared_AILodSettings_ActiveDistanceSqr" data-uid="FishMMO.Shared.AILodSettings.ActiveDistanceSqr">
   ActiveDistanceSqr
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L57"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L50"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
@@ -409,19 +414,19 @@ public float ActiveDistanceSqr</code></pre>
 
 
 
-  <h3 id="FishMMO_Shared_AILodSettings_ActiveStaggerModulus" data-uid="FishMMO.Shared.AILodSettings.ActiveStaggerModulus">
-  ActiveStaggerModulus
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L68"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_AILodSettings_ActiveTickInterval" data-uid="FishMMO.Shared.AILodSettings.ActiveTickInterval">
+  ActiveTickInterval
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L61"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Header(&quot;Frame Stagger Modulus&quot;)]
-[Tooltip(&quot;Active tier stagger. At 60 FPS: 3 ≈ 50ms. Full AI pipeline runs on these frames.&quot;)]
+    <pre><code class="lang-csharp hljs">[Header(&quot;Update Interval (in AI ticks)&quot;)]
+[Tooltip(&quot;Active tier: AI ticks between updates. 1 = every AI tick. Full pipeline.&quot;)]
 [Min(1)]
-public int ActiveStaggerModulus</code></pre>
+public int ActiveTickInterval</code></pre>
   </div>
 
 
@@ -442,18 +447,18 @@ public int ActiveStaggerModulus</code></pre>
 
 
 
-  <h3 id="FishMMO_Shared_AILodSettings_DormantCheckModulus" data-uid="FishMMO.Shared.AILodSettings.DormantCheckModulus">
-  DormantCheckModulus
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L80"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_AILodSettings_DormantTickInterval" data-uid="FishMMO.Shared.AILodSettings.DormantTickInterval">
+  DormantTickInterval
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L73"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Dormant tier stagger modulus. At 60 FPS: 120 ≈ 2s. Only LOD re-evaluation to wake up.&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Dormant tier: AI ticks between wake-up checks. No AI runs at all in between.&quot;)]
 [Min(1)]
-public int DormantCheckModulus</code></pre>
+public int DormantTickInterval</code></pre>
   </div>
 
 
@@ -476,7 +481,7 @@ public int DormantCheckModulus</code></pre>
 
   <h3 id="FishMMO_Shared_AILodSettings_FarDistanceSqr" data-uid="FishMMO.Shared.AILodSettings.FarDistanceSqr">
   FarDistanceSqr
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L63"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L56"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
@@ -505,18 +510,18 @@ public float FarDistanceSqr</code></pre>
 
 
 
-  <h3 id="FishMMO_Shared_AILodSettings_FarStaggerModulus" data-uid="FishMMO.Shared.AILodSettings.FarStaggerModulus">
-  FarStaggerModulus
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L76"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_AILodSettings_FarTickInterval" data-uid="FishMMO.Shared.AILodSettings.FarTickInterval">
+  FarTickInterval
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L69"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Far tier stagger modulus. At 60 FPS: 60 ≈ 1s. Minimal AI (wander/idle only, no combat).&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Far tier: AI ticks between updates. Minimal AI (wander/idle only, no combat).&quot;)]
 [Min(1)]
-public int FarStaggerModulus</code></pre>
+public int FarTickInterval</code></pre>
   </div>
 
 
@@ -539,7 +544,7 @@ public int FarStaggerModulus</code></pre>
 
   <h3 id="FishMMO_Shared_AILodSettings_NearbyDistanceSqr" data-uid="FishMMO.Shared.AILodSettings.NearbyDistanceSqr">
   NearbyDistanceSqr
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L60"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L53"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
@@ -568,18 +573,18 @@ public float NearbyDistanceSqr</code></pre>
 
 
 
-  <h3 id="FishMMO_Shared_AILodSettings_NearbyStaggerModulus" data-uid="FishMMO.Shared.AILodSettings.NearbyStaggerModulus">
-  NearbyStaggerModulus
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L72"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_AILodSettings_NearbyTickInterval" data-uid="FishMMO.Shared.AILodSettings.NearbyTickInterval">
+  NearbyTickInterval
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L65"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Nearby tier stagger modulus. At 60 FPS: 12 ≈ 200ms. Simplified AI (no BT, no boss, no sweep).&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Nearby tier: AI ticks between updates. Simplified AI (no behavior tree, no boss script, no sweep).&quot;)]
 [Min(1)]
-public int NearbyStaggerModulus</code></pre>
+public int NearbyTickInterval</code></pre>
   </div>
 
 
@@ -602,7 +607,7 @@ public int NearbyStaggerModulus</code></pre>
 
   <h3 id="FishMMO_Shared_AILodSettings_ReevaluateInterval" data-uid="FishMMO.Shared.AILodSettings.ReevaluateInterval">
   ReevaluateInterval
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L84"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L77"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
@@ -635,31 +640,33 @@ public float ReevaluateInterval</code></pre>
 </h2>
 
 
-  <a id="FishMMO_Shared_AILodSettings_GetStaggerModulus_" data-uid="FishMMO.Shared.AILodSettings.GetStaggerModulus*"></a>
+  <a id="FishMMO_Shared_AILodSettings_GetTickInterval_" data-uid="FishMMO.Shared.AILodSettings.GetTickInterval*"></a>
 
-  <h3 id="FishMMO_Shared_AILodSettings_GetStaggerModulus_FishMMO_Shared_AILodTier_" data-uid="FishMMO.Shared.AILodSettings.GetStaggerModulus(FishMMO.Shared.AILodTier)">
-  GetStaggerModulus(AILodTier)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L89"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_AILodSettings_GetTickInterval_FishMMO_Shared_AILodTier_" data-uid="FishMMO.Shared.AILodSettings.GetTickInterval(FishMMO.Shared.AILodTier)">
+  GetTickInterval(AILodTier)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L84"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Returns the stagger modulus for the given tier.</p>
+  <div class="markdown level1 summary"><p>Returns how many AI ticks pass between updates at the given tier.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public int GetStaggerModulus(AILodTier tier)</code></pre>
+    <pre><code class="lang-csharp hljs">public int GetTickInterval(AILodTier tier)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>tier</code> <a class="xref" href="FishMMO.Shared.AILodTier.html">AILodTier</a></dt>
-    <dd></dd>
+    <dd><p>The tier to query.</p>
+</dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd></dd>
+    <dd><p>The interval in AI ticks, never below 1.</p>
+</dd>
   </dl>
 
 
@@ -676,7 +683,7 @@ public float ReevaluateInterval</code></pre>
 
   <h3 id="FishMMO_Shared_AILodSettings_GetTier_System_Single_" data-uid="FishMMO.Shared.AILodSettings.GetTier(System.Single)">
   GetTier(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L103"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L100"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Determines the LOD tier from a squared distance to the nearest observer.</p>
@@ -690,13 +697,15 @@ public float ReevaluateInterval</code></pre>
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>sqrDistance</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd></dd>
+    <dd><p>Squared distance to the nearest player.</p>
+</dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="FishMMO.Shared.AILodTier.html">AILodTier</a></dt>
-    <dd></dd>
+    <dd><p>The tier that distance falls into.</p>
+</dd>
   </dl>
 
 
@@ -705,6 +714,52 @@ public float ReevaluateInterval</code></pre>
 
 
 
+
+
+
+
+  <a id="FishMMO_Shared_AILodSettings_GetTierHertz_" data-uid="FishMMO.Shared.AILodSettings.GetTierHertz*"></a>
+
+  <h3 id="FishMMO_Shared_AILodSettings_GetTierHertz_FishMMO_Shared_AILodTier_System_Single_" data-uid="FishMMO.Shared.AILodSettings.GetTierHertz(FishMMO.Shared.AILodTier,System.Single)">
+  GetTierHertz(AILodTier, float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/NPC/AI/AILodSettings.cs/#L118"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Converts a tier's interval into the wall-clock rate it produces at a given AI tick rate.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public float GetTierHertz(AILodTier tier, float aiTickRate)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>tier</code> <a class="xref" href="FishMMO.Shared.AILodTier.html">AILodTier</a></dt>
+    <dd><p>The tier to query.</p>
+</dd>
+    <dt><code>aiTickRate</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>The AI tick rate in hertz.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>Updates per second at that tier.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_AILodSettings_GetTierHertz_FishMMO_Shared_AILodTier_System_Single__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Editor and diagnostics only — it exists so a designer can see what a given interval
+actually means in hertz rather than having to work it out.</p>
+</div>
 
 
 
