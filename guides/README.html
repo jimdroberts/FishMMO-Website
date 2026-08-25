@@ -160,6 +160,7 @@
 <li><a href="#client-setup">Client Setup</a>
 <ul>
 <li><a href="#client-launcher-flow">Client Launcher Flow</a></li>
+<li><a href="#client-settings-and-options">Client Settings and Options</a></li>
 <li><a href="#client-tls-certificate-pinning">Client TLS Certificate Pinning</a></li>
 </ul>
 </li>
@@ -1330,7 +1331,7 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 </tr>
 <tr>
 <td><code>MaxInstanceLifetimeMinutes</code></td>
-<td><strong>Minutes</strong> an instanced scene may exist before it is closed regardless of who is inside. SceneServer only. Measured from the scene row's creation, so it includes the time spent queued and loading. <code>StaleInstanceSceneTimeout</code> only ever reclaims an <strong>empty</strong> instance, so an occupied one had no upper bound at all — and since a party may hold only one instance at a time, a dungeon nobody finishes locks that party out of every other. Occupants are warned at 10 / 5 / 1 minutes and then returned to the open world through the ordinary leave-instance path. Open-world scenes are exempt. Code's fallback when the key is missing is <code>120</code></td>
+<td><strong>Minutes</strong> an instanced scene may exist before it is closed regardless of who is inside. SceneServer only. Measured from the scene row's creation, so it includes the time spent queued and loading. <code>StaleInstanceSceneTimeout</code> only ever reclaims an <strong>empty</strong> instance, so an occupied one had no upper bound at all — and since a party may hold only one instance at a time, a dungeon nobody finishes locks that party out of every other. Occupants are warned at 10 / 5 / 1 minutes and then returned to the open world through the ordinary leave-instance path. Open-world scenes are exempt. A dungeon difficulty that declares its own <code>LifetimeMinutes</code> overrides this for instances opened at it — a timed challenge is one of the few levers that changes how a dungeon plays without touching a number in combat — and this remains the backstop for everything that declares nothing. Code's fallback when the key is missing is <code>120</code></td>
 <td>120</td>
 </tr>
 <tr>
@@ -2222,6 +2223,14 @@ out. These two commands exist so that is a decision rather than a wait. Both are
 <td>Returns the character to the open world at the point it entered from. The system-level guarantee that instanced content cannot trap a player: a dungeon is expected to provide an exit teleporter, but that is content data, and a character bound to an instance is routed back into it on every login — so quitting is not an escape. Refused in combat, so it is not one either</td>
 </tr>
 <tr>
+<td>Instance panel (Escape → Dungeon)</td>
+<td>Shows the dungeon's name and difficulty, how long it has left, and everyone in it, marking who leads. <strong>Leadership is the owning party's leader</strong>, so it follows a promotion rather than staying with whoever opened the run. The leader can remove others and can hide the run from the dungeon finder; anyone can leave, and everyone sees the visibility. Removal is immediate and returns the target to the open world at the point they entered from — it is not a disconnect, so they are not routed back into the instance they were just removed from</td>
+</tr>
+<tr>
+<td>Dungeon finder (a dungeon entrance)</td>
+<td>Lists the runs of that dungeon currently open at the chosen difficulty, with who is running each and how full it is. Joining one enters the dungeon <strong>and joins that group's party</strong>, so it is refused for anyone already in a party with somebody else. Opening a new run picks a difficulty and whether to list it for strangers</td>
+</tr>
+<tr>
 <td><code>/closedungeon</code> (<code>/closeinstance</code>)</td>
 <td>Ends the party's current instance. From <strong>inside</strong>, everyone in it is returned to the open world and the scene is unloaded; from <strong>outside</strong>, the instance is retired only if it is empty, and the hosting scene server reclaims the scene on its own. Party leader only, since it removes everybody — a character with no party is its own leader. Refused while anyone inside is in combat, because the eviction path deliberately skips state validation (there is nothing to validate against when a lifetime cap expires) and reaching it from a command would otherwise make it an instant escape from a losing fight</td>
 </tr>
@@ -2657,6 +2666,396 @@ dotnet run --project FishMMO-CMS.Server
 <blockquote>
 <p>The launcher is a plain <code>MonoBehaviour</code> and only exists in <strong>Standalone</strong> builds. In the Editor and on WebGL the <code>ClientPreboot</code> bootstrap loads <code>ClientPostboot</code> directly, because neither can run the external updater. A transient-state watchdog (<code>transientStateTimeoutSeconds</code>, default <code>120</code>) recovers the UI if a launcher coroutine dies mid-flight.</p>
 </blockquote>
+<h3 id="client-settings-and-options">Client Settings and Options</h3>
+<p>Every client setting lives in the same <code>Configuration.cfg</code> beside the client executable that the
+launcher uses — one file, one store, one owner. <code>ClientSettings</code> creates and loads it, names every
+key exactly once, clamps everything read out of it, and owns the single debounced write that puts
+it back on disk.</p>
+<h4 id="when-settings-are-loaded-and-applied">When settings are loaded and applied</h4>
+<p>Loading happens in two phases, and the split matters.</p>
+<ol>
+<li><strong><code>BeforeSceneLoad</code></strong> — <code>ClientSettingsBootstrap</code> creates and loads <code>Configuration.GlobalSettings</code>
+before any scene's <code>Awake</code>, so the first panel to register already has settings to read. It also
+creates the <code>PlayerControls</code> asset and applies the player's saved key bindings — <em>without</em>
+enabling an action map, so the bindings are inspectable and editable from the login screen while
+nothing in the world becomes live early.</li>
+<li><strong><code>MainBootstrapSystem.OnApplyClientBootSettings</code></strong> — raised during client preload, immediately
+after the bootstrap system installs its boot-time frame-rate cap and forces <code>vSyncCount</code> to 0.
+The saved display mode, quality level, brightness, VSync, frame-rate cap, audio levels and
+interface scale are applied there.</li>
+</ol>
+<p>The order is not incidental. Those two bootstrap lines are a <em>default</em> for a client with no
+preference, and anything applied before them is silently overwritten by them — so the hook fires
+after, and the player's choice always wins. A scene with no <code>MainBootstrapSystem</code> (the UI validation
+and unit-test scenes) is covered by an <code>AfterSceneLoad</code> backstop; applying is idempotent either way.</p>
+<blockquote>
+<p>Before this existed, nothing loaded the settings file at client start-up at all: the store was
+created lazily by whichever of the launcher or the Options panel asked first, and the Options
+panel ships closed. In a client started past the launcher, neither ran — key binding overrides
+were skipped without a word, panel positions were never restored, the theme loaded from nothing,
+and a saved resolution was never applied.</p>
+</blockquote>
+<p>Brightness is re-applied on every <code>sceneLoaded</code>: <code>RenderSettings.ambientLight</code> is per-scene state
+baked into whichever scene is active, and the client loads several.</p>
+<p>Writes are debounced. <code>Configuration.Save</code> serialises and rewrites the whole file, so a slider bound
+straight to it rewrites the file once per frame for as long as it is held. Everything coalesces onto
+a short quiet period and is flushed when the Options panel closes and when the client shuts down.
+<strong>In the Editor the disk write is skipped</strong> — <code>Constants.GetWorkingDirectory()</code> resolves to the
+repository root there rather than to an install directory — so settings behave normally in play mode
+but do not rewrite the checked-out file.</p>
+<h4 id="options-panel">Options panel</h4>
+<p><code>FishMMO → Options</code> (or the <code>O</code> key, or Escape → Menu → Options) opens a five-tab panel. Every row
+that belongs to a list — audio channels, gameplay toggles, theme colours, key bindings — is
+generated from the table that defines it rather than authored in the UXML, so a configuration key
+cannot be lost by editing a scene.</p>
+<table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Display</strong></td>
+<td>Resolution, refresh rate, fullscreen mode, quality level, brightness, frame-rate limit, VSync</td>
+</tr>
+<tr>
+<td><strong>Audio</strong></td>
+<td>Master, Music, Sound Effects, Ambient, Interface and Voice volumes; mute when unfocused</td>
+</tr>
+<tr>
+<td><strong>Gameplay</strong></td>
+<td>Damage numbers, healing numbers, achievement popups, ignore party invites, ignore guild invites</td>
+</tr>
+<tr>
+<td><strong>Key Bindings</strong></td>
+<td>Every rebindable binding in the Player action map, with conflict detection</td>
+</tr>
+<tr>
+<td><strong>UI</strong></td>
+<td>Interface scale, window snap grid, window layout reset, the thirteen theme colours, and shareable UI profiles</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Display settings are staged, not live.</strong> Every other setting can be undone by the control that set
+it; a display mode cannot — pick one the monitor will not show and the player cannot see the control
+that would put it back. The three display dropdowns write to a pending selection, <strong>Apply</strong> commits
+it and arms a 12-second countdown, and <strong>Keep</strong> is the only thing that writes it to the file. Closing
+the panel with a mode unconfirmed restores the previous one immediately rather than leaving the
+player waiting out a countdown whose prompt is no longer on screen.</p>
+<h4 id="configuration-keys">Configuration keys</h4>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Range</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Resolution Width</code> / <code>Resolution Height</code></td>
+<td><em>(unset)</em></td>
+<td>a mode the display reports</td>
+<td>Written only by <strong>Keep</strong>. A saved mode the display no longer offers is refused at boot and the current mode is kept</td>
+</tr>
+<tr>
+<td><code>Refresh Rate</code></td>
+<td><em>(unset)</em></td>
+<td>Hz offered at that resolution</td>
+<td>Display refresh rate. Separate from the render cap below — deriving one from the other capped every player at their monitor's rate</td>
+</tr>
+<tr>
+<td><code>Fullscreen</code></td>
+<td><code>FullScreenWindow</code></td>
+<td>a <code>FullScreenMode</code> value</td>
+<td>Stored as the enum value, <strong>not</strong> a dropdown index: the list is built per platform, so an index means a different mode on a build without exclusive fullscreen</td>
+</tr>
+<tr>
+<td><code>Quality Level</code></td>
+<td><em>(unset)</em></td>
+<td>a level name</td>
+<td>Stored by <strong>name</strong>, not index — quality levels can be reordered between builds and an index would silently select a different one</td>
+</tr>
+<tr>
+<td><code>Brightness</code></td>
+<td><code>1.0</code></td>
+<td>0–1</td>
+<td>Scene ambient light. Re-applied on every scene load</td>
+</tr>
+<tr>
+<td><code>Frame Rate Limit</code></td>
+<td>display refresh rate</td>
+<td>tick rate – display rate, capped at 500</td>
+<td>Floored at the network tick rate: FishNet derives ticks from the update loop, so a lower frame rate cannot deliver them on schedule</td>
+</tr>
+<tr>
+<td><code>VSync</code></td>
+<td><code>false</code></td>
+<td>—</td>
+<td>While on, <code>Application.targetFrameRate</code> is ignored entirely and the frame-rate limit above does nothing. The panel says so</td>
+</tr>
+<tr>
+<td><code>Audio.Volume.Master</code></td>
+<td><code>1.0</code></td>
+<td>0–1</td>
+<td>Applied to <code>AudioListener.volume</code>. Stored as the slider position; applied as its square, so the middle of the slider lands near the middle of the perceived range</td>
+</tr>
+<tr>
+<td><code>Audio.Volume.Music</code></td>
+<td><code>0.6</code></td>
+<td>0–1</td>
+<td>Below the rest deliberately: it is the only channel that plays continuously, and a score mixed level with combat effects buries the cues a player reacts to</td>
+</tr>
+<tr>
+<td><code>Audio.Volume.Effects</code> / <code>.Ambient</code> / <code>.Interface</code> / <code>.Voice</code></td>
+<td><code>1.0</code> / <code>0.8</code> / <code>0.8</code> / <code>1.0</code></td>
+<td>0–1</td>
+<td>Read through <code>ClientAudioSettings.EffectiveVolume(channel)</code> by anything that plays a sound</td>
+</tr>
+<tr>
+<td><code>Audio.MuteWhenUnfocused</code></td>
+<td><code>false</code></td>
+<td>—</td>
+<td>Silences the client while its window has no focus. Applied on top of Master rather than by writing zero into it, so the saved level survives alt-tabbing</td>
+</tr>
+<tr>
+<td><code>ShowDamage</code> / <code>ShowHeals</code> / <code>ShowAchievementCompletion</code></td>
+<td><code>true</code></td>
+<td>—</td>
+<td>Floating combat text and achievement popups</td>
+</tr>
+<tr>
+<td><code>IgnorePartyInvites</code> / <code>IgnoreGuildInvites</code></td>
+<td><code>false</code></td>
+<td>—</td>
+<td>Invitations are <strong>declined</strong>, not dropped: an invitation silently discarded leaves the inviter staring at a prompt that never resolves and the server holding an invitation that blocks the next one</td>
+</tr>
+<tr>
+<td><code>UI.Scale</code></td>
+<td><code>1.0</code></td>
+<td>0.75–1.5</td>
+<td>Interface scale, applied by dividing the shared <code>PanelSettings</code> reference resolution. Restored to the authored value when Editor play mode ends, so a play session cannot dirty the asset</td>
+</tr>
+<tr>
+<td><code>UI.SnapGridSize</code></td>
+<td><code>8</code></td>
+<td>0–32 points</td>
+<td>Grid that dragged panels snap to. <code>0</code> disables snapping</td>
+</tr>
+<tr>
+<td><code>UI.Panel.&lt;name&gt;.X</code> / <code>.Y</code></td>
+<td><em>(unset)</em></td>
+<td>panel points</td>
+<td>Where the player dragged each window. Re-clamped into the viewport on restore, so a position saved on a 21:9 monitor is still reachable on a 16:9 one</td>
+</tr>
+<tr>
+<td><code>InputBindingOverrides</code></td>
+<td><em>(unset)</em></td>
+<td>JSON</td>
+<td>Key binding overrides for the whole asset. A value that cannot be parsed is discarded with a log and the defaults are used — it used to abort input initialisation entirely, leaving the player in the world with no controls and no way to reach the panel that would reset them</td>
+</tr>
+<tr>
+<td><code>&lt;Name&gt;ColorR/G/B/A</code></td>
+<td><em>(unset)</em></td>
+<td>0–255</td>
+<td>The thirteen themeable colours. Presence is decided by the <code>R</code> channel, so a legitimately black colour is not mistaken for an absent one</td>
+</tr>
+</tbody>
+</table>
+<h4 id="ui-profiles">UI profiles</h4>
+<p>The <strong>UI</strong> tab can save the window layout, interface scale, snap grid and colour scheme to a file of
+its own under <code>&lt;install root&gt;/UIProfiles/&lt;name&gt;.cfg</code>, and load one back. This is deliberately <em>not</em>
+<code>Configuration.cfg</code>: that file holds the whole client's settings, including its API host, launcher
+state and this machine's display mode, none of which is meaningful on another player's computer and
+some of which is actively wrong there. A profile carries only the parts worth sharing, so it can be
+handed to somebody else as a plain text file.</p>
+<p><code>Configuration.cfg</code> stays the source of truth. Loading a profile writes its keys into the global
+store and saves; nothing reads a profile at runtime, so a profile that is later deleted cannot take
+the player's interface with it. A profile is applied <strong>wholesale</strong>, including the absence of a key —
+a window it says nothing about returns to where the stylesheet puts it, because merging somebody
+else's layout over yours produces an arrangement neither of you has ever seen. Every value is
+re-validated on the way in: panel coordinates are re-clamped into the viewport, the scale is clamped
+to the range the slider offers, and a key the format does not define is ignored rather than copied
+through.</p>
+<h4 id="key-bindings">Key bindings</h4>
+<p>The <strong>Key Bindings</strong> tab lists every rebindable binding in the <code>Player</code> action map, one row per
+binding — composite parts (<code>Move / up</code>, <code>Move / down</code>, …) get their own rows, because that is where
+the keys a player actually wants to change live. Gamepad rows are captioned as such and only accept
+gamepad controls; keyboard rows only accept keyboard and mouse controls.</p>
+<p>Three rules govern the prompt, and all three hold on every row:</p>
+<ul>
+<li><strong>Escape cancels.</strong> It can never be bound to anything. The cancelling key press is consumed by the
+rebind, so it cancels the prompt without also closing the Options panel behind it.</li>
+<li><strong>Backspace clears.</strong> It can never be bound to anything either. Pressing it while a row is
+listening leaves that binding <em>unbound</em> — the action stops working until something is bound to it
+again. The row's own <code>↺</code> restores the key the game shipped with.</li>
+<li><strong>Duplicates are not allowed.</strong> A rebind that would put two bindings on one control is undone and
+reported, naming the binding that already holds the key. Two actions on one key produces a client
+where one of them appears to have stopped working with nothing on screen saying why, and the
+player who created it is the least likely person to suspect the settings screen.</li>
+</ul>
+<p>Those three combine into the way keys are swapped: clear the binding that holds the key you want,
+then bind it. Without the clear, refusing duplicates would make a swap impossible — there would be
+no way to free a key.</p>
+<p>The left mouse button is also unbindable. <code>PerformInteractiveRebinding</code> suppresses the events it
+matches, so with the left button eligible the first click after starting a rebind — including the
+click meant to cancel it — was swallowed and bound to the action instead. Other mouse buttons stay
+bindable.</p>
+<p>A per-row <code>↺</code> restores that row's shipped key, and is refused if doing so would create a duplicate.
+<strong>Reset All Keys</strong> discards every rebind at once after a confirmation, and is the unconditional way
+back: the state it produces is the shipped one and cannot collide with itself. Both it and the status
+line sit outside the scrolling list, so neither is off-screen behind forty rows of bindings.</p>
+<p>Escape cannot be captured, so <code>Escape → Menu → Options</code> is reachable no matter what a player binds.</p>
+<h4 id="default-bindings">Default bindings</h4>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Keyboard / Mouse</th>
+<th>Gamepad</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Move</td>
+<td><code>W</code> <code>A</code> <code>S</code> <code>D</code></td>
+<td>Left stick</td>
+</tr>
+<tr>
+<td>Look</td>
+<td>Mouse</td>
+<td>Right stick</td>
+</tr>
+<tr>
+<td>Jump</td>
+<td><code>Space</code></td>
+<td>A / Cross</td>
+</tr>
+<tr>
+<td>Crouch</td>
+<td><code>C</code></td>
+<td>L3</td>
+</tr>
+<tr>
+<td>Sprint</td>
+<td><code>Left Shift</code></td>
+<td>Left trigger</td>
+</tr>
+<tr>
+<td>Interact</td>
+<td><code>E</code></td>
+<td>X / Square</td>
+</tr>
+<tr>
+<td>Toggle Mouse Mode</td>
+<td><code>Tab</code></td>
+<td>Select</td>
+</tr>
+<tr>
+<td>Toggle First Person</td>
+<td><code>F1</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Cancel <em>(interrupt cast)</em></td>
+<td><code>Escape</code></td>
+<td>B / Circle</td>
+</tr>
+<tr>
+<td>Close Last UI</td>
+<td><code>Escape</code></td>
+<td>B / Circle</td>
+</tr>
+<tr>
+<td>Menu</td>
+<td><code>Escape</code></td>
+<td>Start</td>
+</tr>
+<tr>
+<td>Chat</td>
+<td><code>Enter</code>, <code>/</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Hotkeys 1–10</td>
+<td><code>1</code>–<code>9</code>, <code>0</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Inventory</td>
+<td><code>I</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Abilities</td>
+<td><code>K</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Equipment</td>
+<td><code>P</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Guild</td>
+<td><code>G</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Party</td>
+<td><code>Y</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Friends</td>
+<td><code>T</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Achievements</td>
+<td><code>J</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Factions</td>
+<td><code>U</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Minimap</td>
+<td><code>M</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Lore</td>
+<td><code>L</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Pet</td>
+<td><code>V</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Options</td>
+<td><code>O</code></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><code>Escape</code> drives Cancel, Close Last UI and Menu together by design — Cancel interrupts a cast, Close
+Last UI closes the top panel, and Menu opens the menu when neither of the first two had anything to
+do. That authored overlap is exempt from duplicate detection; overlaps a player creates are not.</p>
+<p>Windows the <strong>server</strong> opens have no key, and that is deliberate: a merchant, bank, loot window, NPC
+dialogue, shrine, gathering node, trade container, <strong>mailbox</strong> or <strong>dungeon finder</strong> is opened by a
+server reply after it has validated an interaction with something in the world. A key would either
+open a window the server never populated or claim to open a mailbox the character is not standing in
+front of — and a player who found the empty window would reasonably report it as broken. The scene
+channel picker and the instance panel are reached from the game menu instead, because both are rare,
+deliberate acts rather than windows a player flicks in and out of.</p>
 <h3 id="client-tls-certificate-pinning">Client TLS Certificate Pinning</h3>
 <p>The client pins TLS certificates to prevent man-in-the-middle attacks on API and WebTransport connections. Pins are <strong>IL-embedded at compile time</strong> via <code>FishMMO-Unity/Assets/Scripts/Client/Security/CertificatePins.generated.cs</code> -- no separate configuration file is needed.</p>
 <blockquote>

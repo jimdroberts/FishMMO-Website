@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class CharacterSystem | FishMMO Documentation ">
       
-      <meta name="description" content="Core character management system handling character spawning, despawning, saving, and lifecycle events for player characters.">
+      <meta name="description" content="Instance management: reporting who is in an instance and how long it has left, letting the party leader remove somebody from it, and letting them hide the run from the dungeon finder.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -97,7 +97,8 @@ Class CharacterSystem  <a class="header-action link-secondary" title="View sourc
   <dl><dt>Assembly</dt><dd>FishMMO.Server.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Core character management system handling character spawning, despawning, saving, and lifecycle events for player characters.</p>
+  <div class="markdown summary"><p>Instance management: reporting who is in an instance and how long it has left, letting the
+party leader remove somebody from it, and letting them hide the run from the dungeon finder.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -427,15 +428,20 @@ public class CharacterSystem : ServerBehaviour, IServerBehaviour&lt;INetworkMana
 
 
   <h2 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_remarks">Remarks</h2>
-  <div class="markdown level0 remarks"><p>Without this, closing the client is a guaranteed escape from any losing fight: the
-disconnect path saved, despawned and released the character within milliseconds, so
-Alt+F4 was strictly better than fleeing. Keeping the body present converts that into the
-opposite trade — the player gives up all control while remaining a valid target.</p>
+  <div class="markdown level0 remarks"><p>Lives on the character system rather than beside the dungeon finder because every operation
+here is about the characters standing in a scene, not about creating or resolving one — the
+membership walk, the removal, and the leave path a removal reuses are all already here.</p>
 <p>
-The claim is deliberately held for the whole linger. It is what keeps this server
-authoritative over the body; releasing it would let another scene server load a second
-copy of the same character from a snapshot that predates whatever is still happening to
-this one.
+<b>Leadership is the owning party's leader.</b> An instance belongs to a party, not to
+whoever happened to open it: the scene row records both, and the party is the one that
+survives its creator leaving, logging out, or handing leadership on. Reading leadership
+from the party also means it moves the moment the party's does — a promotion is reflected
+in this panel on its next refresh, with nothing here needing to know a promotion happened.
+</p>
+<p>
+An instance opened by an ungrouped character has no party, and there its owner <em>is</em>
+its leader. That is the only case where the two differ, and it is also the case where they
+cannot disagree: a run of one.
 </p>
 </div>
 
@@ -490,7 +496,7 @@ account for them.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_BeginChannelTransfer_FishNet_Connection_NetworkConnection_System_Int64_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.BeginChannelTransfer(FishNet.Connection.NetworkConnection,System.Int64)">
   BeginChannelTransfer(NetworkConnection, long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L310"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L319"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Moves a character to another channel (another instance of the same scene) by
@@ -549,7 +555,7 @@ scene server has to be able to claim it, exactly as for a teleport.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_IPlayerCharacter_OnTeleport_FishMMO_Shared_Core_IPlayerCharacter_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.IPlayerCharacter_OnTeleport(FishMMO.Shared.Core.IPlayerCharacter)">
   IPlayerCharacter_OnTeleport(IPlayerCharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L152"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L161"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles character teleport events, validates teleporter and scene, updates position, and saves state.</p>
@@ -614,7 +620,7 @@ scene server has to be able to claim it, exactly as for a teleport.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_OnDeinitialize" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.OnDeinitialize">
   OnDeinitialize()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.cs/#L236"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.cs/#L239"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Cleans up the character system, unregisters event handlers, and saves all characters to the database before shutdown.</p>
@@ -673,7 +679,7 @@ scene server has to be able to claim it, exactly as for a teleport.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_OnUpdate_System_Single_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.OnUpdate(System.Single)">
   OnUpdate(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.cs/#L545"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.cs/#L551"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Drains the main-thread queue each frame.</p>
@@ -705,7 +711,7 @@ scene server has to be able to claim it, exactly as for a teleport.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_ReturnInstanceOccupantsToWorld_System_Int64_System_String_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.ReturnInstanceOccupantsToWorld(System.Int64,System.String)">
   ReturnInstanceOccupantsToWorld(long, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L818"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L838"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns everyone standing in an instance to the open world, so the instance can be
@@ -862,7 +868,7 @@ Returns true if the broadcast was sent successfully, false otherwise.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_SuppressCombatLingerOnDisconnect_FishNet_Connection_NetworkConnection_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.SuppressCombatLingerOnDisconnect(FishNet.Connection.NetworkConnection)">
   SuppressCombatLingerOnDisconnect(NetworkConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L300"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L309"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Declares that the next disconnect on <code class="paramref">connection</code> is something the

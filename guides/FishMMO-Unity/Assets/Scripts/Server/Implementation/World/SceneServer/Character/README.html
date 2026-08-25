@@ -1145,12 +1145,49 @@ OnClientValidatedSceneBroadcastReceived(conn, msg, channel)
 </code></pre>
 <h2 id="project-structure">Project Structure</h2>
 <h3 id="directory-tree">Directory Tree</h3>
+<h2 id="instance-control">Instance Control</h2>
+<p>An instance belongs to a <strong>party</strong>, not to whoever opened it. The scene row records both, and the
+party is the durable half: it survives its creator leaving, logging out, or handing leadership on.
+<code>ResolveInstanceAuthority</code> derives, for one viewer, who leads and whether that viewer is them.</p>
+<ul>
+<li><strong>The viewer's own authority comes from their own party rank</strong>, never from finding the leader in
+the roster walk. A leader standing outside the instance — they opened it and stepped out, or have
+not arrived yet — must not silently lose control of it, and a member must not silently gain
+control because the leader is momentarily unresolvable.</li>
+<li><strong>Naming the leader is a separate, best-effort question.</strong> Character names live on the objects
+this scene server holds, so a leader elsewhere cannot be named from here. The client is told there
+is a leader it cannot name rather than that there is none — &quot;no leader&quot; is a state the party
+system actively repairs, and displaying it for a run that has one would be alarming and wrong.</li>
+<li>A run opened by an <strong>ungrouped</strong> character has no party, and there its owner <em>is</em> its leader. That
+is the only case where the two differ, and also the one where they cannot disagree.</li>
+</ul>
+<p>Leadership therefore moves the moment the party's does, with nothing here needing to know a
+promotion happened — the panel refreshes on its own timer and reports the new answer.</p>
+<p>Kick and visibility are both re-authorised through the same helper when the request arrives; the
+client's <code>ViewerIsLeader</code> only decides what is <em>drawn</em>. <code>SetInstancePrivacyAsync</code> additionally
+re-asserts ownership inside the <code>UPDATE</code> itself, so an authorisation that went stale between the
+roster read and the write updates zero rows rather than flipping another party's dungeon.</p>
+<h2 id="instance-death-rules">Instance Death Rules</h2>
+<p><code>instanceDeathCounts</code> tracks deaths <strong>per run</strong>, not per character: leaving and coming back starts
+over, which is what makes a one-death rule a rule about this attempt. It is cleared by
+<code>TryLeaveInstance</code> and by <code>RemoveCharacterConnectionMapping</code>, so every route out of the instance and
+off this server forgets it — without the second the map would grow by one entry per character the
+process has ever hosted, and a character reconnecting into the same instance would resume a count
+from a run it had already left.</p>
+<p>Spending the last life removes <strong>only the character who died</strong>, through the ordinary leave-instance
+transfer rather than a disconnect. Ending a group's run over one member's mistake is a much harsher
+rule than any dungeon is trying to express, and it would make a hardcore run something any one
+member could end for everybody. <code>AllowResurrection</code> is checked at the offer <em>and</em> at the accept: the
+offer check stops a pointless prompt appearing, and the accept check is the enforcement, because an
+offer recorded a moment before the character walked into the instance would otherwise still be
+redeemable inside it.</p>
 <pre><code>Character/
 ├── CharacterSystem.cs                    # Core lifecycle: initialization, deinitialize, update, main-thread queue, async work helpers
 ├── CharacterSystem.Connection.cs         # Partial: disconnect handling, teleportation, out-of-bounds checks, death/respawn
 ├── CharacterSystem.Loading.cs            # Partial: auth callback, async DB fetch, prefab instantiation, scene validation, spawn
 ├── CharacterSystem.Saving.cs             # Partial: periodic save, save-and-despawn, session claim/release, BuildCharacterData
 ├── CharacterSystem.Social.cs             # Partial: async guild/party/friend fetch, non-DB payload broadcast, targeted broadcasts
+├── CharacterSystem.Instance.cs           # Partial: instance readout, party-leader kick and visibility, difficulty death rules
 ├── CharacterMappingData.cs               # Runtime mapping caches (connection, ID, name, world, waiting load, session tokens)
 ├── CharacterSystemRuntimeData.cs         # Runtime state: atomic save processing guard (TryBeginSave/EndSave)
 ├── CharacterSystemMainThreadQueueData.cs # Per-system main-thread queue container
