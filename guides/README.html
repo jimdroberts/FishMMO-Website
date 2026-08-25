@@ -1152,6 +1152,26 @@ export FISHMMO_DB_PASSWORD=super_secret
 <td><strong>Restart</strong></td>
 <td>The client executable named by <code>-exe</code> is started again on every exit path, patched or not</td>
 </tr>
+<tr>
+<td><strong>Single writer</strong></td>
+<td>A lock file under the install root makes one updater the only process working on it. Two updaters over the same tree would interleave their moves, and each one's rollback would describe a state the other had already changed</td>
+</tr>
+<tr>
+<td><strong>Crash recovery</strong></td>
+<td>Every displaced or created file is recorded in an append-only journal inside the staging directory <em>before</em> the filesystem is touched, and the journal is <code>fsync</code>ed so it survives a power loss. An updater that dies mid-apply leaves an install that is neither version; the next updater to run replays the journal and restores it before attempting anything else</td>
+</tr>
+<tr>
+<td><strong>Manifest checks</strong></td>
+<td>Refuses a manifest in which two entries write the same target path, and refuses an archive whose manifest describes a different upgrade than the one requested — the filename says <code>{from}-{to}</code>, but nothing had checked that the contents agreed</td>
+</tr>
+<tr>
+<td><strong>Permissions</strong></td>
+<td>Original POSIX permission bits are re-applied to each replacement, and a newly created file is detected as executable from its own content (ELF, Mach-O or shebang) rather than its extension. On Linux and macOS a patched binary that loses its executable bit is an install that no longer starts</td>
+</tr>
+<tr>
+<td><strong>Parallelism</strong></td>
+<td>Bounded to the machine's core count, so a large patch does not saturate the I/O queue of the disk it is rewriting</td>
+</tr>
 </tbody>
 </table>
 <blockquote>
