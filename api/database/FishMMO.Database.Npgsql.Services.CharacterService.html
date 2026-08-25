@@ -258,7 +258,7 @@ recover from connection-level failures.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_AnyOnlineAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.AnyOnlineAsync(System.String,System.Threading.CancellationToken)">
   AnyOnlineAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1332"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1371"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Checks whether any non-deleted character on the given account is currently online.</p>
@@ -716,7 +716,7 @@ This method does not soft-delete character-owned sub-entities; those entities ha
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_FetchInWorldCharacterAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.FetchInWorldCharacterAsync(System.String,System.Threading.CancellationToken)">
   FetchInWorldCharacterAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1288"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1327"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns the account's character that currently holds a session, if any.</p>
@@ -1159,6 +1159,65 @@ current owner's lease.
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_CharacterService_RollbackChannelSwitchAsync_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.RollbackChannelSwitchAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_RollbackChannelSwitchAsync_System_Int64_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.RollbackChannelSwitchAsync(System.Int64,System.DateTime,System.Threading.CancellationToken)">
+  RollbackChannelSwitchAsync(long, DateTime, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterService.cs/#L1300"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Restores a channel-switch cooldown claimed by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.html#FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_TryBeginChannelSwitchAsync_System_Int64_System_TimeSpan_System_Threading_CancellationToken_">TryBeginChannelSwitchAsync(long, TimeSpan, CancellationToken)</a>
+for a switch that did not happen.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; RollbackChannelSwitchAsync(long characterId, DateTime previousUtc, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>characterId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>Character whose claim is being released.</p>
+</dd>
+    <dt><code>previousUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd><p>The value returned by the claim, restored as-is.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_CharacterService_RollbackChannelSwitchAsync_System_Int64_System_DateTime_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The claim has to be taken before the transfer, because it is the last thing that can
+refuse the request — but the transfer can still fail after it: the character enters
+combat during the validation, the connection goes away, or the scene server's
+main-thread queue rejects the hand-off. Leaving the claim in place then charged a player
+the full cooldown for a switch they were refused, and answered their retry with &quot;you are
+travelling too often&quot; on top of the refusal they had already been given.</p>
+<p>
+Restores the exact previous value rather than clearing the column, so a player who
+genuinely switched moments ago still serves out the remainder of that cooldown. Nothing
+else writes this column, and a character has one session, so the guard below cannot
+discard a newer legitimate claim.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_CharacterService_SetSelectedAsync_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.SetSelectedAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterService_SetSelectedAsync_System_String_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterService.SetSelectedAsync(System.String,System.Int64,System.Threading.CancellationToken)">
@@ -1222,7 +1281,7 @@ the character only if it has not switched within <code class="paramref">cooldown
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; TryBeginChannelSwitchAsync(long characterId, TimeSpan cooldown, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;DateTime?&gt;&gt; TryBeginChannelSwitchAsync(long characterId, TimeSpan cooldown, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -1240,9 +1299,11 @@ the character only if it has not switched within <code class="paramref">cooldown
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;&gt;</dt>
-    <dd><p><code>true</code> when the switch may proceed and the character has been stamped;
-<code>false</code> when it is still on cooldown.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>?&gt;&gt;</dt>
+    <dd><p>The timestamp the claim replaced when the switch may proceed, so a caller that then
+fails to perform the transfer can put it back with
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterService.html#FishMMO_Database_Npgsql_Services_Interfaces_ICharacterService_RollbackChannelSwitchAsync_System_Int64_System_DateTime_System_Threading_CancellationToken_">RollbackChannelSwitchAsync(long, DateTime, CancellationToken)</a>; <code>null</code> when the character is still on
+cooldown and nothing was stamped.</p>
 </dd>
   </dl>
 

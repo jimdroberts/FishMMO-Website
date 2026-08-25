@@ -173,13 +173,16 @@ public class GatheringNode : Interactable, ISpawnable, IGatheringNode, IInteract
       <a class="xref" href="FishMMO.Shared.Interactable.html#FishMMO_Shared_Interactable_InteractRateLimit">Interactable.InteractRateLimit</a>
     </div>
     <div>
+      <a class="xref" href="FishMMO.Shared.Interactable.html#FishMMO_Shared_Interactable_OnStartServer">Interactable.OnStartServer()</a>
+    </div>
+    <div>
       <a class="xref" href="FishMMO.Shared.Interactable.html#FishMMO_Shared_Interactable_Despawn">Interactable.Despawn()</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Shared.Interactable.html#FishMMO_Shared_Interactable_ResetState_System_Boolean_">Interactable.ResetState(bool)</a>
+      <a class="xref" href="FishMMO.Shared.Interactable.html#FishMMO_Shared_Interactable_InRange_UnityEngine_Transform_">Interactable.InRange(Transform)</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Shared.Interactable.html#FishMMO_Shared_Interactable_InRange_UnityEngine_Transform_">Interactable.InRange(Transform)</a>
+      <a class="xref" href="FishMMO.Shared.Interactable.html#FishMMO_Shared_Interactable_TryConsumeInteractRateLimit_FishMMO_Shared_Core_IPlayerCharacter_">Interactable.TryConsumeInteractRateLimit(IPlayerCharacter)</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Shared.Interactable.html#FishMMO_Shared_Interactable_GizmoColor">Interactable.GizmoColor</a>
@@ -234,9 +237,6 @@ public class GatheringNode : Interactable, ISpawnable, IGatheringNode, IInteract
     </div>
     <div>
       <span class="xref">NetworkBehaviour.OnStopNetwork()</span>
-    </div>
-    <div>
-      <span class="xref">NetworkBehaviour.OnStartServer()</span>
     </div>
     <div>
       <span class="xref">NetworkBehaviour.OnStopServer()</span>
@@ -1029,8 +1029,7 @@ Initialized from <a class="xref" href="FishMMO.Shared.GatheringNodeTemplate.html
   <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Interactable/GatheringNode/GatheringNode.cs/#L61"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Returns true if the specified player character can interact with this object.
-Checks rate limiting and range before allowing interaction.</p>
+  <div class="markdown level1 summary"><p>Returns true if the specified player character may interact with this object.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -1058,6 +1057,16 @@ Checks rate limiting and range before allowing interaction.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Shared_GatheringNode_CanInteract_FishMMO_Shared_Core_IPlayerCharacter__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A pure question with no side effects. It used to stamp the character's interact
+rate-limit as part of answering, which made it unusable as a check: the scene server,
+the quest system and the client's input handler all call it, and each call silently
+consumed a limiter meant for one of the others. A quest accepted within the limiter's
+window of the interaction that opened the dialogue was refused by a debounce nobody
+intended to spend, and the refusal path sends nothing back — so the player saw a dead
+keypress. Spend the limiter explicitly with
+<a class="xref" href="FishMMO.Shared.IInteractable.html#FishMMO_Shared_IInteractable_TryConsumeInteractRateLimit_FishMMO_Shared_Core_IPlayerCharacter_">TryConsumeInteractRateLimit(IPlayerCharacter)</a>.</p>
+</div>
 
 
 
@@ -1093,7 +1102,7 @@ Checks rate limiting and range before allowing interaction.</p>
 
   <h3 id="FishMMO_Shared_GatheringNode_ReadPayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.GatheringNode.ReadPayload(FishNet.Connection.NetworkConnection,FishNet.Serializing.Reader)">
   ReadPayload(NetworkConnection, Reader)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Interactable/GatheringNode/GatheringNode.cs/#L84"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Interactable/GatheringNode/GatheringNode.cs/#L102"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Reads the gathering node's remaining uses from the network payload.</p>
@@ -1123,11 +1132,51 @@ Checks rate limiting and range before allowing interaction.</p>
 
 
 
+  <a id="FishMMO_Shared_GatheringNode_ResetState_" data-uid="FishMMO.Shared.GatheringNode.ResetState*"></a>
+
+  <h3 id="FishMMO_Shared_GatheringNode_ResetState_System_Boolean_" data-uid="FishMMO.Shared.GatheringNode.ResetState(System.Boolean)">
+  ResetState(bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Interactable/GatheringNode/GatheringNode.cs/#L83"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Restores the node's charges when this instance returns to the pool.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void ResetState(bool asServer)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>asServer</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True when the reset is for the server instance.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_GatheringNode_ResetState_System_Boolean__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Shared.GatheringNode.html#FishMMO_Shared_GatheringNode_OnAwake">OnAwake()</a> is where <a class="xref" href="FishMMO.Shared.GatheringNode.html#FishMMO_Shared_GatheringNode_RemainingUses">RemainingUses</a> is seeded, and Unity calls
+Awake once per instance — not once per spawn. A pooled node therefore came back out of
+the pool with the zero its previous life ended on, and <a class="xref" href="FishMMO.Shared.GatheringNode.html#FishMMO_Shared_GatheringNode_CanInteract_FishMMO_Shared_Core_IPlayerCharacter_">CanInteract(IPlayerCharacter)</a> refuses
+a node with no uses left: every gathering node in a scene became permanently depleted
+the first time it was exhausted, for the remaining life of the server process.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_GatheringNode_WritePayload_" data-uid="FishMMO.Shared.GatheringNode.WritePayload*"></a>
 
   <h3 id="FishMMO_Shared_GatheringNode_WritePayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Writer_" data-uid="FishMMO.Shared.GatheringNode.WritePayload(FishNet.Connection.NetworkConnection,FishNet.Serializing.Writer)">
   WritePayload(NetworkConnection, Writer)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Interactable/GatheringNode/GatheringNode.cs/#L75"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Interactable/GatheringNode/GatheringNode.cs/#L93"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Writes the gathering node's remaining uses to the network payload.</p>

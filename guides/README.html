@@ -1265,6 +1265,7 @@ Address=127.0.0.1
 Port=7790
 StaleSceneTimeout=5
 StaleInstanceSceneTimeout=2
+MaxInstanceLifetimeMinutes=120
 CertificatePath=/etc/fishmmo/certs/fullchain.pem
 PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 </code></pre>
@@ -1306,6 +1307,11 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 <td><code>StaleInstanceSceneTimeout</code></td>
 <td><strong>Minutes</strong> an empty <strong>Group/PvP (instanced)</strong> scene stays loaded. Deliberately shorter than <code>StaleSceneTimeout</code>: a dungeon instance belongs to one character or party, so once it empties it is unlikely to be wanted again, while each one holds a full physics scene. Long enough to survive a wipe-and-run-back or a relog. SceneServer only; the code's fallback is <code>5</code></td>
 <td>2</td>
+</tr>
+<tr>
+<td><code>MaxInstanceLifetimeMinutes</code></td>
+<td><strong>Minutes</strong> an instanced scene may exist before it is closed regardless of who is inside. SceneServer only. Measured from the scene row's creation, so it includes the time spent queued and loading. <code>StaleInstanceSceneTimeout</code> only ever reclaims an <strong>empty</strong> instance, so an occupied one had no upper bound at all — and since a party may hold only one instance at a time, a dungeon nobody finishes locks that party out of every other. Occupants are warned at 10 / 5 / 1 minutes and then returned to the open world through the ordinary leave-instance path. Open-world scenes are exempt. Code's fallback when the key is missing is <code>120</code></td>
+<td>120</td>
 </tr>
 <tr>
 <td><code>CertificatePath</code></td>
@@ -2178,6 +2184,29 @@ scheduled admits nobody.</p>
 </tbody>
 </table>
 <p><code>lockworld</code> / <code>unlockworld</code> are accepted as aliases of <code>lockserver</code> / <code>unlockserver</code>.</p>
+<h4 id="player-commands-for-instanced-content">Player commands for instanced content</h4>
+<p>A party may hold <strong>one</strong> dungeon instance at a time, so a run that is finished with — or that
+went wrong — otherwise blocks the party from starting anything else until it empties and ages
+out. These two commands exist so that is a decision rather than a wait. Both are available at
+<code>AccessLevel.Player</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/leaveinstance</code> (<code>/exitinstance</code>)</td>
+<td>Returns the character to the open world at the point it entered from. The system-level guarantee that instanced content cannot trap a player: a dungeon is expected to provide an exit teleporter, but that is content data, and a character bound to an instance is routed back into it on every login — so quitting is not an escape. Refused in combat, so it is not one either</td>
+</tr>
+<tr>
+<td><code>/closedungeon</code> (<code>/closeinstance</code>)</td>
+<td>Ends the party's current instance. From <strong>inside</strong>, everyone in it is returned to the open world and the scene is unloaded; from <strong>outside</strong>, the instance is retired only if it is empty, and the hosting scene server reclaims the scene on its own. Party leader only, since it removes everybody — a character with no party is its own leader. Refused while anyone inside is in combat, because the eviction path deliberately skips state validation (there is nothing to validate against when a lifetime cap expires) and reaching it from a command would otherwise make it an instant escape from a losing fight</td>
+</tr>
+</tbody>
+</table>
 <p>Commands are refused silently to anyone below <code>AccessLevel.Admin</code> — the server gives no
 indication the command exists, so an unprivileged player cannot probe for command names — but
 every refused attempt is logged at warning level with the character and account that tried it.</p>

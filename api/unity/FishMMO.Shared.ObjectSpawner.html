@@ -807,7 +807,7 @@ public class ObjectSpawner : NetworkBehaviour</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_BoundingBoxExtents" data-uid="FishMMO.Shared.ObjectSpawner.BoundingBoxExtents">
   BoundingBoxExtents
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L123"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L134"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The extents (half-size) of the bounding box, calculated from BoundingBoxSize.</p>
@@ -839,7 +839,7 @@ public Vector3 BoundingBoxExtents</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_BoundingBoxSize" data-uid="FishMMO.Shared.ObjectSpawner.BoundingBoxSize">
   BoundingBoxSize
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L117"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L128"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The size of the bounding box used for random spawn position selection.</p>
@@ -870,7 +870,7 @@ public Vector3 BoundingBoxExtents</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_GizmoColor" data-uid="FishMMO.Shared.ObjectSpawner.GizmoColor">
   GizmoColor
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L242"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L253"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The color used to draw the spawner's gizmo in the editor.</p>
@@ -1058,7 +1058,7 @@ public int MaxSpawnCount</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_PrewarmHeadroom" data-uid="FishMMO.Shared.ObjectSpawner.PrewarmHeadroom">
   PrewarmHeadroom
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L88"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L99"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Extra instances reserved beyond <a class="xref" href="FishMMO.Shared.ObjectSpawner.html#FishMMO_Shared_ObjectSpawner_MaxSpawnCount">MaxSpawnCount</a>.</p>
@@ -1066,7 +1066,7 @@ public int MaxSpawnCount</code></pre>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Extra pooled instances beyond MaxSpawnCount, to cover corpses that have not yet decayed.&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Extra pooled instances beyond MaxSpawnCount, as slack for prefabs shared between spawners.&quot;)]
 [Min(0)]
 public int PrewarmHeadroom</code></pre>
   </div>
@@ -1085,8 +1085,19 @@ public int PrewarmHeadroom</code></pre>
 
 
   <h4 class="section" id="FishMMO_Shared_ObjectSpawner_PrewarmHeadroom_remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Covers the window where a corpse is still decaying while its replacement has already
-spawned, which briefly needs more live instances than the spawner's own maximum.</p>
+  <div class="markdown level1 remarks"><p>
+Slack, not a requirement. A corpse holds its spawner slot for the whole of its decay —
+<a class="xref" href="FishMMO.Shared.ObjectSpawner.html#FishMMO_Shared_ObjectSpawner_Despawn_FishMMO_Shared_Core_ISpawnable_">Despawn(ISpawnable)</a> is what frees the slot and starts the respawn clock, and a corpse
+does not reach it until the decay timer expires — so this spawner can never have more
+than <a class="xref" href="FishMMO.Shared.ObjectSpawner.html#FishMMO_Shared_ObjectSpawner_MaxSpawnCount">MaxSpawnCount</a> live instances and the reservation alone would do.
+</p>
+<p>
+The headroom is kept because the pool is shared: <a class="xref" href="FishMMO.Shared.ObjectSpawnerPool.html">ObjectSpawnerPool</a>
+de-duplicates reservations across every spawner using the same prefab, taking the
+largest single demand rather than the sum, so a prefab used by many spawners at once
+genuinely can need more instances than any one spawner reserved. This covers that
+without making the reservation quadratic.
+</p>
 </div>
 
 
@@ -1141,7 +1152,7 @@ on demand is preferable to paying it always.
 
   <h3 id="FishMMO_Shared_ObjectSpawner_RandomRespawnTime" data-uid="FishMMO.Shared.ObjectSpawner.RandomRespawnTime">
   RandomRespawnTime
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L97"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L108"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>If true, a random respawn time is selected within the minimum and maximum range. Otherwise, the initial respawn time is used.</p>
@@ -1173,7 +1184,7 @@ public bool RandomRespawnTime</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_RandomSpawnPosition" data-uid="FishMMO.Shared.ObjectSpawner.RandomSpawnPosition">
   RandomSpawnPosition
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L103"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L114"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>If true, a random spawn position is picked inside the bounding box using the current position as the center.</p>
@@ -1236,7 +1247,7 @@ public bool RandomSpawnPosition</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_SpawnableRespawnTimers" data-uid="FishMMO.Shared.ObjectSpawner.SpawnableRespawnTimers">
   SpawnableRespawnTimers
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L140"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L151"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>List of respawn timers for each spawnable object.</p>
@@ -1267,7 +1278,7 @@ public bool RandomSpawnPosition</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_Spawnables" data-uid="FishMMO.Shared.ObjectSpawner.Spawnables">
   Spawnables
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L130"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L141"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The list of spawnable settings used to configure each spawnable object.
@@ -1300,7 +1311,7 @@ public List&lt;SpawnableSettings&gt; Spawnables</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_Spawned" data-uid="FishMMO.Shared.ObjectSpawner.Spawned">
   Spawned
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L135"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L146"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Dictionary of currently spawned objects, keyed by their unique ID.</p>
@@ -1331,7 +1342,7 @@ public List&lt;SpawnableSettings&gt; Spawnables</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_SphereRadius" data-uid="FishMMO.Shared.ObjectSpawner.SphereRadius">
   SphereRadius
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L112"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L123"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>SphereCast radius used for spawning objects in the world.</p>
@@ -1431,7 +1442,7 @@ public Transform Transform</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_Despawn_FishMMO_Shared_Core_ISpawnable_" data-uid="FishMMO.Shared.ObjectSpawner.Despawn(FishMMO.Shared.Core.ISpawnable)">
   Despawn(ISpawnable)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L267"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L278"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Despawns the specified spawnable object, schedules its respawn, and removes it from the spawned dictionary.</p>
@@ -1464,7 +1475,7 @@ public Transform Transform</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_GetSpawnIndex" data-uid="FishMMO.Shared.ObjectSpawner.GetSpawnIndex">
   GetSpawnIndex()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L468"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L534"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Gets the index of the next spawnable to use, based on the configured spawn type.</p>
@@ -1497,7 +1508,7 @@ public Transform Transform</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_OnStartNetwork" data-uid="FishMMO.Shared.ObjectSpawner.OnStartNetwork">
   OnStartNetwork()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L155"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L166"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when the network starts. Initializes spawner, validates spawnables, and spawns initial objects.</p>
@@ -1524,7 +1535,7 @@ public Transform Transform</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_SpawnObject" data-uid="FishMMO.Shared.ObjectSpawner.SpawnObject">
   SpawnObject()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L506"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L572"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Spawns a new object in the world using the selected spawnable settings and position logic.</p>
@@ -1551,7 +1562,7 @@ public Transform Transform</code></pre>
 
   <h3 id="FishMMO_Shared_ObjectSpawner_TryRespawn" data-uid="FishMMO.Shared.ObjectSpawner.TryRespawn">
   TryRespawn()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L322"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Spawner/ObjectSpawner.cs/#L388"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to respawn objects if their timers have elapsed and respawn conditions are met.</p>

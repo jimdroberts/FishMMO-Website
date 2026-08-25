@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class AsyncWorkerData | FishMMO Documentation ">
       
-      <meta name="description" content="Centralized async work queue backed by System.Threading.Channels. Replaces fire-and-forget _ = SomeAsync(...) across all server systems with a bounded, backpressure-aware work queue processed by a fixed number of worker loops. Design: Multiple channels: one per worker for entity-keyed ordering via consistent hashing.Bounded capacity with DropWrite full-mode returns false on Enqueue (backpressure).Workers are long-lived async loops consuming from their assigned channel.Graceful shutdown via CancellationToken; workers drain remaining items on cancel. Usage: // Simple (round-robin to any worker): asyncWorkerData.Enqueue(() =&amp;gt; PersistInventoryAsync(dto));  // Entity-keyed (same characterID always goes to the same worker): asyncWorkerData.Enqueue(() =&amp;gt; SaveCharacterAsync(charData), characterID); Systems declare dependency via: [RequiresDataContainer(typeof(AsyncWorkerData))] Pool isolation: Total capacity = workerCount &#215; channelCapacity. Default 8 &#215; 2048 = 16,384 slots. A single saturated system cannot starve others because entity-keyed enqueues are hash-routed to specific workers and round-robin enqueues are distributed evenly. Increase workerCount for high-load deployments; increase channelCapacity to absorb bursts.">
+      <meta name="description" content="Centralized async work queue. Replaces fire-and-forget _ = SomeAsync(...) across all server systems with a bounded, backpressure-aware pool that runs work items concurrently while preserving FIFO order between items that share an entity key. Design: Work runs concurrently, capped by . A slow item delays only the items ordered behind it.Items sharing an entityKey run in the order they were enqueued, one at a time.Bounded admission:  returns false once  items are accepted but unfinished.Nothing ever executes on the calling thread — see . Usage: // Unordered — runs as soon as a concurrency slot is free: asyncWorkerData.Enqueue(() =&amp;gt; PersistInventoryAsync(dto));  // Ordered — this character&#39;s items run in enqueue order, one at a time: asyncWorkerData.Enqueue(() =&amp;gt; SaveCharacterAsync(charData), characterID); Systems declare dependency via: [RequiresDataContainer(typeof(AsyncWorkerData))]">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Server_Implementation_AsyncWorkerData" data-uid="FishMMO.Server.Implementation.AsyncWorkerData" class="text-break">
-Class AsyncWorkerData  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L43"><i class="bi bi-code-slash"></i></a>
+Class AsyncWorkerData  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L63"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,24 +97,20 @@ Class AsyncWorkerData  <a class="header-action link-secondary" title="View sourc
   <dl><dt>Assembly</dt><dd>FishMMO.Server.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Centralized async work queue backed by System.Threading.Channels.</p>
-<p>Replaces fire-and-forget <code>_ = SomeAsync(...)</code> across all server systems with
-a bounded, backpressure-aware work queue processed by a fixed number of worker loops.</p>
+  <div class="markdown summary"><p>Centralized async work queue.</p>
+<p>Replaces fire-and-forget <code>_ = SomeAsync(...)</code> across all server systems with a
+bounded, backpressure-aware pool that runs work items concurrently while preserving
+FIFO order between items that share an entity key.</p>
 <p>Design:</p>
-<ul><li>Multiple channels: one per worker for entity-keyed ordering via consistent hashing.</li><li>Bounded capacity with DropWrite full-mode returns false on Enqueue (backpressure).</li><li>Workers are long-lived async loops consuming from their assigned channel.</li><li>Graceful shutdown via CancellationToken; workers drain remaining items on cancel.</li></ul>
+<ul><li>Work runs concurrently, capped by <span class="xref">FishMMO.Server.Implementation.AsyncWorkerData.maxConcurrency</span>. A slow item delays only the items ordered behind it.</li><li>Items sharing an <code>entityKey</code> run in the order they were enqueued, one at a time.</li><li>Bounded admission: <a class="xref" href="FishMMO.Server.Implementation.AsyncWorkerData.html#FishMMO_Server_Implementation_AsyncWorkerData_Enqueue_System_Func_System_Threading_Tasks_Task__System_String_">Enqueue(Func&lt;Task&gt;, string)</a> returns false once <span class="xref">FishMMO.Server.Implementation.AsyncWorkerData.maxOutstandingItems</span> items are accepted but unfinished.</li><li>Nothing ever executes on the calling thread — see <span class="xref">FishMMO.Server.Implementation.AsyncWorkerData.DispatchUnordered(FishMMO.Server.Implementation.AsyncWorkerData.AsyncWorkItem)</span>.</li></ul>
 <p>Usage:</p>
-<pre><code class="lang-csharp">// Simple (round-robin to any worker):
+<pre><code class="lang-csharp">// Unordered — runs as soon as a concurrency slot is free:
 asyncWorkerData.Enqueue(() =&gt; PersistInventoryAsync(dto));
 
-// Entity-keyed (same characterID always goes to the same worker):
+// Ordered — this character's items run in enqueue order, one at a time:
 asyncWorkerData.Enqueue(() =&gt; SaveCharacterAsync(charData), characterID);</code></pre>
 <p>Systems declare dependency via:
 <code>[RequiresDataContainer(typeof(AsyncWorkerData))]</code></p>
-<p><b>Pool isolation:</b> Total capacity = workerCount × channelCapacity.
-Default 8 × 2048 = 16,384 slots. A single saturated system cannot starve
-others because entity-keyed enqueues are hash-routed to specific workers
-and round-robin enqueues are distributed evenly. Increase workerCount for
-high-load deployments; increase channelCapacity to absorb bursts.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -190,6 +186,31 @@ high-load deployments; increase channelCapacity to absorb bursts.</p>
 
 
 
+  <h2 id="FishMMO_Server_Implementation_AsyncWorkerData_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+<b>Why this is not a set of sequential worker loops.</b> It used to be: N channels, one
+long-lived loop each, <code>await item.Work()</code> one item at a time. That made every worker
+a head-of-line queue — a single item that waited on something slow stalled every unrelated
+item routed to the same channel, for as long as it took. The waits are real and they are
+long: <code>RunOnMainThreadAsync</code> blocks for up to 30 seconds when the main-thread queue is
+not draining, <code>ClaimCharacterSessionAsync</code> backs off across five attempts, and any
+database call can stall. With eight loops it took eight such items to halt every save,
+session release, scene status write and routing decision on the process at once — while the
+thread pool sat idle, because none of those items were using a thread. They were awaiting.
+</p>
+<p>
+Concurrency is what this pool should be bounding, not parallelism, so it bounds it directly
+with a semaphore and lets the thread pool schedule. Ordering is the one thing the loops
+genuinely provided, and it is preserved exactly where it was promised — per entity key —
+rather than as a side effect of which channel an item hashed to.
+</p>
+<p>
+<b>Pool sizing.</b> <span class="xref">FishMMO.Server.Implementation.AsyncWorkerData.maxConcurrency</span> is deliberately well under the database
+connection pool (<code>AppSettings.MaxPoolSize</code>, 100 by default). A work item holds at most
+one connection at a time, so this caps connection demand from the pool with headroom left
+for the synchronous shutdown flush and the health checks, which do not come through here.
+</p>
+</div>
 
 
   <h2 class="section" id="properties">Properties
@@ -200,7 +221,7 @@ high-load deployments; increase channelCapacity to absorb bursts.</p>
 
   <h3 id="FishMMO_Server_Implementation_AsyncWorkerData_CompletedCount" data-uid="FishMMO.Server.Implementation.AsyncWorkerData.CompletedCount">
   CompletedCount
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L86"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L131"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Total number of work items processed since startup.</p>
@@ -232,10 +253,10 @@ high-load deployments; increase channelCapacity to absorb bursts.</p>
 
   <h3 id="FishMMO_Server_Implementation_AsyncWorkerData_PendingCount" data-uid="FishMMO.Server.Implementation.AsyncWorkerData.PendingCount">
   PendingCount
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L71"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L121"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Current number of items waiting in the queue(s).
+  <div class="markdown level1 summary"><p>Current number of items accepted but not yet started.
 Useful for monitoring and diagnostics.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
@@ -257,6 +278,10 @@ Useful for monitoring and diagnostics.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Server_Implementation_AsyncWorkerData_PendingCount_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Accepted but not yet started. Items that are running are reported by neither this nor
+<a class="xref" href="FishMMO.Server.Implementation.AsyncWorkerData.html#FishMMO_Server_Implementation_AsyncWorkerData_CompletedCount">CompletedCount</a> — they are in flight.</p>
+</div>
 
 
 
@@ -269,10 +294,10 @@ Useful for monitoring and diagnostics.</p>
 
   <h3 id="FishMMO_Server_Implementation_AsyncWorkerData_Clear" data-uid="FishMMO.Server.Implementation.AsyncWorkerData.Clear">
   Clear()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L193"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L372"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Clears all pending items from all channels without executing them.</p>
+  <div class="markdown level1 summary"><p>Stops accepting new work. Everything already accepted is left to run.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -288,6 +313,27 @@ Useful for monitoring and diagnostics.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Server_Implementation_AsyncWorkerData_Clear_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The channel-based implementation discarded the queue here, and this looked like a
+faithful port of that — but the contract was self-defeating. <code>Clear</code> has exactly one
+caller, <code>RuntimeDataContainerRegistry.DeinitializeAll</code>, which invokes it
+immediately before <a class="xref" href="FishMMO.Server.Implementation.AsyncWorkerData.html#FishMMO_Server_Implementation_AsyncWorkerData_OnDeinitialize">OnDeinitialize()</a>. So &quot;discard everything pending&quot; only
+ever ran during shutdown, and what is pending during shutdown is precisely the work that
+must not be lost: the saves and <em>session releases</em> that the behaviours enqueued as
+they tore down moments earlier.</p>
+<p>
+A dropped release is not a local loss. The character stays Online in the database until
+its lease expires, so after a restart the player is refused by every scene server for the
+next two minutes. Combat-logout bodies are the common case: <code>FinalizeAllCombatLingers</code>
+hands each one's save and release to this pool and then removes its token from
+<code>SessionTokens</code>, so the synchronous shutdown flush no longer covers them — this pool
+is the only thing that can release them.
+</p>
+<p>
+Refusing new work still does the useful half: nothing further piles up while the process
+is going down, and <a class="xref" href="FishMMO.Server.Implementation.AsyncWorkerData.html#FishMMO_Server_Implementation_AsyncWorkerData_OnDeinitialize">OnDeinitialize()</a>'s bounded wait flushes the backlog.
+</p>
+</div>
 
 
 
@@ -296,12 +342,12 @@ Useful for monitoring and diagnostics.</p>
 
   <h3 id="FishMMO_Server_Implementation_AsyncWorkerData_Enqueue_System_Func_System_Threading_Tasks_Task__System_Int64_System_String_" data-uid="FishMMO.Server.Implementation.AsyncWorkerData.Enqueue(System.Func{System.Threading.Tasks.Task},System.Int64,System.String)">
   Enqueue(Func&lt;Task&gt;, long, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L131"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L164"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Enqueue an async work item with an entity key for ordered processing.
-Work items sharing the same entityKey are guaranteed to execute in FIFO order
-(routed to the same worker via consistent hashing).
+Work items sharing the same entityKey are guaranteed to execute in FIFO order,
+one at a time; items with different keys proceed independently.
 Returns true if the item was accepted, false if the queue is full (backpressure).</p>
 </div>
   <div class="markdown level1 conceptual"></div>
@@ -316,7 +362,7 @@ Returns true if the item was accepted, false if the queue is full (backpressure)
     <dd><p>The async work to execute.</p>
 </dd>
     <dt><code>entityKey</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>Entity identifier for ordering (e.g., characterID).</p>
+    <dd><p>Entity identifier for ordering (e.g., characterID), or 0 for none.</p>
 </dd>
     <dt><code>callerName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd><p>Optional caller identifier for diagnostics.</p>
@@ -336,6 +382,11 @@ Returns true if the item was accepted, false if the queue is full (backpressure)
 
 
 
+  <h4 class="section" id="FishMMO_Server_Implementation_AsyncWorkerData_Enqueue_System_Func_System_Threading_Tasks_Task__System_Int64_System_String__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>An <code class="paramref">entityKey</code> of 0 means &quot;no ordering requirement&quot; and is treated
+exactly like the unkeyed overload. It is not an entity whose id happens to be zero, and
+callers that pass a default id are not asking to be serialized with each other.</p>
+</div>
 
 
 
@@ -344,7 +395,7 @@ Returns true if the item was accepted, false if the queue is full (backpressure)
 
   <h3 id="FishMMO_Server_Implementation_AsyncWorkerData_Enqueue_System_Func_System_Threading_Tasks_Task__System_String_" data-uid="FishMMO.Server.Implementation.AsyncWorkerData.Enqueue(System.Func{System.Threading.Tasks.Task},System.String)">
   Enqueue(Func&lt;Task&gt;, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L118"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L152"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Enqueue an async work item for processing.
@@ -387,10 +438,10 @@ Returns true if the item was accepted, false if the queue is full (backpressure)
 
   <h3 id="FishMMO_Server_Implementation_AsyncWorkerData_InitializeOnce" data-uid="FishMMO.Server.Implementation.AsyncWorkerData.InitializeOnce">
   InitializeOnce()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L91"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L136"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Initializes channels and starts worker loops.</p>
+  <div class="markdown level1 summary"><p>Prepares the concurrency gate and ordering lanes.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -419,10 +470,10 @@ Returns true if the item was accepted, false if the queue is full (backpressure)
 
   <h3 id="FishMMO_Server_Implementation_AsyncWorkerData_OnDeinitialize" data-uid="FishMMO.Server.Implementation.AsyncWorkerData.OnDeinitialize">
   OnDeinitialize()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L206"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/RuntimeData/AsyncWorkerData.cs/#L380"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Signals cancellation to all workers and waits for graceful drain.</p>
+  <div class="markdown level1 summary"><p>Stops accepting work and waits, bounded, for what is still running.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 

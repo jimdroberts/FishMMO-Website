@@ -199,6 +199,7 @@
 <li><strong>Range hysteresis.</strong> An NPC already attacking tolerates a target drifting 10% past its ability range before giving chase. Without it a strafing target flips the NPC between Attack and CloseDistance every tick, toggling <code>isStopped</code> and making it shudder in place.</li>
 <li><strong>Combat slots.</strong> Several attackers on one target claim distinct angular slots around it rather than all pathing to the same point. Ring capacity is derived from geometry — how many agents of a given radius fit on a circle — and overflow attackers form a staggered second rank.</li>
 <li><strong>Unreachable-target break-off.</strong> A target standing somewhere the NPC cannot path to produces a partial path; the NPC gives up after <code>UnreachableTargetTimeout</code> and drops that target's threat so the next sweep does not immediately re-acquire it.</li>
+<li><strong>Abilities classify themselves.</strong> An archetype never names the abilities it should use. <code>AIAbilityClassifier</code> reads the ECA actions attached to an ability and derives what it does — heal, damage, control, dispel, taunt — so a healer archetype works on any creature whose spellbook contains a heal, and picks up one added later without being edited.</li>
 <li>Personality styles: Balanced, Aggressive, Defensive, Cautious, Berserker, <strong>Pathetic</strong>, <strong>Determined</strong>, <strong>Rampaging</strong>. A Pathetic personality is guaranteed a retreat threshold even if the field is left at zero; fearless styles ignore one entirely.</li>
 <li>Targeting modes: Threat, Random, Weakest, Nearest. Rampaging forces Random and re-rolls onto a new victim mid-fight, so it cannot be held by threat or by a taunt.</li>
 </ul>
@@ -415,6 +416,10 @@
 <td>Reports archetypes whose configuration cannot behave as described</td>
 </tr>
 <tr>
+<td><code>FishMMO &gt; AI &gt; Audit Ability Intents</code></td>
+<td>Reports what the AI derives each ability template to do</td>
+</tr>
+<tr>
 <td><code>FishMMO &gt; AI &gt; Organize AI Assets</code></td>
 <td>Files every AI asset into the canonical folder layout</td>
 </tr>
@@ -432,6 +437,82 @@
 </tr>
 </tbody>
 </table>
+<h3 id="how-an-npc-chooses-an-ability">How an NPC chooses an ability</h3>
+<p>Ability selection has two questions, asked in order.</p>
+<p><strong>What can this ability do?</strong> <code>AIAbilityClassifier</code> walks the ability template's five ECA event
+lists, follows each event's conditions-met and conditions-not-met action lists, and turns the action
+types it finds into <code>AIAbilityIntent</code> flags:</p>
+<table>
+<thead>
+<tr>
+<th>ECA action</th>
+<th>Intent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ApplyDamageAction</code></td>
+<td><code>Damage</code></td>
+</tr>
+<tr>
+<td><code>ApplyHealAction</code></td>
+<td><code>Heal</code></td>
+</tr>
+<tr>
+<td><code>ApplyReviveAction</code></td>
+<td><code>Revive</code></td>
+</tr>
+<tr>
+<td><code>ApplyTauntAction</code>, <code>ApplyThreatAction</code></td>
+<td><code>Threat</code></td>
+</tr>
+<tr>
+<td><code>InterruptAction</code>, <code>KnockbackHitAction</code></td>
+<td><code>Control</code></td>
+</tr>
+<tr>
+<td><code>ApplyDispelAction</code></td>
+<td><code>Dispel</code>, plus <code>Buff</code> or <code>Debuff</code> by direction</td>
+</tr>
+<tr>
+<td><code>ApplyBuffAction</code></td>
+<td>depends on the buff template (below)</td>
+</tr>
+<tr>
+<td><code>PetAbilityTemplate</code></td>
+<td><code>Summon</code></td>
+</tr>
+</tbody>
+</table>
+<p>Buffs carry no &quot;harmful&quot; flag, so direction is inferred: a state flag <code>CharacterIncapacitation</code>
+recognises is <code>Control</code>; the <strong>sum</strong> of the attribute modifiers gives <code>Buff</code> or <code>Debuff</code>; the sum of
+the resource ticks gives <code>Heal</code> or <code>Damage</code>. The sum rather than the count, so a plate-armour buff
+with a small speed penalty is still a buff. This inference is the one place classification can be
+wrong, and <code>AbilityTemplate.IntentOverride</code> is the fix when it is — it replaces the derived value
+outright. Run <code>FishMMO &gt; AI &gt; Audit Ability Intents</code> to see what the AI makes of every ability in
+the project.</p>
+<p>An ability with no recognisable actions classifies as <code>None</code> and stays usable, so content that
+predates classification keeps working rather than silently disarming the NPC that knows it.</p>
+<p><strong>How much does this archetype want it?</strong> <code>AICombatPersonality</code> carries a weight per intent —
+<code>DamageWeight</code>, <code>HealWeight</code>, <code>ControlWeight</code>, <code>DebuffWeight</code>, <code>BuffWeight</code>, <code>ThreatWeight</code> — which
+multiplies into the ability's score alongside the existing delivery weights (melee / ranged / AOE /
+support). Delivery and purpose are orthogonal and both apply: a crowd controller wants ranged
+delivery <em>and</em> controlling purpose. An ability carrying several intents takes the strongest matching
+weight, not the product, so a compound ability cannot out-score a specialised one on flag count.</p>
+<p>The two specialised archetypes use the same classification rather than a list:</p>
+<ul>
+<li><strong>Healer</strong> — heals are abilities classified <code>Heal</code>. Everything else falls through to the damage
+rotation, and the damage rotation excludes anything purely supportive.</li>
+<li><strong>Defender</strong> — taunts are abilities classified <code>Threat</code>, used ahead of anything the scoring picker
+would otherwise choose.</li>
+</ul>
+<p>Both still expose their old template-ID list (<code>HealAbilityTemplateIDs</code>, <code>TauntAbilityTemplateIDs</code>)
+as an <strong>override</strong>, for an ability that acts through some route the classifier cannot see. Leave
+them empty in the normal case.</p>
+<p>Finally, <code>BaseAttackingState.IsEnemyAbility</code> keeps the attack rotation honest: an ability that is
+purely supportive and aimed at another character is excluded, so an NPC no longer heals the player
+it is fighting. A self-cast shield stays in — the NPC aims it at itself — and so does a drain that
+damages and heals, because the damage is the point.</p>
 <h3 id="asset-layout">Asset layout</h3>
 <pre><code>Assets/Templates/Entity/NPCs/AI/
 ├── Archetypes/        # AIArchetypeTemplate — the asset to assign to a prefab
@@ -485,6 +566,10 @@
 <tr>
 <td>Threat dispatch</td>
 <td>Damage an NPC and confirm only that NPC's threat table changes</td>
+</tr>
+<tr>
+<td>Ability intents</td>
+<td><code>FishMMO &gt; AI &gt; Audit Ability Intents</code> reads each ability the way it was authored</td>
 </tr>
 <tr>
 <td>Taunt</td>
@@ -580,6 +665,8 @@ GetMovementProgress(dt)
 ├── PackTactic.cs
 ├── AIUtility.cs
 ├── Combat/
+│   ├── AIAbilityClassifier.cs     # Derives what an ability does from its ECA actions
+│   ├── AIAbilityIntent.cs         # Heal / Damage / Control / Dispel / Threat flags
 │   ├── AICombatDecision.cs        # The shared, Unity-free combat decision
 │   ├── AICombatIntent.cs
 │   ├── AICombatSlots.cs           # Ring slotting so attackers do not converge on one point
@@ -605,6 +692,7 @@ GetMovementProgress(dt)
 <h3 id="related">Related</h3>
 <ul>
 <li>ECA actions: <code>Entity/ECA/Actions/Character/ApplyTauntAction.cs</code>, <code>ApplyThreatAction.cs</code></li>
+<li>Ability templates: <code>Entity/Prediction/Ability/Template/AbilityTemplate.cs</code> (<code>IntentOverride</code>)</li>
 <li>Editor tooling: <code>Tools/Extensions/Unity/Editor/AI/</code></li>
 <li>Tests: <code>Assets/UnitTests/AI/</code></li>
 </ul>

@@ -673,7 +673,7 @@ scene server has to be able to claim it, exactly as for a teleport.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_OnUpdate_System_Single_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.OnUpdate(System.Single)">
   OnUpdate(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.cs/#L524"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.cs/#L545"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Drains the main-thread queue each frame.</p>
@@ -697,6 +697,67 @@ scene server has to be able to claim it, exactly as for a teleport.
 
 
 
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_ReturnInstanceOccupantsToWorld_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.ReturnInstanceOccupantsToWorld*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_ReturnInstanceOccupantsToWorld_System_Int64_System_String_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.ReturnInstanceOccupantsToWorld(System.Int64,System.String)">
+  ReturnInstanceOccupantsToWorld(long, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.Connection.cs/#L818"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Returns everyone standing in an instance to the open world, so the instance can be
+unloaded without stranding them.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int ReturnInstanceOccupantsToWorld(long instanceSceneID, string reason)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>instanceSceneID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>Scene row ID of the instance being closed.</p>
+</dd>
+    <dt><code>reason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Why it is closing, for diagnostics.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>How many connected characters were moved.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_ReturnInstanceOccupantsToWorld_System_Int64_System_String__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>An instance is normally emptied by its occupants leaving; this is the path for an
+instance that ends on the server's terms — a lifetime cap expiring, or a leader closing
+it — where the characters inside have not asked to go anywhere.</p>
+<p>
+Each character takes the ordinary leave-instance route: announced while it still belongs
+to the instance so the population is debited correctly, put back at the open-world
+position it entered from, saved, released, and disconnected to be re-routed. It is not
+gated on combat or death, because the scene is going away regardless and refusing would
+leave the character in a scene that is about to be destroyed.
+</p>
+<p>
+Combat-logout bodies in the instance are finalised as well. They have no connection, so
+nothing else would notice them — and destroying the scene under one strands that
+character's session claim until its lease expires, locking the player out of every scene
+server in the meantime.
+</p>
+</div>
 
 
 
@@ -846,6 +907,62 @@ remedy for a character that is stuck.
 themselves before disconnecting. Callers that instead rely on the ordinary disconnect
 pipeline must announce the intent here first. The marker is consumed by that
 disconnect, so it cannot leak onto a later session on a recycled connection id.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_TryEndCombatLingerForAccount_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.TryEndCombatLingerForAccount*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_TryEndCombatLingerForAccount_System_String_System_String_" data-uid="FishMMO.Server.Implementation.World.SceneServer.CharacterSystem.TryEndCombatLingerForAccount(System.String,System.String)">
+  TryEndCombatLingerForAccount(string, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Character/CharacterSystem.CombatLogout.cs/#L342"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Ends the combat-logout linger held for <code class="paramref">accountName</code>, if there is one,
+saving the body and handing its session claim back.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool TryEndCombatLingerForAccount(string accountName, string reason)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account whose lingering body should be removed.</p>
+</dd>
+    <dt><code>reason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Why the linger is being ended, for diagnostics.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> when a lingering body was found and removed.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_CharacterSystem_TryEndCombatLingerForAccount_System_String_System_String__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A lingering body has no connection, so it is invisible to everything that acts on a
+player by finding their connection — including the administrative kick, which therefore
+did nothing at all to a character that had combat-logged. That is the opposite of what a
+kick is for: the body stays in the world, still targetable, and goes on holding the
+character's session claim, so the operator's remedy for a stuck character is precisely
+the case where it has no effect.</p>
+<p>
+This is the ordinary end of a linger, not a special teardown: the body is persisted and
+despawned and the claim released, exactly as when its timer runs out. The character
+keeps whatever happened to it while it stood there.
+</p>
 </div>
 
 

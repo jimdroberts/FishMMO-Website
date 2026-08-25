@@ -154,6 +154,84 @@
 <li>Gathering nodes with weighted drop tables, limited uses, and gather timers</li>
 <li>Merchant tab system supporting abilities, ability events, and items</li>
 </ul>
+<h2 id="interaction-behaviour-is-eca-triggers">Interaction Behaviour Is ECA Triggers</h2>
+<p><code>Banker</code>, <code>Merchant</code>, <code>Bindstone</code>, <code>Teleporter</code> and the rest are <strong>data holders</strong>. None of them
+carries hard-coded interact behaviour — what an interactable does when used comes entirely from the
+<code>Trigger</code> assets in its <code>OnInteractTriggers</code> list, which <code>InteractableSystem</code> fires after
+server-side validation.</p>
+<p>The one exception is corpse looting, which <code>InteractableSystem</code> calls directly. That is deliberate:
+looting is intrinsic to any NPC that can die, and a content author must not be able to make a
+creature silently unlootable by forgetting a list entry. An NPC's own triggers still run on top,
+for achievements, quest updates and dialogue.</p>
+<p><strong>An empty list therefore means the object does nothing when used.</strong> It still shows its title, still
+accepts the interaction, and still passes every validation — it just has no implementation. The
+system logs a warning when this happens, and <code>FishMMO &gt; Interactables &gt; Audit Interact Triggers</code>
+reports it across every prefab and scene in the project.</p>
+<h3 id="shipped-interaction-triggers">Shipped interaction triggers</h3>
+<p>Under <code>Assets/Templates/Entity/ECA/Interactions/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Asset</th>
+<th>Actions</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Bindstone Interact</code></td>
+<td><code>BindstoneAction</code></td>
+<td>Bindstone</td>
+</tr>
+<tr>
+<td><code>Banker Interact</code></td>
+<td><code>NPCLookAtInteractorAction</code>, <code>SendBankerBroadcastAction</code></td>
+<td>HumanBanker</td>
+</tr>
+<tr>
+<td><code>Merchant Interact</code></td>
+<td><code>NPCLookAtInteractorAction</code>, <code>SendMerchantBroadcastAction</code></td>
+<td>HumanGeneralMerchant</td>
+</tr>
+<tr>
+<td><code>Ability Crafter Interact</code></td>
+<td><code>NPCLookAtInteractorAction</code>, <code>SendAbilityCrafterBroadcastAction</code></td>
+<td>HumanAbilityCrafter</td>
+</tr>
+<tr>
+<td><code>Dungeon Entrance Interact</code></td>
+<td><code>SendDungeonFinderBroadcastAction</code></td>
+<td>InstanceDungeonTest</td>
+</tr>
+<tr>
+<td><code>Teleporter Interact</code></td>
+<td><code>TeleportAction</code></td>
+<td>every Teleporter</td>
+</tr>
+<tr>
+<td><code>World Item Pickup</code></td>
+<td><code>PickupWorldItemAction</code></td>
+<td>Small World Item</td>
+</tr>
+</tbody>
+</table>
+<p>Create more with <code>FishMMO/ECA/Trigger</code>, or from the FishMMO Dashboard's <strong>ECA → Triggers</strong> category.</p>
+<h3 id="server-only-actions">Server-only actions</h3>
+<p>Interaction actions run on the server only, gated at <strong>runtime</strong> via <code>BaseAction.IsServer</code> rather
+than <code>#if UNITY_SERVER</code>. The define is a build-target one and is absent in the editor, where the
+scene server also runs — so the compile-time gate silently emptied every action body in the
+configuration the project is developed in.</p>
+<h3 id="resolving-which-interactable-a-player-meant">Resolving which interactable a player meant</h3>
+<p>One GameObject often carries several: an NPC is its own lootable corpse, and an NPC that also trades
+or hands out quests carries that component too. <code>InteractableResolver</code> is the single definition of
+the rule — <strong>a corpse wins while it is one</strong>, otherwise the first non-corpse interactable — shared by
+the client's target resolution, the scene server's interaction system, and the quest system.</p>
+<p><code>Interactable.CanInteract</code> enforces the other half: a non-corpse interactable on a body refuses, so
+a dead merchant cannot open its shop.</p>
+<h3 id="rate-limiting">Rate limiting</h3>
+<p><code>CanInteract</code> is a pure question. Spending the character's interact rate limit is a separate,
+explicit call to <code>TryConsumeInteractRateLimit</code>, because three different callers ask the question and
+only the interaction path should pay for it.</p>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
 <li><strong>Unity 6.3 LTS</strong></li>

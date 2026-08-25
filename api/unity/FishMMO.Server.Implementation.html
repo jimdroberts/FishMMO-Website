@@ -137,24 +137,20 @@ the Development working environment for local testing.</p>
     </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Implementation.AsyncWorkerData.html">AsyncWorkerData</a></dt>
-      <dd><p>Centralized async work queue backed by System.Threading.Channels.</p>
-<p>Replaces fire-and-forget <code>_ = SomeAsync(...)</code> across all server systems with
-a bounded, backpressure-aware work queue processed by a fixed number of worker loops.</p>
+      <dd><p>Centralized async work queue.</p>
+<p>Replaces fire-and-forget <code>_ = SomeAsync(...)</code> across all server systems with a
+bounded, backpressure-aware pool that runs work items concurrently while preserving
+FIFO order between items that share an entity key.</p>
 <p>Design:</p>
-<ul><li>Multiple channels: one per worker for entity-keyed ordering via consistent hashing.</li><li>Bounded capacity with DropWrite full-mode returns false on Enqueue (backpressure).</li><li>Workers are long-lived async loops consuming from their assigned channel.</li><li>Graceful shutdown via CancellationToken; workers drain remaining items on cancel.</li></ul>
+<ul><li>Work runs concurrently, capped by <span class="xref">FishMMO.Server.Implementation.AsyncWorkerData.maxConcurrency</span>. A slow item delays only the items ordered behind it.</li><li>Items sharing an <code>entityKey</code> run in the order they were enqueued, one at a time.</li><li>Bounded admission: <a class="xref" href="FishMMO.Server.Implementation.AsyncWorkerData.html#FishMMO_Server_Implementation_AsyncWorkerData_Enqueue_System_Func_System_Threading_Tasks_Task__System_String_">Enqueue(Func&lt;Task&gt;, string)</a> returns false once <span class="xref">FishMMO.Server.Implementation.AsyncWorkerData.maxOutstandingItems</span> items are accepted but unfinished.</li><li>Nothing ever executes on the calling thread — see <span class="xref">FishMMO.Server.Implementation.AsyncWorkerData.DispatchUnordered(FishMMO.Server.Implementation.AsyncWorkerData.AsyncWorkItem)</span>.</li></ul>
 <p>Usage:</p>
-<pre><code class="lang-csharp">// Simple (round-robin to any worker):
+<pre><code class="lang-csharp">// Unordered — runs as soon as a concurrency slot is free:
 asyncWorkerData.Enqueue(() =&gt; PersistInventoryAsync(dto));
 
-// Entity-keyed (same characterID always goes to the same worker):
+// Ordered — this character's items run in enqueue order, one at a time:
 asyncWorkerData.Enqueue(() =&gt; SaveCharacterAsync(charData), characterID);</code></pre>
 <p>Systems declare dependency via:
 <code>[RequiresDataContainer(typeof(AsyncWorkerData))]</code></p>
-<p><b>Pool isolation:</b> Total capacity = workerCount × channelCapacity.
-Default 8 × 2048 = 16,384 slots. A single saturated system cannot starve
-others because entity-keyed enqueues are hash-routed to specific workers
-and round-robin enqueues are distributed evenly. Increase workerCount for
-high-load deployments; increase channelCapacity to absorb bursts.</p>
 </dd>
     </dl>
     <dl class="jumplist">

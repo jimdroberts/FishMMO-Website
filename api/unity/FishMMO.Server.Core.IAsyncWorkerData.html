@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Interface IAsyncWorkerData | FishMMO Documentation ">
       
-      <meta name="description" content="Runtime data container interface for a centralized async work queue. Provides bounded, backpressure-aware enqueueing of async work items that are processed by a configurable number of worker loops. Systems use this instead of fire-and-forget _ = SomeAsync(...) to control thread pool utilization and provide ordering guarantees for entity-keyed work.">
+      <meta name="description" content="Runtime data container interface for a centralized async work queue. Provides bounded, backpressure-aware enqueueing of async work items, executed concurrently under a configurable concurrency limit. Systems use this instead of fire-and-forget _ = SomeAsync(...) to bound how much work is in flight at once and to get ordering guarantees for entity-keyed work.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -98,11 +98,11 @@ Interface IAsyncWorkerData  <a class="header-action link-secondary" title="View 
   </div>
 
   <div class="markdown summary"><p>Runtime data container interface for a centralized async work queue.
-Provides bounded, backpressure-aware enqueueing of async work items
-that are processed by a configurable number of worker loops.</p>
+Provides bounded, backpressure-aware enqueueing of async work items,
+executed concurrently under a configurable concurrency limit.</p>
 <p>Systems use this instead of fire-and-forget <code>_ = SomeAsync(...)</code>
-to control thread pool utilization and provide ordering guarantees
-for entity-keyed work.</p>
+to bound how much work is in flight at once and to get ordering
+guarantees for entity-keyed work.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -130,7 +130,7 @@ for entity-keyed work.</p>
 
   <h3 id="FishMMO_Server_Core_IAsyncWorkerData_CompletedCount" data-uid="FishMMO.Server.Core.IAsyncWorkerData.CompletedCount">
   CompletedCount
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Core/RuntimeData/IAsyncWorkerData.cs/#L47"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Core/RuntimeData/IAsyncWorkerData.cs/#L52"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Total number of work items processed since startup.</p>
@@ -162,10 +162,10 @@ for entity-keyed work.</p>
 
   <h3 id="FishMMO_Server_Core_IAsyncWorkerData_PendingCount" data-uid="FishMMO.Server.Core.IAsyncWorkerData.PendingCount">
   PendingCount
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Core/RuntimeData/IAsyncWorkerData.cs/#L42"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Core/RuntimeData/IAsyncWorkerData.cs/#L47"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Current number of items waiting in the queue(s).
+  <div class="markdown level1 summary"><p>Current number of items accepted but not yet started.
 Useful for monitoring and diagnostics.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
@@ -199,12 +199,12 @@ Useful for monitoring and diagnostics.</p>
 
   <h3 id="FishMMO_Server_Core_IAsyncWorkerData_Enqueue_System_Func_System_Threading_Tasks_Task__System_Int64_System_String_" data-uid="FishMMO.Server.Core.IAsyncWorkerData.Enqueue(System.Func{System.Threading.Tasks.Task},System.Int64,System.String)">
   Enqueue(Func&lt;Task&gt;, long, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Core/RuntimeData/IAsyncWorkerData.cs/#L36"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Core/RuntimeData/IAsyncWorkerData.cs/#L41"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Enqueue an async work item with an entity key for ordered processing.
-Work items sharing the same entityKey are guaranteed to execute in FIFO order
-(routed to the same worker via consistent hashing).
+Work items sharing the same entityKey are guaranteed to execute in FIFO order,
+one at a time; items with different keys proceed independently.
 Returns true if the item was accepted, false if the queue is full (backpressure).</p>
 </div>
   <div class="markdown level1 conceptual"></div>
@@ -219,7 +219,7 @@ Returns true if the item was accepted, false if the queue is full (backpressure)
     <dd><p>The async work to execute.</p>
 </dd>
     <dt><code>entityKey</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>Entity identifier for ordering (e.g., characterID).</p>
+    <dd><p>Entity identifier for ordering (e.g., characterID), or 0 for none.</p>
 </dd>
     <dt><code>callerName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd><p>Optional caller identifier for diagnostics.</p>
@@ -239,6 +239,11 @@ Returns true if the item was accepted, false if the queue is full (backpressure)
 
 
 
+  <h4 class="section" id="FishMMO_Server_Core_IAsyncWorkerData_Enqueue_System_Func_System_Threading_Tasks_Task__System_Int64_System_String__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>An <code class="paramref">entityKey</code> of 0 means &quot;no ordering requirement&quot; and is treated
+exactly like the unkeyed overload. It is not an entity whose id happens to be zero, and
+callers that pass a default id are not asking to be serialized with each other.</p>
+</div>
 
 
 

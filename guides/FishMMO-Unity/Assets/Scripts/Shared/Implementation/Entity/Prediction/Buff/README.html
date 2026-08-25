@@ -144,6 +144,9 @@
 <ul>
 <li><strong>Tick-based expiration</strong> — Buffs expire deterministically using absolute network ticks (<code>ExpiryTick</code>)</li>
 <li><strong>Tick-based periodic effects</strong> — Periodic <code>OnTick</code> callbacks at configurable intervals using <code>NextTickTick</code></li>
+<li><strong>ECA-driven periodic effects</strong> — <code>OnTickEvents</code> fires <code>BuffTickEvent</code> triggers each tick, so a DoT is an <code>ApplyDamageAction</code> and a HoT an <code>ApplyHealAction</code> — no bespoke template subclass</li>
+<li><strong>DoTs behave like hits</strong> — health ticks route through <code>CharacterDamageController.Damage</code> / <code>.Heal</code>, so they mitigate, generate threat, credit the caster and can kill</li>
+<li><strong>Caster attribution</strong> — the applying character is snapshotted on the <code>Buff</code> and used as the attacker for every subsequent tick</li>
 <li><strong>Stacking</strong> — Buffs support up to <code>MaxStacks</code> with symmetric modifier accounting</li>
 <li><strong>Attribute modification</strong> — <code>AttributeBuffTemplate</code> grants bonus attributes via <code>AddModifier()</code> on the <code>ExternalModifier</code> layer</li>
 <li><strong>FX instantiation</strong> — Client-side visual effect prefabs attached to character mesh</li>
@@ -261,6 +264,11 @@ buffController.RemoveRandom(rng, includeBuffs: true, includeDebuffs: true);
 <td><code>bool</code></td>
 <td>Determines buff vs debuff categorization for events and UI</td>
 </tr>
+<tr>
+<td><code>OnTickEvents</code></td>
+<td><code>List&lt;BuffTickEvent&gt;</code></td>
+<td>ECA triggers fired on every tick. Initiator is the caster, target is the carrier.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="attribute-modification">Attribute Modification</h3>
@@ -319,7 +327,7 @@ buffController.RemoveRandom(rng, includeBuffs: true, includeDebuffs: true);
 </tr>
 <tr>
 <td><code>ResourceTickBuffTemplate</code></td>
-<td>Periodically ticks resource attributes (e.g., health/mana regen or drain over time).</td>
+<td>Periodically ticks resource attributes (e.g., health/mana regen or drain over time). Health ticks route through the damage pipeline.</td>
 </tr>
 <tr>
 <td><code>StateBuffTemplate</code></td>
@@ -327,6 +335,48 @@ buffController.RemoveRandom(rng, includeBuffs: true, includeDebuffs: true);
 </tr>
 </tbody>
 </table>
+<h3 id="damage-and-heal-over-time">Damage and heal over time</h3>
+<p>There are two ways to author a periodic health effect, and they compose.</p>
+<p><strong>ECA tick events (preferred).</strong> Put a <code>BuffTickEvent</code> in <code>OnTickEvents</code> and hang an
+<code>ApplyDamageAction</code> or <code>ApplyHealAction</code> on it. The event fires with the buff's <strong>carrier as the
+target</strong> and the <strong>caster as the initiator</strong>, so the action behaves exactly as the same action does
+on an ability's on-hit event. Conditions, target selectors and both condition branches all work,
+which means &quot;a poison that only ticks while its victim is moving&quot; is a condition rather than a new
+template type. Nothing new needs writing in C#, and the AI reads the actions directly rather than
+inferring intent from numbers.</p>
+<p><strong>Serialized resource ticks.</strong> <code>ResourceTickBuffTemplate.TickAttributes</code> (and the same list on
+<code>CompositeBuffTemplate</code>) still handles the flat case. A tick against the <strong>health</strong> resource is
+routed through <code>ICharacterDamageController.Damage</code> / <code>.Heal</code>; a tick against any other resource
+(mana, stamina) writes the resource directly, since there are no damage semantics to borrow.
+<code>DamageAttribute</code> on the template selects the resistance the tick is mitigated by — leave it empty
+for true damage.</p>
+<p>Both paths run: a <code>CompositeBuffTemplate</code> can fire tick events <em>and</em> drain a resource.</p>
+<blockquote>
+<p><strong>Why health goes through the damage controller.</strong> Both tick templates previously called
+<code>CharacterResourceAttribute.AddToCurrentValue</code>, which clamps the value and raises an
+attribute-changed notification and nothing else. That skipped every consequence of being hurt —
+no resistance, no <code>Immortal</code> check, no combat entry, and no <code>OnDamaged</code> event, so a DoT generated
+<strong>no threat at all</strong>. Worst of all, nothing could die of it: <code>Kill()</code> is only ever reached from
+inside <code>Damage()</code>, so a DoT drained its victim to zero health and stopped, and the &quot;already dead&quot;
+early-out at the top of <code>Damage()</code> then rejected every subsequent hit — leaving a character
+permanently alive at nothing.</p>
+</blockquote>
+<h4 id="attribution">Attribution</h4>
+<p><code>Buff</code> snapshots the applying character (<code>Buff.Caster</code>) so a tick that fires seconds later still
+has somebody to credit for threat, kill credit and combat state. It is passed by
+<code>ApplyBuffAction</code> from the ECA initiator; sources with no initiator, such as region hazards, apply
+with none.</p>
+<p>The snapshot is deliberately <strong>not</strong> serialized into the reconcile payload or the database. The
+server holds the authoritative buff for its whole life, which is the only place attribution is acted
+on. If the caster is destroyed — disconnected, despawned — <code>Buff.Caster</code> returns null and <strong>the tick
+still lands</strong>: a lingering poison is part of the simulation whether or not whoever cast it is still
+in the scene. It simply credits nobody.</p>
+<h4 id="prediction-and-replay">Prediction and replay</h4>
+<p>Ticks run on the client as well as the server, which is what keeps predicted health in step. The
+authoritative consequences are already gated inside the damage controller — <code>Kill()</code> returns
+immediately off the server. Reconcile replays every input since the last authoritative state, so a
+tick fires again on each pass; <code>Buff.IsReplaying</code> is true during those, and is passed as
+<code>ignoreAchievements</code> so a single tick of poison cannot count a dozen times toward an achievement.</p>
 <h3 id="static-events">Static Events</h3>
 <p>All events are defined on <code>IBuffController</code>:</p>
 <table>
@@ -546,7 +596,7 @@ reconcile exclusively.</p>
       Queue for removal
   else:
     if TryTick(Character, currentTick):          // NextTickTick reached?
-      Template.OnTick(buff, Character)
+      Template.OnTick(buff, Character)          // Fires OnTickEvents, then any template-specific effect
       Fire IBuffController.OnBuffTick
       Advance NextTickTick
 </code></pre>
@@ -679,6 +729,8 @@ Both <code>Buff</code> constructors coerce a non-positive <code>tickDelta</code>
     ├── BaseBuffTemplate.cs            # Abstract ScriptableObject base for all buff templates
     ├── BuffAttributeTemplate.cs       # Serializable attribute+value pair for template configuration
     ├── BuffTemplateDatabase.cs        # Name-to-template lookup database (ScriptableObject)
+    ├── Events/
+    │   └── BuffTickEvent.cs           # ECA trigger fired on each tick (DoT / HoT and anything periodic)
     └── Types/
         ├── AttributeBuffTemplate.cs       # Concrete template: grants bonus attributes via AddModifier()
         ├── AttributeTickBuffTemplate.cs   # Grants attributes on apply + periodic attribute modification on tick
