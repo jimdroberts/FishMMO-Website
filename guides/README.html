@@ -2224,7 +2224,7 @@ out. These two commands exist so that is a decision rather than a wait. Both are
 </tr>
 <tr>
 <td>Instance panel (Escape → Dungeon)</td>
-<td>Shows the dungeon's name and difficulty, how long it has left, and everyone in it, marking who leads. <strong>Leadership is the owning party's leader</strong>, so it follows a promotion rather than staying with whoever opened the run. The leader can remove others and can hide the run from the dungeon finder; anyone can leave, and everyone sees the visibility. Removal is immediate and returns the target to the open world at the point they entered from — it is not a disconnect, so they are not routed back into the instance they were just removed from</td>
+<td>Shows the dungeon's name and difficulty, how long it has left, and everyone in it, marking who leads. <strong>Leadership is the owning party's leader</strong>, so it follows a promotion rather than staying with whoever opened the run — and it follows the party away from a leader who has logged out, so a run cannot be left with nobody able to manage it. The leader can remove others and can hide the run from the dungeon finder; anyone can leave, and everyone sees the visibility. Removal is immediate and returns the target to the open world at the point they entered from — it is not a disconnect, so they are not routed back into the instance they were just removed from</td>
 </tr>
 <tr>
 <td>Dungeon finder (a dungeon entrance)</td>
@@ -2236,6 +2236,13 @@ out. These two commands exist so that is a decision rather than a wait. Both are
 </tr>
 </tbody>
 </table>
+<p>Because this and the instance panel's controls are leader-only, a party whose leader logged out
+used to be unable to close, hide or manage the run it was holding — and since a party may hold
+only one instance, that locked every member out of every dungeon until the row aged out. Party
+leadership now moves off a holder who is not logged in anywhere, once they have been gone long
+enough that it cannot be confused with the gap while somebody walks through a teleporter. See
+<code>leadershipAbsenceGraceSeconds</code> on the scene server's <code>PartySystem</code> asset, which must comfortably
+exceed the slowest scene load on the shard.</p>
 <p>Commands are refused silently to anyone below <code>AccessLevel.Admin</code> — the server gives no
 indication the command exists, so an unprivileged player cannot probe for command names — but
 every refused attempt is logged at warning level with the character and account that tried it.</p>
@@ -2695,14 +2702,27 @@ panel ships closed. In a client started past the launcher, neither ran — key b
 were skipped without a word, panel positions were never restored, the theme loaded from nothing,
 and a saved resolution was never applied.</p>
 </blockquote>
-<p>Brightness is re-applied on every <code>sceneLoaded</code>: <code>RenderSettings.ambientLight</code> is per-scene state
-baked into whichever scene is active, and the client loads several.</p>
-<p>Writes are debounced. <code>Configuration.Save</code> serialises and rewrites the whole file, so a slider bound
-straight to it rewrites the file once per frame for as long as it is held. Everything coalesces onto
-a short quiet period and is flushed when the Options panel closes and when the client shuts down.
-<strong>In the Editor the disk write is skipped</strong> — <code>Constants.GetWorkingDirectory()</code> resolves to the
+<p>Brightness drives <strong>both</strong> <code>RenderSettings.ambientLight</code> and <code>ambientIntensity</code>, because which one
+a scene reads depends on its ambient mode: <code>ambientLight</code> applies only under <code>AmbientMode.Flat</code>, and
+every world scene is authored <code>AmbientMode.Skybox</code>, where it is ignored outright. Either way it is
+re-applied on every <code>sceneLoaded</code>, since ambient is per-scene state baked into whichever scene is
+active and the client loads several.</p>
+<p>Writes are debounced, and there is exactly <strong>one</strong> pending write in the client. <code>Configuration.Save</code>
+serialises and rewrites the whole file, so a slider bound straight to it rewrites the file once per
+frame for as long as it is held. Everything — settings, window positions and launcher options alike
+— coalesces onto a short quiet period, driven by a hidden <code>DontDestroyOnLoad</code> pump rather than by a
+panel's <code>Update</code>, so a scene with no panels open cannot stop the clock on a write that is already
+owed. It is forced out when the Options panel closes, on focus loss and pause, and on quit.</p>
+<p><strong>In the Editor the disk write is skipped</strong> — <code>Constants.GetWorkingDirectory()</code> resolves to the
 repository root there rather than to an install directory — so settings behave normally in play mode
-but do not rewrite the checked-out file.</p>
+but do not rewrite the checked-out file. <strong>On WebGL it is not skipped</strong>: the working directory is
+<code>Application.persistentDataPath</code>, an Emscripten IDBFS mount, and the write is followed by an
+explicit IndexedDB sync — without which the file is written, read back correctly all session, and
+gone by the next visit.</p>
+<p>Numbers are stored culture-invariantly. Writing with the machine's own locale while reading
+invariantly meant that on any comma-decimal system <code>0.75</code> was stored as <code>&quot;0,75&quot;</code> and read back as
+<strong>75</strong>, the comma taken as a digit-group separator — so interface scale, brightness, volumes and
+window positions all round-tripped to roughly a hundred times their value before being clamped.</p>
 <h4 id="options-panel">Options panel</h4>
 <p><code>FishMMO → Options</code> (or the <code>O</code> key, or Escape → Menu → Options) opens a five-tab panel. Every row
 that belongs to a list — audio channels, gameplay toggles, theme colours, key bindings — is
@@ -2722,7 +2742,7 @@ cannot be lost by editing a scene.</p>
 </tr>
 <tr>
 <td><strong>Audio</strong></td>
-<td>Master, Music, Sound Effects, Ambient, Interface and Voice volumes; mute when unfocused</td>
+<td>Master volume; mute when unfocused. The other five channels are stored and applied but not offered — nothing in the client owns an <code>AudioSource</code> yet, and a slider that saves perfectly while changing nothing audible is worse than a missing one</td>
 </tr>
 <tr>
 <td><strong>Gameplay</strong></td>
@@ -2734,7 +2754,7 @@ cannot be lost by editing a scene.</p>
 </tr>
 <tr>
 <td><strong>UI</strong></td>
-<td>Interface scale, window snap grid, window layout reset, the thirteen theme colours, and shareable UI profiles</td>
+<td>Interface scale, window snap grid, window layout reset, the ten theme colours, and shareable UI profiles</td>
 </tr>
 </tbody>
 </table>
@@ -2783,13 +2803,13 @@ player waiting out a countdown whose prompt is no longer on screen.</p>
 <td><code>Brightness</code></td>
 <td><code>1.0</code></td>
 <td>0–1</td>
-<td>Scene ambient light. Re-applied on every scene load</td>
+<td>Scene ambient light — both <code>ambientLight</code> (Flat scenes) and <code>ambientIntensity</code> (Skybox scenes). Re-applied on every scene load</td>
 </tr>
 <tr>
 <td><code>Frame Rate Limit</code></td>
-<td>display refresh rate</td>
+<td><code>60</code> (the boot-time menu cap)</td>
 <td>tick rate – display rate, capped at 500</td>
-<td>Floored at the network tick rate: FishNet derives ticks from the update loop, so a lower frame rate cannot deliver them on schedule</td>
+<td>Floored at the network tick rate: FishNet derives ticks from the update loop, so a lower frame rate cannot deliver them on schedule. With no preference stored the bootstrap cap stands, rather than jumping to the display's fastest mode — which is what made that cap dead on arrival. A saved value the display no longer offers falls back to the fastest available, since that player <em>did</em> express a preference</td>
 </tr>
 <tr>
 <td><code>VSync</code></td>
@@ -2813,7 +2833,7 @@ player waiting out a countdown whose prompt is no longer on screen.</p>
 <td><code>Audio.Volume.Effects</code> / <code>.Ambient</code> / <code>.Interface</code> / <code>.Voice</code></td>
 <td><code>1.0</code> / <code>0.8</code> / <code>0.8</code> / <code>1.0</code></td>
 <td>0–1</td>
-<td>Read through <code>ClientAudioSettings.EffectiveVolume(channel)</code> by anything that plays a sound</td>
+<td>Read through <code>ClientAudioSettings.EffectiveVolume(channel)</code> by anything that plays a sound. Stored and applied, but <strong>not currently offered in the panel</strong> — see <code>ClientAudioSettings.PlayableChannels</code></td>
 </tr>
 <tr>
 <td><code>Audio.MuteWhenUnfocused</code></td>
@@ -2837,7 +2857,7 @@ player waiting out a countdown whose prompt is no longer on screen.</p>
 <td><code>UI.Scale</code></td>
 <td><code>1.0</code></td>
 <td>0.75–1.5</td>
-<td>Interface scale, applied by dividing the shared <code>PanelSettings</code> reference resolution. Restored to the authored value when Editor play mode ends, so a play session cannot dirty the asset</td>
+<td>Interface scale, applied by dividing the shared <code>PanelSettings</code> reference resolution. Restored to the authored value when Editor play mode ends, so a play session cannot dirty the asset — <code>QualitySettings</code> (current level and its <code>vSyncCount</code>) is protected the same way, for the same reason</td>
 </tr>
 <tr>
 <td><code>UI.SnapGridSize</code></td>
@@ -2861,7 +2881,7 @@ player waiting out a countdown whose prompt is no longer on screen.</p>
 <td><code>&lt;Name&gt;ColorR/G/B/A</code></td>
 <td><em>(unset)</em></td>
 <td>0–255</td>
-<td>The thirteen themeable colours. Presence is decided by the <code>R</code> channel, so a legitimately black colour is not mistaken for an absent one</td>
+<td>The ten themeable colours. Presence is decided by the <code>R</code> channel, so a legitimately black colour is not mistaken for an absent one. Clearing one <strong>removes</strong> the keys rather than emptying them, so a reset does not leave forty dead lines in the file</td>
 </tr>
 </tbody>
 </table>

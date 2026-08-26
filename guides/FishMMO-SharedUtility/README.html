@@ -184,7 +184,7 @@ the Unity managed scripts. Its scope is intentionally narrow:</p>
 <pre><code>FishMMO-SharedUtility/
 ├── Authentication.cs          # Username/password validators
 ├── CircularBuffer.cs          # Allocation-light ring buffer
-├── Configuration.cs           # Hierarchical key/value config tree
+├── Configuration.cs           # Flat key/value store with typed accessors + file I/O
 ├── FastActivator.cs           # Expression-tree compiled object factory
 ├── MathHelper.cs              # Vector/scalar/clamp helpers
 ├── IReference.cs              # Reference-equality interface contract
@@ -226,7 +226,7 @@ the Unity managed scripts. Its scope is intentionally narrow:</p>
 </tr>
 <tr>
 <td><code>Configuration</code></td>
-<td>In-memory hierarchical config (<code>Node</code> tree) that can be loaded from key/value text files.</td>
+<td>Thread-safe flat key/value store (<code>Dictionary&lt;string, string&gt;</code> behind a <code>ReaderWriterLockSlim</code>, keys case-insensitive) with typed accessors, <code>key=value</code> file I/O and environment-variable overrides. There is no node tree — an older description of this type said there was.</td>
 </tr>
 <tr>
 <td><code>FastActivator&lt;TResult&gt;</code></td>
@@ -319,7 +319,28 @@ the Unity managed scripts. Its scope is intentionally narrow:</p>
 <p>If a candidate utility imports <code>UnityEngine</code>, FishNet, or <code>Microsoft.EntityFrameworkCore</code>, it does <strong>not</strong> belong here.</p>
 <hr>
 <h2 id="configuration">Configuration</h2>
-<p>None. The library is dependency-injection-free and runtime-config-free.</p>
+<p>None of its own — the library is dependency-injection-free and runtime-config-free. It <em>provides</em>
+the <code>Configuration</code> type that the game and servers use for theirs; a few of its guarantees are
+load-bearing enough to state here, because the client's whole settings system rests on them.</p>
+<p><strong>Values are written and read with <code>CultureInfo.InvariantCulture</code></strong>, and <code>float</code>/<code>double</code> use the
+round-trip (<code>&quot;R&quot;</code>) format so a stored value parses back to identical bits. <code>Set&lt;T&gt;</code> routes numeric
+types through that path explicitly: a generic type parameter is invisible to overload resolution,
+so a caller writing <code>Set(key, someFloat)</code> from inside another generic method reaches the generic
+overload rather than the <code>float</code> one. This used to call <code>value.ToString()</code> — the <em>current</em> culture
+— while every reader parsed invariantly, so on a comma-decimal locale <code>0.75f</code> was stored as
+<code>&quot;0,75&quot;</code> and read back as <strong>75</strong>, the comma accepted as a digit-group separator.</p>
+<p><strong>A value that is present but unreadable yields the caller's <code>defaultValue</code></strong>, not the type's
+default. Every <code>TryGet*</code> returns <code>false</code> <em>and</em> assigns the supplied fallback; they previously left
+<code>result</code> at <code>0</code>/<code>false</code>, so a truncated write or a hand edit meant zero rather than the documented
+default. Float and double parse with <code>NumberStyles.Float</code>, which rejects digit-group separators
+instead of absorbing them.</p>
+<p><strong>File format.</strong> One <code>key=value</code> per line, UTF-8 without BOM (a BOM is stripped on read), <code>#</code> and
+<code>;</code> comments, split on the <em>first</em> <code>=</code> so values may contain more. Malformed lines are skipped with
+a warning rather than aborting the load. <code>Remove</code> deletes a key outright — callers that want
+&quot;absent&quot; should use it rather than storing an empty string.</p>
+<p><strong>Environment overrides.</strong> Any read prefers <code>FISHMMO_CONFIG_&lt;KEY&gt;</code> (uppercased, <code>.</code>/<code>:</code>/<code>-</code> → <code>_</code>)
+over the stored value, so operators can supply secrets without committing them. Overrides are
+deliberately <strong>not</strong> included in <code>GetKeys()</code>, which reports what the file holds.</p>
 <hr>
 <h2 id="build">Build</h2>
 <pre><code class="lang-bash">dotnet build FishMMO-SharedUtility.slnx

@@ -176,6 +176,7 @@
 <li><strong>Ownership-checked log hook release</strong> — <code>Log.OnInternalLogMessage</code> is a single-cast static assigned by every bootstrap system's <code>Awake()</code>, so several are alive at once and the last to wake owns it. <code>OnDestroy()</code> clears it only if this instance is the current owner; clearing unconditionally silenced internal logging for every system still shutting down.</li>
 <li><strong>Boot survives a missing <code>VersionConfig</code></strong> — <code>MainBootstrapSystem</code> logs the error and continues with an unknown version instead of aborting <code>OnPreload()</code>. Aborting left the load queue empty, which made every downstream phase report &quot;done&quot; instantly and produced a permanently black screen; carrying on lets the launcher come up and report the bad version to the player.</li>
 <li><strong>Client frame rate capped before anything renders</strong> — <code>MainBootstrapSystem.OnPreload()</code> sets <code>Application.targetFrameRate</code> to <code>BootstrapTargetFrameRate</code> (60) and zeroes <code>QualitySettings.vSyncCount</code>. Nothing else sets a target before a network connection exists and the default is <code>-1</code> (unlimited), so the launcher and login menus would otherwise render as fast as the GPU allows and peg a CPU core drawing a static screen. Headless servers are excluded (<code>#if !UNITY_SERVER</code>) — they do not render, and FishNet derives the server frame rate from the tick rate.</li>
+<li><strong>The player's saved settings are applied immediately afterwards</strong> — <code>OnPreload()</code> raises <code>OnApplyClientBootSettings</code> on the line after the two writes above. <code>FishMMO.Client.ClientSettingsBootstrap</code> subscribes to it and applies display, audio, interface and theme preferences, then creates the input bindings. A hook rather than a direct call because the applier lives in <code>FishMMO.Client</code>, which this assembly cannot reference; a hook rather than a second <code>RuntimeInitializeOnLoadMethod</code> because ordering is the whole point — anything applied <em>before</em> those two lines is silently overwritten by them. The invocation is wrapped in <code>try/catch</code>: a settings file that cannot be applied must not stop the client booting. See <a href="../../../Client/Settings/README.html">Client Settings</a>.</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -236,9 +237,12 @@
 </tbody>
 </table>
 <h3 id="bootstrap-frame-rate-cap">Bootstrap Frame Rate Cap</h3>
-<p><code>BootstrapTargetFrameRate</code> is a private const (60) rather than an Inspector field — it is a
-floor for the pre-configuration window only, not a user-facing setting. Two values are
-written together in <code>OnPreload()</code>, both guarded by <code>#if !UNITY_SERVER</code>:</p>
+<p><code>BootstrapTargetFrameRate</code> is a <strong>public</strong> const (60). It is not an Inspector field because it
+is not a per-scene tuning value, and it is public because it is read back on the client side:
+<code>ClientDisplaySettings.ResolveSavedFrameRate</code> resolves to the same number for a player who has
+no saved preference. A second copy of it in the client is how the menus end up capped at one
+rate while the settings screen reports another.</p>
+<p>Two values are written together in <code>OnPreload()</code>, both guarded by <code>#if !UNITY_SERVER</code>:</p>
 <table>
 <thead>
 <tr>
@@ -263,27 +267,44 @@ written together in <code>OnPreload()</code>, both guarded by <code>#if !UNITY_S
 <p>The vSync write is not cosmetic. <code>ProjectSettings/QualitySettings.asset</code> ships the
 <strong>Balanced</strong> level with <code>vSyncCount: 1</code>, so on that level the cap silently did nothing and
 the menus ran uncapped regardless.</p>
-<p>Neither value survives past configuration load, and neither overrides a player's choice:</p>
+<h4 id="what-happens-to-these-two-values-next">What happens to these two values next</h4>
+<p><code>OnApplyClientBootSettings</code> fires on the very next line, so both are revisited within the same
+<code>OnPreload()</code> call:</p>
 <table>
 <thead>
 <tr>
-<th>Stage</th>
-<th>What replaces it</th>
+<th>Value</th>
+<th>Player has a saved preference</th>
+<th>Player has none (fresh install)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Options UI loads</td>
-<td><code>RefreshRateSettingOption.Load()</code> / <code>UITKOptions</code> → <code>Client.ApplyTargetFrameRate</code>, and <code>VSyncSettingOption.Load()</code> / <code>UITKOptions.InitializeVSync</code> → <code>QualitySettings.vSyncCount</code>, both from the saved <code>Configuration.GlobalSettings</code> preference</td>
+<td>Frame rate</td>
+<td><code>ClientDisplaySettings.ApplySavedFrameRate</code> → <code>Client.ApplyTargetFrameRate</code>, bounded below by the network tick rate and above by the display's fastest mode</td>
+<td><strong>The bootstrap cap stands.</strong> <code>ResolveSavedFrameRate</code> returns <code>BootstrapTargetFrameRate</code>, snapped onto a rate this machine offers</td>
 </tr>
 <tr>
-<td>Client connects</td>
-<td>FishNet's <code>NetworkManager.UpdateFramerate</code> raises <code>targetFrameRate</code> from <code>ClientManager.FrameRate</code></td>
+<td>VSync</td>
+<td><code>ClientDisplaySettings.ApplySavedVSync</code> restores it</td>
+<td>Stays <code>0</code></td>
 </tr>
 </tbody>
 </table>
-<p>A player who wants vSync still gets it — the options UI reapplies the saved preference when
-<code>UITKOptions.OnStarting()</code> runs, which is after bootstrap.</p>
+<p>That second column is the point of the constant. It used to be overwritten by the display's
+fastest mode moments after being set, which made it dead on arrival — a fresh install rendered
+its launcher and login screens as fast as the panel allowed.</p>
+<blockquote>
+<p><strong>FishNet does not raise the cap.</strong> An earlier version of this document said it did.
+<code>NetworkManager.UpdateFramerate</code> overwrites <code>targetFrameRate</code> from <code>ClientManager.FrameRate</code>
+on every connection-state change, which turned the scene's value into a hard ceiling on what
+a player could render at — so the client scene now ships with <code>ChangeFrameRate</code> <strong>off</strong> and
+the render rate belongs entirely to this default and the player's preference. Simulation is
+unaffected either way: gameplay runs on the fixed 30 Hz <code>TimeManager</code> tick.</p>
+</blockquote>
+<p>A player who wants vSync gets it from the boot phase, not from opening the settings screen. The
+options panel ships closed, so anything applied only by its <code>OnStarting()</code> was not in force
+until the player visited the menu — see <a href="../../../Client/Settings/README.html">Client Settings</a>.</p>
 <h3 id="bootstrapsystem-inspector-properties">BootstrapSystem Inspector Properties</h3>
 <p>Each <code>BootstrapSystem</code> exposes platform-specific load lists in the Inspector:</p>
 <table>
@@ -536,7 +557,7 @@ the menus ran uncapped regardless.</p>
 <tr>
 <td>Frame rate cap applied</td>
 <td>Watch console during client startup</td>
-<td><code>Client frame rate capped to 60 for bootstrap and menus (FishNet raises it on connect).</code></td>
+<td><code>Client frame rate capped to 60 for bootstrap and menus; a saved preference replaces it below.</code></td>
 </tr>
 <tr>
 <td>Cap holds on a vSync quality level</td>
@@ -545,8 +566,18 @@ the menus ran uncapped regardless.</p>
 </tr>
 <tr>
 <td>VSync preference is not clobbered</td>
-<td>Enable VSync in Options, restart the client, reopen Options</td>
-<td>Toggle still reads on, and <code>QualitySettings.vSyncCount</code> is <code>1</code> once the options UI has loaded</td>
+<td>Enable VSync in Options, restart the client</td>
+<td><code>QualitySettings.vSyncCount</code> is <code>1</code> <strong>from boot</strong>, before the panel is opened; the toggle still reads on when it is</td>
+</tr>
+<tr>
+<td>Fresh install keeps the menu cap</td>
+<td>Delete <code>Configuration.cfg</code>, start the client, open Options</td>
+<td>Frame Rate Limit reads <strong>60 FPS</strong> and that is what is applied</td>
+</tr>
+<tr>
+<td>Saved settings reach the boot phase</td>
+<td>Set a brightness/volume/scale, restart, do <strong>not</strong> open Options</td>
+<td>The setting is already in force</td>
 </tr>
 <tr>
 <td>Logging bridge active</td>
@@ -610,6 +641,11 @@ the menus ran uncapped regardless.</p>
                     │   ├── Cap the client frame rate (!UNITY_SERVER only):
                     │   │   ├── QualitySettings.vSyncCount  = 0   (else the cap is ignored)
                     │   │   └── Application.targetFrameRate = 60
+                    │   ├── OnApplyClientBootSettings?.Invoke()   (!UNITY_SERVER, isolated)
+                    │   │   └── ClientSettingsBootstrap.Apply():
+                    │   │       ├── ClientSettings.ApplyAll()  (display, audio, interface, theme)
+                    │   │       ├── ClientSettingsPump.Install()
+                    │   │       └── PlayerInputController.EnsureControlsCreated()
                     │   ├── Set GameVersion static string
                     │   ├── Register editor play-mode state handler (editor only)
                     │   ├── Register Application.wantsToQuit handler

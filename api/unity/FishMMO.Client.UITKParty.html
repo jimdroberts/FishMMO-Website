@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class UITKParty | FishMMO Documentation ">
       
-      <meta name="description" content="UI Toolkit party panel. Renders party members as dynamic rows, handles create/leave/invite actions, and shows a per-member context menu (message / add friend / promote / kick). The shared dialog and context-menu overlays are resolved by name through the  rather than referenced directly.">
+      <meta name="description" content="UI Toolkit party panel. Renders party members as horizontal bands — identity, stacked health/mana/stamina bars, per-encounter damage and healing meters, and the member&#39;s buffs and debuffs — and handles create/leave/invite plus a per-member context menu (message / add friend / promote / kick). The shared dialog and context-menu overlays are resolved by name through the  rather than referenced directly.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKParty" data-uid="FishMMO.Client.UITKParty" class="text-break">
-Class UITKParty  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L25"><i class="bi bi-code-slash"></i></a>
+Class UITKParty  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L44"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,10 +97,11 @@ Class UITKParty  <a class="header-action link-secondary" title="View source" hre
   <dl><dt>Assembly</dt><dd>FishMMO.Client.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>UI Toolkit party panel. Renders party members as dynamic rows, handles create/leave/invite
-actions, and shows a per-member context menu (message / add friend / promote / kick).
-The shared dialog and context-menu overlays are resolved by name through the
-<a class="xref" href="FishMMO.Client.UIManager.html">UIManager</a> rather than referenced directly.</p>
+  <div class="markdown summary"><p>UI Toolkit party panel. Renders party members as horizontal bands — identity, stacked
+health/mana/stamina bars, per-encounter damage and healing meters, and the member's buffs
+and debuffs — and handles create/leave/invite plus a per-member context menu
+(message / add friend / promote / kick). The shared dialog and context-menu overlays are
+resolved by name through the <a class="xref" href="FishMMO.Client.UIManager.html">UIManager</a> rather than referenced directly.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -164,6 +165,9 @@ The shared dialog and context-menu overlays are resolved by name through the
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_CloseOnEscape">UITKControl.CloseOnEscape</a>
     </div>
     <div>
+      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ConsumesEscape">UITKControl.ConsumesEscape</a>
+    </div>
+    <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Name">UITKControl.Name</a>
     </div>
     <div>
@@ -209,9 +213,6 @@ The shared dialog and context-menu overlays are resolved by name through the
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_SetClient_FishMMO_Client_Client_">UITKControl.SetClient(Client)</a>
     </div>
     <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnTick">UITKControl.OnTick()</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnQuitToLogin">UITKControl.OnQuitToLogin()</a>
     </div>
     <div>
@@ -219,9 +220,6 @@ The shared dialog and context-menu overlays are resolved by name through the
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Show">UITKControl.Show()</a>
-    </div>
-    <div>
-      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OnAfterShow">UITKControl.OnAfterShow()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ReloadStoredPosition">UITKControl.ReloadStoredPosition()</a>
@@ -661,12 +659,30 @@ The shared dialog and context-menu overlays are resolved by name through the
 
 
   <h2 id="FishMMO_Client_UITKParty_remarks">Remarks</h2>
-  <div class="markdown level0 remarks"><p>The roster is split into a MODEL (<span class="xref">FishMMO.Client.UITKParty.roster</span>, plain data, owned by the character)
+  <div class="markdown level0 remarks"><p>
+The roster is split into a MODEL (<span class="xref">FishMMO.Client.UITKParty.roster</span>, plain data, owned by the character)
 and a VIEW (<span class="xref">FishMMO.Client.UITKParty.rows</span>, elements owned by one visual tree). <code>UIDocument</code>
 re-clones the UXML on every enable, so the view is destroyed on each hide/show. Keeping
 only the view — as this panel used to — meant the party vanished permanently after the
 first close, because the data that would have redrawn it was inside the discarded elements.
-See <a class="xref" href="FishMMO.Client.UITKParty.html#FishMMO_Client_UITKParty_OnAfterStarting">OnAfterStarting()</a>.</p>
+See <a class="xref" href="FishMMO.Client.UITKParty.html#FishMMO_Client_UITKParty_OnAfterStarting">OnAfterStarting()</a>.
+</p>
+<p>
+<b>Two sources feed the model, and they are not equal.</b> The roster broadcast
+(<code>PartyAddBroadcast</code>) is rebuilt from the party database rows, which are written on
+connect and on disconnect and at no other time — it is authoritative about WHO is in the
+party and what rank they hold, and its health figure is whatever the member logged in with.
+The vitals broadcast is pushed from the scene server's in-memory controllers once a second
+and is authoritative about everything that moves. Each field is taken from exactly one of
+them; see <a class="xref" href="FishMMO.Client.UITKParty.html#FishMMO_Client_UITKParty_OnPartyAddMember_System_Int64_FishMMO_Shared_PartyRank_System_Single_">OnPartyAddMember(long, PartyRank, float)</a> for why the roster's health is only ever a seed.
+</p>
+<p>
+<b>Absence from the vitals payload is a fact, not a gap.</b> The server sends every party
+member who shares the recipient's scene, so a roster member missing from the latest payload
+is in another zone, another dungeon instance, on another scene server, or offline. Those
+rows are drawn as a greyscale facade holding their last known values rather than blanked or
+hidden — see <span class="xref">FishMMO.Client.UITKParty.ApplyPresence(FishMMO.Client.UITKParty.MemberModel)</span>.
+</p>
 </div>
 
 
@@ -674,11 +690,43 @@ See <a class="xref" href="FishMMO.Client.UITKParty.html#FishMMO_Client_UITKParty
 </h2>
 
 
+  <a id="FishMMO_Client_UITKParty_OnAfterShow_" data-uid="FishMMO.Client.UITKParty.OnAfterShow*"></a>
+
+  <h3 id="FishMMO_Client_UITKParty_OnAfterShow" data-uid="FishMMO.Client.UITKParty.OnAfterShow">
+  OnAfterShow()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L338"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Redraws the roster whenever the panel is shown.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnAfterShow()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKParty_OnAfterShow_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code>Show()</code> re-clones the tree, so anything written before it is discarded. On the
+very first open <code>OnAfterStarting</code> has not run yet and this is the only pass that
+happens; on later opens both run and writing the same state twice is harmless.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Client_UITKParty_OnAfterStarting_" data-uid="FishMMO.Client.UITKParty.OnAfterStarting*"></a>
 
   <h3 id="FishMMO_Client_UITKParty_OnAfterStarting" data-uid="FishMMO.Client.UITKParty.OnAfterStarting">
   OnAfterStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L177"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L323"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Re-applies the roster after the visual tree was rebuilt.</p>
@@ -710,7 +758,7 @@ whatever the model already holds.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnButtonCreateParty" data-uid="FishMMO.Client.UITKParty.OnButtonCreateParty">
   OnButtonCreateParty()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L441"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L856"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Broadcasts a create-party request when not already in a party.</p>
@@ -737,7 +785,7 @@ whatever the model already holds.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnButtonInviteToParty" data-uid="FishMMO.Client.UITKParty.OnButtonInviteToParty">
   OnButtonInviteToParty()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L473"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L888"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Invites the current target, or prompts for a name, to the party.</p>
@@ -764,7 +812,7 @@ whatever the model already holds.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnButtonLeaveParty" data-uid="FishMMO.Client.UITKParty.OnButtonLeaveParty">
   OnButtonLeaveParty()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L454"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L869"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Confirms then broadcasts a leave-party request.</p>
@@ -791,7 +839,7 @@ whatever the model already holds.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnDestroying" data-uid="FishMMO.Client.UITKParty.OnDestroying">
   OnDestroying()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L187"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L346"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears all member rows when the control is destroyed.</p>
@@ -818,7 +866,7 @@ whatever the model already holds.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnLeaveParty" data-uid="FishMMO.Client.UITKParty.OnLeaveParty">
   OnLeaveParty()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L362"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L649"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears all member rows when leaving the party.</p>
@@ -845,10 +893,10 @@ whatever the model already holds.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnPartyAddMember_System_Int64_FishMMO_Shared_PartyRank_System_Single_" data-uid="FishMMO.Client.UITKParty.OnPartyAddMember(System.Int64,FishMMO.Shared.PartyRank,System.Single)">
   OnPartyAddMember(long, PartyRank, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L373"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L669"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Adds or updates a member.</p>
+  <div class="markdown level1 summary"><p>Adds or updates a member from the roster payload.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -876,6 +924,15 @@ whatever the model already holds.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Client_UITKParty_OnPartyAddMember_System_Int64_FishMMO_Shared_PartyRank_System_Single__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code class="paramref">healthPCT</code> is a SEED, not an update. It comes from the party database
+row, which is written on connect and on disconnect and at no other time, so it is the
+value the member logged in with — useful for a member who has just appeared in the
+roster and about whom nothing else is known yet, and actively wrong for one whose live
+vitals are already arriving. Applying it unconditionally made every bar jump back to
+its login value once per party update and then be corrected again a fraction of a
+second later.</p>
+</div>
 
 
 
@@ -884,7 +941,7 @@ whatever the model already holds.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnPartyCreated_System_String_" data-uid="FishMMO.Client.UITKParty.OnPartyCreated(System.String)">
   OnPartyCreated(string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L339"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L620"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Adds the local player as a member row when a party is created.</p>
@@ -917,7 +974,7 @@ whatever the model already holds.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnPartyRemoveMember_System_Int64_" data-uid="FishMMO.Client.UITKParty.OnPartyRemoveMember(System.Int64)">
   OnPartyRemoveMember(long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L422"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L835"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes a member.</p>
@@ -946,28 +1003,25 @@ whatever the model already holds.</p>
 
 
 
-  <a id="FishMMO_Client_UITKParty_OnPartyUpdateMemberHealth_" data-uid="FishMMO.Client.UITKParty.OnPartyUpdateMemberHealth*"></a>
+  <a id="FishMMO_Client_UITKParty_OnPartyUpdateVitals_" data-uid="FishMMO.Client.UITKParty.OnPartyUpdateVitals*"></a>
 
-  <h3 id="FishMMO_Client_UITKParty_OnPartyUpdateMemberHealth_System_Int64_System_Single_" data-uid="FishMMO.Client.UITKParty.OnPartyUpdateMemberHealth(System.Int64,System.Single)">
-  OnPartyUpdateMemberHealth(long, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L407"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Client_UITKParty_OnPartyUpdateVitals_FishMMO_Shared_PartyMemberVitalsEntry___" data-uid="FishMMO.Client.UITKParty.OnPartyUpdateVitals(FishMMO.Shared.PartyMemberVitalsEntry[])">
+  OnPartyUpdateVitals(PartyMemberVitalsEntry[])
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L763"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Applies a live health update for one party member.</p>
+  <div class="markdown level1 summary"><p>Applies a live vitals payload from the scene server.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void OnPartyUpdateMemberHealth(long characterID, float healthPCT)</code></pre>
+    <pre><code class="lang-csharp hljs">public void OnPartyUpdateVitals(PartyMemberVitalsEntry[] entries)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>characterID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>The member's character ID.</p>
-</dd>
-    <dt><code>healthPCT</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
-    <dd><p>The member's health fraction, 0-1.</p>
+    <dt><code>entries</code> <a class="xref" href="FishMMO.Shared.PartyMemberVitalsEntry.html">PartyMemberVitalsEntry</a>[]</dt>
+    <dd><p>Live state for every party member sharing the local scene.</p>
 </dd>
   </dl>
 
@@ -978,12 +1032,13 @@ whatever the model already holds.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Client_UITKParty_OnPartyUpdateMemberHealth_System_Int64_System_Single__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Health used to arrive ONLY inside the roster payload, which the scene server rebuilds
-from the guild/party database rows — and those rows are written on connect and on
-disconnect and at no other time. Every bar therefore showed the value the member logged
-in with, for the whole session. The party system now pushes live vitals for the members
-it can see on its own scene server; this is the handler for that.</p>
+  <h4 class="section" id="FishMMO_Client_UITKParty_OnPartyUpdateVitals_FishMMO_Shared_PartyMemberVitalsEntry____remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The payload is treated as an authoritative SET. Everyone in it is present and gets
+their live values; everyone in the roster who is not in it is somewhere the local
+scene server cannot see, and their row becomes a greyscale facade over whatever was
+last known about them. An entry for somebody not in the roster is ignored rather than
+creating a row — the roster payload owns membership, and inventing a member here would
+let the two disagree about who is in the party.</p>
 </div>
 
 
@@ -993,7 +1048,7 @@ it can see on its own scene server; this is the handler for that.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnPostSetCharacter" data-uid="FishMMO.Client.UITKParty.OnPostSetCharacter">
   OnPostSetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L212"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L371"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Subscribes to party controller events after the character is set.</p>
@@ -1020,7 +1075,7 @@ it can see on its own scene server; this is the handler for that.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnPostUnsetCharacter" data-uid="FishMMO.Client.UITKParty.OnPostUnsetCharacter">
   OnPostUnsetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L246"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L405"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Drops the roster once the character is gone.</p>
@@ -1052,7 +1107,7 @@ previous character's party on screen after a character switch.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnPreSetCharacter" data-uid="FishMMO.Client.UITKParty.OnPreSetCharacter">
   OnPreSetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L202"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L361"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unsubscribes from the outgoing character's party controller.</p>
@@ -1084,7 +1139,7 @@ every reopen stacked another subscription onto the same controller.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnPreUnsetCharacter" data-uid="FishMMO.Client.UITKParty.OnPreUnsetCharacter">
   OnPreUnsetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L231"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L390"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unsubscribes from party controller events before the character is unset.</p>
@@ -1111,7 +1166,7 @@ every reopen stacked another subscription onto the same controller.</p>
 
   <h3 id="FishMMO_Client_UITKParty_OnStarting" data-uid="FishMMO.Client.UITKParty.OnStarting">
   OnStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L134"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L279"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Queries the member list and wires up the action buttons.</p>
@@ -1139,11 +1194,54 @@ cannot accumulate handlers across rebuilds.</p>
 
 
 
+  <a id="FishMMO_Client_UITKParty_OnTick_" data-uid="FishMMO.Client.UITKParty.OnTick*"></a>
+
+  <h3 id="FishMMO_Client_UITKParty_OnTick" data-uid="FishMMO.Client.UITKParty.OnTick">
+  OnTick()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L450"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Refreshes the local player's own bars and animates every buff countdown.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void OnTick()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_UITKParty_OnTick_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+The server pushes vitals once a second, which is the right rate for five other people
+and far too slow for your own health bar — a player who takes a hit would watch their
+own row disagree with the resource bar beside it for most of a second. The local
+character's attributes are right here and are the same values the server is reading, so
+the self row is refreshed every frame from those and the payload merely confirms it.
+</p>
+<p>
+Buff durations count down locally between pushes for the same reason the target frame's
+do: the server sends a list only when the SET changes, and each entry carries the
+seconds remaining at send time. Rows for members in another zone are skipped — nothing
+about them is being updated, and a duration ticking down under a greyed-out facade
+would be the one part of it still claiming to be live.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Client_UITKParty_PartyController_OnReceivePartyInvite_" data-uid="FishMMO.Client.UITKParty.PartyController_OnReceivePartyInvite*"></a>
 
   <h3 id="FishMMO_Client_UITKParty_PartyController_OnReceivePartyInvite_System_Int64_" data-uid="FishMMO.Client.UITKParty.PartyController_OnReceivePartyInvite(System.Int64)">
   PartyController_OnReceivePartyInvite(long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L281"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L562"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Prompts the local player to accept or decline a received party invite.</p>
@@ -1181,7 +1279,7 @@ answering the invitation they were actually shown. See
 
   <h3 id="FishMMO_Client_UITKParty_PartyController_OnValidatePartyMembers_System_Collections_Generic_HashSet_System_Int64__" data-uid="FishMMO.Client.UITKParty.PartyController_OnValidatePartyMembers(System.Collections.Generic.HashSet{System.Int64})">
   PartyController_OnValidatePartyMembers(HashSet&lt;long&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L324"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Party/UITKParty.cs/#L605"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes member rows that are no longer part of the validated member set.</p>

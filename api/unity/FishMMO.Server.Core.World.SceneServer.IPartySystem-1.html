@@ -244,9 +244,9 @@ should remove the character from trackers and persist any party updates.</p>
 
   <a id="FishMMO_Server_Core_World_SceneServer_IPartySystem_1_RemoveCharacterFromPartyAsync_" data-uid="FishMMO.Server.Core.World.SceneServer.IPartySystem`1.RemoveCharacterFromPartyAsync*"></a>
 
-  <h3 id="FishMMO_Server_Core_World_SceneServer_IPartySystem_1_RemoveCharacterFromPartyAsync_System_Int64_System_Int64_FishMMO_Shared_PartyRank_System_String_" data-uid="FishMMO.Server.Core.World.SceneServer.IPartySystem`1.RemoveCharacterFromPartyAsync(System.Int64,System.Int64,FishMMO.Shared.PartyRank,System.String)">
-  RemoveCharacterFromPartyAsync(long, long, PartyRank, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Core/World/SceneServer/Party/IPartySystem.cs/#L101"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Server_Core_World_SceneServer_IPartySystem_1_RemoveCharacterFromPartyAsync_System_Int64_System_Int64_System_String_" data-uid="FishMMO.Server.Core.World.SceneServer.IPartySystem`1.RemoveCharacterFromPartyAsync(System.Int64,System.Int64,System.String)">
+  RemoveCharacterFromPartyAsync(long, long, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Core/World/SceneServer/Party/IPartySystem.cs/#L110"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Drops a character out of a party it cannot belong to, with no connection involved.</p>
@@ -254,7 +254,7 @@ should remove the character from trackers and persist any party updates.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task RemoveCharacterFromPartyAsync(long characterID, long partyID, PartyRank rank, string reason)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;bool&gt; RemoveCharacterFromPartyAsync(long characterID, long partyID, string reason)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -265,9 +265,6 @@ should remove the character from trackers and persist any party updates.</p>
     <dt><code>partyID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
     <dd><p>Party it is being removed from.</p>
 </dd>
-    <dt><code>rank</code> <a class="xref" href="FishMMO.Shared.PartyRank.html">PartyRank</a></dt>
-    <dd><p>Its rank, which decides whether leadership has to move first.</p>
-</dd>
     <dt><code>reason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd><p>Why, for the log line.</p>
 </dd>
@@ -275,8 +272,11 @@ should remove the character from trackers and persist any party updates.</p>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task">Task</a></dt>
-    <dd></dd>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p>True when the character no longer belongs to the party — including when it never did.
+False means the removal could not be attempted and the membership row still stands, so
+a caller that was clearing the way for something else must not proceed.</p>
+</dd>
   </dl>
 
 
@@ -285,11 +285,16 @@ should remove the character from trackers and persist any party updates.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Server_Core_World_SceneServer_IPartySystem_1_RemoveCharacterFromPartyAsync_System_Int64_System_Int64_FishMMO_Shared_PartyRank_System_String__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Server_Core_World_SceneServer_IPartySystem_1_RemoveCharacterFromPartyAsync_System_Int64_System_Int64_System_String__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>For a character that is still loading and has no spawned object to broadcast to —
 principally one that has arrived on a world server other than the one its party belongs
 to. Parties are replicated by a pump scoped to a single world server, so a membership
 that crossed would never converge.</p>
+<p>
+The character's rank is not a parameter. It is re-read from the membership row, because
+every caller's copy of it comes from <code>IPartyController.Rank</code> — a cache the update
+pump refreshes — and whether leadership has to move is decided from that rank.
+</p>
 </div>
 
 
