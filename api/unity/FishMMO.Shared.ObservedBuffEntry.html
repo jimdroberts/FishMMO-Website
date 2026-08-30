@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_ObservedBuffEntry" data-uid="FishMMO.Shared.ObservedBuffEntry" class="text-break">
-Struct ObservedBuffEntry  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L23"><i class="bi bi-code-slash"></i></a>
+Struct ObservedBuffEntry  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L34"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -103,24 +103,24 @@ Display-only: nothing on the client applies an effect from this.</p>
   <div class="markdown conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public struct ObservedBuffEntry</code></pre>
+    <pre><code class="lang-csharp hljs">public struct ObservedBuffEntry : IEquatable&lt;ObservedBuffEntry&gt;</code></pre>
   </div>
 
 
 
 
 
+  <dl class="typelist implements">
+    <dt>Implements</dt>
+    <dd>
+      <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.iequatable-1">IEquatable</a>&lt;<a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html">ObservedBuffEntry</a>&gt;</div>
+    </dd>
+  </dl>
 
 
   <dl class="typelist inheritedMembers">
     <dt>Inherited Members</dt>
     <dd>
-    <div>
-      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetype.equals">ValueType.Equals(object)</a>
-    </div>
-    <div>
-      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetype.gethashcode">ValueType.GetHashCode()</a>
-    </div>
     <div>
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetype.tostring">ValueType.ToString()</a>
     </div>
@@ -153,6 +153,13 @@ tick, precisely because the receiving client's tick domain is its own. The obser
 down locally from receipt. That drifts by the one-way latency, which for a bar a few pixels
 tall on someone else's nameplate is not worth a tick-domain translation.
 </p>
+<p>
+<b>The struct is wider than the wire.</b> <a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html#FishMMO_Shared_ObservedBuffEntry_WriteTo_FishNet_Serializing_Writer_">WriteTo(Writer)</a> sends seven bytes; the
+in-memory fields stay at their natural widths because every consumer — the FX diff, the
+target frame, the party frame — indexes templates by <code>int</code> and draws bars from
+<code>float</code>. Narrowing the fields themselves would ripple through all of that and save
+nothing, since the wire form is where the bytes are spent.
+</p>
 </div>
 
 
@@ -161,9 +168,81 @@ tall on someone else's nameplate is not worth a tick-domain translation.
 
 
 
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_MaxEncodableSeconds" data-uid="FishMMO.Shared.ObservedBuffEntry.MaxEncodableSeconds">
+  MaxEncodableSeconds
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L79"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Largest remaining/total duration the wire form can carry, in seconds.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const float MaxEncodableSeconds = 6553.5</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_ObservedBuffEntry_MaxEncodableSeconds_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html#FishMMO_Shared_ObservedBuffEntry_RemainingSeconds">RemainingSeconds</a> travels as deciseconds in a <code>ushort</code>. Just over 109
+minutes, against authored buff durations measured in seconds to minutes; anything longer
+clamps and displays as a bar that starts full and stays there slightly too long, which is
+the same thing a permanent buff already does.</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_MaxEncodableStacks" data-uid="FishMMO.Shared.ObservedBuffEntry.MaxEncodableStacks">
+  MaxEncodableStacks
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L86"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Largest stack count the wire form can carry.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const int MaxEncodableStacks = 255</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_ObservedBuffEntry_MaxEncodableStacks_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code>BaseBuffTemplate.MaxStacks</code> is authored well below this; the clamp exists so a
+runaway stack cannot corrupt the stream, not because 255 stacks is expected.</p>
+</div>
+
+
+
+
+
   <h3 id="FishMMO_Shared_ObservedBuffEntry_RemainingSeconds" data-uid="FishMMO.Shared.ObservedBuffEntry.RemainingSeconds">
   RemainingSeconds
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L32"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L57"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Seconds remaining when the server sent this, or 0 for a permanent buff.</p>
@@ -194,10 +273,10 @@ tall on someone else's nameplate is not worth a tick-domain translation.
 
   <h3 id="FishMMO_Shared_ObservedBuffEntry_Stacks" data-uid="FishMMO.Shared.ObservedBuffEntry.Stacks">
   Stacks
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L29"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L54"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Stack count above the base application (0 = one application).</p>
+  <div class="markdown level1 summary"><p>Stack count above the base application: 0 means one application, 2 means three.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -218,6 +297,18 @@ tall on someone else's nameplate is not worth a tick-domain translation.
 
 
 
+  <h4 class="section" id="FishMMO_Shared_ObservedBuffEntry_Stacks_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code>MaxStacks</code> is the TOTAL number of applications, so this counts up to
+<code>MaxStacks - 1</code>: the base application is the first, and each stack is one more.</p>
+<p>
+Both halves of that were wrong until the 2026-08-29 audit, in the same direction. A
+freshly applied stacking buff ran the new-buff branch AND the stack branch, so it arrived
+here reporting 1 while having applied its modifier twice; and the cap tested
+<code>Stacks &lt; MaxStacks</code>, which let a <code>MaxStacks=3</code> buff reach four applications.
+The first was fixed on 2026-08-28, the second on 2026-08-29 — see
+<code>BuffController.ApplyResolved</code>.
+</p>
+</div>
 
 
 
@@ -225,7 +316,7 @@ tall on someone else's nameplate is not worth a tick-domain translation.
 
   <h3 id="FishMMO_Shared_ObservedBuffEntry_TemplateID" data-uid="FishMMO.Shared.ObservedBuffEntry.TemplateID">
   TemplateID
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L26"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L37"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The buff template's cached ID.</p>
@@ -256,10 +347,12 @@ tall on someone else's nameplate is not worth a tick-domain translation.
 
   <h3 id="FishMMO_Shared_ObservedBuffEntry_TotalSeconds" data-uid="FishMMO.Shared.ObservedBuffEntry.TotalSeconds">
   TotalSeconds
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L70"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The buff's full duration in seconds, or 0 for a permanent buff.</p>
+  <div class="markdown level1 summary"><p>The buff's full authored duration in seconds, straight from the template — including for a
+permanent buff, whose authored Duration is reported as-is. Only <code>RemainingSeconds</code> is
+0 for a permanent buff.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -280,6 +373,314 @@ tall on someone else's nameplate is not worth a tick-domain translation.
 
 
 
+  <h4 class="section" id="FishMMO_Shared_ObservedBuffEntry_TotalSeconds_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><b>Not sent.</b> This is <code>BaseBuffTemplate.Duration</code> — authored content the receiver
+already holds, not runtime state — so <a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html#FishMMO_Shared_ObservedBuffEntry_ReadFrom_FishNet_Serializing_Reader_">ReadFrom(Reader)</a> resolves it from the
+template rather than paying for it once per entry per observer. A template the receiver
+cannot resolve yields 0, which every consumer already treats as &quot;no bar to fill&quot;.</p>
+</div>
+
+
+
+
+  <h2 class="section" id="methods">Methods
+</h2>
+
+
+  <a id="FishMMO_Shared_ObservedBuffEntry_DecodeSeconds_" data-uid="FishMMO.Shared.ObservedBuffEntry.DecodeSeconds*"></a>
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_DecodeSeconds_System_UInt16_" data-uid="FishMMO.Shared.ObservedBuffEntry.DecodeSeconds(System.UInt16)">
+  DecodeSeconds(ushort)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L180"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Deciseconds back to seconds.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static float DecodeSeconds(ushort deciseconds)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>deciseconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint16">ushort</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_ObservedBuffEntry_EncodeSeconds_" data-uid="FishMMO.Shared.ObservedBuffEntry.EncodeSeconds*"></a>
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_EncodeSeconds_System_Single_" data-uid="FishMMO.Shared.ObservedBuffEntry.EncodeSeconds(System.Single)">
+  EncodeSeconds(float)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L166"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Seconds to deciseconds, clamped to the encodable range.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static ushort EncodeSeconds(float seconds)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>seconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint16">ushort</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_ObservedBuffEntry_Equals_" data-uid="FishMMO.Shared.ObservedBuffEntry.Equals*"></a>
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_Equals_FishMMO_Shared_ObservedBuffEntry_" data-uid="FishMMO.Shared.ObservedBuffEntry.Equals(FishMMO.Shared.ObservedBuffEntry)">
+  Equals(ObservedBuffEntry)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L107"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"></div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool Equals(ObservedBuffEntry other)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>other</code> <a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html">ObservedBuffEntry</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_ObservedBuffEntry_Equals_" data-uid="FishMMO.Shared.ObservedBuffEntry.Equals*"></a>
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_Equals_System_Object_" data-uid="FishMMO.Shared.ObservedBuffEntry.Equals(System.Object)">
+  Equals(object)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L116"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"></div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override bool Equals(object obj)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>obj</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object">object</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_ObservedBuffEntry_GetHashCode_" data-uid="FishMMO.Shared.ObservedBuffEntry.GetHashCode*"></a>
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_GetHashCode" data-uid="FishMMO.Shared.ObservedBuffEntry.GetHashCode">
+  GetHashCode()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L122"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"></div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override int GetHashCode()</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_ObservedBuffEntry_ReadFrom_" data-uid="FishMMO.Shared.ObservedBuffEntry.ReadFrom*"></a>
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_ReadFrom_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.ObservedBuffEntry.ReadFrom(FishNet.Serializing.Reader)">
+  ReadFrom(Reader)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L148"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads one entry, resolving <a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html#FishMMO_Shared_ObservedBuffEntry_TotalSeconds">TotalSeconds</a> from the template.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static ObservedBuffEntry ReadFrom(Reader reader)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>reader</code> <span class="xref">Reader</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html">ObservedBuffEntry</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_ObservedBuffEntry_StructurallyEquals_" data-uid="FishMMO.Shared.ObservedBuffEntry.StructurallyEquals*"></a>
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_StructurallyEquals_FishMMO_Shared_ObservedBuffEntry_" data-uid="FishMMO.Shared.ObservedBuffEntry.StructurallyEquals(FishMMO.Shared.ObservedBuffEntry)">
+  StructurallyEquals(ObservedBuffEntry)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L101"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Structural equality: the fields that make this a DIFFERENT buff rather than the same
+buff a moment later.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool StructurallyEquals(ObservedBuffEntry other)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>other</code> <a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html">ObservedBuffEntry</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_ObservedBuffEntry_StructurallyEquals_FishMMO_Shared_ObservedBuffEntry__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html#FishMMO_Shared_ObservedBuffEntry_RemainingSeconds">RemainingSeconds</a> is deliberately excluded. It moves every tick on every
+buff, so including it would mark the whole list changed on every tick and collapse the
+delta back into a full resend. Ordinary countdown needs no message at all: the receiver
+counts its own bars down. The one case that does is a buff RENEWED after the receiver was
+last told about it, which would otherwise run out locally and be deleted while the
+character still holds it — <code>BuffController.ObservedBuffWillLapse</code> catches exactly
+that, and answers it with a full set.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Shared_ObservedBuffEntry_WriteTo_" data-uid="FishMMO.Shared.ObservedBuffEntry.WriteTo*"></a>
+
+  <h3 id="FishMMO_Shared_ObservedBuffEntry_WriteTo_FishNet_Serializing_Writer_" data-uid="FishMMO.Shared.ObservedBuffEntry.WriteTo(FishNet.Serializing.Writer)">
+  WriteTo(Writer)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/ObservedBuffEntry.cs/#L140"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Writes one entry — seven bytes.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void WriteTo(Writer writer)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>writer</code> <span class="xref">Writer</span></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_ObservedBuffEntry_WriteTo_FishNet_Serializing_Writer__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><code>WriteInt32Unpacked</code> rather than <code>WriteInt32</code>: template ids are a deterministic
+32-bit hash (<code>CachedScriptableObject.AddToCache</code>), so they occupy the whole range
+and FishNet's signed-packed form would spend FIVE bytes on one. Unpacked is exactly four.</p>
+</div>
 
 
 

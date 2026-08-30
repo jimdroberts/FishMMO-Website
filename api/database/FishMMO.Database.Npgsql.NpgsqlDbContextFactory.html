@@ -733,7 +733,7 @@ For longer waits, use <a class="xref" href="FishMMO.Database.Npgsql.NpgsqlDbCont
 
   <h3 id="FishMMO_Database_Npgsql_NpgsqlDbContextFactory_DisposeAsync" data-uid="FishMMO.Database.Npgsql.NpgsqlDbContextFactory.DisposeAsync">
   DisposeAsync()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/NpgsqlDbContextFactory.cs/#L528"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/NpgsqlDbContextFactory.cs/#L478"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Asynchronously disposes the factory and releases all resources.
@@ -934,10 +934,10 @@ that report to an operator. Never throws.</p>
 
   <h3 id="FishMMO_Database_Npgsql_NpgsqlDbContextFactory_ValidateSchemaAsync_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.NpgsqlDbContextFactory.ValidateSchemaAsync(System.Threading.CancellationToken)">
   ValidateSchemaAsync(CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/NpgsqlDbContextFactory.cs/#L449"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/NpgsqlDbContextFactory.cs/#L446"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Reports whether the database schema still matches the entity model.</p>
+  <div class="markdown level1 summary"><p>Reports whether this database has applied every migration the entity model expects.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -972,19 +972,19 @@ nothing applies one on your behalf. The database simply stays where it was, and 
 first symptom is a query failing at runtime for a column that does not exist — which
 surfaces far from the cause, as missing data rather than as a schema problem.</p>
 <p>
-Two distinct states are worth catching, and they need different fixes:
+This catches one of the two ways that happens: <b>pending migrations</b>, where the
+migration exists and this database has not run it. Fix with
+<code>dotnet ef database update</code>.
 </p>
-<ul><li><b>Pending migrations</b> — migrations exist that the database has
-not run. Fix with <code>dotnet ef database update</code>.</li><li><b>Model drift</b> — the entity model has changed since the last
-migration was created, so no migration for it exists yet. This is the case a pending
-check alone misses, and the one that occurs after pulling someone else's entity change.
-Fix with <code>dotnet ef migrations add &lt;name&gt;</code> followed by
-<code>database update</code>.</li></ul>
 <p>
-Drift detection reads EF's own model differ. That is a less stable API surface than the
-rest of this class, so a failure to evaluate it is reported as
-<a class="xref" href="FishMMO.Database.Npgsql.SchemaValidationResult.html#FishMMO_Database_Npgsql_SchemaValidationResult_DriftCheckFailed">DriftCheckFailed</a> rather than thrown: a diagnostic
-that cannot run must not stop a server that would otherwise be fine.
+It does <b>not</b> catch <b>model drift</b> — an entity changed with no migration
+generated for it, which leaves nothing pending and a schema that is quietly wrong. A
+drift check lived here and never worked once: it compared the migration snapshot's
+model against the live one, but EF builds <code>ModelSnapshot.Model</code> with an empty
+convention set, so <code>GetRelationalModel()</code> threw on every startup. EF Core 5 has no
+supported way to rebuild that model at runtime, so the check was removed rather than
+left reporting a failure forever. See issue #162; drift belongs in CI, where a
+scaffolded migration can be asserted empty.
 </p>
 </div>
 

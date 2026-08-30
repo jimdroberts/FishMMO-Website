@@ -101,6 +101,8 @@
 <li><a href="#quick-start-guides">Quick Start Guides</a></li>
 <li><a href="#configuration">Configuration</a></li>
 <li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#lag-compensation">Lag compensation</a></li>
+<li><a href="#observer-synchronisation">Observer synchronisation</a></li>
 <li><a href="#operational-checks">Operational Checks</a></li>
 <li><a href="#system-architecture-mermaid">System Architecture (Mermaid)</a></li>
 <li><a href="#flow-diagram">Flow Diagram</a></li>
@@ -148,6 +150,9 @@
 <li><strong>Delta serialization</strong> — Bitmask-based field compression on structs, index-delta compression on arrays (<code>CooldownReconcileEntry[]</code>, <code>BuffReconcileEntry[]</code>)</li>
 <li><strong>Reference-equality shortcut</strong> — Cached reconcile snapshots skip delta comparison entirely when the array reference hasn't changed</li>
 <li><strong>Deterministic replay</strong> — All controllers run against the same tick value (<code>input.GetTick()</code>), ensuring identical results during reconcile replay</li>
+<li><strong>Lag compensation</strong> — Hits resolve against where the caster's client saw its peers, via a per-character position ring and a rewind scope. See <a href="#lag-compensation">Lag compensation</a></li>
+<li><strong>Loss-detecting delta chain</strong> — A one-byte send sequence lets the reader reject a delta whose baseline it never received, instead of decoding it against the wrong one</li>
+<li><strong>Observer sync without state forwarding</strong> — Observers do not simulate their peers. Position arrives via <code>NetworkTransform</code>, and resources, buffs, equipment and ability casts via dedicated broadcasts</li>
 </ul>
 <h3 id="registered-controllers">Registered Controllers</h3>
 <table>
@@ -195,7 +200,10 @@
 <ul>
 <li>All prediction state is server-authoritative — clients cannot forge reconcile data</li>
 <li>Reconcile overwrites client state on mismatch, preventing prediction exploits</li>
-<li>Delta serializers guard against malformed packets with <code>MaxEntries</code> caps (4096)</li>
+<li>Delta serializers guard against malformed packets with <code>MaxEntries</code> caps (4096; equipment 64), and every array read validates its count before allocating</li>
+<li>Each spawn payload is <strong>length-framed</strong>, so a defensive abort seeks to the end of its own block rather than desynchronising every <code>NetworkBehaviour</code> read after it — they all share one unframed buffer</li>
+<li>The client-supplied view offset is treated as a claim, not a fact: capped at <code>LagCompensationTick.MaximumCompensationTicks</code>, and clamped again by the recorded history window</li>
+<li>Observers are never sent owner-only state — no generator state, no full cooldown tables, no inventory internals. The boundary is the <code>IsOwner</code> check in <code>AbilityController.RegisterObservedAbility</code></li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -275,7 +283,19 @@
 </tr>
 <tr>
 <td>Tick binding</td>
-<td>Subscribes to <code>TimeManager.OnTick</code> on <code>OnStartNetwork()</code>, unsubscribes on <code>OnStopNetwork()</code></td>
+<td>Subscribes to <code>TimeManager.OnPreTick</code> and <code>OnTick</code> on <code>OnStartNetwork()</code>, unsubscribes on <code>OnStopNetwork()</code></td>
+</tr>
+<tr>
+<td>Tick snapshots</td>
+<td><code>CurrentLocalTickSnapshot</code>, <code>CurrentReplicateTickSnapshot</code> and <code>PendingReplicateTickSnapshot</code> are published so consumers that run before this behaviour's own tick callback (ability objects, region triggers) do not observe the previous tick's value</td>
+</tr>
+<tr>
+<td>Input authority</td>
+<td><code>HasInputAuthority</code> — an AI character answers &quot;the server&quot;, everyone else &quot;the owning client&quot;. Ownership alone cannot answer it: a monster is server-owned with no owning connection, while a pet is owned by the summoner's connection yet driven entirely by a server-side <code>AIController</code>.</td>
+</tr>
+<tr>
+<td>Observer transport</td>
+<td><code>ApplyObserverTransportMode</code> silences the <code>NetworkTransform</code> only when prediction genuinely moves the character (a <code>KCCPlayer</code> is present) <strong>and</strong> state forwarding is on. An NPC runs the same pipeline but is moved by a NavMeshAgent, so its <code>MotorState</code> is default every tick and the transform is the only thing moving it.</td>
 </tr>
 </tbody>
 </table>
@@ -310,16 +330,22 @@
 <td>Bitmask: Jump, Crouch, Sprint (<code>KCCMoveFlags</code>)</td>
 </tr>
 <tr>
-<td><code>CameraPosition</code></td>
+<td><code>AimDirection</code></td>
 <td><code>Vector3</code></td>
 <td>KCC</td>
-<td>Camera position for ability aiming</td>
+<td>Unit aim vector, <strong>already quantised</strong> (see below)</td>
 </tr>
 <tr>
-<td><code>CameraRotation</code></td>
-<td><code>Quaternion</code></td>
-<td>KCC</td>
-<td>Camera rotation for ability aiming</td>
+<td><code>ViewOffsetTicks</code></td>
+<td><code>byte</code></td>
+<td>Lag comp</td>
+<td>Whole ticks this client was rendering its peers behind server-present</td>
+</tr>
+<tr>
+<td><code>ViewOffsetFraction</code></td>
+<td><code>byte</code></td>
+<td>Lag comp</td>
+<td>Sub-tick remainder of that offset, in 1/256ths of a tick</td>
 </tr>
 <tr>
 <td><code>ActivationFlags</code></td>
@@ -335,7 +361,22 @@
 </tr>
 </tbody>
 </table>
-<p>Delta serialized with a 7-bit byte bitmask — only changed fields are transmitted.</p>
+<p>Delta serialized with an 8-bit bitmask — only changed fields are transmitted. The axes ride a
+single signed byte each (<code>MoveAxisCompression</code>) and the aim direction a packed <code>uint</code>
+(<code>AimDirectionCompression</code>: 16 bits of yaw, 16 of pitch).</p>
+<p><strong><code>AimDirection</code> replaced a full <code>Quaternion CameraRotation</code>.</strong> Nothing ever read the roll —
+movement takes <code>rotation * Vector3.forward</code> to build its planar basis and the ability path takes
+the same forward as its trace direction — so the quaternion carried a degree of freedom no
+consumer used and that could not be represented exactly.</p>
+<p><strong>Quantise on the producer, before predicting.</strong> <code>KCCPlayer.PopulateInput</code> writes
+<code>AimDirectionCompression.Quantize(...)</code> and <code>MoveAxisCompression.Quantize(...)</code> into the input
+struct itself, not just onto the wire. This is input to a deterministic simulation, so the
+producer must commit to the value the wire can carry — otherwise the owner predicts with one
+direction while the server and observers simulate with the decoded one, and every cast diverges by
+the quantisation error. <code>Encode</code>/<code>Decode</code> is a fixed point: the poles pin yaw to 0 and pitch uses
+<code>Atan2</code> rather than <code>Asin</code>, which is numerically flat near ±1.</p>
+<p><strong>The view offset is a client measurement the server cannot derive.</strong> It is the full round trip
+plus the client's interpolation buffer — see <a href="#lag-compensation">Lag compensation</a>.</p>
 <h3 id="characterreconciledata">CharacterReconcileData</h3>
 <p>Unified per-tick authoritative state struct.</p>
 <table>
@@ -400,22 +441,52 @@
 <td><code>Equipment</code></td>
 <td><code>EquipmentReconcileEntry[]</code></td>
 <td>Equipment</td>
-<td>Equipped item snapshots (TemplateID, Slot, Seed, InstanceID) — field 11 (bit 10)</td>
+<td>Equipped item snapshots (<code>TemplateID</code>, <code>Slot</code>, <code>Seed</code>, <code>ItemID</code>) — bit 10</td>
 </tr>
 <tr>
 <td><code>Attributes</code></td>
 <td><code>AttributeReconcileEntry[]</code></td>
 <td>Attribute</td>
-<td>Non-resource attribute snapshots (Value + ExternalModifier), sorted by <code>TemplateID</code></td>
+<td>Non-resource attribute snapshots (<code>Value</code> + <code>ExternalModifier</code>), sorted by <code>TemplateID</code> — bit 9</td>
 </tr>
 <tr>
 <td><code>RngS0</code>–<code>RngS3</code></td>
 <td><code>uint</code> × 4</td>
 <td>Ability</td>
-<td>Full xoshiro128** RNG internal state</td>
+<td>Full xoshiro128** RNG internal state — bit 8</td>
+</tr>
+<tr>
+<td><code>ChargedHoldTicks</code></td>
+<td><code>uint</code></td>
+<td>Ability</td>
+<td>Ticks a charged ability has been held past full charge — bit 11</td>
+</tr>
+<tr>
+<td><code>Sequence</code></td>
+<td><code>byte</code></td>
+<td>—</td>
+<td>Server-side send counter, stamped at SEND time. The delta chain's loss detector; rides outside the flags word.</td>
 </tr>
 </tbody>
 </table>
+<p>Twelve of the sixteen bitmask bits are in use. <strong>When adding a field, take the next bit and update
+<code>WriteDelta</code>, <code>ReadDelta</code> and <code>DrainDeltaPayload</code> in lock-step</strong> — all three read the same fields
+in the same order, and a field added to one of them only silently misaligns every field after it.</p>
+<h4 id="the-delta-chain-and-its-loss-detector">The delta chain and its loss detector</h4>
+<p>Reconciles ride the unreliable <code>StateUpdate</code> datagram, and FishNet's scalar delta primitives are
+<em>difference</em>-based: the writer emits <code>next - prev</code> and the reader adds it onto ITS previous value.
+A payload is therefore only decodable by a peer holding the same baseline the writer used, so a
+single lost datagram used to leave every later delta decoding against a baseline the client never
+received — a wrong position applied to the owner for up to a second.</p>
+<p><code>Sequence</code> closes that. The reader requires <code>prev.Sequence + 1</code> and rejects the packet otherwise,
+so a loss costs &quot;no correction until the next snapshot&quot; rather than &quot;a wrong correction for up to a
+second&quot;. It is stamped when the reconcile is actually <em>written</em>, not when it is created:
+<code>CreateReconcile</code> runs every tick but the send is skipped when no resends remain, and a counter
+that advanced on unsent states would read as a lost datagram.</p>
+<p>A <code>FullSerialize</code> is written as an <strong>absolute snapshot</strong>, not as a delta — that is what makes it
+usable by a peer with no baseline (a late-joining observer), and because FishNet emits one about
+once per second it doubles as a periodic resync that repairs drift rather than letting it
+accumulate.</p>
 <p>Delta serialized with a bitmask + per-field delta encoding. Array fields use index-delta compression with reference-equality shortcutting.</p>
 <blockquote>
 <p><strong>Sort contract:</strong> producers of <code>Attributes</code>, <code>Buffs</code>, and <code>Cooldowns</code> MUST emit entries sorted by their stable key (<code>TemplateID</code> ascending) so index-delta comparisons stay meaningful across ticks.</p>
@@ -445,6 +516,212 @@ CooldownController (Order=90)  → Expires elapsed cooldowns
 CharacterAttributeController (Order=95) → Regenerates resources
 AbilityController (Order=100)  → Activates abilities, checks cooldowns + resources
 </code></pre>
+<h2 id="lag-compensation">Lag compensation</h2>
+<p>Without compensation a hit resolves against where a character is <em>now</em>, while the shooter aimed at
+where it was <strong>rendered</strong> — its interpolation buffer plus its own latency in the past. At 6 m/s
+that gap runs from about 0.45 m on a same-city connection to 2.2 m at 300 ms, against ability
+hitboxes authored at half a metre. At any real latency the shooter's aim and the server's answer
+are describing different worlds.</p>
+<h3 id="the-derivation">The derivation</h3>
+<p>Write everything in fractional server ticks. The owner produces an input at server time <code>S</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>oneWay</code></td>
+<td>one-way network latency, in ticks</td>
+</tr>
+<tr>
+<td><code>interp</code></td>
+<td><code>LagCompensationTick.SpectatorInterpolationTicks</code> — the client's render buffer</td>
+</tr>
+<tr>
+<td><code>queue</code></td>
+<td><code>PredictionManager.StateInterpolation</code> — how long an arrived input waits before the replicate body consumes it</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>The state the owner is looking at left the server <code>oneWay</code> ago and is rendered <code>interp</code> behind
+even that, so it is watching server tick <strong><code>R = S − oneWay − interp</code></strong>.</li>
+<li>The input crosses the network and then waits in the replicate queue, so the body runs at server
+tick <strong><code>A = S + oneWay + queue</code></strong>.</li>
+<li>The offset subtracted is the client's claim (the <strong>full</strong> round trip plus its interpolation) plus
+the queue depth the client cannot see: <code>A − (2·oneWay + interp + queue)</code>.</li>
+</ul>
+<p>Substituting <code>A</code> gives <code>S − oneWay − interp = R</code>. <strong>Every latency term cancels exactly.</strong> That only
+holds while the client's half carries the full round trip and the server's half adds the queue
+depth; either mistake leaves a residue proportional to ping, which is invisible at any single
+latency. <code>LagCompensationClosedLoopTests</code> composes both halves across a spread of round trips and
+pins the identity.</p>
+<h3 id="the-two-halves">The two halves</h3>
+<table>
+<thead>
+<tr>
+<th>Half</th>
+<th>Where</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Client</td>
+<td><code>LagCompensationTick.ResolveViewOffset</code> (called by <code>KCCPlayer</code>)</td>
+<td>Turns <code>TimeManager.RoundTripTime</code> and the interpolation setting into <code>ViewOffsetTicks</code> + <code>ViewOffsetFraction</code>. The server cannot derive this: FishNet exposes no per-connection latency server-side.</td>
+</tr>
+<tr>
+<td>Server</td>
+<td><code>LagCompensationTick.ResolveAnchor</code> (called by <code>TryResolve</code>)</td>
+<td>Caps the claim, adds the queue depth, and subtracts from the <strong>server's own</strong> <code>LocalTick</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The anchor is always the server's tick.</strong> A replicate's tick is the owning client's
+unsynchronised counter and cannot index a history keyed by the server's — anchoring on it put every
+target outside the recorded window, so nothing rewound and every hit silently resolved against live
+positions.</p>
+<p><strong>The sub-tick byte is not a nicety.</strong> The whole-tick part alone quantises the rewind to a tick
+boundary, and an interpolated view does not sit on one. At 30 Hz and 6 m/s that is 20 cm — most of
+a capsule.</p>
+<h3 id="the-rewind-scope">The rewind scope</h3>
+<p><code>LagCompensationRegistry.Rewind</code> displaces every registered character in the scene to its recorded
+pose, calls <code>Physics.SyncTransforms</code> (colliders follow transforms only at a sync point), and
+restores on <code>Dispose</code>. Rules that hold it together:</p>
+<ul>
+<li><strong>Nested rewinds are refused, not stacked.</strong> A nested scope would capture already-displaced
+positions as its restore target and strand every character in the past. An inner query runs
+against the outer rewind instead.</li>
+<li><strong>A throw restores before it escapes.</strong> Otherwise everything displaced so far stays half a second
+in the past, permanently.</li>
+<li><strong>Query, rank, dedupe and cap all happen inside one scope.</strong> Ranking outside it mixes a rewound
+world with a live one.</li>
+<li>The caster is excluded — it fires from where it is, not where it was.</li>
+</ul>
+<h3 id="the-history-ring">The history ring</h3>
+<p><code>CharacterPositionHistory</code> records one pose per tick on <code>OnPostTick</code>, into a ring sized from
+<code>maximumRewindMilliseconds</code> (500 ms authored → 15 samples at 30 Hz). It never records while
+displaced, which would persist a rewound pose as if it were real.</p>
+<p>Resolution distinguishes two cases that look alike and are not:</p>
+<ul>
+<li><strong>A little older than the window clamps</strong> to the oldest sample. Refusing it was a cliff, not a
+defence: the ceiling on how far back anyone can shoot is the recording either way, and an
+attacker reaches it by claiming a value just <em>inside</em> the window. Refusal only penalised honest
+high-latency clients.</li>
+<li><strong>Wildly older is refused.</strong> A tick thousands out is not a latency claim at all — it is a tick
+domain error, and clamping it would hand back a real-looking pose for a tick nobody recorded.</li>
+</ul>
+<blockquote>
+<p><strong>500 ms RTT is the designed worst case, and the two constants deliberately disagree.</strong>
+<code>MaximumCompensationTicks</code> is 30 while the ring holds 15 samples at 30 Hz, so past roughly 500 ms
+RTT the resolve clamps to the oldest sample and a player at 800 ms is compensated for about half of
+what the constant implies. That is intended, not an oversight:</p>
+<ul>
+<li>The clamp is the safe direction — it returns the oldest <em>recorded</em> pose and never falls through to
+a live one, so an over-window claim buys the recorded window and never more.</li>
+<li>The two constants answer different questions. <code>MaximumCompensationTicks</code> bounds an
+attacker-controlled <strong>claim</strong> before it is trusted; <code>maximumRewindMilliseconds</code> bounds what was
+actually <strong>recorded</strong>. A claim capped <em>below</em> the ring length would be the real defect.</li>
+<li>Rewinding further costs memory per character per scene and widens the window in which a player is
+shot by someone looking at a very stale world — the thing lag compensation trades against.</li>
+</ul>
+<p>If the worst case ever moves, the knob is <code>maximumRewindMilliseconds</code> on the character prefab. Do not
+change <code>MaximumCompensationTicks</code> to match the ring.</p>
+</blockquote>
+<h3 id="who-resolves-hits">Who resolves hits</h3>
+<table>
+<thead>
+<tr>
+<th>Peer</th>
+<th>Resolves?</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server</td>
+<td>Yes, inside a rewind to the caster's view</td>
+<td>Authoritative</td>
+</tr>
+<tr>
+<td>The caster's owner</td>
+<td>Yes, as a prediction, uncompensated</td>
+<td>Its world already <em>is</em> that rewound one, which is what makes its predicted hit and the server's agree by construction</td>
+</tr>
+<tr>
+<td>A third-party observer</td>
+<td><strong>No</strong></td>
+<td>It holds every character interpolated against its own latency, so the same query answers a question nobody asked. It is told instead, by <code>AbilityObjectHitBroadcast</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="observer-synchronisation">Observer synchronisation</h2>
+<p>State forwarding is <strong>off</strong> for playable characters, and that is intended rather than a
+misconfiguration. Observers do not simulate their peers, so each subsystem has an explicit
+observer path:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Owner</th>
+<th>Observers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Position</td>
+<td>Reconcile (<code>MotorState</code>)</td>
+<td><code>NetworkTransform</code></td>
+</tr>
+<tr>
+<td>Resources</td>
+<td>Reconcile (<code>ResourceState</code>)</td>
+<td><code>CharacterResourcesBroadcast</code>, on a change-driven scheduler</td>
+</tr>
+<tr>
+<td>Attributes</td>
+<td>Reconcile (<code>Attributes[]</code>, carrying the authoritative residual)</td>
+<td><code>CharacterAttributesBroadcast</code></td>
+</tr>
+<tr>
+<td>Buffs</td>
+<td>Own simulation</td>
+<td><code>CharacterBuffsBroadcast</code> (full set or delta)</td>
+</tr>
+<tr>
+<td>Equipment</td>
+<td>Own simulation + reconcile</td>
+<td><code>EquipmentObservedSlotBroadcast</code></td>
+</tr>
+<tr>
+<td>Ability casts</td>
+<td>Own simulation</td>
+<td><code>AbilityActivatedBroadcast</code></td>
+</tr>
+<tr>
+<td>Ability hits</td>
+<td>Own prediction, absorbed on echo</td>
+<td><code>AbilityObjectHitBroadcast</code></td>
+</tr>
+<tr>
+<td>Ability end-of-life</td>
+<td>Own simulation</td>
+<td><code>AbilityObjectDestroyedBroadcast</code> (only for a hit-count end; lifetime expiry is identical everywhere and needs no message)</td>
+</tr>
+</tbody>
+</table>
+<p>They are <strong>broadcasts, not RPCs</strong>, sent to the observer set except the owner via
+<code>ObserverBroadcastScope</code>. Every one of these is also written into the spawn payload in an
+observer-shaped form, so a late joiner reconstructs the same visible state a peer that was present
+the whole time holds.</p>
+<p>The one thing genuinely broken by forwarding-off is a character with nothing to replicate position —
+<code>CharacterPredictionController.OnStartNetwork</code> warns for a predicted object with no
+<code>NetworkTransform</code>, because that presents as a content bug (a frozen character that keeps dealing
+damage) rather than a networking one.</p>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
 <thead>
@@ -463,7 +740,7 @@ AbilityController (Order=100)  → Activates abilities, checks cooldowns + resou
 <tr>
 <td>State Forwarding</td>
 <td>Inspect <code>NetworkObject</code> Prediction settings</td>
-<td><code>EnableStateForwarding == true</code>. <code>CharacterPredictionController.OnStartNetwork</code> logs a warning otherwise — observers desync without it</td>
+<td><code>EnableStateForwarding == false</code> on every shipped prefab — the interpolated open-world mode. Observers are fed by per-controller broadcasts, not by a forwarded reconcile; see <code>ObserverSyncMode</code>. <code>CharacterPredictionController.OnStartNetwork</code> warns only when forwarding is off AND there is no <code>NetworkTransform</code>, because then nothing replicates position at all</td>
 </tr>
 <tr>
 <td>Tick execution</td>
@@ -762,7 +1039,14 @@ CharacterReconcileData: ushort bitmask → per-field delta encoding
 ├── CharacterReplicateData.cs                   # Shared per-tick input struct [UseGlobalCustomSerializer]
 ├── CharacterReconcileData.cs                   # Shared per-tick state struct [UseGlobalCustomSerializer]
 ├── CharacterReconcileDataDeltaSerializer.cs    # Bitmask-based delta serializer for reconcile data
-├── CharacterTickExtensions.cs                  # ICharacter.GetLocalTick() helper
+├── CharacterTickExtensions.cs                  # ICharacter.GetLocalTick() helper (extension class — invisible to a type-level scan, not dead)
+├── PredictionTick.cs                           # A tick that can only be produced from a replicate input, so the compiler enforces tick sourcing
+├── AimDirectionCompression.cs                  # Yaw/pitch packing for CharacterReplicateData.AimDirection; Encode/Decode is a fixed point
+├── MoveAxisCompression.cs                      # Signed-byte packing for the movement axes
+├── CharacterAimOrigin.cs                       # Derives the aim origin from the motor (never replicated — it is reconstructible)
+├── PayloadVisibility.cs                        # Chooses the owner or observer spawn-payload shape for a connection
+├── ObserverSyncMode.cs                         # Whether a NetworkObject's observers consume reconcile or broadcasts
+├── NetworkTransformDistanceLod.cs              # Per-observer send-rate shaping for the NetworkTransform
 ├── Ability/                                    # Ability system (see Ability/README.md)
 │   ├── Ability.cs                              # Runtime ability instance
 │   ├── AbilityController.cs                    # IPredictableController (Order=100), partials below
@@ -771,6 +1055,8 @@ CharacterReconcileData: ushort bitmask → per-field delta encoding
 │   ├── AbilityController.Networking.cs         # Knowledge broadcasts (NOT state replication)
 │   ├── AbilityObject.cs                        # Spawned ability instance (projectile / hit volume)
 │   ├── AbilityObjectSnapshot.cs                # Detached object snapshot (outlives caster)
+│   ├── AbilityObjectSweep.cs                   # Swept-volume hit gathering (overlap at the start + cast along the segment), distance-ordered
+│   ├── PredictedAbilityStateHistory.cs         # Owner-side per-tick (seed, abilityID) record the reconcile compares against
 │   ├── AbilityPrefabColliderCache.cs           # Caches colliders per ability prefab to avoid GetComponent per spawn
 │   ├── AbilityContainerAllocator.cs            # Allocates deterministic container IDs for spawned objects
 │   ├── AbilityActivationFlags.cs               # 16-bit flags packed into CharacterReconcileData.PackedFlagsAndSlot
@@ -791,7 +1077,11 @@ CharacterReconcileData: ushort bitmask → per-field delta encoding
 │   ├── CharacterAttributeResourceState.cs      # 7-field snapshot struct
 │   ├── CharacterAttributeResourceStateSerializer.cs  # Regular + delta serializers (BeforeSceneLoad registration)
 │   ├── AttributeReconcileEntry.cs              # Non-resource attribute snapshot + array-delta
+│   ├── ModifierSource.cs                       # The attributed-modifier ledger key: (Kind, Id, Index)
 │   ├── CharacterDamageController.cs            # Damage / heal / kill pipeline
+│   ├── CombatEventCoalescer.cs                 # Merges one tick's hits sharing (source, kind, damage type) into one report
+│   ├── PredictedCombatEvents.cs                # Client-side predicted damage/heal labels, settled or greyed out by the server's report
+│   ├── ObservedResourcePushScheduler.cs        # Decides when an observer resource push is due (in-combat vs out-of-combat interval)
 │   └── Template/                               # CharacterAttributeTemplate, formulas, damage/resistance
 ├── KCC/                                        # Kinematic Character Controller
 │   ├── KCCPlayer.cs                            # IPredictableController (Order=80) — movement prediction
@@ -800,9 +1090,23 @@ CharacterReconcileData: ushort bitmask → per-field delta encoding
 │   ├── KCCPlatform.cs                          # Moving platform prediction (separate NetworkObject — own [Replicate]/[Reconcile])
 │   ├── KCCInputReplicateData.cs                # KCC-specific replicate data (used internally)
 │   ├── KCCMoveFlags.cs                         # Movement flag enum (Jump, Crouch, Sprint)
+│   ├── KCCPlatformDeltaSerializers.cs          # Delta serializers for the moving-platform pipeline
 │   └── KCCPredictionDeltaSerializers.cs        # Delta serializers for motor state + replicate data
+├── LagCompensation/                            # Rewind-to-the-caster's-view (see &quot;Lag compensation&quot; above)
+│   ├── LagCompensationTick.cs                  # BOTH halves of the derivation, as pure functions: ResolveViewOffset (client) and ResolveAnchor (server)
+│   ├── LagCompensationRegistry.cs              # The rewind scope: displace every character, sync, restore. Refuses nesting.
+│   ├── CharacterPositionHistory.cs             # Per-character pose ring, sized from maximumRewindMilliseconds
+│   ├── LagCompensatedQuery.cs                  # OverlapSphereNearest / RaycastNearest — query, rank, dedupe and cap all inside ONE scope
+│   └── RewindTarget.cs                         # A tick plus a sub-tick fraction, clamped
+├── ObserverStreaming/                          # Per-observer range and full-rate cap
+│   ├── ObserverStreamingRegistry.cs            # Registration and per-observer decisions
+│   ├── ObserverStreamingPolicy.cs              # Density-scaled range and budget policy
+│   ├── ObserverStreamingEntry.cs               # Per-object streaming state
+│   └── ObserverBudgetCondition.cs              # FishNet observer condition implementing the budget
 └── Region/                                     # Region trigger system (server-authoritative; NOT part of the predicted character pipeline)
     ├── Region.cs                               # NetworkBehaviour with NetworkTrigger; OnRegionEnter/Stay/Exit Trigger lists
+    ├── RegionGeometry.cs                        # Authored region shape
+    ├── RegionMembership.cs                      # Which region owns a character when regions nest
     └── FogSettings.cs                          # Per-region fog configuration data
 </code></pre>
 <h3 id="related-files">Related Files</h3>

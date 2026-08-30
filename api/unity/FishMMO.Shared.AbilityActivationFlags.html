@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Enum AbilityActivationFlags | FishMMO Documentation ">
       
-      <meta name="description" content="Flags representing the activation state of an ability. Stored as bit positions in an int and manipulated via IntBitExtensions.  Bit position 0 (IsActualData) is used as a sentinel to distinguish real input from FishNet&#39;s default-filled replicate data. When the Replicate method receives data without this bit set, it returns immediately. This allows bit 0 to double as a &quot;data present&quot; marker without consuming an extra field in the replicate struct.   Constraint: All enum values are bit positions and must remain in the range 0–15 (bits 0–15 after shifting).  stores flags in the lower 16 bits. Values at or above 16 will be silently truncated during reconcile.">
+      <meta name="description" content="Flags representing the activation state of an ability. Stored as bit positions in an int and manipulated via IntBitExtensions.  Bit position 0 (IsActualData) is used as a sentinel to distinguish real input from FishNet&#39;s default-filled replicate data. Data without this bit set does NOT stop the replicate: AbilityController.ReplicateInternal clears the queued ability, carries the held flag over from the replicated state, and goes on simulating — a tick with no new input still has to advance an active cast, its cooldowns and its resource drain, or the owner and the server diverge whenever a packet is late. This lets bit 0 double as a &quot;data present&quot; marker without consuming an extra field in the replicate struct.   Constraint: All enum values are bit positions and must remain in the range 0–15 (bits 0–15 after shifting).  stores flags in the lower 16 bits. Values at or above 16 will be silently truncated during reconcile.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -90,7 +90,7 @@
 
 
   <h1 id="FishMMO_Shared_AbilityActivationFlags" data-uid="FishMMO.Shared.AbilityActivationFlags" class="text-break">
-Enum AbilityActivationFlags  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityActivationFlags.cs/#L19"><i class="bi bi-code-slash"></i></a>
+Enum AbilityActivationFlags  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityActivationFlags.cs/#L22"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -102,9 +102,12 @@ Enum AbilityActivationFlags  <a class="header-action link-secondary" title="View
 Stored as bit positions in an int and manipulated via IntBitExtensions.</p>
 <p>
 Bit position 0 (IsActualData) is used as a sentinel to distinguish real input from
-FishNet's default-filled replicate data. When the Replicate method receives data
-without this bit set, it returns immediately. This allows bit 0 to double as a
-"data present" marker without consuming an extra field in the replicate struct.
+FishNet's default-filled replicate data. Data without this bit set does NOT stop the
+replicate: <code>AbilityController.ReplicateInternal</code> clears the queued ability, carries the
+held flag over from the replicated state, and goes on simulating — a tick with no new input
+still has to advance an active cast, its cooldowns and its resource drain, or the owner and
+the server diverge whenever a packet is late. This lets bit 0 double as a "data present"
+marker without consuming an extra field in the replicate struct.
 </p>
 <p>
 <b>Constraint:</b> All enum values are bit positions and must remain in the
@@ -161,6 +164,17 @@ Using position 0 means a default int (0) will never have this flag set.</p>
   
   <dd><p>Indicates the activation is for a mount.</p>
 </dd>
+    <dt id="FishMMO_Shared_AbilityActivationFlags_NoSpawn"><code>NoSpawn = 6</code></dt>
+  <dd><p>Server-authoritative &quot;no object was spawned at this tick&quot; flag.</p>
+<p>Distinct from <a class="xref" href="FishMMO.Shared.AbilityActivationFlags.html#FishMMO_Shared_AbilityActivationFlags_Denied">Denied</a>, which means the activation was refused outright. This
+means the activation ran to completion — cost paid, cooldown started, seed advanced — and
+still produced nothing, because the server's own target resolution came up empty for an
+ability that requires a target. The owner, resolving against its own view of the world,
+had already spawned an object: the seeds match and there is no denial, so nothing told it
+to take that object back and it flew its full lifetime hitting nothing. This flag is what
+tells it. It does not fire <code>OnAbilityDenied</code> — the cast was not denied.</p>
+</dd>
+  
   </dl>
 
 

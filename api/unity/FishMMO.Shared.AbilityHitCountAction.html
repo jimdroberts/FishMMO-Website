@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class AbilityHitCountAction | FishMMO Documentation ">
       
-      <meta name="description" content="Action that tracks or modifies the hit count of an ability.">
+      <meta name="description" content="Adds to (or subtracts from) an ability object&#39;s remaining hit count.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_AbilityHitCountAction" data-uid="FishMMO.Shared.AbilityHitCountAction" class="text-break">
-Class AbilityHitCountAction  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityHitCountAction.cs/#L11"><i class="bi bi-code-slash"></i></a>
+Class AbilityHitCountAction  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityHitCountAction.cs/#L33"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,7 +97,7 @@ Class AbilityHitCountAction  <a class="header-action link-secondary" title="View
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Action that tracks or modifies the hit count of an ability.</p>
+  <div class="markdown summary"><p>Adds to (or subtracts from) an ability object's remaining hit count.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -161,6 +161,28 @@ public sealed class AbilityHitCountAction : BaseAction, IAction</code></pre>
 
 
 
+  <h2 id="FishMMO_Shared_AbilityHitCountAction_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+The one action that moves <code>AbilityObject.HitCount</code>, and it covers both directions.
+A positive amount is a PIERCE — the object survives that many more impacts instead of ending
+on this one, which is how a projectile is made to pass through its targets. A negative amount
+consumes hits early, ending the object sooner than its authored count would.
+</p>
+<p>
+<b>There used to be two of these.</b> <code>AbilityPierceHitAction</code> was a second serialized
+action type with a byte-identical body under a different field name, so the subclass menu
+offered a designer two entries that did the same thing and a fix to one silently missed the
+other. It was deleted rather than kept as an alias: this one already expresses pierce, and the
+specialised name only described the positive half of what it did.
+</p>
+<p>
+Runs on every peer, deliberately — the caster's predicted copy of the object and the server's
+must reach the same hit count or they end at different moments. An observer runs it too, from
+the server's own hit report, but no longer acts on the result: its copy's end-of-life belongs
+to <code>AbilityObjectDestroyedBroadcast</code>, so it spends no hit count of its own. See
+<code>AbilityObject.ResolveSweptHits</code>.
+</p>
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -170,16 +192,16 @@ public sealed class AbilityHitCountAction : BaseAction, IAction</code></pre>
 
   <h3 id="FishMMO_Shared_AbilityHitCountAction_AmountValue" data-uid="FishMMO.Shared.AbilityHitCountAction.AmountValue">
   AmountValue
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityHitCountAction.cs/#L20"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityHitCountAction.cs/#L47"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The value provider that determines the amount to add to the AbilityObject's HitCount.
-Use a provider returning a positive value to increment (e.g., for piercing), and a negative value to decrement (e.g., for consuming a hit).</p>
+Positive pierces (the object survives that many more impacts); negative consumes hits early.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;The value provider that determines the amount to add to the AbilityObject&#39;s HitCount.&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Amount to add to the AbilityObject&#39;s HitCount. Positive pierces, negative consumes hits early.&quot;)]
 [SerializeReference]
 public IIntValueProvider AmountValue</code></pre>
   </div>
@@ -197,6 +219,11 @@ public IIntValueProvider AmountValue</code></pre>
 
 
 
+  <h4 class="section" id="FishMMO_Shared_AbilityHitCountAction_AmountValue_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Wired to OnHit, an amount of 1 exactly cancels the decrement the impact itself applies, so
+the object never ends on a hit at all — bound it with a lifetime, or with a provider that
+runs out.</p>
+</div>
 
 
 
@@ -209,7 +236,7 @@ public IIntValueProvider AmountValue</code></pre>
 
   <h3 id="FishMMO_Shared_AbilityHitCountAction_Execute_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.AbilityHitCountAction.Execute(FishMMO.Shared.Core.ICharacter,FishMMO.Shared.Core.EventData)">
   Execute(ICharacter, EventData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityHitCountAction.cs/#L27"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityHitCountAction.cs/#L54"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Executes the hit count action, applying the hit count logic to the ability.</p>

@@ -176,7 +176,9 @@
 <li><strong>Consumable and mount activation</strong> through the same prediction pipeline</li>
 <li><strong>ECA-based activation conditions</strong> for resource costs, attribute requirements, faction, and archetype checks</li>
 <li><strong>Multiple spawn targets</strong> — Self, PointBlank, Target, Forward, Camera, Spawner, SpawnerWithCameraRotation</li>
-<li><strong>Hit count tracking</strong> with automatic destruction on hit count depletion</li>
+<li><strong>Swept hit resolution</strong> — <code>AbilityObjectSweep</code> covers the segment travelled each tick with an overlap at the start (a cast cannot see what it begins inside of) plus a cast along the segment, ordered by distance</li>
+<li><strong>Hit dedupe per object per target</strong> — once per body for the object's whole life, so a stationary field does not drain its hit count into one victim in a fraction of a second</li>
+<li><strong>Hit count tracking</strong> with automatic destruction on hit count depletion, spent only by the peer that decided the hit</li>
 <li><strong>Pet ability support</strong> with dedicated PetAbilityTemplate and spawn bounding boxes</li>
 </ul>
 <h3 id="security-features">Security Features</h3>
@@ -184,6 +186,8 @@
 <li>All ability activations are validated server-side — cooldowns, resource costs, and <code>CanManipulate()</code> checks</li>
 <li>Deterministic RNG seeds prevent clients from influencing spawned ability outcomes</li>
 <li>Prediction mismatches trigger rollback, preventing exploits from client-side ability state manipulation</li>
+<li>Hits are resolved only by the server and by the caster's own client; a third-party observer is <strong>told</strong> (<code>AbilityObjectHitBroadcast</code>) rather than deciding for itself, because its world is interpolated against its own latency and would invent hits nothing would ever correct</li>
+<li>The observer spawn payload carries no generator state and no owner-only ability internals; <code>RegisterObservedAbility</code> refuses to run on the owner at all</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -828,8 +832,23 @@ Dictionary&lt;CharacterAttributeTemplate, int&gt; costs = ability.GetResourceCos
 </tr>
 <tr>
 <td><code>SpawnTick</code></td>
+<td><code>PredictionTick</code></td>
+<td>Replicate-domain tick at spawn (for prediction rollback)</td>
+</tr>
+<tr>
+<td><code>ContainerID</code></td>
+<td><code>int</code></td>
+<td>Deterministic container id, allocated by <code>AbilityContainerAllocator</code> so predicted and authoritative objects agree</td>
+</tr>
+<tr>
+<td><code>ElapsedTicks</code></td>
 <td><code>uint</code></td>
-<td>Network tick at spawn (for prediction rollback)</td>
+<td>Integer tick count, so closed-form trajectories never accumulate float error</td>
+</tr>
+<tr>
+<td><code>PublishedHitCount</code></td>
+<td><code>int</code></td>
+<td>How many hits have been broadcast to observers</td>
 </tr>
 <tr>
 <td><code>RNG</code></td>
@@ -1022,14 +1041,29 @@ Queue Activation (player presses hotbar key)
 <td>The currently active ability (or <code>NO_ABILITY</code>)</td>
 </tr>
 <tr>
-<td><code>RemainingTime</code></td>
-<td><code>float</code></td>
-<td>Remaining activation/cooldown time</td>
+<td><code>RemainingTicks</code></td>
+<td><code>uint</code></td>
+<td>Remaining activation time, in <strong>ticks</strong> — deterministic, so it cannot drift the way a float seconds counter did</td>
+</tr>
+<tr>
+<td><code>ChargedHoldTicks</code></td>
+<td><code>uint</code></td>
+<td>Ticks a charged ability has been held past full charge. Carried rather than derived: the owner increments it once per invocation of the replicate body, and a reconcile replays every tick since the correction — so without an authoritative value the owner counts each replayed tick again and cancels its own charge early</td>
+</tr>
+<tr>
+<td><code>PackedFlagsAndSlot</code></td>
+<td><code>int</code></td>
+<td>Persistent activation flags (bits 0–15) + consumable slot as a signed short (bits 16–31). Local input flags are deliberately excluded so inputs queued between ticks survive a reconcile</td>
 </tr>
 <tr>
 <td><code>Seed</code></td>
 <td><code>int</code></td>
 <td>Deterministic RNG seed for mismatch detection</td>
+</tr>
+<tr>
+<td><code>RngS0</code>–<code>RngS3</code></td>
+<td><code>uint</code> × 4</td>
+<td>The generator's <strong>full 128-bit state</strong>. The seed alone cannot reconstruct it, so without these one mismatch permanently desynchronised the generator and every later activation mismatched too</td>
 </tr>
 <tr>
 <td><code>ResourceState</code></td>
@@ -1043,8 +1077,65 @@ Queue Activation (player presses hotbar key)
 </tr>
 </tbody>
 </table>
+<p>The activation <strong>phase is implicit</strong> and reconstructible from these fields — there is no phase enum:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Idle</td>
+<td><code>AbilityID == NO_ABILITY</code></td>
+</tr>
+<tr>
+<td>Casting</td>
+<td><code>AbilityID != NO_ABILITY</code>, <code>RemainingTicks &gt; 0</code>, <code>IsHeld</code> clear</td>
+</tr>
+<tr>
+<td>Channeling</td>
+<td><code>AbilityID != NO_ABILITY</code>, <code>RemainingTicks &gt; 0</code>, <code>IsHeld</code> set</td>
+</tr>
+<tr>
+<td>Charged / holding</td>
+<td><code>AbilityID != NO_ABILITY</code>, <code>RemainingTicks == 0</code>, <code>IsHeld</code> set</td>
+</tr>
+</tbody>
+</table>
 <h4 id="deterministic-rng-seeds">Deterministic RNG Seeds</h4>
-<p>The server generates a seed via <code>playerSeedGenerator</code> and sends it in reconcile data. Both client and server use the same seed to drive ability object spawning, ensuring identical outcomes. On reconcile, if the client's <code>currentSeed</code> differs from the server's <code>Seed</code>, the client knows its prediction was wrong and rolls back any erroneously spawned ability objects (identified by <code>SpawnTick</code>).</p>
+<p>The server generates a seed via <code>playerSeedGenerator</code> and sends it in reconcile data. Both client and server use the same seed to drive ability object spawning, ensuring identical outcomes.</p>
+<p>Reconciliation of predicted spawns is <strong>owner-only</strong> and compares like with like:
+<code>PredictedAbilityStateHistory</code> records what this client's simulation left behind for each tick, and
+the reconcile for tick <em>T</em> is compared against the history entry for <em>T</em> — not against the live
+state, which has moved on. A mismatch destroys objects spawned after that tick, restricted to the
+ability whose activation diverged where one is identified.</p>
+<p>Three signals are distinguished, because they mean different things:</p>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Seed</code> mismatch</td>
+<td>The client's simulation of that tick produced a different roll — it spawned something the server did not, or vice versa</td>
+</tr>
+<tr>
+<td><code>Denied</code> flag</td>
+<td>The server refused the activation. Authoritative and <strong>independent of the RNG state</strong>, since a rejection can happen before any seed advance — tying the callback to a seed mismatch dropped legitimate denials</td>
+</tr>
+<tr>
+<td><code>NoSpawn</code> flag</td>
+<td>The server demonstrably spawned nothing at that tick while the client did</td>
+</tr>
+</tbody>
+</table>
+<p>A denied activation refunds itself: the cooldown table and the resource state both ride the same
+reconcile, so the authoritative snapshot simply has no cooldown and full resources.</p>
 <h2 id="project-structure">Project Structure</h2>
 <h3 id="directory-structure">Directory Structure</h3>
 <pre><code>Ability/

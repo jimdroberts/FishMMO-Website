@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Map Data (Shared) | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Map Data (Shared) | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Map/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="map-data-shared">Map Data (Shared)</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Map/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> The authored, scene-side half of the map subsystem — what a scene's map <em>is</em>,
+where its bounds are, what is labelled on it, and which objects ask to be drawn on it. Everything
+here is data and scene authoring; nothing here draws.</p>
+<blockquote>
+<p>The rendering half — both panels, the fog grid, the marker visibility rules and the local stores —
+lives in the Client assembly and is documented in
+<a href="../../../../Client/GUI/World/Map/README.html"><code>Client/GUI/World/Map/README.md</code></a>. Read that one for
+how a map is drawn and why the minimap is not a radar. This file covers what a scene author and
+the server-side assemblies touch.</p>
+</blockquote>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#why-this-is-split">Why this is split</a></li>
+<li><a href="#what-lives-here">What lives here</a></li>
+<li><a href="#authoring-a-scenes-map">Authoring a scene's map</a></li>
+<li><a href="#putting-an-object-on-the-map">Putting an object on the map</a></li>
+<li><a href="#bounds-resolution">Bounds resolution</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+</ul>
+<h2 id="why-this-is-split">Why this is split</h2>
+<p>A map definition is referenced by <code>WorldSceneSettings</code> and reached through
+<code>WorldSceneDetails.MapDefinition</code>, both of which are Shared — the server resolves scene metadata and
+must be able to load a scene whose map data is present without dragging in any UI. The client half
+depends on this one; nothing here depends on the client.</p>
+<p>That direction is also why the marker components are Shared: a <code>MapMarker</code> is a property of a world
+object (a vendor, a teleporter, a resource node), not of a panel, and the same prefab is spawned on
+a headless server where no map exists.</p>
+<h2 id="what-lives-here">What lives here</h2>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Kind</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WorldMapDefinition</code></td>
+<td><code>ScriptableObject</code></td>
+<td>Everything about one scene's map: bounds, baked image, tint/background, zoom range, north offset, fog settings, harvested labels and landmarks</td>
+</tr>
+<tr>
+<td><code>MapRegionLabel</code></td>
+<td><code>MonoBehaviour</code></td>
+<td>Scene authoring — names an area. Draws a gizmo, harvested at bake, <strong>does not exist at runtime</strong></td>
+</tr>
+<tr>
+<td><code>MapPointOfInterest</code></td>
+<td><code>MonoBehaviour</code></td>
+<td>Scene authoring — a landmark. Same lifecycle</td>
+</tr>
+<tr>
+<td><code>MapRegionLabelDetails</code> / <code>MapPointOfInterestDetails</code></td>
+<td><code>[Serializable]</code></td>
+<td>The harvested forms of the two above, stored in the definition</td>
+</tr>
+<tr>
+<td><code>MapMarker</code></td>
+<td><code>MonoBehaviour</code></td>
+<td>&quot;Draw this object on the map.&quot; Carries a <code>MapMarkerType</code> and a <code>MapMarkerVisibility</code></td>
+</tr>
+<tr>
+<td><code>MapMarkerRegistry</code></td>
+<td><code>static</code></td>
+<td>Runtime index of live markers, with register/unregister events so a panel does not poll</td>
+</tr>
+<tr>
+<td><code>MapMarkerType</code></td>
+<td><code>enum</code></td>
+<td>What the thing is — 16 values, from <code>PartyMember</code> through <code>Vendor</code>, <code>Resource</code>, <code>Teleporter</code>, <code>Landmark</code>, <code>Note</code></td>
+</tr>
+<tr>
+<td><code>MapMarkerVisibility</code></td>
+<td><code>enum</code></td>
+<td>Who may see it — <code>Always</code>, <code>SelfOnly</code>, <code>PartyOrGuild</code>, <code>Detection</code>, <code>Discovered</code></td>
+</tr>
+<tr>
+<td><code>MapBoundsResolver</code></td>
+<td><code>static</code></td>
+<td>Derives a usable map rectangle when a scene has no definition</td>
+</tr>
+<tr>
+<td><code>Editor/WorldMapBaker</code></td>
+<td>Editor</td>
+<td>The bake, behind <strong>FishMMO → World Map → Bake Maps</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="authoring-a-scenes-map">Authoring a scene's map</h2>
+<ol>
+<li>Drop <code>MapRegionLabel</code> and <code>MapPointOfInterest</code> components into the scene and place them on the
+terrain.</li>
+<li>Run <strong>FishMMO → World Map → Bake Maps</strong>. For every world scene it creates a
+<code>WorldMapDefinition</code> under <code>Assets/Prefabs/Shared/WorldMaps/</code> if there is not one already,
+assigns it to that scene's <code>WorldSceneSettings</code>, migrates the loading image off the component,
+derives the map bounds from the scene's boundaries and terrain, harvests the labels and
+landmarks, photographs the scene from overhead, and registers the image as an addressable.</li>
+<li>Rebuild the world scene details cache so <code>WorldSceneDetails.MapDefinition</code> points at it.</li>
+</ol>
+<p>The bake needs a graphics device. Under <code>-nographics</code> everything except the photograph is still
+written, and the world map falls back to markers over a plain background.</p>
+<p><strong>None of this is required for a scene to work.</strong> With no definition at all, bounds come from the
+scene's <code>SceneBoundary</code>, the minimap renders normally, and the world map draws markers and fog over
+the background colour. A scene author who never opens the baker gets a working map, just not a
+pretty one.</p>
+<h2 id="putting-an-object-on-the-map">Putting an object on the map</h2>
+<p>Add a <code>MapMarker</code> and set <code>Visibility</code> for who may see it:</p>
+<table>
+<thead>
+<tr>
+<th>Visibility</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Always</code></td>
+<td>World fixtures whose positions are public and fixed</td>
+</tr>
+<tr>
+<td><code>SelfOnly</code></td>
+<td>Only the owning character</td>
+</tr>
+<tr>
+<td><code>PartyOrGuild</code></td>
+<td>The group only</td>
+</tr>
+<tr>
+<td><code>Detection</code></td>
+<td><strong>The default for anything that can be another player.</strong> Drawn only inside the client filter's detection radius, refreshed at ~1 Hz, snapped to a 4 m grid, and never labelled</td>
+</tr>
+<tr>
+<td><code>Discovered</code></td>
+<td>Appears once the fog has revealed its cell</td>
+</tr>
+</tbody>
+</table>
+<p>Party and guild members are promoted to full fidelity at runtime regardless of the authored rule, so
+<strong>authoring the strict rule costs nothing</strong> — author <code>Detection</code> and let the client widen it, rather
+than authoring a permissive rule the filter then has to narrow.</p>
+<h2 id="bounds-resolution">Bounds resolution</h2>
+<p><code>MapBoundsResolver</code> answers &quot;what rectangle is this scene's map?&quot; in order of preference: the
+definition's authored or derived bounds, then the scene's <code>SceneBoundary</code>, then the terrain. The
+fallback chain exists so an unbaked scene is still mappable — a map that silently fails to open is
+much worse than one drawn over a flat colour.</p>
+<p><code>WorldMapDefinition.BoundsAreDerived</code> records whether the current bounds came from the baker or were
+set by hand, so a re-bake does not overwrite an author's deliberate override.</p>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>Map/
+├── WorldMapDefinition.cs        # Per-scene map asset (bounds, image, zoom, fog, labels, landmarks)
+├── MapRegionLabel.cs            # Scene authoring: named area. Gizmo only; harvested at bake
+├── MapRegionLabelDetails.cs     # Harvested form stored in the definition
+├── MapPointOfInterest.cs        # Scene authoring: landmark. Gizmo only; harvested at bake
+├── MapPointOfInterestDetails.cs # Harvested form stored in the definition
+├── MapMarker.cs                 # &quot;Draw this object on the map&quot;
+├── MapMarkerRegistry.cs         # Runtime index + register/unregister events
+├── MapMarkerType.cs             # 16 marker kinds
+├── MapMarkerVisibility.cs       # 5 visibility rules
+├── MapBoundsResolver.cs         # Definition → SceneBoundary → terrain fallback chain
+└── Editor/
+    ├── WorldMapBaker.cs         # FishMMO → World Map → Bake Maps
+    └── FishMMO.Shared.Map.Editor.asmdef
+</code></pre>
+<h3 id="related">Related</h3>
+<pre><code>Client/GUI/World/Map/            # The rendering half — panels, fog, filter, local stores
+Shared/.../WorldSceneDetails/    # WorldSceneDetails.MapDefinition, the server-visible reference
+</code></pre>
+<h2 id="license">License</h2>
+<p>See the repository root.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

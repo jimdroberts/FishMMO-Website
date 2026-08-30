@@ -130,6 +130,32 @@ to compile and nothing inside them can run.</p>
 <pre><code class="lang-bash">./FishMMO-Unity/GeneratedFileTemplates/restore-generated-files.sh
 </code></pre>
 <p>Restoring never overwrites an existing file, so it is always safe to re-run.</p>
+<h2 id="keeping-an-existing-file-in-step-with-its-template">Keeping an existing file in step with its template</h2>
+<p>Never overwriting has a cost: a checkout that already has a generated file keeps
+whatever shape that file had when it was written. Add a field to a template and to
+the dashboard writer, and fresh clones get it while every existing checkout does not
+— and the only symptom is a <code>CS0117</code> in an assembly that looks unrelated. That is
+<a href="https://github.com/jimdroberts/FishMMO/issues/122">issue #122</a>: the field was added
+to the API and to neither writer, and the build kept working for whoever added it.</p>
+<p>So both restore paths also compare each existing generated file against its template
+and report every member the template declares that the file does not:</p>
+<ul>
+<li><code>restore-generated-files.sh</code> prints the missing members and exits <code>1</code>.</li>
+<li>The Editor logs them on load, quoting the template's declaration so it can be
+pasted straight in.</li>
+</ul>
+<p>The file is never patched automatically — it holds real values. Paste the missing
+declaration in, or delete the file and restore it, which discards those values.</p>
+<p><strong>Use the script in CI, not <code>-executeMethod</code>.</strong> A batch-mode Unity that finds any
+assembly failing to compile logs <code>Scripts have compiler errors.</code> and shuts down
+before running <code>-executeMethod</code> or any <code>[InitializeOnLoad]</code> constructor — and a
+missing or drifted generated file breaks <code>FishMMO.Shared</code> or <code>FishMMO.Client</code> by
+definition, so the editor-side check never gets to run in exactly the case it is for.
+The interactive Editor has no such abort, so opening the project does run it.</p>
+<p>Adding a field to a generated file's API means editing two places by hand — this
+folder's template and the matching writer in <code>FishMMODashboard.GameSettings.cs</code>.
+The checks above do not remove that duplication; they make forgetting one of them
+report itself, by name, instead of surfacing as a compile error somewhere downstream.</p>
 <h2 id="how-the-real-values-get-there">How the real values get there</h2>
 <p>Open <strong>FishMMO Dashboard &gt; Game Settings</strong>:</p>
 <ul>

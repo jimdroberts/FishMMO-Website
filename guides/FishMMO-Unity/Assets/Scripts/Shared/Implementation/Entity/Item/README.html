@@ -100,7 +100,12 @@
 <li><a href="#installation--build">Installation / Build</a></li>
 <li><a href="#quick-start-guide">Quick Start Guide</a></li>
 <li><a href="#configuration">Configuration</a></li>
-<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#usage-examples">Usage Examples</a>
+<ul>
+<li><a href="#persistence-shape">Persistence shape</a></li>
+<li><a href="#item-identity-and-the-zero-id-rule">Item identity and the zero-id rule</a></li>
+</ul>
+</li>
 <li><a href="#operational-checks">Operational Checks</a></li>
 <li><a href="#flow-diagrams">Flow Diagrams</a></li>
 <li><a href="#project-structure">Project Structure</a></li>
@@ -398,7 +403,7 @@ they have.</p>
 <tr>
 <td><code>ID</code></td>
 <td><code>long</code></td>
-<td>Unique database instance ID</td>
+<td>Database identity. <strong>Zero means &quot;not yet written&quot;</strong> — see <a href="#item-identity-and-the-zero-id-rule">Item identity and the zero-id rule</a>.</td>
 </tr>
 <tr>
 <td><code>Version</code></td>
@@ -432,6 +437,40 @@ they have.</p>
 </tr>
 </tbody>
 </table>
+<h4 id="item-identity-and-the-zero-id-rule">Item identity and the zero-id rule</h4>
+<p><code>Item.ID</code> is the identity the <code>character_item</code> row is keyed by, and it survives a move between
+slots, a move between containers, and a relog. An item created at runtime — loot, a quest reward,
+a merchant purchase, a stack split — has <strong>no identity until its first persist returns one</strong>, and
+<code>AssignPersistentID</code> is what records it.</p>
+<p>Nothing may key durable state by a zero id, because two such items would collide. That has one
+consequence worth knowing:</p>
+<blockquote>
+<p><strong>An item equipped before its first persist contributes no attribute bonuses.</strong>
+<code>ItemGenerator.TryResolveLedgerSource</code> declines for <code>ID &lt;= 0</code>, so <code>ApplyAttributes</code> writes no
+ledger entries at all. The server and the owning client agree on this — nothing diverges — but
+the gear reads as having no stats until the identity is issued.</p>
+</blockquote>
+<p><code>AssignPersistentID</code> is a method rather than a setter precisely because it has to publish that
+contribution: it releases anything under the old key, records the id, derives the generation seed
+from it if one was not supplied, and re-applies. It also <strong>refuses</strong> to reassign an identity that
+has already been issued, since that would move the item's ledger key out from under contributions
+it has already applied.</p>
+<p>Deriving the seed there closes a related trap: <code>Initialize</code> derives a generated item's seed from
+its id, so a looted weapon with no id rolled its attributes from seed 0 and the reload after
+logout re-derived a real seed and rolled a <em>different</em> set.</p>
+<h4 id="persistence-shape">Persistence shape</h4>
+<p>Every item a character owns — inventory, equipment and bank alike — is <strong>one row in
+<code>character_item</code>, keyed by the item's own <code>ID</code></strong>. <code>ItemContainerType</code> (<code>Inventory</code> / <code>Equipment</code> /
+<code>Bank</code>) and <code>Slot</code> are ordinary columns on that row.</p>
+<p>This replaced three slot-keyed tables and their three services (<code>ICharacterInventoryService</code>,
+<code>ICharacterEquipmentService</code>, <code>ICharacterBankService</code>) with one table and <code>ICharacterItemService</code>.
+The old shape gave an item no identity of its own: a row was addressed by <em>(character, container,
+slot)</em>, so moving an item destroyed one row and created another, and nothing durable could be keyed
+by the item itself. That is exactly what <code>Item.ID</code> and the attribute ledger's
+<code>ModifierSource.Item(item.ID, …)</code> need, and it is why an item's identity now survives a move between
+slots, a move between containers, and a relog.</p>
+<p>It also makes a cross-container move — dragging from the bank into the inventory — an <code>UPDATE</code> of
+two columns rather than a delete and an insert across two different tables.</p>
 <h4 id="itemstackable">ItemStackable</h4>
 <table>
 <thead>
@@ -594,7 +633,10 @@ ScrollConsumableTemplate extends this to grant abilities:
 <li><strong>Random attributes</strong>: Up to <code>MaxItemAttributes</code> drawn from <code>RandomAttributeDatabases</code>, each with randomized values.</li>
 <li><strong>Additional attributes</strong>: <code>BaseItemTemplate.Attributes</code> list merged/summed into generated attributes.</li>
 </ol>
-<p><code>SetAttribute(name, newValue)</code> updates a generated attribute and, if the item is equipped, immediately adjusts the character's attribute modifiers (removes old value, applies new value).</p>
+<p><code>SetAttribute(name, newValue)</code> updates a generated attribute and, if the item is equipped,
+restates its whole ledger contribution under <code>ModifierSource.Item(item.ID, attributeTemplateID)</code>.
+It states rather than adjusting: an &quot;add the difference&quot; form is only correct while the old value
+is exactly what had been added, and nothing enforced that.</p>
 <h3 id="events">Events</h3>
 <h4 id="item-events">Item Events</h4>
 <table>
@@ -655,24 +697,38 @@ ScrollConsumableTemplate extends this to grant abilities:
 <h3 id="network-synchronization">Network Synchronization</h3>
 <h4 id="equipment-payload-fishnet-readerwriter">Equipment Payload (FishNet Reader/Writer)</h4>
 <p>The <code>EquipmentController</code> implements <code>ReadPayload</code> / <code>WritePayload</code> for initial character synchronization:</p>
+<p>The payload has <strong>two shapes</strong>, chosen per connection by <code>PayloadVisibility.IsOwner</code>, and the
+block is framed by a 4-byte length prefix so a defensive abort cannot misalign the behaviours read
+after it.</p>
 <table>
 <thead>
 <tr>
-<th>Direction</th>
+<th>Shape</th>
 <th>Data per item</th>
+<th>On read</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Write</td>
+<td><strong>Owner</strong></td>
 <td><code>ID, TemplateID, Slot, Seed, StackSize</code></td>
+<td>Creates <code>Item</code>, <code>SetItemSlot</code>, then <code>Equippable.Equip(Character)</code> — which raises <code>OnEquip</code> and applies the item's attribute bonuses.</td>
 </tr>
 <tr>
-<td>Read</td>
-<td>Creates <code>Item</code>, calls <code>SetItemSlot</code>, calls <code>Equippable.Equip(Character)</code></td>
+<td><strong>Observer</strong></td>
+<td><code>TemplateID, Slot, Seed</code></td>
+<td>Creates <code>Item</code>, <code>SetItemSlot</code>, then points the item at the character <strong>silently</strong> — no <code>OnEquip</code>, no attribute bonuses.</td>
 </tr>
 </tbody>
 </table>
+<p><strong>The observer must not apply bonuses</strong>, because the attribute payload it receives in the same
+spawn already carries the server's TOTAL <code>ExternalModifier</code>, which contains every equipped item.
+Applying them again would count each item twice. The observer's interest in an equip is the mesh.
+The same rule governs <code>ApplyObservedSlot</code>, which handles the equipment broadcast path, and
+<code>ResetState</code>, which detaches silently on a peer that never applied.</p>
+<p>A refused slot is skipped rather than equipped: the slot arrives off the wire, and an
+out-of-range one would otherwise apply the item's modifiers to the character while the item itself
+lived in no container, leaving nothing that could ever unequip it.</p>
 <h4 id="broadcast-types--inventory">Broadcast Types — Inventory</h4>
 <table>
 <thead>
@@ -773,7 +829,7 @@ ScrollConsumableTemplate extends this to grant abilities:
 <tbody>
 <tr>
 <td><strong>CharacterAttribute</strong></td>
-<td><code>ItemGenerator.ApplyAttributes</code> / <code>RemoveAttributes</code> calls <code>AddModifier()</code> on character attributes via <code>ExternalModifier</code></td>
+<td><code>ItemGenerator.ApplyAttributes</code> states one ledger entry per item attribute under <code>ModifierSource.Item(item.ID, attributeTemplateID)</code>; <code>RemoveAttributes</code> releases the whole contributor with <code>ClearSourceGroup(Item, item.ID)</code></td>
 </tr>
 <tr>
 <td><strong>Ability System</strong></td>
@@ -801,7 +857,7 @@ ScrollConsumableTemplate extends this to grant abilities:
 </tr>
 <tr>
 <td><strong>Database Layer</strong></td>
-<td>Persists/loads via item DTOs and services (<code>ICharacterInventoryService</code>, <code>ICharacterEquipmentService</code>, <code>ICharacterBankService</code>)</td>
+<td>Persists/loads through <code>ICharacterItemService</code> and <code>CharacterItemData</code> — <strong>one <code>character_item</code> row per item</strong>, keyed by the item's own id, with <code>ItemContainerType</code> and <code>Slot</code> as ordinary columns. See <a href="#persistence-shape">Persistence shape</a>.</td>
 </tr>
 <tr>
 <td><strong>UI</strong></td>
@@ -891,7 +947,7 @@ ScrollConsumableTemplate extends this to grant abilities:
           └── Item.ItemEquippable_OnEquip(character)
               └── Generator.ApplyAttributes(character)
                   └── For each generated attribute:
-                      └── characterAttribute.AddModifier(value)
+                      └── characterAttribute.SetSource(ModifierSource.Item(item.ID, attrID), value)
 </code></pre>
 <h3 id="unequipping-an-item">Unequipping an Item</h3>
 <pre><code>EquipmentController.Unequip(targetContainer, slot, out modifiedItems)
@@ -902,7 +958,7 @@ ScrollConsumableTemplate extends this to grant abilities:
   │       └── Item.ItemEquippable_OnUnequip(character)
   │           └── Generator.RemoveAttributes(character)
   │               └── For each generated attribute:
-  │                   └── characterAttribute.AddModifier(-value)
+  │                   └── characterAttribute.ClearSourceGroup(ModifierSourceKind.Item, item.ID)
   └── SetItemSlot(null, slot)
 </code></pre>
 <h2 id="project-structure">Project Structure</h2>

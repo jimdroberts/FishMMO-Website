@@ -155,6 +155,7 @@
 <li>Weighted item roll tables so one world-item prefab can serve every ground pickup in the game from a single pool bucket</li>
 <li>NavMeshAgent re-seating on reuse: <code>IAIController.Initialize</code> warps the agent onto the NavMesh at the spawn position, because a recycled NPC's agent otherwise still believes it is where the previous occupant died</li>
 <li>Per-object configurable respawn timers (fixed or randomized between min/max)</li>
+<li>One <code>Update</code> for the whole process (<code>ObjectSpawnerScheduler</code>) rather than one per spawner, and only spawners that actually have something to respawn are visited at all</li>
 <li>Auto-calculated vertical offset (<code>YOffset</code>) from prefab collider dimensions</li>
 <li>Initial spawn count with clamping to max concurrent limit</li>
 <li>AI controller initialization with home position on spawn, performed after the scene move and activation</li>
@@ -223,6 +224,18 @@
 <td><code>float</code></td>
 <td>0</td>
 <td>Fixed respawn time when RandomRespawnTime is false</td>
+</tr>
+<tr>
+<td><code>RespawnCheckIntervalMinimum</code></td>
+<td><code>float</code></td>
+<td>3</td>
+<td>Shortest delay between this spawner's respawn checks</td>
+</tr>
+<tr>
+<td><code>RespawnCheckIntervalMaximum</code></td>
+<td><code>float</code></td>
+<td>6</td>
+<td>Longest delay; each check re-rolls inside the range so spawners do not poll in lockstep</td>
 </tr>
 <tr>
 <td><code>RandomSpawnPosition</code></td>
@@ -442,6 +455,11 @@
 <td><code>List&lt;DateTime&gt;</code></td>
 <td>Pending respawn timestamps</td>
 </tr>
+<tr>
+<td><code>SchedulerIndex</code></td>
+<td><code>int</code></td>
+<td>Slot in <code>ObjectSpawnerScheduler</code>'s active list, or <code>NotActive</code>. Owned by the scheduler; not serialized</td>
+</tr>
 </tbody>
 </table>
 <h3 id="editor-settings">Editor Settings</h3>
@@ -599,6 +617,16 @@
 <td>Despawn and respawn repeatedly, monitor allocations</td>
 <td>Objects returned to pool and reused</td>
 </tr>
+<tr>
+<td>Scheduler membership</td>
+<td>Read <code>ObjectSpawnerScheduler.ActiveCount</code> with every spawner at its cap</td>
+<td>Zero — a world at rest costs nothing per frame</td>
+</tr>
+<tr>
+<td>Group refill</td>
+<td>Wipe a camp of several NPCs at once, wait out the respawn delay</td>
+<td>All of them return together, not one per check interval</td>
+</tr>
 </tbody>
 </table>
 <h2 id="flow-diagram">Flow Diagram</h2>
@@ -644,7 +672,8 @@
 <li>Returns the object to the pool via <code>ServerManager.Despawn(DespawnType.Pool)</code>.</li>
 </ol>
 <h3 id="condition-evaluation-flow">Condition Evaluation Flow</h3>
-<pre><code>Timer Elapsed?
+<p>Evaluated once per pass, not once per due timer:</p>
+<pre><code>Any timer elapsed?
     │
     ├── No  → Skip
     │
@@ -667,18 +696,37 @@
                             └── Any condition false → shouldRespawn = false → No respawn
 </code></pre>
 <h3 id="respawn-loop-tryrespawn">Respawn Loop (<code>TryRespawn</code>)</h3>
-<p>Runs every frame in <code>Update()</code>:</p>
+<p>Driven by <code>ObjectSpawnerScheduler</code>, not by a per-spawner <code>Update</code>:</p>
 <ol>
 <li>Skips if no spawnables or no pending timers.</li>
 <li>Clears all timers if <code>Spawned.Count &gt;= MaxSpawnCount</code>.</li>
-<li>For each timer that has elapsed (<code>DateTime.UtcNow &gt;= respawnTime</code>):
-<ul>
-<li><strong>OR conditions</strong>: If any condition returns true, respawn is allowed. If the list is empty, defaults to allowed.</li>
-<li><strong>AND conditions</strong>: All conditions must return true (checked only if OR conditions passed).</li>
-<li>If all conditions pass, spawns the object and removes the timer.</li>
-</ul>
-</li>
+<li>Returns immediately if no timer has elapsed.</li>
+<li>Evaluates the respawn conditions <strong>once</strong> for the pass. <code>OnCheckCondition</code> is handed only the
+spawner, so its answer cannot differ between two timers in the same pass.</li>
+<li>Consumes <strong>every</strong> elapsed timer, spawning one object each, stopping at <code>MaxSpawnCount</code>.</li>
 </ol>
+<p>A refused respawn consumes no timer: the spawner keeps its work and is re-tested on its own
+interval, which is what lets a camp come back once the boss guarding it dies.</p>
+<h3 id="who-gets-asked-and-how-often-objectspawnerscheduler">Who gets asked, and how often (<code>ObjectSpawnerScheduler</code>)</h3>
+<p>Two independent decisions, deliberately kept apart:</p>
+<ul>
+<li><strong>How often a spawner polls</strong> is its own <code>RespawnCheckIntervalMinimum</code> / <code>Maximum</code>, re-rolled each
+pass. Respawn deadlines are wall-clock <code>DateTime</code> values, so a longer interval does not shift
+them — it only bounds how soon after a deadline the object appears.</li>
+<li><strong>Which spawners are asked at all</strong> is the scheduler's membership list. A spawner joins when it
+has something to respawn (<code>HasRespawnWork</code>) and leaves the moment it does not, so a spawner at its
+cap costs nothing: not a check, not an interval comparison, and not an <code>Update</code> dispatch. That is
+what makes the per-frame cost scale with how much of the world is in motion rather than with how
+much of it exists.</li>
+</ul>
+<p><code>ObjectSpawnerSchedulerDriver</code> is the single hidden, <code>DontDestroyOnLoad</code> <code>MonoBehaviour</code> that calls
+<code>Tick</code> once a frame. The list is <em>swept</em> rather than walked — each frame covers a
+<code>FramesPerSweep</code>-th of it — because &quot;waiting on a deadline&quot; is the common state in a busy world and
+those spawners do not need visiting sixty times a second to be told nothing is due. <code>Time.time</code> is a
+native property, so it is read once per tick and handed down rather than read per spawner.</p>
+<p>Membership is maintained on <code>OnStartNetwork</code>, on <code>Despawn</code>, on a direct <code>TryRespawn</code>, and on
+<code>OnStopNetwork</code> / <code>OnDestroy</code>. Unregistering on destruction is what earns the sweep its cheap
+<code>ReferenceEquals</code> liveness check instead of Unity's <code>== null</code>, which is a native call per entry.</p>
 <h2 id="project-structure">Project Structure</h2>
 <h3 id="directory-structure">Directory Structure</h3>
 <pre><code>Spawner/
@@ -686,6 +734,8 @@
 ├── ObjectSpawnType.cs          # Enum for spawn selection strategy (Linear, Random, Weighted)
 ├── ObjectSpawner.cs            # Core spawner component (NetworkBehaviour)
 ├── ObjectSpawnerPool.cs        # Pool pre-warming; fixes a map's memory footprint at load
+├── ObjectSpawnerScheduler.cs   # Active list of spawners with work; decides who is asked
+├── ObjectSpawnerSchedulerDriver.cs # The one Update that ticks the scheduler
 ├── Settings/
 │   ├── SpawnableSettings.cs        # Per-object spawn configuration (respawn times, chance, offset)
 │   ├── ItemSpawnableSettings.cs    # Item-specific spawnable settings

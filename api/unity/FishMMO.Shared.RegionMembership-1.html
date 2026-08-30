@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Class RegionMembership&lt;T&gt; | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Class RegionMembership&lt;T&gt; | FishMMO Documentation ">
+      
+      <meta name="description" content="Pure, engine-free bookkeeping for which characters a  considers &amp;quot;inside&amp;quot;. Separates the two truths a region has to reconcile: Raw presence: what the underlying NetworkCollider has told us via   Enter/Exit callbacks. This is updated on every callback, including during prediction   reconcile replay and while a character is teleporting.Effective membership: characters for which the region has actually   raised an Enter (and no Exit yet). Gameplay/visual triggers key off this set. Callbacks that arrive while suppressed (reconciling or teleporting) update raw presence only;  later diffs raw against effective and yields the Enter/Exit decisions that were deferred, each exactly once. Because  is a pure diff it also repairs any drift between the two sets (e.g. a child region releasing a character back to its parent).">
+      <link rel="icon" href="../../images/favicon.ico">
+      <link rel="stylesheet" href="../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../public/main.css">
+      <meta name="docfx:navrel" content="../../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/new/dev/apiSpec/new?filename=FishMMO_Shared_RegionMembership_1.md&amp;value=---%0Auid%3A%20FishMMO.Shared.RegionMembership%601%0Asummary%3A%20&#39;*You%20can%20override%20summary%20for%20the%20API%20here%20using%20*MARKDOWN*%20syntax&#39;%0A---%0A%0A*Please%20type%20below%20more%20information%20about%20this%20API%3A*%0A%0A">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="ManagedReference">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../index.html">
+            <img id="logo" class="svg" src="../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="FishMMO.Shared.RegionMembership`1">
+
+
+
+  <h1 id="FishMMO_Shared_RegionMembership_1" data-uid="FishMMO.Shared.RegionMembership`1" class="text-break">
+Class RegionMembership&lt;T&gt;  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L23"><i class="bi bi-code-slash"></i></a>
+  </h1>
+
+  <div class="facts text-secondary">
+    <dl><dt>Namespace</dt><dd><a class="xref" href="FishMMO.html">FishMMO</a>.<a class="xref" href="FishMMO.Shared.html">Shared</a></dd></dl>
+  <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
+  </div>
+
+  <div class="markdown summary"><p>Pure, engine-free bookkeeping for which characters a <a class="xref" href="FishMMO.Shared.Region.html">Region</a> considers
+&quot;inside&quot;. Separates the two truths a region has to reconcile:</p>
+<ul><li><b>Raw</b> presence: what the underlying NetworkCollider has told us via
+  Enter/Exit callbacks. This is updated on every callback, including during prediction
+  reconcile replay and while a character is teleporting.</li><li><b>Effective</b> membership: characters for which the region has actually
+  raised an Enter (and no Exit yet). Gameplay/visual triggers key off this set.</li></ul>
+<p>Callbacks that arrive while <code>suppressed</code> (reconciling or teleporting) update raw
+presence only; <a class="xref" href="FishMMO.Shared.RegionMembership-1.html#FishMMO_Shared_RegionMembership_1_Flush_System_Func__0_System_Boolean__System_Func__0_System_Boolean__System_Func__0_System_Boolean__System_Collections_Generic_List__0__System_Collections_Generic_List__0__">Flush(Func&lt;T, bool&gt;, Func&lt;T, bool&gt;, Func&lt;T, bool&gt;, List&lt;T&gt;, List&lt;T&gt;)</a> later diffs raw against effective and yields the
+Enter/Exit decisions that were deferred, each exactly once. Because
+<a class="xref" href="FishMMO.Shared.RegionMembership-1.html#FishMMO_Shared_RegionMembership_1_Flush_System_Func__0_System_Boolean__System_Func__0_System_Boolean__System_Func__0_System_Boolean__System_Collections_Generic_List__0__System_Collections_Generic_List__0__">Flush(Func&lt;T, bool&gt;, Func&lt;T, bool&gt;, Func&lt;T, bool&gt;, List&lt;T&gt;, List&lt;T&gt;)</a> is a pure diff it also repairs any drift between the two sets
+(e.g. a child region releasing a character back to its parent).</p>
+</div>
+  <div class="markdown conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public sealed class RegionMembership&lt;T&gt; where T : class</code></pre>
+  </div>
+
+
+
+  <h4 class="section">Type Parameters</h4>
+  <dl class="parameters">
+    <dt><code>T</code></dt>
+    <dd><p>Character key type. Must be a reference type with stable hash/equality.</p>
+</dd>
+  </dl>
+
+  <dl class="typelist inheritance">
+    <dt>Inheritance</dt>
+    <dd>
+      <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object">object</a></div>
+      <div><span class="xref">RegionMembership&lt;T&gt;</span></div>
+    </dd>
+  </dl>
+
+
+
+  <dl class="typelist inheritedMembers">
+    <dt>Inherited Members</dt>
+    <dd>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object)">object.Equals(object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.equals#system-object-equals(system-object-system-object)">object.Equals(object, object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gethashcode">object.GetHashCode()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gettype">object.GetType()</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.referenceequals">object.ReferenceEquals(object, object)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.tostring">object.ToString()</a>
+    </div>
+  </dd></dl>
+
+
+
+
+
+
+  <h2 class="section" id="properties">Properties
+</h2>
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_EffectiveCount_" data-uid="FishMMO.Shared.RegionMembership`1.EffectiveCount*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_EffectiveCount" data-uid="FishMMO.Shared.RegionMembership`1.EffectiveCount">
+  EffectiveCount
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L33"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Number of characters for which an Enter has been raised and no Exit yet.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int EffectiveCount { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_RawCount_" data-uid="FishMMO.Shared.RegionMembership`1.RawCount*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_RawCount" data-uid="FishMMO.Shared.RegionMembership`1.RawCount">
+  RawCount
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L30"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Number of characters the collider currently reports as overlapping.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int RawCount { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h2 class="section" id="methods">Methods
+</h2>
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_Clear_" data-uid="FishMMO.Shared.RegionMembership`1.Clear*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_Clear_System_Func__0_System_Boolean__System_Collections_Generic_List__0__" data-uid="FishMMO.Shared.RegionMembership`1.Clear(System.Func{`0,System.Boolean},System.Collections.Generic.List{`0})">
+  Clear(Func&lt;T, bool&gt;, List&lt;T&gt;)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L225"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Empties effective membership and reports every character that must receive a final Exit.
+Raw presence is cleared as well. Use when the region is disabled or destroyed.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Clear(Func&lt;T, bool&gt; isDestroyed, List&lt;T&gt; exits)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>isDestroyed</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.func-2">Func</a>&lt;T, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p>Characters matching this predicate are dropped without an Exit.</p>
+</dd>
+    <dt><code>exits</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;T&gt;</dt>
+    <dd><p>Receives characters to raise Exit for (appended).</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_Flush_" data-uid="FishMMO.Shared.RegionMembership`1.Flush*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_Flush_System_Func__0_System_Boolean__System_Func__0_System_Boolean__System_Func__0_System_Boolean__System_Collections_Generic_List__0__System_Collections_Generic_List__0__" data-uid="FishMMO.Shared.RegionMembership`1.Flush(System.Func{`0,System.Boolean},System.Func{`0,System.Boolean},System.Func{`0,System.Boolean},System.Collections.Generic.List{`0},System.Collections.Generic.List{`0})">
+  Flush(Func&lt;T, bool&gt;, Func&lt;T, bool&gt;, Func&lt;T, bool&gt;, List&lt;T&gt;, List&lt;T&gt;)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L148"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Diffs raw presence against effective membership and reports the Enter/Exit events
+that must be raised to bring them into agreement. Call once per non-reconciling tick.
+Characters for which <code class="paramref">isSuppressed</code> returns true (still teleporting)
+are skipped and will be reconsidered on a later flush. Characters for which
+<code class="paramref">isDestroyed</code> returns true are forgotten silently.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Flush(Func&lt;T, bool&gt; isSuppressed, Func&lt;T, bool&gt; isDestroyed, Func&lt;T, bool&gt; canEnter, List&lt;T&gt; enters, List&lt;T&gt; exits)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>isSuppressed</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.func-2">Func</a>&lt;T, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p>Per-character defer predicate; null means never deferred.</p>
+</dd>
+    <dt><code>isDestroyed</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.func-2">Func</a>&lt;T, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p>Per-character prune predicate; null means never pruned.</p>
+</dd>
+    <dt><code>canEnter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.func-2">Func</a>&lt;T, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd><p>Per-character predicate; false blocks an Enter (child owns the character). Null means always allowed.</p>
+</dd>
+    <dt><code>enters</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;T&gt;</dt>
+    <dd><p>Receives characters to raise Enter for (appended).</p>
+</dd>
+    <dt><code>exits</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;T&gt;</dt>
+    <dd><p>Receives characters to raise Exit for (appended).</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_ForceExit_" data-uid="FishMMO.Shared.RegionMembership`1.ForceExit*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_ForceExit__0_" data-uid="FishMMO.Shared.RegionMembership`1.ForceExit(`0)">
+  ForceExit(T)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L103"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Logically exits a character without touching raw presence. Used when a child region
+takes ownership of a character standing inside this (parent) region.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool ForceExit(T character)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <span class="xref">T</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True when an Enter had previously fired, so the caller must raise the paired Exit.
+False when no Enter ever fired (unpaired exits are never produced).</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_Forget_" data-uid="FishMMO.Shared.RegionMembership`1.Forget*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_Forget__0_" data-uid="FishMMO.Shared.RegionMembership`1.Forget(`0)">
+  Forget(T)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L126"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Forgets a character entirely (both sets) without producing events. Use for destroyed
+characters where there is nobody left to notify.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Forget(T character)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <span class="xref">T</span></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_IsInside_" data-uid="FishMMO.Shared.RegionMembership`1.IsInside*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_IsInside__0_" data-uid="FishMMO.Shared.RegionMembership`1.IsInside(`0)">
+  IsInside(T)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L39"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>True when an Enter has been raised for <code class="paramref">character</code> and no Exit yet.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool IsInside(T character)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <span class="xref">T</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_IsRawInside_" data-uid="FishMMO.Shared.RegionMembership`1.IsRawInside*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_IsRawInside__0_" data-uid="FishMMO.Shared.RegionMembership`1.IsRawInside(`0)">
+  IsRawInside(T)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L36"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>True when the collider currently reports <code class="paramref">character</code> overlapping.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool IsRawInside(T character)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <span class="xref">T</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_RecordEnter_" data-uid="FishMMO.Shared.RegionMembership`1.RecordEnter*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_RecordEnter__0_System_Boolean_System_Boolean_" data-uid="FishMMO.Shared.RegionMembership`1.RecordEnter(`0,System.Boolean,System.Boolean)">
+  RecordEnter(T, bool, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L49"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Records a collider Enter callback.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool RecordEnter(T character, bool suppressed, bool canEnter = true)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <span class="xref">T</span></dt>
+    <dd><p>The character that entered the collider.</p>
+</dd>
+    <dt><code>suppressed</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True while reconciling or teleporting: record only, do not fire.</p>
+</dd>
+    <dt><code>canEnter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>When false the character is physically inside but a child region
+owns it; raw presence is recorded but no Enter fires (the parent stays &quot;exited&quot;).</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True when the caller should raise an Enter now.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_RecordExit_" data-uid="FishMMO.Shared.RegionMembership`1.RecordExit*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_RecordExit__0_System_Boolean_" data-uid="FishMMO.Shared.RegionMembership`1.RecordExit(`0,System.Boolean)">
+  RecordExit(T, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L69"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Records a collider Exit callback.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool RecordExit(T character, bool suppressed)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <span class="xref">T</span></dt>
+    <dd><p>The character that left the collider.</p>
+</dd>
+    <dt><code>suppressed</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True while reconciling or teleporting: record only, do not fire.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True when the caller should raise an Exit now (an Enter had been raised earlier).</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_ShouldStay_" data-uid="FishMMO.Shared.RegionMembership`1.ShouldStay*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_ShouldStay__0_System_Boolean_" data-uid="FishMMO.Shared.RegionMembership`1.ShouldStay(`0,System.Boolean)">
+  ShouldStay(T, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L88"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Decides whether a collider Stay callback should be forwarded. Stay only fires for
+characters that are effectively inside and never while suppressed, so replay ticks
+produce no Stay events and a parent does not &quot;stay&quot; while a child owns the character.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool ShouldStay(T character, bool suppressed)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <span class="xref">T</span></dt>
+    <dd></dd>
+    <dt><code>suppressed</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_RegionMembership_1_TryEnter_" data-uid="FishMMO.Shared.RegionMembership`1.TryEnter*"></a>
+
+  <h3 id="FishMMO_Shared_RegionMembership_1_TryEnter__0_System_Boolean_System_Boolean_" data-uid="FishMMO.Shared.RegionMembership`1.TryEnter(`0,System.Boolean,System.Boolean)">
+  TryEnter(T, bool, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/RegionMembership.cs/#L113"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Logically enters a character that is still physically inside (raw) but not effectively
+inside. Used when a child region releases a character back to this (parent) region.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool TryEnter(T character, bool suppressed, bool canEnter = true)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <span class="xref">T</span></dt>
+    <dd></dd>
+    <dt><code>suppressed</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+    <dt><code>canEnter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True when the caller should raise an Enter now.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
+</article>
+
+
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

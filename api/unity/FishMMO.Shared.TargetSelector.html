@@ -147,6 +147,7 @@ public abstract class TargetSelector</code></pre>
       <div><a class="xref" href="FishMMO.Shared.NearestTargetSelector.html">NearestTargetSelector</a></div>
       <div><a class="xref" href="FishMMO.Shared.RandomTargetSelector.html">RandomTargetSelector</a></div>
       <div><a class="xref" href="FishMMO.Shared.TaggedSceneObjectTargetSelector.html">TaggedSceneObjectTargetSelector</a></div>
+      <div><a class="xref" href="FishMMO.Shared.TargetedEntitySelector.html">TargetedEntitySelector</a></div>
     </dd>
   </dl>
 
@@ -228,7 +229,7 @@ public List&lt;BaseCondition&gt; Conditions</code></pre>
 
   <h3 id="FishMMO_Shared_TargetSelector_AreConditionsMet_UnityEngine_GameObject_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.TargetSelector.AreConditionsMet(UnityEngine.GameObject,FishMMO.Shared.Core.EventData)">
   AreConditionsMet(GameObject, EventData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/TargetSelector.cs/#L75"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/TargetSelector.cs/#L185"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Evaluates this selector's per-target <a class="xref" href="FishMMO.Shared.TargetSelector.html#FishMMO_Shared_TargetSelector_Conditions">Conditions</a> against the candidate target.
@@ -271,16 +272,76 @@ are honored uniformly with top-level Trigger conditions.</p>
 
 
 
+  <a id="FishMMO_Shared_TargetSelector_GatherRewound_" data-uid="FishMMO.Shared.TargetSelector.GatherRewound*"></a>
+
+  <h3 id="FishMMO_Shared_TargetSelector_GatherRewound_FishMMO_Shared_Core_EventData_UnityEngine_GameObject_System_Collections_Generic_List_UnityEngine_GameObject__FishMMO_Shared_TargetSelector_GatherTargets_" data-uid="FishMMO.Shared.TargetSelector.GatherRewound(FishMMO.Shared.Core.EventData,UnityEngine.GameObject,System.Collections.Generic.List{UnityEngine.GameObject},FishMMO.Shared.TargetSelector.GatherTargets)">
+  GatherRewound(EventData, GameObject, List&lt;GameObject&gt;, GatherTargets)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/TargetSelector.cs/#L113"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Collects candidates inside a single rewind scope and returns them once it has closed.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected static void GatherRewound(EventData eventData, GameObject context, List&lt;GameObject&gt; results, TargetSelector.GatherTargets gather)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>eventData</code> <a class="xref" href="FishMMO.Shared.Core.EventData.html">EventData</a></dt>
+    <dd><p>The event driving the selection.</p>
+</dd>
+    <dt><code>context</code> <span class="xref">GameObject</span></dt>
+    <dd><p>The spatial origin object; its scene is the one rewound.</p>
+</dd>
+    <dt><code>results</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<span class="xref">GameObject</span>&gt;</dt>
+    <dd><p>Receives the selected objects, in the gather's order.</p>
+</dd>
+    <dt><code>gather</code> <a class="xref" href="FishMMO.Shared.TargetSelector.html">TargetSelector</a>.<a class="xref" href="FishMMO.Shared.TargetSelector.GatherTargets.html">GatherTargets</a></dt>
+    <dd><p>The query and ranking to run under the scope.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_TargetSelector_GatherRewound_FishMMO_Shared_Core_EventData_UnityEngine_GameObject_System_Collections_Generic_List_UnityEngine_GameObject__FishMMO_Shared_TargetSelector_GatherTargets__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+This is <a class="xref" href="FishMMO.Shared.ChainTargetSelector.html">ChainTargetSelector</a>'s pattern, generalised, and it exists for two
+reasons the chain learned first.
+</p>
+<p>
+<b>Ranking must read the same world the query did.</b> <a class="xref" href="FishMMO.Shared.LagCompensatedQuery.html">LagCompensatedQuery</a>
+closes its rewind before returning, so a selector that queried through it and then measured
+distances was selecting from the rewound world and ranking by live positions — the nearest
+candidate by one measure and a different one by the other, differing by the peer's speed
+times its latency. Conditions are evaluated inside the scope for the same reason: a range
+condition that disagrees with the query that produced the candidate is not a filter, it is
+a coin toss.
+</p>
+<p>
+<b>Nothing is yielded while the world is displaced.</b> Selectors are iterators and the
+consumer between two yields is the damage and ECA pipeline. Materialising the whole result
+first means the scope has closed before any of that runs.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_TargetSelector_GetContext_" data-uid="FishMMO.Shared.TargetSelector.GetContext*"></a>
 
   <h3 id="FishMMO_Shared_TargetSelector_GetContext_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.TargetSelector.GetContext(FishMMO.Shared.Core.EventData)">
   GetContext(EventData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/TargetSelector.cs/#L57"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/TargetSelector.cs/#L167"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Returns the spatial origin for this selector — preferring <a class="xref" href="FishMMO.Shared.Core.EventData.html#FishMMO_Shared_Core_EventData_Target">Target</a>,
-falling back to <a class="xref" href="FishMMO.Shared.Core.EventData.html#FishMMO_Shared_Core_EventData_Initiator">Initiator</a>'s GameObject.</p>
-</div>
+  <div class="markdown level1 summary"></div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
@@ -290,15 +351,13 @@ falling back to <a class="xref" href="FishMMO.Shared.Core.EventData.html#FishMMO
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>eventData</code> <a class="xref" href="FishMMO.Shared.Core.EventData.html">EventData</a></dt>
-    <dd><p>The current event data.</p>
-</dd>
+    <dd></dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><span class="xref">GameObject</span></dt>
-    <dd><p>A GameObject to use as a spatial reference, or null.</p>
-</dd>
+    <dd></dd>
   </dl>
 
 
@@ -341,6 +400,121 @@ to contribute. Override on selectors that have player-visible targeting semantic
 
 
 
+
+
+
+
+  <a id="FishMMO_Shared_TargetSelector_IsAuthoritativePeer_" data-uid="FishMMO.Shared.TargetSelector.IsAuthoritativePeer*"></a>
+
+  <h3 id="FishMMO_Shared_TargetSelector_IsAuthoritativePeer_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.TargetSelector.IsAuthoritativePeer(FishMMO.Shared.Core.EventData)">
+  IsAuthoritativePeer(EventData)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/TargetSelector.cs/#L79"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Returns the spatial origin for this selector — preferring <a class="xref" href="FishMMO.Shared.Core.EventData.html#FishMMO_Shared_Core_EventData_Target">Target</a>,
+falling back to <a class="xref" href="FishMMO.Shared.Core.EventData.html#FishMMO_Shared_Core_EventData_Initiator">Initiator</a>'s GameObject.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected static bool IsAuthoritativePeer(EventData eventData)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>eventData</code> <a class="xref" href="FishMMO.Shared.Core.EventData.html">EventData</a></dt>
+    <dd><p>The current event data.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>A GameObject to use as a spatial reference, or null.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_TargetSelector_IsAuthoritativePeer_FishMMO_Shared_Core_EventData__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+<b>Server only, and not "not a replicate tick".</b> Every physics selector used to open
+with <code>if (tickData.IsReplicateTick) yield break;</code>, on the theory that a replicate tick
+means a client replay. It does not. <code>AbilityObject</code>'s self-target dispatch and its
+OnPreSpawn/OnSpawn dispatches, and <code>AbilityController</code>'s activation triggers, all
+attach a <code>TickEventData</code> built from the replicate <code>PredictionTick</code> — on the
+server as well. So the guard fired on the server too, and a point-blank area ability
+selected nothing and dealt no damage on any peer. <code>AbilityApplyAreaAction</code> was
+corrected for exactly this and gates on the peer instead; this is the same rule, applied
+at the selector.
+</p>
+<p>
+The tick payload is left on the event untouched. It still carries real information for the
+tick-domain consumers downstream (buff stamping, cooldowns) — it just never meant what the
+old guard read it as.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Shared_TargetSelector_QueryBufferSize_" data-uid="FishMMO.Shared.TargetSelector.QueryBufferSize*"></a>
+
+  <h3 id="FishMMO_Shared_TargetSelector_QueryBufferSize_System_Int32_" data-uid="FishMMO.Shared.TargetSelector.QueryBufferSize(System.Int32)">
+  QueryBufferSize(int)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/TargetSelector.cs/#L154"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Query buffer size for a selector whose authored cap is <code class="paramref">maxHits</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected static int QueryBufferSize(int maxHits)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>maxHits</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_TargetSelector_QueryBufferSize_System_Int32__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Deliberately larger than the cap. Sizing the buffer at exactly <code>MaxHits</code> makes the
+physics broadphase perform the truncation, in its own order, before the selector ever sees
+the candidates — so a cap of 5 in a crowd of 20 picked five arbitrary characters and the
+deterministic sort that follows had nothing to work with. Querying wide and capping after
+the sort is what makes the cap mean "the first five in a defined order".
+</p>
+<p>
+<b>A starting size, not a limit.</b> It only moves the truncation point from <code>MaxHits</code>
+up to <code>MaxHits * 4</code>; every caller must still grow the buffer through
+<a class="xref" href="FishMMO.Shared.TargetOrdering.html#FishMMO_Shared_TargetOrdering_TryGrowQueryBuffer__1___0____System_Int32_">TryGrowQueryBuffer&lt;T&gt;(ref T[], int)</a> when a query comes back full.
+</p>
+<p>
+The rule itself lives on <a class="xref" href="FishMMO.Shared.TargetOrdering.html">TargetOrdering</a> now, because the ability actions
+resolve hits without a selector and need the identical arithmetic — it was duplicated
+inline in <code>AbilityApplyAreaAction</code> for exactly as long as it lived somewhere only
+selectors could reach. This forwarder stays so the selectors read naturally.
+</p>
+</div>
 
 
 

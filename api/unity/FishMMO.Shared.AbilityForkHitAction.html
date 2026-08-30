@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class AbilityForkHitAction | FishMMO Documentation ">
       
-      <meta name="description" content="Action that forks an ability hit in a specified arc and distance. This action is typically used to create a spread or scatter effect for abilities, such as projectiles that split or fork after hitting a target.">
+      <meta name="description" content="Action that turns an ability object onto a new heading inside a cone when it hits something — a projectile that scatters or ricochets off its target rather than carrying straight on.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_AbilityForkHitAction" data-uid="FishMMO.Shared.AbilityForkHitAction" class="text-break">
-Class AbilityForkHitAction  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityForkHitAction.cs/#L12"><i class="bi bi-code-slash"></i></a>
+Class AbilityForkHitAction  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityForkHitAction.cs/#L40"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,8 +97,8 @@ Class AbilityForkHitAction  <a class="header-action link-secondary" title="View 
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Action that forks an ability hit in a specified arc and distance.
-This action is typically used to create a spread or scatter effect for abilities, such as projectiles that split or fork after hitting a target.</p>
+  <div class="markdown summary"><p>Action that turns an ability object onto a new heading inside a cone when it hits something —
+a projectile that scatters or ricochets off its target rather than carrying straight on.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -140,6 +140,12 @@ public class AbilityForkHitAction : BaseAction, IAction</code></pre>
       <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_IsServer_FishMMO_Shared_Core_ICharacter_">BaseAction.IsServer(ICharacter)</a>
     </div>
     <div>
+      <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_IsReplayTick_FishMMO_Shared_Core_EventData_">BaseAction.IsReplayTick(EventData)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_IsClientPeer_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_">BaseAction.IsClientPeer(ICharacter, EventData)</a>
+    </div>
+    <div>
       <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_SendToOwner__1_FishMMO_Shared_Core_ICharacter___0_">BaseAction.SendToOwner&lt;T&gt;(ICharacter, T)</a>
     </div>
     <div>
@@ -177,6 +183,34 @@ public class AbilityForkHitAction : BaseAction, IAction</code></pre>
 
 
 
+  <h2 id="FishMMO_Shared_AbilityForkHitAction_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+<b>This used to do nothing.</b> It assigned <code>abilityObject.Transform.rotation</code>, but an
+ability object's position is a closed form evaluated from its spawn pose and its integer tick
+count (<a class="xref" href="FishMMO.Shared.AbilityMoveTransformAction.html">AbilityMoveTransformAction</a>), so the next tick recomputed the position from
+the original spawn line and threw the turn away. The projectile kept flying dead straight while
+its mesh — and the knockback direction, which <a class="xref" href="FishMMO.Shared.KnockbackHitAction.html">KnockbackHitAction</a> reads off
+<code>Transform.forward</code> — spun to a heading nothing travelled along.
+<span class="xref">FishMMO.Shared.AbilityObject.Redirect(UnityEngine.Quaternion)</span> moves the closed form's own inputs instead, which is what
+actually starts a new leg.
+</p>
+<p>
+<b>Runs on every peer, like the rest of the OnHit chain.</b> The new heading is drawn from the
+ability object's own <a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_RNG">RNG</a>, whose state is carried in the reconcile,
+so the server and the caster's owner turn the same way for the same hit.
+</p>
+<p>
+<b>An observer forks on the server's hit, not on one of its own.</b> This action used to be
+the loudest symptom of a third-party observer resolving hits against its own interpolated
+world: for most OnHit actions an invented hit cost an effect in the wrong place, but for this
+one the observer's copy veered onto a heading the server never took and stayed wrong for the
+rest of its life — and, because the trajectory is a closed form re-anchored by
+<span class="xref">FishMMO.Shared.AbilityObject.Redirect(UnityEngine.Quaternion)</span>, the destroy message then ended it somewhere the server's
+copy had never been. Observers no longer sweep; they are told which body was hit
+(<code>AbilityObjectHitBroadcast</code>) and run this action from that, so the fork they draw is the
+one that happened. See <span class="xref">FishMMO.Shared.AbilityObject.ResolveSweptHits()</span>.
+</p>
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -186,16 +220,15 @@ public class AbilityForkHitAction : BaseAction, IAction</code></pre>
 
   <h3 id="FishMMO_Shared_AbilityForkHitAction_ArcValue" data-uid="FishMMO.Shared.AbilityForkHitAction.ArcValue">
   ArcValue
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityForkHitAction.cs/#L21"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityForkHitAction.cs/#L52"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The value provider that determines the arc in degrees within which the ability can fork.
-For example, 180 means the forked directions will be spread within a half-circle in front of the original direction.</p>
+  <div class="markdown level1 summary"><p>The value provider that determines the total arc, in degrees, the new heading is drawn from.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;The value provider that determines the arc in degrees for the fork spread.&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;The value provider that determines the total arc in degrees for the fork spread. 90 means 45 degrees either side of the current heading.&quot;)]
 [SerializeReference]
 public IFloatValueProvider ArcValue</code></pre>
   </div>
@@ -213,39 +246,10 @@ public IFloatValueProvider ArcValue</code></pre>
 
 
 
-
-
-
-
-
-  <h3 id="FishMMO_Shared_AbilityForkHitAction_DistanceValue" data-uid="FishMMO.Shared.AbilityForkHitAction.DistanceValue">
-  DistanceValue
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityForkHitAction.cs/#L28"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>The value provider that determines the maximum distance the forked ability can reach.</p>
+  <h4 class="section" id="FishMMO_Shared_AbilityForkHitAction_ArcValue_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A TOTAL spread about the current heading, so 90 means 45 degrees either side. Zero leaves the
+heading alone; 360 or more is any direction at all.</p>
 </div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;The value provider that determines the maximum fork distance.&quot;)]
-[SerializeReference]
-public IFloatValueProvider DistanceValue</code></pre>
-  </div>
-
-
-
-
-  <h4 class="section">Field Value</h4>
-  <dl class="parameters">
-    <dt><a class="xref" href="FishMMO.Shared.Core.IFloatValueProvider.html">IFloatValueProvider</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
-
 
 
 
@@ -258,10 +262,10 @@ public IFloatValueProvider DistanceValue</code></pre>
 
   <h3 id="FishMMO_Shared_AbilityForkHitAction_Execute_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.AbilityForkHitAction.Execute(FishMMO.Shared.Core.ICharacter,FishMMO.Shared.Core.EventData)">
   Execute(ICharacter, EventData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityForkHitAction.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/Ability/AbilityForkHitAction.cs/#L59"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Executes the fork hit action, modifying the ability object's direction within the computed arc and distance.</p>
+  <div class="markdown level1 summary"><p>Turns the ability object onto a new heading drawn from within the configured arc.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 

@@ -147,8 +147,8 @@
 <li><strong>ECA-driven periodic effects</strong> — <code>OnTickEvents</code> fires <code>BuffTickEvent</code> triggers each tick, so a DoT is an <code>ApplyDamageAction</code> and a HoT an <code>ApplyHealAction</code> — no bespoke template subclass</li>
 <li><strong>DoTs behave like hits</strong> — health ticks route through <code>CharacterDamageController.Damage</code> / <code>.Heal</code>, so they mitigate, generate threat, credit the caster and can kill</li>
 <li><strong>Caster attribution</strong> — the applying character is snapshotted on the <code>Buff</code> and used as the attacker for every subsequent tick</li>
-<li><strong>Stacking</strong> — Buffs support up to <code>MaxStacks</code> with symmetric modifier accounting</li>
-<li><strong>Attribute modification</strong> — <code>AttributeBuffTemplate</code> grants bonus attributes via <code>AddModifier()</code> on the <code>ExternalModifier</code> layer</li>
+<li><strong>Stacking</strong> — Buffs support up to <code>MaxStacks</code>. Each hook states the whole contribution for the resulting stack count rather than adding a delta, so apply and remove are exact inverses at every count by construction</li>
+<li><strong>Attribute modification</strong> — <code>AttributeBuffTemplate</code> states bonus attributes through the attributed ledger, under <code>ModifierSource.Buff(templateID, entryIndex)</code></li>
 <li><strong>FX instantiation</strong> — Client-side visual effect prefabs attached to character mesh</li>
 <li><strong>FishNet prediction support</strong> — <code>BuffController</code> implements <code>IPredictableController</code> (Order=85) with Replicate/Reconcile via <code>BuffReconcileEntry[]</code></li>
 <li><strong>Permanent buffs</strong> — <code>IsPermanent</code> flag keeps buffs from expiring and protects them from mass-removal operations</li>
@@ -209,7 +209,7 @@ buffController.RemoveRandom(rng, includeBuffs: true, includeDebuffs: true);
 </ul>
 </li>
 <li>Optionally override <code>SecondaryTooltip(Utf16ValueStringBuilder)</code> for custom tooltip content.</li>
-<li>Optionally override <code>OnApplyFX(Buff, ICharacter)</code> for custom visual effects.</li>
+<li>Optionally override <code>OnApplyFX(Buff, ICharacter)</code> (returns the instance) and <code>OnRemoveFX(GameObject, ICharacter)</code> for custom visual effects. <code>OnApplyFX</code> is also called with a <strong>null buff</strong> for an observed buff, because observers hold no <code>Buff</code> instance for another character.</li>
 </ol>
 <p><strong>Important</strong>: Ensure <code>OnApply</code>/<code>OnRemove</code> and <code>OnApplyStack</code>/<code>OnRemoveStack</code> are symmetric — every effect applied must be fully reversed on removal to avoid modifier leaks.</p>
 <h2 id="configuration">Configuration</h2>
@@ -273,37 +273,53 @@ buffController.RemoveRandom(rng, includeBuffs: true, includeDebuffs: true);
 </table>
 <h3 id="attribute-modification">Attribute Modification</h3>
 <p><code>AttributeBuffTemplate</code> is one of five concrete template types. It modifies character attributes and holds a <code>List&lt;BuffAttributeTemplate&gt; BonusAttributes</code> where each entry pairs a <code>CharacterAttributeTemplate Template</code> with an <code>int Value</code>.</p>
+<p>Each hook <strong>states the whole contribution</strong> for the stack count that will be in effect once the
+hook returns, through <code>SetSource(ModifierSource.Buff(ID, entryIndex), Value * multiplier)</code>. It does
+not add a delta.</p>
 <table>
 <thead>
 <tr>
 <th>Hook</th>
-<th>Effect</th>
+<th>Multiplier written</th>
+<th>Why that expression</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>OnApply</code></td>
-<td>For each entry in <code>BonusAttributes</code>: <code>characterAttribute.AddModifier(+Value)</code></td>
-</tr>
-<tr>
-<td><code>OnRemove</code></td>
-<td>For each entry in <code>BonusAttributes</code>: <code>characterAttribute.AddModifier(-Value)</code></td>
+<td><code>1 + Stacks</code></td>
+<td>The base application. <code>Stacks</code> is 0 on a fresh buff.</td>
 </tr>
 <tr>
 <td><code>OnApplyStack</code></td>
-<td>Delegates to <code>OnApply</code> (adds another <code>+Value</code>)</td>
+<td><code>2 + Stacks</code></td>
+<td><code>Buff.AddStack</code> raises the hook <strong>before</strong> it increments <code>Stacks</code>, so the count that will be in effect is <code>Stacks + 1</code>, plus the base application.</td>
 </tr>
 <tr>
 <td><code>OnRemoveStack</code></td>
-<td>Delegates to <code>OnRemove</code> (adds another <code>-Value</code>)</td>
+<td><code>Stacks</code></td>
+<td><code>Buff.RemoveStack</code> raises the hook <strong>before</strong> it decrements, so the count that will remain is <code>Stacks - 1</code>, plus the base application.</td>
+</tr>
+<tr>
+<td><code>OnRemove</code></td>
+<td>—</td>
+<td><code>ClearSourceGroup(ModifierSourceKind.Buff, ID)</code> releases every entry this buff wrote, whatever index it used.</td>
 </tr>
 <tr>
 <td><code>OnTick</code></td>
-<td>No-op for attribute buffs</td>
+<td>—</td>
+<td>No-op for attribute buffs.</td>
 </tr>
 </tbody>
 </table>
-<p>All modifications go through <code>CharacterAttribute.AddModifier()</code>, which operates on the <code>ExternalModifier</code> layer. This ensures buff bonuses are never overwritten by the formula recalculation system (see CharacterAttribute README).</p>
+<p>The off-by-one in <code>OnApplyStack</code> and <code>OnRemoveStack</code> is load-bearing and nothing in the type system
+holds it, so <code>AttributeStackLedgerTests</code> walks every stack count in both directions.</p>
+<p>The <code>entryIndex</code> is the entry's position in <code>BonusAttributes</code>. Two authored entries may name the
+same character attribute — a flat part and a scalar part — and a single key per buff would silently
+keep only the last of them.</p>
+<p>Stating rather than adding is what makes the model safe: a reconcile that restores a buff at a
+different stack count simply calls <code>AddStack</code>/<code>RemoveStack</code> until the counts match, and the final
+call is the only one whose value survives.</p>
 <h4 id="all-template-types">All Template Types</h4>
 <table>
 <thead>
@@ -315,7 +331,7 @@ buffController.RemoveRandom(rng, includeBuffs: true, includeDebuffs: true);
 <tbody>
 <tr>
 <td><code>AttributeBuffTemplate</code></td>
-<td>Grants flat attribute bonuses via <code>AddModifier()</code>. No tick effect.</td>
+<td>States flat attribute bonuses through the ledger. No tick effect.</td>
 </tr>
 <tr>
 <td><code>AttributeTickBuffTemplate</code></td>
@@ -419,7 +435,7 @@ tick fires again on each pass; <code>Buff.IsReplaying</code> is true during thos
 <p>The buff system is consumed by and interacts with:</p>
 <ul>
 <li><strong>Ability System</strong> — Abilities apply buffs/debuffs to targets via <code>BuffController.Apply(template, currentTick)</code> (prefer passing <code>TickEventData.Tick</code> from triggers or <code>ICharacter.LocalTick</code> as a fallback).</li>
-<li><strong>CharacterAttribute System</strong> — <code>AttributeBuffTemplate</code> modifies attributes via <code>AddModifier()</code> on the <code>ExternalModifier</code> layer.</li>
+<li><strong>CharacterAttribute System</strong> — <code>AttributeBuffTemplate</code> states attribute contributions through the attributed ledger (<code>SetSource</code> / <code>ClearSourceGroup</code>) on the <code>ExternalModifier</code> layer.</li>
 <li><strong>CharacterDamageController</strong> — <code>RemoveAll()</code> is called on kill to clear all non-permanent buffs.</li>
 <li><strong>Item System</strong> — Items may apply buffs on use or equip.</li>
 <li><strong>Database Layer</strong> — Buffs are persisted and restored via <code>CharacterBuffData</code> DTO and loaded through <code>ReadPayload</code> → <code>Apply(Buff buff)</code>.</li>
@@ -427,7 +443,8 @@ tick fires again on each pass; <code>Buff.IsReplaying</code> is true during thos
 </ul>
 <h3 id="notes">Notes</h3>
 <ul>
-<li><strong>FX Prefabs</strong>: <code>BaseBuffTemplate.OnApplyFX</code> instantiates <code>FXPrefab</code> as a child of the character's <code>MeshRoot</code> (or <code>Transform</code>). FX prefabs are expected to be self-destroying — they manage their own lifetime and clean up after their effect ends.</li>
+<li><strong>FX Prefabs</strong>: <code>BaseBuffTemplate.OnApplyFX</code> instantiates <code>FXPrefab</code> as a child of the character's <code>MeshRoot</code> (or <code>Transform</code>) and returns it. <code>BuffController</code> owns the instance's lifetime: <strong>one per template</strong> (not per stack, not per re-application), destroyed through <code>OnRemoveFX</code> when the buff expires, is dispelled, is removed by reconcile, or the character is torn down, and re-created from <code>IModelReadyHandler.OnModelReady</code> after a model (re)load destroys it. FX prefabs may still self-destruct; they no longer have to.</li>
+<li><strong>Observer FX</strong>: an observer never simulates another character's buffs, so its FX is driven by the diff of the server-sent <code>ObservedBuffs</code> list — added templates spawn, removed templates despawn. The owner drives FX from its own simulation instead, so it never spawns a second copy from its locally built observed list.</li>
 </ul>
 <h2 id="usage-examples">Usage Examples</h2>
 <h3 id="network-synchronization">Network Synchronization</h3>
@@ -563,21 +580,21 @@ reconcile exclusively.</p>
 <pre><code>Apply(template, currentTick)
   ├── Buff already exists?
   │   └── No  → Create Buff(template.ID)
-  │            → buff.Apply(Character)           // Template.OnApply → AddModifier(+V) per attribute
+  │            → buff.Apply(Character)           // Template.OnApply → SetSource(1 x V) per attribute
   │            → Add to dictionary
   │            → Fire OnAddBuff / OnAddDebuff
   ├── Stacking allowed? (MaxStacks &gt; 0 &amp;&amp; Stacks &lt; MaxStacks)
-  │   └── Yes → buff.AddStack(Character)         // Template.OnApplyStack → AddModifier(+V) again
+  │   └── Yes → buff.AddStack(Character)         // OnApplyStack → SetSource((2 + Stacks) x V)
   │            → ++Stacks
   │            → ResetDuration
   │   └── No  → ResetDuration only
-  └── Template.OnApplyFX(buff, Character)        // Client-side FX instantiation
+  └── SpawnBuffFX(template, buff)               // Client-side, one tracked instance per template
 </code></pre>
 <p><strong>Restoration flow</strong> (<code>Apply(Buff buff)</code>) — for DB load / network sync:</p>
 <pre><code>Apply(buff)
   ├── Already tracked? → skip
   └── Not tracked:
-      → buff.Apply(Character)                    // Base application: OnApply → AddModifier(+V)
+      → buff.Apply(Character)                    // Base application: OnApply → SetSource(1 x V)
       → Add to dictionary
       → Loop buff.Stacks times:
       │   → Template.OnApplyStack(buff, Character) // Re-apply each stack's modifiers
@@ -589,7 +606,7 @@ reconcile exclusively.</p>
 <pre><code>foreach buff:
   if HasExpired(currentTick):
     if Stacks &gt; 0:
-      RemoveStack(Character)                     // Template.OnRemoveStack → AddModifier(-V)
+      RemoveStack(Character)                     // OnRemoveStack → SetSource(Stacks x V)
       --Stacks
       ResetDuration(currentTick)                 // Continue with remaining stacks
     else:
@@ -603,56 +620,59 @@ reconcile exclusively.</p>
 <p>Timing uses absolute network ticks (<code>ExpiryTick</code>, <code>NextTickTick</code>) for deterministic prediction. <code>HasExpired()</code> compares via signed cast: <code>(int)(currentTick - ExpiryTick) &gt;= 0</code>.</p>
 <h4 id="3-removal">3. Removal</h4>
 <pre><code>Remove(buffID)
-  → buff.Remove(Character)                       // Template.OnRemove → AddModifier(-V) per attribute
+  → buff.Remove(Character)                       // OnRemove → ClearSourceGroup(Buff, ID)
   → Remove from dictionary
   → Fire OnRemoveBuff / OnRemoveDebuff
 </code></pre>
 <h3 id="stacking-model">Stacking Model</h3>
 <p>Each buff can have up to <code>Template.MaxStacks</code> stacks. The modifier accounting works as follows:</p>
+<p>Each buff can have up to <code>Template.MaxStacks</code> stacks. The ledger entry is <strong>restated</strong> at every
+transition, so the contribution is always exactly <code>(1 + Stacks) * Value</code> — the base application
+plus one multiple per stack:</p>
 <table>
 <thead>
 <tr>
 <th>Action</th>
-<th>Modifier Calls</th>
-<th>Stacks After</th>
+<th>Ledger entry after</th>
+<th>Stacks after</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Initial apply</td>
-<td><code>OnApply</code> → <code>AddModifier(+V)</code> × 1</td>
+<td><code>1 × V</code></td>
 <td>0</td>
 </tr>
 <tr>
 <td>Add 1st stack</td>
-<td><code>OnApplyStack</code> → <code>AddModifier(+V)</code> × 1, then <code>++Stacks</code></td>
+<td><code>2 × V</code></td>
 <td>1</td>
 </tr>
 <tr>
 <td>Add 2nd stack</td>
-<td><code>OnApplyStack</code> → <code>AddModifier(+V)</code> × 1, then <code>++Stacks</code></td>
+<td><code>3 × V</code></td>
 <td>2</td>
 </tr>
 <tr>
 <td>Duration expires (Stacks=2)</td>
-<td><code>OnRemoveStack</code> → <code>AddModifier(-V)</code> × 1, then <code>--Stacks</code>, reset duration</td>
+<td><code>2 × V</code>, reset duration</td>
 <td>1</td>
 </tr>
 <tr>
 <td>Duration expires (Stacks=1)</td>
-<td><code>OnRemoveStack</code> → <code>AddModifier(-V)</code> × 1, then <code>--Stacks</code>, reset duration</td>
+<td><code>1 × V</code>, reset duration</td>
 <td>0</td>
 </tr>
 <tr>
 <td>Duration expires (Stacks=0)</td>
-<td><code>Remove</code> → <code>OnRemove</code> → <code>AddModifier(-V)</code> × 1</td>
+<td>entry released</td>
 <td>removed</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Total modifiers applied</strong>: <code>1 (base) + N (stacks)</code> = <code>N + 1</code> calls to <code>AddModifier(+V)</code>.
-<strong>Total modifiers removed</strong>: <code>N (stack expirations) + 1 (final remove)</code> = <code>N + 1</code> calls to <code>AddModifier(-V)</code>.</p>
-<p>The system is balanced: every <code>+V</code> is paired with a <code>-V</code>.</p>
+<p>Because every write is absolute, the model is balanced by construction rather than by pairing: any
+sequence of stack changes that ends at count <em>N</em> leaves the same value as any other, and a
+mismatched pair cannot drift the sheet the way the previous additive <code>AddModifier(±V)</code> shape could.</p>
 <h3 id="prediction-pipeline">Prediction Pipeline</h3>
 <p><code>BuffController</code> implements <code>IPredictableController</code> (Order=85), running after <code>KCCPlayer</code> (80) and before <code>CooldownController</code> (90), <code>CharacterAttributeController</code> (95), and <code>AbilityController</code> (100) in the prediction pipeline.</p>
 <table>
@@ -732,7 +752,7 @@ Both <code>Buff</code> constructors coerce a non-positive <code>tickDelta</code>
     ├── Events/
     │   └── BuffTickEvent.cs           # ECA trigger fired on each tick (DoT / HoT and anything periodic)
     └── Types/
-        ├── AttributeBuffTemplate.cs       # Concrete template: grants bonus attributes via AddModifier()
+        ├── AttributeBuffTemplate.cs       # Concrete template: states bonus attributes via SetSource
         ├── AttributeTickBuffTemplate.cs   # Grants attributes on apply + periodic attribute modification on tick
         ├── CompositeBuffTemplate.cs       # Composes multiple BaseBuffTemplate children, delegating all hooks
         ├── ResourceTickBuffTemplate.cs    # Periodic resource attribute modification (regen/drain over time)
@@ -751,7 +771,7 @@ Shared/Implementation/Entity/BaseCharacter.cs                        # Client-si
 <h4 id="templates-scriptableobjects">Templates (ScriptableObjects)</h4>
 <pre><code>CachedScriptableObject&lt;BaseBuffTemplate&gt;
 └── BaseBuffTemplate                   # Abstract: Duration, TickRate, MaxStacks, IsPermanent, IsDebuff
-    ├── AttributeBuffTemplate          # Concrete: Applies BonusAttributes via AddModifier()
+    ├── AttributeBuffTemplate          # Concrete: states BonusAttributes via SetSource
     ├── AttributeTickBuffTemplate      # Concrete: Attributes on apply + periodic attribute ticks
     ├── CompositeBuffTemplate          # Concrete: Composes multiple child templates
     ├── ResourceTickBuffTemplate       # Concrete: Periodic resource modification (regen/drain)

@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class ApplyRegionAttributeAction | FishMMO Documentation ">
       
-      <meta name="description" content="ECA action that modifies a character attribute when in a region. Adds to a resource attribute&#39;s current value or adds a modifier to a regular attribute. Suppressed during prediction reconciliation.">
+      <meta name="description" content="ECA action that changes a character&#39;s attribute while it is inside a region. Server-only (gameplay state); suppressed during prediction reconciliation.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_ApplyRegionAttributeAction" data-uid="FishMMO.Shared.ApplyRegionAttributeAction" class="text-break">
-Class ApplyRegionAttributeAction  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L12"><i class="bi bi-code-slash"></i></a>
+Class ApplyRegionAttributeAction  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L42"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,9 +97,8 @@ Class ApplyRegionAttributeAction  <a class="header-action link-secondary" title=
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>ECA action that modifies a character attribute when in a region.
-Adds to a resource attribute's current value or adds a modifier to a regular attribute.
-Suppressed during prediction reconciliation.</p>
+  <div class="markdown summary"><p>ECA action that changes a character's attribute while it is inside a region.
+Server-only (gameplay state); suppressed during prediction reconciliation.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -141,6 +140,12 @@ public class ApplyRegionAttributeAction : BaseAction, IAction</code></pre>
       <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_IsServer_FishMMO_Shared_Core_ICharacter_">BaseAction.IsServer(ICharacter)</a>
     </div>
     <div>
+      <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_IsReplayTick_FishMMO_Shared_Core_EventData_">BaseAction.IsReplayTick(EventData)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_IsClientPeer_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_">BaseAction.IsClientPeer(ICharacter, EventData)</a>
+    </div>
+    <div>
       <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_SendToOwner__1_FishMMO_Shared_Core_ICharacter___0_">BaseAction.SendToOwner&lt;T&gt;(ICharacter, T)</a>
     </div>
     <div>
@@ -178,6 +183,36 @@ public class ApplyRegionAttributeAction : BaseAction, IAction</code></pre>
 
 
 
+  <h2 id="FishMMO_Shared_ApplyRegionAttributeAction_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+<b>Two different operations, chosen by the attribute.</b> A RESOURCE gets a one-shot change to
+its current value — a drain or a regeneration, safe on <code>OnRegionStay</code> and with nothing to
+reverse. A non-resource ATTRIBUTE gets a region-owned modifier that lasts while the character
+is inside and is released when it leaves.
+</p>
+<p>
+<b>The author does not wire the removal, and that is the point.</b> The contribution is keyed
+to the region (<a class="xref" href="FishMMO.Shared.ModifierSource.html#FishMMO_Shared_ModifierSource_Region_System_Int64_System_Int32_">Region(long, int)</a>) and
+<code>Region.ReleaseAttributeContributions</code> drops it on every path that ends membership:
+walking out, a deferred exit flushed after a reconcile or teleport, a descendant region taking
+ownership, and the region itself despawning. A character that dies or disconnects inside the
+region raises no exit at all — its whole ledger is cleared by
+<code>CharacterAttributeController.ResetState</code> on despawn, which is the same guarantee by a
+different route.
+</p>
+<p>
+This action used to refuse non-resource attributes outright. Applied through the old
+<code>AddModifier</code> a region bonus had no owner: nothing reversed it on leaving, dying,
+disconnecting or changing scene, and on an <code>OnRegionStay</code> trigger it accumulated once per
+tick forever. Naming the source fixes both — a release is possible, and a restatement every
+stay tick is idempotent rather than cumulative.
+</p>
+<p>
+<a class="xref" href="FishMMO.Shared.ApplyRegionBuffAction.html">ApplyRegionBuffAction</a> with an <a class="xref" href="FishMMO.Shared.AttributeBuffTemplate.html">AttributeBuffTemplate</a> remains the
+right choice when the effect should outlive the region — a lingering blessing — or should be
+dispellable. This action is for a bonus that IS the region.
+</p>
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -187,15 +222,15 @@ public class ApplyRegionAttributeAction : BaseAction, IAction</code></pre>
 
   <h3 id="FishMMO_Shared_ApplyRegionAttributeAction_Attribute" data-uid="FishMMO.Shared.ApplyRegionAttributeAction.Attribute">
   Attribute
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L19"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L49"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The character attribute template to modify.</p>
+  <div class="markdown level1 summary"><p>The attribute to modify. A resource is changed one-shot; anything else is modified for as long as the character is in the region.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;The character attribute to modify.&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Attribute to modify. A resource gets a one-shot change to its current value; any other attribute gets a region-owned modifier released when the character leaves.&quot;)]
 public CharacterAttributeTemplate Attribute</code></pre>
   </div>
 
@@ -217,17 +252,67 @@ public CharacterAttributeTemplate Attribute</code></pre>
 
 
 
-  <h3 id="FishMMO_Shared_ApplyRegionAttributeAction_Value" data-uid="FishMMO.Shared.ApplyRegionAttributeAction.Value">
-  Value
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L25"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_ApplyRegionAttributeAction_EntryIndex" data-uid="FishMMO.Shared.ApplyRegionAttributeAction.EntryIndex">
+  EntryIndex
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L79"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The value to add.</p>
+  <div class="markdown level1 summary"><p>Distinguishes this action's contribution from another action on the SAME region that
+modifies the SAME attribute.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;The value to add to the attribute.&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Only needed when one region has two of these actions modifying the same attribute. Give them different values so their bonuses sum instead of overwriting each other.&quot;)]
+public int EntryIndex</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_ApplyRegionAttributeAction_EntryIndex_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Leave it at zero unless a region carries two of these actions pointed at one attribute.
+<code>CharacterAttribute.SetSource</code> STATES a whole contribution rather than adding to
+one, so two actions sharing a key are not two contributions — the second silently
+replaces the first and half the region's bonus disappears with no error anywhere. This is
+the same hazard <a class="xref" href="FishMMO.Shared.ModifierSource.html#FishMMO_Shared_ModifierSource_Index">Index</a> exists for and that
+<code>ItemGenerator</code> (keyed by item attribute template) and
+<code>AttributeBuffTemplate</code> (keyed by list position) already answer; the region action
+was the one contributor still passing the default.
+</p>
+<p>
+The release side needs no knowledge of this. <code>Region.ReleaseAttributeContributions</code>
+goes through <code>ClearSourceGroup</code>, which drops every entry sharing the region's
+(Kind, Id) whatever index wrote it.
+</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_ApplyRegionAttributeAction_Value" data-uid="FishMMO.Shared.ApplyRegionAttributeAction.Value">
+  Value
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L55"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The amount to add to the resource's current value. Negative drains it.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Amount added to the resource&#39;s current value. Negative drains it.&quot;)]
 public int Value</code></pre>
   </div>
 
@@ -256,7 +341,7 @@ public int Value</code></pre>
 
   <h3 id="FishMMO_Shared_ApplyRegionAttributeAction_Execute_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.ApplyRegionAttributeAction.Execute(FishMMO.Shared.Core.ICharacter,FishMMO.Shared.Core.EventData)">
   Execute(ICharacter, EventData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L28"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Region/ApplyRegionAttributeAction.cs/#L82"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Executes the action. Must be implemented by derived classes.</p>

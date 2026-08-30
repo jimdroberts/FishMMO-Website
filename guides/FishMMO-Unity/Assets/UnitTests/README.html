@@ -2,9 +2,9 @@
 <html>
   <head>
     <meta charset="utf-8">
-      <title>FishMMO Auth Unit Tests | FishMMO Documentation </title>
+      <title>FishMMO Unit Tests | FishMMO Documentation </title>
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="title" content="FishMMO Auth Unit Tests | FishMMO Documentation ">
+      <meta name="title" content="FishMMO Unit Tests | FishMMO Documentation ">
       
       
       <link rel="icon" href="../../../../images/favicon.ico">
@@ -85,21 +85,74 @@
         </div>
 
         <article data-uid="">
-<h1 id="fishmmo-auth-unit-tests">FishMMO Auth Unit Tests</h1>
+<h1 id="fishmmo-unit-tests">FishMMO Unit Tests</h1>
 
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/UnitTests/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p>EditMode unit tests for the FishMMO authentication stack. The harness pairs
-<code>ClientAuthenticatorCore</code> and <code>SrpAuthenticatorCore&lt;TConnection&gt;</code> from the
+<p>EditMode unit tests for FishMMO. The assembly now covers three broad areas, all of
+them running without a NetworkManager, a physics simulation, or a live server —
+roughly <strong>1,080 cases in about 25 seconds</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Folder</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authentication</strong></td>
+<td>root (<code>LoginTests.cs</code>, <code>SecurityTests.cs</code>, …)</td>
+<td>SRP-6a + X25519 ECDH handshake, TOTP, account locking, kick requests, rate limiting</td>
+</tr>
+<tr>
+<td><strong>Prediction &amp; combat</strong></td>
+<td><code>Prediction/</code> (76 files)</td>
+<td>The unified prediction pipeline, delta serialization, lag compensation, the attribute ledger, buffs, cooldowns, abilities, observer sync, bandwidth budgets</td>
+</tr>
+<tr>
+<td><strong>Gameplay systems</strong></td>
+<td><code>AI/</code>, <code>Currency/</code>, <code>Map/</code>, <code>Server/</code>, root</td>
+<td>AI states and target selection, currency, world map projection, item stack conservation, chat sanitisation, character grounding</td>
+</tr>
+</tbody>
+</table>
+<p><code>PlayMode/</code> holds the small number of tests that genuinely need a running player loop.</p>
+<h3 id="the-authentication-harness">The authentication harness</h3>
+<p>Pairs <code>ClientAuthenticatorCore</code> and <code>SrpAuthenticatorCore&lt;TConnection&gt;</code> from the
 <code>FishMMO-Auth</code> DLLs in-process and routes all <code>Send*</code> / <code>Broadcast*</code> calls
-synchronously, completely bypassing FishNet and the network transport. This
-gives deterministic, fast (sub-second) coverage of the full SRP-6a + X25519
-ECDH handshake, TOTP enrollment, account-locking, and kick-request flows
-without spinning up servers or network sockets.</p>
+synchronously, completely bypassing FishNet and the network transport.</p>
+<h3 id="the-prediction-harness">The prediction harness</h3>
+<p>There is no equivalent single harness — the prediction fixtures instead lean on the
+production code having been <strong>shaped for testability</strong>, which is a deliberate and
+recurring pattern rather than an accident:</p>
+<ul>
+<li><strong>Pure functions extracted from behaviours.</strong> <code>LagCompensationTick.ResolveViewOffset</code> /
+<code>ResolveAnchor</code>, <code>CharacterPredictionController.IsTransformRedundant</code>,
+<code>Buff.DurationToTicks</code>, <code>AbilityController.ResolveInterruptDisposition</code>,
+<code>TargetOrdering.*</code>. These exist so a rule can be exercised against production
+rather than re-implemented in a test — a re-implementation only ever proves the
+test agrees with itself.</li>
+<li><strong><code>internal</code> + <code>InternalsVisibleTo(&quot;FishMMO.UnitTests&quot;)</code></strong> (<code>Shared/AssemblyInfo.cs</code>)
+for test seams that should not be public API.</li>
+<li><strong><code>ScriptableObject.CreateInstance</code> + <code>AddToCache</code>/<code>RemoveFromCache</code></strong> to stand up
+templates without assets. Remember that a <code>CreateInstance</code> template leaves
+collection fields null where an authored asset would serialise them empty.</li>
+<li><strong><code>AddComponent</code> + an explicit <code>OnAwake()</code></strong>, since Unity's own callbacks do not run
+for a bare <code>AddComponent</code> in edit mode.</li>
+<li><strong>Reflection</strong>, but only for genuinely private mechanism (<code>CharacterPositionHistory.Record</code>,
+<code>BuffController.ApplyObservedBuffs</code>).</li>
+</ul>
+<p><strong>Prefer a behavioural assertion to a source-text one.</strong> Several fixtures used to grep the
+source for a literal spelling; those break on any refactor while proving less than the
+consequence does. Where a property has no behavioural expression at all — &quot;this number is
+read live from <code>PredictionManager.StateInterpolation</code> rather than assumed&quot; — a source
+assertion is the right tool, and should say why it is one.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
-<li><a href="#fishmmo-auth-unit-tests">Description</a></li>
+<li><a href="#fishmmo-unit-tests">Description</a></li>
 <li><a href="#supported-platforms">Supported Platforms</a></li>
 <li><a href="#architecture">Architecture</a></li>
 <li><a href="#key-components">Key Components</a></li>
@@ -282,6 +335,70 @@ the static <code>AuthTestTrace.Verbose</code> flag for the run.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="prediction--combat-fixtures-prediction">Prediction &amp; combat fixtures (<code>Prediction/</code>)</h3>
+<p>Too many to list individually; these are the ones that pin a <strong>whole invariant</strong> rather than a
+single method, and are the right place to start reading:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Pins</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PredictionAuditRegressionTests.cs</code></td>
+<td>The 2026-08-28 audit's 35 defects across three rounds</td>
+</tr>
+<tr>
+<td><code>CombatAuditRoundTwoTests.cs</code>, <code>CombatAuditFollowUpTests.cs</code>, <code>CombatAudit20260830Tests.cs</code></td>
+<td>The 2026-08-29 and 2026-08-30 combat audits</td>
+</tr>
+<tr>
+<td><code>CombatAudit20260830FixTests.cs</code></td>
+<td>The post-audit fixes: shared ability-object resolution, the observer equip path, exclusion-inside-the-cap, total ray ordering, per-character chain-break reporting, shared buffer growth, reproducible heal targeting</td>
+</tr>
+<tr>
+<td><code>LagCompensationClosedLoopTests.cs</code></td>
+<td><strong>&quot;You hit what you saw&quot;</strong> — composes the client and server halves of the rewind derivation across a spread of round trips and asserts sub-millimetre agreement</td>
+</tr>
+<tr>
+<td><code>LagCompensationTests.cs</code></td>
+<td>The position ring's resolution, clamping and refusal rules</td>
+</tr>
+<tr>
+<td><code>AttributeLedgerContractTests.cs</code>, <code>AttributeStackLedgerTests.cs</code></td>
+<td>The attributed-modifier ledger: residual arithmetic, contributor release, exact stack inverses</td>
+</tr>
+<tr>
+<td><code>ReconcileDeltaChainTests.cs</code>, <code>DeltaSerializerStreamAlignmentTests.cs</code></td>
+<td>The delta chain's loss detection and framing</td>
+</tr>
+<tr>
+<td><code>ObserverSynchronizationProofTests.cs</code>, <code>AbilityObserverReproductionTests.cs</code>, <code>LateJoinerReplayTests.cs</code></td>
+<td>That a late joiner reconstructs what a continuous observer holds</td>
+</tr>
+<tr>
+<td><code>TargetSelectorBodyIdentityTests.cs</code>, <code>SpatialQueryGrowLoopTests.cs</code>, <code>OverlapHitRootResolutionTests.cs</code></td>
+<td>Hit-root resolution, per-body dedupe, grow-on-full</td>
+</tr>
+<tr>
+<td><code>PredictionQuantizationTests.cs</code>, <code>RotationPrecisionTests.cs</code>, <code>AimDirectionTests.cs</code></td>
+<td>That <code>Encode</code>/<code>Decode</code> round trips are fixed points</td>
+</tr>
+<tr>
+<td><code>PredictionBandwidthBenchmarkTests.cs</code>, <code>ObserverChannelCostTests.cs</code>, <code>BandwidthCompositionTests.cs</code></td>
+<td>Per-peer byte budgets, so a new field's cost is visible when it lands</td>
+</tr>
+<tr>
+<td><code>PrefabNetworkAuthoringTests.cs</code>, <code>RegionAssetIntegrityTests.cs</code></td>
+<td>That the shipped prefabs and assets still match what the code expects</td>
+</tr>
+</tbody>
+</table>
+<p>Several fixtures are <strong>measurement</strong> rather than assertion: they <code>TestContext.WriteLine</code> a
+<code>MEASURE …</code> line so a bandwidth or cost regression is legible in the run log even when it stays
+inside its budget.</p>
 <h3 id="harness-files-harness">Harness files (<code>Harness/</code>)</h3>
 <table>
 <thead>

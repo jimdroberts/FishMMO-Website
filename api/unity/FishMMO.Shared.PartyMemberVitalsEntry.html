@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_PartyMemberVitalsEntry" data-uid="FishMMO.Shared.PartyMemberVitalsEntry" class="text-break">
-Struct PartyMemberVitalsEntry  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L125"><i class="bi bi-code-slash"></i></a>
+Struct PartyMemberVitalsEntry  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L133"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -138,12 +138,20 @@ Struct PartyMemberVitalsEntry  <a class="header-action link-secondary" title="Vi
 
 
   <h2 id="FishMMO_Shared_PartyMemberVitalsEntry_remarks">Remarks</h2>
-  <div class="markdown level0 remarks"><p>Only sent for members the sending scene server hosts <b>in the same Unity scene as the
+  <div class="markdown level0 remarks"><p>
+Only sent for members the sending scene server hosts <b>in the same Unity scene as the
 recipient</b>. A member the recipient cannot be standing next to — different zone,
 different dungeon instance, different scene server, or offline — is absent from the
 payload entirely, and the client greys their row out rather than drawing values it has no
 reason to believe. Absence is therefore meaningful: see
-<a class="xref" href="FishMMO.Shared.PartyMemberVitalsUpdateBroadcast.html">PartyMemberVitalsUpdateBroadcast</a>.</p>
+<a class="xref" href="FishMMO.Shared.PartyMemberVitalsUpdateBroadcast.html">PartyMemberVitalsUpdateBroadcast</a>.
+</p>
+<p>
+<b>Quantised.</b> Fractions travel as one byte (0..255) and rates as an unsigned short,
+because a party bar is a few dozen pixels wide and a meter readout is rounded to the unit
+anyway; the previous four-byte floats carried precision nothing rendered. Use
+<a class="xref" href="FishMMO.Shared.PartyVitalsQuantiser.html">PartyVitalsQuantiser</a> to convert in both directions.
+</p>
 </div>
 
 
@@ -154,7 +162,7 @@ reason to believe. Absence is therefore meaningful: see
 
   <h3 id="FishMMO_Shared_PartyMemberVitalsEntry_Buffs" data-uid="FishMMO.Shared.PartyMemberVitalsEntry.Buffs">
   Buffs
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L160"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L184"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The buffs and debuffs the member is showing, exactly as the SERVER chose them.</p>
@@ -180,7 +188,7 @@ reason to believe. Absence is therefore meaningful: see
 
   <h4 class="section" id="FishMMO_Shared_PartyMemberVitalsEntry_Buffs_remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>The same server-filtered list the target frame draws from — already stripped of
-anything marked <code>HiddenFromOthers</code>, carrying no tick-domain state and no template
+nothing beyond what any observer already sees, carrying no tick-domain state and no template
 hooks. Buffs and debuffs travel together and are split by the client on the template's
 own <code>IsDebuff</code> flag, because that flag is a property of the template rather than
 of the wire format and duplicating it into two arrays would let the two disagree.</p>
@@ -189,6 +197,47 @@ of the wire format and duplicating it into two arrays would let the two disagree
 was built rather than to the last observed-buff push, so the client's local countdown
 starts from a current figure however long ago the buff was applied.
 </p>
+<p>Only meaningful when <a class="xref" href="FishMMO.Shared.PartyMemberVitalsEntry.html#FishMMO_Shared_PartyMemberVitalsEntry_BuffsChanged">BuffsChanged</a> is true. Null means "none".</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_PartyMemberVitalsEntry_BuffsChanged" data-uid="FishMMO.Shared.PartyMemberVitalsEntry.BuffsChanged">
+  BuffsChanged
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L167"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>True when <a class="xref" href="FishMMO.Shared.PartyMemberVitalsEntry.html#FishMMO_Shared_PartyMemberVitalsEntry_Buffs">Buffs</a> is authoritative for this entry. False means the buff set
+has not changed since the last payload that carried it, and <a class="xref" href="FishMMO.Shared.PartyMemberVitalsEntry.html#FishMMO_Shared_PartyMemberVitalsEntry_Buffs">Buffs</a> is null
+and must not be applied.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool BuffsChanged</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_PartyMemberVitalsEntry_BuffsChanged_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The buff list is by far the largest part of the payload and by far the least often
+changed. Sending it only on change is what takes this message from &quot;every second&quot; to
+&quot;when something happened&quot;. A client that receives its first payload for a member always
+gets the set, because the server tracks what it last sent per scene group and a member
+new to a group has nothing sent yet.</p>
 </div>
 
 
@@ -197,7 +246,7 @@ starts from a current figure however long ago the buff was applied.
 
   <h3 id="FishMMO_Shared_PartyMemberVitalsEntry_CharacterID" data-uid="FishMMO.Shared.PartyMemberVitalsEntry.CharacterID">
   CharacterID
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L128"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L137"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Character ID of the member.</p>
@@ -228,15 +277,16 @@ starts from a current figure however long ago the buff was applied.
 
   <h3 id="FishMMO_Shared_PartyMemberVitalsEntry_DamagePerSecond" data-uid="FishMMO.Shared.PartyMemberVitalsEntry.DamagePerSecond">
   DamagePerSecond
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L142"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L152"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Damage the member has dealt in the current encounter, divided by its elapsed length.</p>
+  <div class="markdown level1 summary"><p>Damage the member has dealt in the current encounter, divided by its elapsed length,
+rounded and clamped to 0..65535.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public float DamagePerSecond</code></pre>
+    <pre><code class="lang-csharp hljs">public ushort DamagePerSecond</code></pre>
   </div>
 
 
@@ -244,7 +294,7 @@ starts from a current figure however long ago the buff was applied.
 
   <h4 class="section">Field Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint16">ushort</a></dt>
     <dd></dd>
   </dl>
 
@@ -263,15 +313,15 @@ so it must not carry a number from the last fight into the lull after it.</p>
 
   <h3 id="FishMMO_Shared_PartyMemberVitalsEntry_HealPerSecond" data-uid="FishMMO.Shared.PartyMemberVitalsEntry.HealPerSecond">
   HealPerSecond
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L144"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L154"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Healing the member has done in the current encounter, per second.</p>
+  <div class="markdown level1 summary"><p>Healing the member has done in the current encounter, per second, clamped to 0..65535.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public float HealPerSecond</code></pre>
+    <pre><code class="lang-csharp hljs">public ushort HealPerSecond</code></pre>
   </div>
 
 
@@ -279,7 +329,7 @@ so it must not carry a number from the last fight into the lull after it.</p>
 
   <h4 class="section">Field Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint16">ushort</a></dt>
     <dd></dd>
   </dl>
 
@@ -294,15 +344,15 @@ so it must not carry a number from the last fight into the lull after it.</p>
 
   <h3 id="FishMMO_Shared_PartyMemberVitalsEntry_HealthPCT" data-uid="FishMMO.Shared.PartyMemberVitalsEntry.HealthPCT">
   HealthPCT
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L130"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L139"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The member's health fraction, 0-1.</p>
+  <div class="markdown level1 summary"><p>The member's health fraction, quantised to 0..255.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public float HealthPCT</code></pre>
+    <pre><code class="lang-csharp hljs">public byte HealthPCT</code></pre>
   </div>
 
 
@@ -310,7 +360,7 @@ so it must not carry a number from the last fight into the lull after it.</p>
 
   <h4 class="section">Field Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a></dt>
     <dd></dd>
   </dl>
 
@@ -325,15 +375,15 @@ so it must not carry a number from the last fight into the lull after it.</p>
 
   <h3 id="FishMMO_Shared_PartyMemberVitalsEntry_ManaPCT" data-uid="FishMMO.Shared.PartyMemberVitalsEntry.ManaPCT">
   ManaPCT
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L132"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L141"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The member's mana fraction, 0-1.</p>
+  <div class="markdown level1 summary"><p>The member's mana fraction, quantised to 0..255.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public float ManaPCT</code></pre>
+    <pre><code class="lang-csharp hljs">public byte ManaPCT</code></pre>
   </div>
 
 
@@ -341,7 +391,7 @@ so it must not carry a number from the last fight into the lull after it.</p>
 
   <h4 class="section">Field Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a></dt>
     <dd></dd>
   </dl>
 
@@ -356,15 +406,15 @@ so it must not carry a number from the last fight into the lull after it.</p>
 
   <h3 id="FishMMO_Shared_PartyMemberVitalsEntry_StaminaPCT" data-uid="FishMMO.Shared.PartyMemberVitalsEntry.StaminaPCT">
   StaminaPCT
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L134"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/PartyBroadcasts.cs/#L143"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The member's stamina fraction, 0-1.</p>
+  <div class="markdown level1 summary"><p>The member's stamina fraction, quantised to 0..255.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public float StaminaPCT</code></pre>
+    <pre><code class="lang-csharp hljs">public byte StaminaPCT</code></pre>
   </div>
 
 
@@ -372,7 +422,7 @@ so it must not carry a number from the last fight into the lull after it.</p>
 
   <h4 class="section">Field Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a></dt>
     <dd></dd>
   </dl>
 

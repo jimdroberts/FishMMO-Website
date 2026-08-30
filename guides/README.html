@@ -195,7 +195,7 @@
 <tbody>
 <tr>
 <td><strong>FishMMO-Unity</strong></td>
-<td>Unity project containing client, server, and shared game code (900+ C# files) — full prediction pipeline, modular character visuals, tick-driven archetype AI with threat and pet systems, ECA trigger system</td>
+<td>Unity project containing client, server, and shared game code (900+ C# files) — a unified client-side prediction pipeline with lag-compensated hit resolution, modular character visuals, tick-driven archetype AI with threat and pet systems, ECA trigger system</td>
 </tr>
 <tr>
 <td><strong>FishMMO-Auth</strong></td>
@@ -927,12 +927,13 @@ export FISHMMO_DB_PASSWORD=super_secret
 <blockquote>
 <p>Rows written before this change keep whatever offset they were written with. <code>last_pulse</code> corrects itself on the next heartbeat; historical <code>time_created</code> values do not.</p>
 </blockquote>
-<p><strong>Schema drift is reported at startup.</strong> Migrations are generated per developer and applied locally rather than shared through source control, so pulling someone else's entity change brings no migration with it and nothing applies one on your behalf — the server starts and authenticates perfectly, and the mismatch surfaces much later as a query failing on a column that does not exist, which typically reaches a player as <em>missing data</em> rather than as a schema problem. <code>NpgsqlDbContextFactory.ValidateSchemaAsync</code> reports two distinct states, and <code>Server.VerifyDatabaseSchema</code> logs whichever applies with the command that fixes it:</p>
+<p><strong>Unapplied migrations are caught at startup.</strong> Migrations are generated per developer and applied locally rather than shared through source control, so pulling someone else's entity change brings no migration with it and nothing applies one on your behalf — the server starts and authenticates perfectly, and the mismatch surfaces much later as a query failing on a column that does not exist, which typically reaches a player as <em>missing data</em> rather than as a schema problem. <code>NpgsqlDbContextFactory.ValidateSchemaAsync</code> reports what it finds and <code>Server.VerifyDatabaseSchema</code> logs it with the command that fixes it:</p>
 <table>
 <thead>
 <tr>
 <th>State</th>
 <th>Meaning</th>
+<th>Startup</th>
 <th>Fix</th>
 </tr>
 </thead>
@@ -940,16 +941,21 @@ export FISHMMO_DB_PASSWORD=super_secret
 <tr>
 <td><strong>Pending migrations</strong></td>
 <td>Migrations exist that this database has not run</td>
+<td><strong>Refused</strong></td>
 <td><code>dotnet ef database update</code></td>
 </tr>
 <tr>
-<td><strong>Model drift</strong></td>
-<td>The entity model changed after the newest migration was created, so no migration covers it yet</td>
-<td><code>dotnet ef migrations add &lt;name&gt;</code>, then <code>database update</code></td>
+<td><strong>Check unavailable</strong></td>
+<td>The migration history could not be read at all</td>
+<td>Proceeds, warns</td>
+<td>Depends on the reason logged</td>
 </tr>
 </tbody>
 </table>
-<p>The check is deliberately neither awaited nor fatal. A server whose schema is stale still serves everything that does not touch the changed tables, and refusing to start would be a worse outcome than a loud log line. It costs one query and reports within a second or so of startup; a check that cannot run at all is a warning, never a crash.</p>
+<p>Pending migrations are fatal on purpose. A server running against a database that is behind the migration set does not fail loudly — it fails as missing player data, and every write it accepts meanwhile is made against a schema the model does not agree with. A check that could not run at all is only a warning: that leaves the schema unverified rather than known-bad, and a failed <em>diagnostic</em> should not take down a server that is otherwise fine. The check runs concurrently with behaviour initialization and is joined just before the transport opens, so it costs no startup latency.</p>
+<blockquote>
+<p><strong>Model drift is not detected.</strong> An entity changed with no migration generated for it leaves nothing pending, so this check passes and the schema is quietly wrong. A drift check lived here and never worked once — EF builds <code>ModelSnapshot.Model</code> with an empty convention set, so the relational model its differ needs is never attached and the comparison threw on every startup. EF Core 5 exposes no supported way to rebuild it at runtime, so the check was removed rather than left reporting a failure forever (<a href="https://github.com/tindolt/FishMMO/issues/162">#162</a>). <strong>Generate a migration whenever you change an entity</strong> — nothing will remind you. Catching this properly belongs in CI, where the design-time package is available and a scaffolded migration can be asserted empty.</p>
+</blockquote>
 <hr>
 <h2 id="unity-project-setup">Unity Project Setup</h2>
 <h3 id="client-security-setup-required-before-building">Client Security Setup (REQUIRED before building)</h3>
@@ -3411,6 +3417,49 @@ sudo install -m 755 certbot-fishmmo.sh \
 </tbody>
 </table>
 <p>Key guarantee: <strong>RuntimeDataContainers are always initialized before ServerBehaviours</strong> — no race conditions between logic and data.</p>
+<h3 id="gameplay-simulation">Gameplay Simulation</h3>
+<p>Combat and movement run through one prediction pipeline rather than per-subsystem ones. The
+details are in
+<a href="FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/README.html"><code>Assets/Scripts/Shared/Implementation/Entity/Prediction/README.md</code></a>;
+the shape is:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>One entry point</strong></td>
+<td><code>CharacterPredictionController</code> owns the single <code>[Replicate]</code> / <code>[Reconcile]</code> pair on a character and drives every subsystem through it in <code>Order</code>: KCC movement (80) → buffs (85) → cooldowns (90) → equipment (93) → attributes (95) → abilities (100). The order encodes real data dependencies — contributors settle before the authoritative total that subsumes them is installed.</td>
+</tr>
+<tr>
+<td><strong>Input, not state</strong></td>
+<td><code>CharacterReplicateData</code> carries only input, quantised on the producer <em>before</em> it predicts, so the owner never simulates at a precision the wire cannot carry.</td>
+</tr>
+<tr>
+<td><strong>A loss-detecting delta chain</strong></td>
+<td><code>CharacterReconcileData</code> is delta-encoded against the previous state the server <em>sent</em>, with a one-byte sequence so a dropped datagram costs &quot;no correction until the next snapshot&quot; rather than &quot;a wrong correction for a second&quot;.</td>
+</tr>
+<tr>
+<td><strong>Lag compensation</strong></td>
+<td>Hits resolve against where the caster's client <em>saw</em> its peers. The client contributes its full round trip plus its interpolation buffer; the server adds its own replicate queue depth and rewinds every character in the scene for the duration of one query. Every latency term cancels exactly.</td>
+</tr>
+<tr>
+<td><strong>Observers are told, not simulating</strong></td>
+<td>State forwarding is deliberately off. Observers receive position via <code>NetworkTransform</code> and everything else via explicit broadcasts, and the spawn payload carries an observer-shaped form of each so a late joiner reconstructs what a continuous observer holds.</td>
+</tr>
+<tr>
+<td><strong>Server-only physics</strong></td>
+<td>A physics query is not reproducible across peers, so every target selector and hit action runs on the server, inside the caster's rewound world, and caps its result only after ranking and per-body dedupe.</td>
+</tr>
+</tbody>
+</table>
+<p>Behaviour is pinned by roughly <strong>1,080 EditMode tests</strong>
+(<a href="FishMMO-Unity/Assets/UnitTests/README.html"><code>Assets/UnitTests/README.md</code></a>), including a
+closed-loop fixture that composes both halves of the lag-compensation derivation across a spread
+of round-trip times and asserts the server resolves to the position the shooter was rendering.</p>
 <h3 id="flow-diagram">Flow Diagram</h3>
 <pre><code class="lang-mermaid">flowchart TB
     subgraph Internet

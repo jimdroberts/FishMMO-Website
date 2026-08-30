@@ -154,7 +154,7 @@ Prediction works best when replicate data contains only input, not state.</p>
 
   <h3 id="FishMMO_Shared_CharacterReplicateData_ActivationFlags" data-uid="FishMMO.Shared.CharacterReplicateData.ActivationFlags">
   ActivationFlags
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L49"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L101"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Flags representing the ability activation state.
@@ -184,17 +184,17 @@ Bit positions defined by <a class="xref" href="FishMMO.Shared.AbilityActivationF
 
 
 
-  <h3 id="FishMMO_Shared_CharacterReplicateData_CameraPosition" data-uid="FishMMO.Shared.CharacterReplicateData.CameraPosition">
-  CameraPosition
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L36"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CharacterReplicateData_AimDirection" data-uid="FishMMO.Shared.CharacterReplicateData.AimDirection">
+  AimDirection
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L93"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Camera position for this input frame.</p>
+  <div class="markdown level1 summary"><p>Aim direction for this input frame, as a unit vector.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Vector3 CameraPosition</code></pre>
+    <pre><code class="lang-csharp hljs">public Vector3 AimDirection</code></pre>
   </div>
 
 
@@ -210,37 +210,21 @@ Bit positions defined by <a class="xref" href="FishMMO.Shared.AbilityActivationF
 
 
 
-
-
-
-
-
-  <h3 id="FishMMO_Shared_CharacterReplicateData_CameraRotation" data-uid="FishMMO.Shared.CharacterReplicateData.CameraRotation">
-  CameraRotation
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L41"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Camera rotation for this input frame.</p>
+  <h4 class="section" id="FishMMO_Shared_CharacterReplicateData_AimDirection_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Always store a value that has been through <a class="xref" href="FishMMO.Shared.AimDirectionCompression.html#FishMMO_Shared_AimDirectionCompression_Quantize_UnityEngine_Vector3_">Quantize(Vector3)</a>.
+This is input to a deterministic simulation, so the producer must commit to the value the
+wire can carry rather than to whatever it holds locally — otherwise the owner predicts
+with one direction while the server and observers simulate with the decoded one, and
+every cast diverges by the quantisation error.
+</p>
+<p>
+Replaced a full <code>Quaternion CameraRotation</code>. Nothing ever read the roll: movement
+takes <code>rotation * Vector3.forward</code> to build its planar basis and the ability path
+takes the same forward as its trace direction, so the rotation carried a degree of
+freedom that no consumer used and that could not be represented exactly.
+</p>
 </div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Quaternion CameraRotation</code></pre>
-  </div>
-
-
-
-
-  <h4 class="section">Field Value</h4>
-  <dl class="parameters">
-    <dt><span class="xref">Quaternion</span></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
-
 
 
 
@@ -342,7 +326,7 @@ Each flag is a bit position defined by <a class="xref" href="FishMMO.Shared.KCCM
 
   <h3 id="FishMMO_Shared_CharacterReplicateData_QueuedAbilityID" data-uid="FishMMO.Shared.CharacterReplicateData.QueuedAbilityID">
   QueuedAbilityID
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L54"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L106"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The ID of the queued ability or consumable template.</p>
@@ -370,6 +354,100 @@ Each flag is a bit position defined by <a class="xref" href="FishMMO.Shared.KCCM
 
 
 
+
+  <h3 id="FishMMO_Shared_CharacterReplicateData_ViewOffsetFraction" data-uid="FishMMO.Shared.CharacterReplicateData.ViewOffsetFraction">
+  ViewOffsetFraction
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L73"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The sub-tick remainder of the view offset, in 1/256ths of a tick.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public byte ViewOffsetFraction</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_CharacterReplicateData_ViewOffsetFraction_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The whole-tick part alone quantises the rewind to a tick boundary, and the client's view
+of a peer does not sit on one: NetworkTransform interpolation blends between two received
+snapshots, so what it renders is a fraction of the way between two ticks. At 6 m/s one
+tick is 20 cm — the difference between a hit and a miss on a capsule. This byte is what
+lets the server resolve to the same fractional point, through
+<a class="xref" href="FishMMO.Shared.RewindTarget.html">RewindTarget</a> and <code>CharacterPositionHistory</code>'s interpolating resolve.</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_CharacterReplicateData_ViewOffsetTicks" data-uid="FishMMO.Shared.CharacterReplicateData.ViewOffsetTicks">
+  ViewOffsetTicks
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L60"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>How many ticks behind server-present this client was rendering its peers when it produced
+this input. Lag compensation rewinds by this much.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public byte ViewOffsetTicks</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_CharacterReplicateData_ViewOffsetTicks_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+The server cannot work this out for itself. It is one-way latency plus the interpolation
+buffer, and FishNet exposes no per-connection latency server-side — the value that used to
+be used, <code>ReplicateTick.LocalTickDifference</code>, is stamped with the current server tick
+immediately before the replicate body runs, so it read 0 on every tick that carried real
+input and every player was compensated the same fixed two ticks whatever their ping.
+</p>
+<p>
+The client does know: it has <code>TimeManager.RoundTripTime</code> and its own interpolation
+setting. It carries the FULL round trip, not half of it — the offset is subtracted from
+the server tick at which the replicate body RUNS, and the input's own trip to the server
+is part of that gap. The server adds the one term the client cannot see, its replicate
+queue depth; see <a class="xref" href="FishMMO.Shared.LagCompensationTick.html">LagCompensationTick</a>.
+</p>
+<p>
+Client-supplied, so the server treats it as a claim rather than a fact:
+<a class="xref" href="FishMMO.Shared.LagCompensationTick.html#FishMMO_Shared_LagCompensationTick_MaximumCompensationTicks">MaximumCompensationTicks</a> caps it, and
+<code>CharacterPositionHistory</code> clamps anything still older to the oldest sample it holds,
+so an inflated value buys the recorded window and never more than it. One byte, which at
+30 Hz covers 8.5 seconds of claimed view lag.
+</p>
+</div>
+
+
+
+
   <h2 class="section" id="methods">Methods
 </h2>
 
@@ -378,7 +456,7 @@ Each flag is a bit position defined by <a class="xref" href="FishMMO.Shared.KCCM
 
   <h3 id="FishMMO_Shared_CharacterReplicateData_Dispose" data-uid="FishMMO.Shared.CharacterReplicateData.Dispose">
   Dispose()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L66"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L118"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Allows for any cleanup when the data is being discarded.</p>
@@ -405,7 +483,7 @@ Each flag is a bit position defined by <a class="xref" href="FishMMO.Shared.KCCM
 
   <h3 id="FishMMO_Shared_CharacterReplicateData_GetPredictionTick" data-uid="FishMMO.Shared.CharacterReplicateData.GetPredictionTick">
   GetPredictionTick()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L61"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L113"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns the network tick for this replicate input as a <a class="xref" href="FishMMO.Shared.PredictionTick.html">PredictionTick</a>.
@@ -439,7 +517,7 @@ currentTick argument when applying prediction-domain buff and cooldown state.</p
 
   <h3 id="FishMMO_Shared_CharacterReplicateData_GetTick" data-uid="FishMMO.Shared.CharacterReplicateData.GetTick">
   GetTick()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L69"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L121"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Local tick when the data was created.</p>
@@ -471,7 +549,7 @@ currentTick argument when applying prediction-domain buff and cooldown state.</p
 
   <h3 id="FishMMO_Shared_CharacterReplicateData_SetTick_System_UInt32_" data-uid="FishMMO.Shared.CharacterReplicateData.SetTick(System.UInt32)">
   SetTick(uint)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L72"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReplicateData.cs/#L124"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Sets the local tick when data was created.</p>

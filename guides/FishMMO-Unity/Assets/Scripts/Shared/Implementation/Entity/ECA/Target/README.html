@@ -128,7 +128,7 @@
 <tr>
 <td>Standalone Players (Win / Linux / macOS)</td>
 <td>Supported</td>
-<td>Selectors execute in client and server builds.</td>
+<td>Builds compile everywhere, but see the authority note below — most selectors yield nothing on a client.</td>
 </tr>
 <tr>
 <td>Headless Linux Server</td>
@@ -138,10 +138,16 @@
 <tr>
 <td>Android / iOS / WebGL</td>
 <td>Supported</td>
-<td>Only the client-side selector evaluations run on these platforms.</td>
+<td>As above: only the five peer-agnostic selectors evaluate on a client.</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Authority.</strong> Nine of the fourteen selectors — every one that runs a physics query, plus
+<code>AllCharactersTargetSelector</code> and <code>TargetedEntitySelector</code> — open with <code>IsAuthoritativePeer</code> (<code>EcaAuthority.IsServer</code>) and <code>yield break</code> on a
+client. They exist to resolve hits authoritatively, and a client asking the same question against
+interpolated peer positions would answer differently. The five that DO run on both peers are
+<code>Initiator</code>, <code>Event</code>, <code>Children</code>, <code>NamedSceneObject</code> and <code>TaggedSceneObject</code>; only those need to agree
+across peers, and <code>TargetOrdering</code> is what makes them agree.</p>
 <p>Requirements: Unity 6.3 LTS with FishNet. Selectors depend only on the shared FishMMO entity layer; no platform-specific APIs.</p>
 <h2 id="architecture">Architecture</h2>
 <p>Selectors are pure data: a <code>TargetSelector</code> subclass holds parameters in serialized fields and implements <code>IEnumerable&lt;GameObject&gt; SelectTargets(EventData eventData)</code>. Triggers, conditions, and actions call <code>SelectTargets</code> to obtain candidates and then operate on them. There is no runtime registration step — types are discovered by Unity's <code>SerializeReference</code> system and picked in the Inspector through <code>[SubclassSelector]</code>.</p>
@@ -188,7 +194,7 @@
 </tr>
 <tr>
 <td><code>RandomTargetSelector</code></td>
-<td>One random valid candidate within a radius, drawn from <code>EventData.RNG</code> so server and client agree.</td>
+<td>One random valid candidate within a radius, drawn from <code>EventData.RNG</code>. Server-only (see the authority note), so the RNG buys run-to-run reproducibility, not client/server agreement.</td>
 </tr>
 <tr>
 <td><code>AreaTargetSelector</code> / <code>ConeTargetSelector</code> / <code>LineTargetSelector</code></td>
@@ -328,18 +334,63 @@
 <h3 id="standard-selector-skeleton">Standard selector skeleton</h3>
 <pre><code class="lang-csharp">public override IEnumerable&lt;GameObject&gt; SelectTargets(EventData eventData)
 {
+    // 1. Server only. A physics query is not reproducible across peers.
+    if (!IsAuthoritativePeer(eventData)) yield break;
+
     GameObject context = GetContext(eventData);
     if (context == null) yield break;
 
-    // ... query (overlap, raycast, hierarchy, …) ...
+    // 2. Gather EAGERLY inside one rewind scope, then yield after it has closed.
+    List&lt;GameObject&gt; results = new List&lt;GameObject&gt;();
+    GatherRewound(eventData, context, results, Gather);
 
-    foreach (var candidate in candidates)
+    for (int i = 0; i &lt; results.Count; ++i) yield return results[i];
+}
+
+private void Gather(EventData eventData, GameObject context, List&lt;GameObject&gt; results)
+{
+    Collider[] hits = new Collider[QueryBufferSize(MaxHits)];
+    List&lt;GameObject&gt; candidates = new List&lt;GameObject&gt;();
+    List&lt;GameObject&gt; keys = new List&lt;GameObject&gt;();   // one BODY key per candidate
+    List&lt;TargetRank&gt; ranks = new List&lt;TargetRank&gt;();
+
+    Vector3 center = context.transform.position;
+    PhysicsScene physicsScene = context.scene.GetPhysicsScene();
+
+    // 3. Re-query until the buffer stops coming back full.
+    int hitCount;
+    while (true)
     {
-        if (AreConditionsMet(candidate, eventData))
-            yield return candidate;
+        hitCount = physicsScene.OverlapSphere(center, Radius, hits, TargetLayer, QueryTriggerInteraction.UseGlobal);
+        if (!TargetOrdering.TryGrowQueryBuffer(ref hits, hitCount)) break;
     }
+
+    for (int i = 0; i &lt; hitCount; i++)
+    {
+        Collider hit = hits[i];
+        if (hit == null || !AreConditionsMet(hit.gameObject, eventData)) continue;
+
+        candidates.Add(hit.gameObject);
+        keys.Add(TargetOrdering.ResolveHitKey(hit, out ICharacter _));
+        ranks.Add(TargetOrdering.Rank(candidates.Count - 1, hit.gameObject,
+                                      Vector3.Distance(center, hit.transform.position)));
+    }
+
+    // 4. rank -&gt; dedupe -&gt; cap, in that order and never another.
+    TargetOrdering.SortByDistance(ranks);
+    TargetOrdering.DedupeByBody(ranks, keys);
+    TargetOrdering.ApplyMaxHits(ranks, MaxHits);
+
+    for (int i = 0; i &lt; ranks.Count; ++i) results.Add(candidates[ranks[i].Index]);
 }
 </code></pre>
+<p><strong>Why the gather is a separate eager method.</strong> Selectors are iterators, and the consumer between
+two <code>yield return</code>s is the damage/ECA pipeline. Running that while the world is displaced by a
+rewind would apply effects against a world hundreds of milliseconds stale, so everything is
+materialised first and the scope closes before anything downstream runs. <code>GatherRewound</code> also
+means one scope for the whole gather rather than one per query — the registry refuses nested
+rewinds, so a selector invoked from inside somebody else's scope runs against that outer rewind
+instead of corrupting it.</p>
 <hr>
 <h2 id="4-selector-catalogue">4. Selector catalogue</h2>
 <h3 id="identity--event-resolved">Identity / event-resolved</h3>
@@ -368,28 +419,33 @@
 <th>Selector</th>
 <th>Shape</th>
 <th>Yields</th>
+<th>What caps it</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>AreaTargetSelector</code></td>
 <td>Sphere</td>
-<td>All colliders within <code>Radius</code></td>
+<td>Bodies within <code>Radius</code>, nearest first</td>
+<td><code>MaxHits</code>, applied after ranking and per-body dedupe</td>
 </tr>
 <tr>
 <td><code>ConeTargetSelector</code></td>
 <td>Cone</td>
-<td>Colliders within <code>Radius</code> and <code>Angle</code> of context's forward</td>
+<td>Bodies within <code>Radius</code> and <code>Angle</code> of context's forward, nearest first</td>
+<td><code>MaxHits</code>, same order</td>
 </tr>
 <tr>
 <td><code>LineTargetSelector</code></td>
 <td>Ray</td>
-<td>RaycastAll hits along context's forward for <code>Length</code></td>
+<td>Bodies along context's forward for <code>Length</code>, in ray order</td>
+<td><code>MaxHits</code> bodies, streamed as the ray is walked. <strong><code>MaxHits &lt;= 0</code> means pierce everything.</strong></td>
 </tr>
 <tr>
 <td><code>ChainTargetSelector</code></td>
 <td>Chained spheres</td>
-<td>Up to <code>ChainLength</code> targets, each within <code>ChainRadius</code> of the previous</td>
+<td>Up to <code>ChainLength</code> bodies, each the nearest unvisited one within <code>ChainRadius</code> of the previous</td>
+<td><code>ChainLength</code>. Its <code>MaxHits</code> field only sizes the per-jump buffer.</td>
 </tr>
 </tbody>
 </table>
@@ -404,11 +460,11 @@
 <tbody>
 <tr>
 <td><code>NearestTargetSelector</code></td>
-<td>The single closest candidate within <code>Radius</code> (excluding the context itself)</td>
+<td>The single closest candidate within <code>Radius</code> (excluding the context's own body). Its <code>MaxHits</code> field only sizes the buffer.</td>
 </tr>
 <tr>
 <td><code>FurthestTargetSelector</code></td>
-<td>The single furthest candidate within <code>Radius</code></td>
+<td>The single furthest candidate within <code>Radius</code> (same exclusion, same <code>MaxHits</code> caveat).</td>
 </tr>
 </tbody>
 </table>
@@ -423,7 +479,7 @@
 <tbody>
 <tr>
 <td><code>RandomTargetSelector</code></td>
-<td>One random candidate within <code>Radius</code>. Uses <code>eventData.RNG</code> when present for deterministic client/server agreement.</td>
+<td>One random candidate within <code>Radius</code>. Uses <code>eventData.RNG</code> when present, else a stream derived from the event's identity, for reproducible selection. Server-only.</td>
 </tr>
 </tbody>
 </table>
@@ -438,7 +494,7 @@
 <tbody>
 <tr>
 <td><code>AllCharactersTargetSelector</code></td>
-<td>Every <code>ICharacter</code> in the context's scene (toggles for inactive / unspawned).</td>
+<td>Every <code>ICharacter</code> in the <strong>context's</strong> scene — not the active scene (toggles for inactive / unspawned). Server-only.</td>
 </tr>
 <tr>
 <td><code>ChildrenTargetSelector</code></td>
@@ -482,7 +538,9 @@
 <li>Two actions on the same trigger:
 <ul>
 <li>Action A: <code>ApplyDamageAction</code> with no <code>TargetSelector</code> (uses event Target).</li>
-<li>Action B: <code>ApplyDamageAction</code> with <code>NearestTargetSelector</code> (configure to chain — use <code>AreaTargetSelector</code> with <code>MaxHits=4</code> for &quot;4 nearest&quot;).</li>
+<li>Action B: <code>ApplyDamageAction</code> with <code>AreaTargetSelector</code> and <code>MaxHits=4</code>. The cap is applied after a
+nearest-first sort, so it really does mean &quot;the 4 nearest&quot;. (Before the 2026-08-28 audit it sorted by
+network identity and the cap kept the four lowest ObjectIds regardless of distance.)</li>
 </ul>
 </li>
 <li>One action with <code>ChainTargetSelector</code> on the trigger.</li>
@@ -546,8 +604,52 @@
 <hr>
 <h2 id="7-determinism-notes">7. Determinism notes</h2>
 <ul>
-<li><code>RandomTargetSelector</code> and any value provider that rolls (<code>RandomRangeValue</code>, <code>RandomRangeFloatValue</code>, <code>ApplyDispelAction</code>) read <code>EventData.RNG</code>. Always seed <code>RNG</code> on <code>EventData</code> for events that originate from a deterministic context (ability casts, collisions). Selectors do <strong>not</strong> propagate or fork RNG state — <code>EventData.Fork</code> shares the same RNG reference so all downstream targets draw from one deterministic stream.</li>
-<li>Avoid <code>UnityEngine.Random</code> inside custom selectors. Use <code>eventData.RNG</code> instead.</li>
+<li><p><code>RandomTargetSelector</code> and any value provider that rolls (<code>RandomRangeValue</code>, <code>RandomRangeFloatValue</code>, <code>ApplyDispelAction</code>) read <code>EventData.RNG</code>. Always seed <code>RNG</code> on <code>EventData</code> for events that originate from a deterministic context (ability casts, collisions). Selectors do <strong>not</strong> propagate or fork RNG state — <code>EventData.Fork</code> shares the same RNG reference so all downstream targets draw from one deterministic stream.</p>
+</li>
+<li><p>Avoid <code>UnityEngine.Random</code> inside custom selectors. Use <code>eventData.RNG</code> instead.</p>
+</li>
+<li><p><strong>Ordering is part of determinism.</strong> Any selector that caps, takes &quot;the first&quot;, or rolls an index must
+impose a total order first — <code>TargetOrdering.SortByDistance</code> when the cap should mean &quot;nearest&quot;,
+<code>SortStable</code> when it should mean &quot;a stable set&quot;. Ties fall through to network ObjectId, then a hash of
+the name, then a hash of the authored world position, then buffer position. Never break a tie on
+<code>GetInstanceID()</code>: it is a per-process number and puts two same-named scene objects in a different
+order on each peer.</p>
+</li>
+<li><p><strong>Query wide, cap late.</strong> Size the physics buffer with <code>TargetSelector.QueryBufferSize(MaxHits)</code>, never
+at <code>MaxHits</code> — a buffer the size of the cap lets the broadphase choose which candidates the sort ever
+sees, in its own order. Then <strong>re-query while the buffer comes back full</strong>
+(<code>TargetOrdering.TryGrowQueryBuffer</code>): a non-allocating query returns at most <code>buffer.Length</code> results
+and says nothing about how many it discarded. <code>TryGrowQueryBuffer</code> is grow-only — a
+reallocate-on-mismatch would silently undo the previous cast's growth every time.</p>
+</li>
+<li><p><strong>The pipeline is fixed: query → grow while full → resolve hit root → rank → dedupe by body → cap.</strong>
+Each step is where it is for a reason:</p>
+<ul>
+<li><em>Resolve</em> through <code>TargetOrdering.ResolveHitKey</code>, never a bare <code>GetComponent</code> on the collider. A
+character is free to hang its hitbox off a child transform, and a bare lookup finds no <code>ICharacter</code>
+there — such a character is invisible to the selector while remaining perfectly able to fight back.</li>
+<li><em>Dedupe after the sort, before the cap.</em> The entry kept for a body is the first one met, which on a
+distance-ordered list is that body's nearest collider. Deduping earlier keeps an arbitrary one;
+capping earlier counts colliders instead of bodies, so a target rigged with two hitboxes eats two
+slots of <code>MaxHits</code>.</li>
+<li><em>Cap last.</em> Capping the raw overlap orders an arbitrary subset chosen by the broadphase.</li>
+</ul>
+</li>
+<li><p><strong><code>MaxHits &lt;= 0</code> means uncapped, everywhere.</strong> <code>TargetOrdering.CappedCount</code> defines it and every
+selector and action matches. A beam authored with <code>MaxHits = 0</code> pierces everything on the line.</p>
+</li>
+<li><p><strong>A capped selection must never be computed by a peer that cannot agree on the answer.</strong> A
+distance-ordered cap cannot be made peer-agreed by arithmetic, because peers hold different
+positions — identity order is the only perfectly agreed key and it is gameplay nonsense. So every
+capped selection must be either <strong>(a)</strong> server-only, or <strong>(b)</strong> run inside a rewind to the caster's
+view, where both peers see the same world. Every selector here is (a) via <code>IsAuthoritativePeer</code>, and
+additionally (b) via <code>GatherRewound</code>. A selector that is neither is a bug, and a different bug from
+cap ordering.</p>
+</li>
+<li><p><strong>Rank inside the rewind scope.</strong> <code>GatherRewound</code> holds one scope open across the query, the ranking
+and the conditions. Measuring distances after the scope closes selects out of the caster's world and
+then decides between the candidates using the server's — at 300 ms, a different answer.</p>
+</li>
 </ul>
 <hr>
 <h2 id="8-writing-a-new-selector">8. Writing a new selector</h2>
@@ -556,9 +658,21 @@
 <li>Inherit <code>TargetSelector</code>, mark <code>[Serializable]</code>.</li>
 <li>Implement <code>SelectTargets(EventData)</code> using the skeleton above.</li>
 <li>Surface tunable fields with <code>[Tooltip]</code> so they render usefully in the Inspector.</li>
-<li>Reuse a preallocated <code>Collider[] hits</code> buffer for physics queries (see <code>AreaTargetSelector</code>).</li>
-<li>If your selector references scene physics, query <code>context.scene.GetPhysicsScene()</code> rather than the global physics scene — this keeps multi-scene servers correct.</li>
-<li>For every yielded candidate, call <code>AreConditionsMet(candidate, eventData)</code> so designers' per-candidate condition filters work uniformly.</li>
+<li>Gate on <code>IsAuthoritativePeer(eventData)</code> first. A physics query is not reproducible across peers,
+so it runs where hits are authoritative and nowhere else.</li>
+<li>Gather <strong>eagerly</strong> through <code>GatherRewound</code>, then yield from the materialised list. Never <code>yield</code>
+while the world is displaced.</li>
+<li>Allocate the hit buffer <strong>locally</strong>, not as a shared field. A candidate's conditions can themselves
+carry selectors and fire nested triggers, so a shared scratch buffer is one authored composition
+away from being cleared out from under the gather that owns it.</li>
+<li>Size it with <code>QueryBufferSize(MaxHits)</code> and re-query through <code>TargetOrdering.TryGrowQueryBuffer</code>
+until it stops coming back full.</li>
+<li>If your selector references scene physics, query <code>context.scene.GetPhysicsScene()</code> rather than the
+global physics scene — this keeps multi-scene servers correct. (<code>Physics.OverlapSphere</code> searches the
+default scene, which on a scene server holds none of these colliders.)</li>
+<li>For every yielded candidate, call <code>AreConditionsMet(candidate, eventData)</code> so designers'
+per-candidate condition filters work uniformly.</li>
+<li>If you cap, follow the fixed pipeline in <a href="#7-determinism-notes">7. Determinism notes</a> exactly.</li>
 </ol>
 <hr>
 <h2 id="9-quick-reference-lifecycle-invariants">9. Quick reference: lifecycle invariants</h2>

@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Database_Npgsql_SchemaValidationResult" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult" class="text-break">
-Class SchemaValidationResult  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L13"><i class="bi bi-code-slash"></i></a>
+Class SchemaValidationResult  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L24"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -148,6 +148,17 @@ Class SchemaValidationResult  <a class="header-action link-secondary" title="Vie
   <div class="markdown level0 remarks"><p>Produced by <a class="xref" href="FishMMO.Database.Npgsql.NpgsqlDbContextFactory.html#FishMMO_Database_Npgsql_NpgsqlDbContextFactory_ValidateSchemaAsync_System_Threading_CancellationToken_">ValidateSchemaAsync(CancellationToken)</a>. Deliberately a
 report rather than a thrown exception: whether a schema mismatch should stop a server or
 merely warn depends on the server, and that call belongs to the caller.</p>
+<p>
+This reports <b>pending migrations only</b>. It does not detect model drift — an entity
+changed with no migration generated for it. That check existed here and never worked: EF
+builds <code>ModelSnapshot.Model</code> with an empty convention set, so the relational model the
+differ needs is never attached and the comparison threw on every single startup. EF Core 5
+exposes no supported way to rebuild it (<code>SnapshotModelProcessor</code> is design-time only;
+<code>IModelRuntimeInitializer</code> and <code>HasPendingModelChanges</code> both postdate it), so the
+check was removed rather than left reporting a failure forever. See issue #162. Drift is
+caught by scaffolding a migration and asserting it is empty, which belongs in CI where the
+design-time package is available.
+</p>
 </div>
 
 
@@ -157,9 +168,9 @@ merely warn depends on the server, and that call belongs to the caller.</p>
 
   <a id="FishMMO_Database_Npgsql_SchemaValidationResult__ctor_" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.#ctor*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult__ctor_System_String___System_Boolean_System_Boolean_System_String_System_String_" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.#ctor(System.String[],System.Boolean,System.Boolean,System.String,System.String)">
-  SchemaValidationResult(string[], bool, bool, string?, string?)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L60"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult__ctor_System_String___System_String_" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.#ctor(System.String[],System.String)">
+  SchemaValidationResult(string[], string?)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L51"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Creates a result.</p>
@@ -167,20 +178,14 @@ merely warn depends on the server, and that call belongs to the caller.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public SchemaValidationResult(string[] pendingMigrations, bool modelChangedSinceLastMigration, bool driftCheckFailed, string? unavailableReason, string? driftCheckFailureReason = null)</code></pre>
+    <pre><code class="lang-csharp hljs">public SchemaValidationResult(string[] pendingMigrations, string? unavailableReason)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>pendingMigrations</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a>[]</dt>
     <dd></dd>
-    <dt><code>modelChangedSinceLastMigration</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
-    <dd></dd>
-    <dt><code>driftCheckFailed</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
-    <dd></dd>
     <dt><code>unavailableReason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd></dd>
-    <dt><code>driftCheckFailureReason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd></dd>
   </dl>
 
@@ -199,80 +204,14 @@ merely warn depends on the server, and that call belongs to the caller.</p>
 </h2>
 
 
-  <a id="FishMMO_Database_Npgsql_SchemaValidationResult_DriftCheckFailed_" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.DriftCheckFailed*"></a>
-
-  <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult_DriftCheckFailed" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.DriftCheckFailed">
-  DriftCheckFailed
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L28"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>True when drift could not be evaluated. The pending-migration list is still valid;
-only the model comparison was skipped.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public bool DriftCheckFailed { get; }</code></pre>
-  </div>
-
-
-
-
-
-  <h4 class="section">Property Value</h4>
-  <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
-
-
-
-
-  <a id="FishMMO_Database_Npgsql_SchemaValidationResult_DriftCheckFailureReason_" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.DriftCheckFailureReason*"></a>
-
-  <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult_DriftCheckFailureReason" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.DriftCheckFailureReason">
-  DriftCheckFailureReason
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L55"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Why the drift check could not be evaluated, or null. Only meaningful when
-<a class="xref" href="FishMMO.Database.Npgsql.SchemaValidationResult.html#FishMMO_Database_Npgsql_SchemaValidationResult_DriftCheckFailed">DriftCheckFailed</a> is set.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public string? DriftCheckFailureReason { get; }</code></pre>
-  </div>
-
-
-
-
-
-  <h4 class="section">Property Value</h4>
-  <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
-
-
-
-
   <a id="FishMMO_Database_Npgsql_SchemaValidationResult_IsUpToDate_" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.IsUpToDate*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult_IsUpToDate" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.IsUpToDate">
   IsUpToDate
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L45"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L44"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>True when the check ran, every part of it was evaluated, and it found nothing wrong.</p>
+  <div class="markdown level1 summary"><p>True when the check ran and found no pending migrations.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -294,44 +233,11 @@ only the model comparison was skipped.</p>
 
 
   <h4 class="section" id="FishMMO_Database_Npgsql_SchemaValidationResult_IsUpToDate_remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Database.Npgsql.SchemaValidationResult.html#FishMMO_Database_Npgsql_SchemaValidationResult_DriftCheckFailed">DriftCheckFailed</a> is part of this deliberately. A drift check that could
-not run has not established that the schema matches — reporting that state as
-up-to-date turns &quot;unknown&quot; into a positive all-clear, which is the one answer worse
-than saying nothing.</p>
+  <div class="markdown level1 remarks"><p>This is narrower than &quot;the schema matches the entity model&quot;, and deliberately so. An
+entity changed without a migration generated leaves nothing pending and still reports
+up to date here — see the remarks on the class for why that gap is not closed at
+runtime.</p>
 </div>
-
-
-
-
-  <a id="FishMMO_Database_Npgsql_SchemaValidationResult_ModelChangedSinceLastMigration_" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.ModelChangedSinceLastMigration*"></a>
-
-  <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult_ModelChangedSinceLastMigration" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.ModelChangedSinceLastMigration">
-  ModelChangedSinceLastMigration
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L22"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>True when the entity model has changed since the newest migration was created, so no
-migration covering the change exists yet.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public bool ModelChangedSinceLastMigration { get; }</code></pre>
-  </div>
-
-
-
-
-
-  <h4 class="section">Property Value</h4>
-  <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
 
 
 
@@ -340,7 +246,7 @@ migration covering the change exists yet.</p>
 
   <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult_PendingMigrations" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.PendingMigrations">
   PendingMigrations
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L16"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L27"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Migrations that exist but have not been applied to this database.</p>
@@ -372,7 +278,7 @@ migration covering the change exists yet.</p>
 
   <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult_UnavailableReason" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.UnavailableReason">
   UnavailableReason
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L34"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L33"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Why the check could not run at all, or null when it ran. When set, every other
@@ -409,7 +315,7 @@ property is meaningless — nothing was determined.</p>
 
   <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult_DescribeProblem" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.DescribeProblem">
   DescribeProblem()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L85"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L73"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Builds an operator-facing description of what is wrong and the command that fixes it,
@@ -447,7 +353,7 @@ connect that to a migration they were never told to run.</p>
 
   <h3 id="FishMMO_Database_Npgsql_SchemaValidationResult_Unavailable_System_String_" data-uid="FishMMO.Database.Npgsql.SchemaValidationResult.Unavailable(System.String)">
   Unavailable(string?)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L73"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/SchemaValidationResult.cs/#L61"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Creates a result for a check that could not be performed.</p>

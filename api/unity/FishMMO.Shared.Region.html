@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class Region | FishMMO Documentation ">
       
-      <meta name="description" content="Represents a networked region in the game world. Handles region hierarchy, collider setup, and triggers region actions on player entry, stay, and exit.">
+      <meta name="description" content="Represents a networked region in the game world. Handles region hierarchy, collider setup, and triggers region actions on player entry, stay, and exit.  Membership is tracked locally in a  rather than trusting the NetworkCollider callbacks one-for-one: FishNet re-polls colliders during prediction reconcile replay (and we deliberately fire nothing while a character teleports), so callbacks that arrive while suppressed are recorded only and the resulting Enter/Exit is raised exactly once on the next non-reconciling post-tick via a raw-vs-effective diff. Stay never fires during replay.   Hierarchy: a child region takes ownership of a character standing inside it. Every ancestor receives a paired Exit only if it had raised an Enter, and a parent re-Enters when the last child releases the character while it is still physically inside the parent. Parent Stay is suppressed while any descendant owns the character.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_Region" data-uid="FishMMO.Shared.Region" class="text-break">
-Class Region  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L14"><i class="bi bi-code-slash"></i></a>
+Class Region  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L27"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -98,6 +98,19 @@ Class Region  <a class="header-action link-secondary" title="View source" href="
   </div>
 
   <div class="markdown summary"><p>Represents a networked region in the game world. Handles region hierarchy, collider setup, and triggers region actions on player entry, stay, and exit.</p>
+<p>
+Membership is tracked locally in a <a class="xref" href="FishMMO.Shared.RegionMembership-1.html">RegionMembership&lt;T&gt;</a> rather than trusting the
+NetworkCollider callbacks one-for-one: FishNet re-polls colliders during prediction reconcile
+replay (and we deliberately fire nothing while a character teleports), so callbacks that arrive
+while suppressed are recorded only and the resulting Enter/Exit is raised exactly once on the
+next non-reconciling post-tick via a raw-vs-effective diff. Stay never fires during replay.
+</p>
+<p>
+Hierarchy: a child region takes ownership of a character standing inside it. Every ancestor
+receives a paired Exit only if it had raised an Enter, and a parent re-Enters when the last
+child releases the character while it is still physically inside the parent. Parent Stay is
+suppressed while any descendant owns the character.
+</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -182,12 +195,6 @@ public class Region : NetworkBehaviour</code></pre>
       <span class="xref">NetworkBehaviour.ReadPayload(NetworkConnection, Reader)</span>
     </div>
     <div>
-      <span class="xref">NetworkBehaviour.OnStartNetwork()</span>
-    </div>
-    <div>
-      <span class="xref">NetworkBehaviour.OnStopNetwork()</span>
-    </div>
-    <div>
       <span class="xref">NetworkBehaviour.OnStartServer()</span>
     </div>
     <div>
@@ -213,6 +220,9 @@ public class Region : NetworkBehaviour</code></pre>
     </div>
     <div>
       <span class="xref">NetworkBehaviour.ClearBuffedRpcs()</span>
+    </div>
+    <div>
+      <span class="xref">NetworkBehaviour.ExcludeOwnerFromUnbufferedObserversRpcs</span>
     </div>
     <div>
       <span class="xref">NetworkBehaviour.IsClientOnly</span>
@@ -713,6 +723,12 @@ public class Region : NetworkBehaviour</code></pre>
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsByType(Type, FindObjectsInactive, FindObjectsSortMode)</a>
     </div>
     <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsByType(Type)</a>
+    </div>
+    <div>
+      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsByType(Type, FindObjectsInactive)</a>
+    </div>
+    <div>
       <span class="xref">Object.DontDestroyOnLoad(Object)</span>
     </div>
     <div>
@@ -756,6 +772,12 @@ public class Region : NetworkBehaviour</code></pre>
     </div>
     <div>
       <span class="xref">Object.FindAnyObjectByType&lt;T&gt;(FindObjectsInactive)</span>
+    </div>
+    <div>
+      <span class="xref">Object.FindObjectsByType&lt;T&gt;()</span>
+    </div>
+    <div>
+      <span class="xref">Object.FindObjectsByType&lt;T&gt;(FindObjectsInactive)</span>
     </div>
     <div>
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.type">Object.FindObjectsOfTypeAll(Type)</a>
@@ -810,7 +832,7 @@ public class Region : NetworkBehaviour</code></pre>
 
   <h3 id="FishMMO_Shared_Region_Children" data-uid="FishMMO.Shared.Region.Children">
   Children
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L26"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L39"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The child regions nested under this region. Managed at runtime.</p>
@@ -842,7 +864,7 @@ public List&lt;Region&gt; Children</code></pre>
 
   <h3 id="FishMMO_Shared_Region_Collider" data-uid="FishMMO.Shared.Region.Collider">
   Collider
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L36"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L49"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The collider that defines the region's bounds.</p>
@@ -873,7 +895,7 @@ public List&lt;Region&gt; Children</code></pre>
 
   <h3 id="FishMMO_Shared_Region_GizmoColor" data-uid="FishMMO.Shared.Region.GizmoColor">
   GizmoColor
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L136"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L207"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The color used to draw the region's gizmo in the editor.</p>
@@ -904,7 +926,7 @@ public List&lt;Region&gt; Children</code></pre>
 
   <h3 id="FishMMO_Shared_Region_OnRegionEnter" data-uid="FishMMO.Shared.Region.OnRegionEnter">
   OnRegionEnter
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L47"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L60"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Triggers to invoke when a player enters the region.</p>
@@ -935,7 +957,7 @@ public List&lt;Region&gt; Children</code></pre>
 
   <h3 id="FishMMO_Shared_Region_OnRegionExit" data-uid="FishMMO.Shared.Region.OnRegionExit">
   OnRegionExit
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L57"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L70"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Triggers to invoke when a player exits the region.</p>
@@ -966,7 +988,7 @@ public List&lt;Region&gt; Children</code></pre>
 
   <h3 id="FishMMO_Shared_Region_OnRegionStay" data-uid="FishMMO.Shared.Region.OnRegionStay">
   OnRegionStay
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L52"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L65"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Triggers to invoke while a player stays in the region.</p>
@@ -997,7 +1019,7 @@ public List&lt;Region&gt; Children</code></pre>
 
   <h3 id="FishMMO_Shared_Region_Parent" data-uid="FishMMO.Shared.Region.Parent">
   Parent
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L20"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L33"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The parent region in the hierarchy. Used for nested region logic.</p>
@@ -1028,7 +1050,7 @@ public List&lt;Region&gt; Children</code></pre>
 
   <h3 id="FishMMO_Shared_Region_Terrain" data-uid="FishMMO.Shared.Region.Terrain">
   Terrain
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L42"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L55"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Optional terrain reference. If set, overrides collider bounds to match terrain size (requires BoxCollider).</p>
@@ -1065,7 +1087,7 @@ public Terrain Terrain</code></pre>
 
   <h3 id="FishMMO_Shared_Region_Name" data-uid="FishMMO.Shared.Region.Name">
   Name
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L31"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L44"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The name of the region, taken from the GameObject's name.</p>
@@ -1085,6 +1107,105 @@ public Terrain Terrain</code></pre>
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd></dd>
   </dl>
+
+
+
+
+
+
+
+
+  <h2 class="section" id="methods">Methods
+</h2>
+
+
+  <a id="FishMMO_Shared_Region_Contains_" data-uid="FishMMO.Shared.Region.Contains*"></a>
+
+  <h3 id="FishMMO_Shared_Region_Contains_FishMMO_Shared_Core_IPlayerCharacter_" data-uid="FishMMO.Shared.Region.Contains(FishMMO.Shared.Core.IPlayerCharacter)">
+  Contains(IPlayerCharacter)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L95"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>True when an Enter has been raised for <code class="paramref">character</code> and no Exit yet.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool Contains(IPlayerCharacter character)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>character</code> <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_Region_OnStartNetwork_" data-uid="FishMMO.Shared.Region.OnStartNetwork*"></a>
+
+  <h3 id="FishMMO_Shared_Region_OnStartNetwork" data-uid="FishMMO.Shared.Region.OnStartNetwork">
+  OnStartNetwork()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L154"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Called when the network has initialized this object. May be called for server or client but will only be called once.
+When as host or server this method will run before OnStartServer.
+When as client only the method will run before OnStartClient.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnStartNetwork()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Shared_Region_OnStopNetwork_" data-uid="FishMMO.Shared.Region.OnStopNetwork*"></a>
+
+  <h3 id="FishMMO_Shared_Region_OnStopNetwork" data-uid="FishMMO.Shared.Region.OnStopNetwork">
+  OnStopNetwork()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Region/Region.cs/#L164"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Called when the network is deinitializing this object. May be called for server or client but will only be called once.
+When as host or server this method will run after OnStopServer.
+When as client only this method will run after OnStopClient.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void OnStopNetwork()</code></pre>
+  </div>
+
+
+
+
+
 
 
 

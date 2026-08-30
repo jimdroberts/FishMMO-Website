@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class CharacterReconcileDataDeltaSerializer | FishMMO Documentation ">
       
-      <meta name="description" content="Custom delta serializers for .  Delta serializer: Writes a 2-byte bitmask (11 bits for 11 fields) followed by delta-encoded values for only the changed fields. The nested  and  use their own delta serializers, so savings compound. Cooldowns, buffs, and non-resource attributes use index-delta compression via , , and .">
+      <meta name="description" content="Custom delta serializers for .  Delta serializer: Writes a 2-byte bitmask (12 bits for 12 fields) followed by delta-encoded values for only the changed fields. The nested  and  use their own delta serializers, so savings compound. Cooldowns, buffs, and non-resource attributes use index-delta compression via , , and .">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_CharacterReconcileDataDeltaSerializer" data-uid="FishMMO.Shared.CharacterReconcileDataDeltaSerializer" class="text-break">
-Class CharacterReconcileDataDeltaSerializer  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReconcileDataDeltaSerializer.cs/#L19"><i class="bi bi-code-slash"></i></a>
+Class CharacterReconcileDataDeltaSerializer  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReconcileDataDeltaSerializer.cs/#L20"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -99,7 +99,7 @@ Class CharacterReconcileDataDeltaSerializer  <a class="header-action link-second
 
   <div class="markdown summary"><p>Custom delta serializers for <a class="xref" href="FishMMO.Shared.CharacterReconcileData.html">CharacterReconcileData</a>.</p>
 <p>
-<b>Delta serializer</b>: Writes a 2-byte bitmask (11 bits for 11 fields)
+<b>Delta serializer</b>: Writes a 2-byte bitmask (12 bits for 12 fields)
 followed by delta-encoded values for only the changed fields.
 The nested <span class="xref">KinematicCharacterController.KinematicCharacterMotorState</span> and
 <a class="xref" href="FishMMO.Shared.CharacterAttributeResourceState.html">CharacterAttributeResourceState</a> use their own delta serializers,
@@ -166,7 +166,7 @@ and <a class="xref" href="FishMMO.Shared.AttributeReconcileEntry.html">Attribute
 
   <h3 id="FishMMO_Shared_CharacterReconcileDataDeltaSerializer_ReadCharacterReconcileData_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.CharacterReconcileDataDeltaSerializer.ReadCharacterReconcileData(FishNet.Serializing.Reader)">
   ReadCharacterReconcileData(Reader)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReconcileDataDeltaSerializer.cs/#L172"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReconcileDataDeltaSerializer.cs/#L254"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Custom full deserializer: reads all fields of <a class="xref" href="FishMMO.Shared.CharacterReconcileData.html">CharacterReconcileData</a>.
@@ -204,7 +204,7 @@ Must read in the same order as <a class="xref" href="FishMMO.Shared.CharacterRec
 
   <h3 id="FishMMO_Shared_CharacterReconcileDataDeltaSerializer_WriteCharacterReconcileData_FishNet_Serializing_Writer_FishMMO_Shared_CharacterReconcileData_" data-uid="FishMMO.Shared.CharacterReconcileDataDeltaSerializer.WriteCharacterReconcileData(FishNet.Serializing.Writer,FishMMO.Shared.CharacterReconcileData)">
   WriteCharacterReconcileData(Writer, CharacterReconcileData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReconcileDataDeltaSerializer.cs/#L80"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterReconcileDataDeltaSerializer.cs/#L119"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Custom full serializer: writes all fields of <a class="xref" href="FishMMO.Shared.CharacterReconcileData.html">CharacterReconcileData</a>.
@@ -231,6 +231,21 @@ Nested types use their full serializers. Arrays write count + entries.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Shared_CharacterReconcileDataDeltaSerializer_WriteCharacterReconcileData_FishNet_Serializing_Writer_FishMMO_Shared_CharacterReconcileData__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+<b>Framed by a byte count</b>, the same shape the four <code>WritePayload</code> implementations
+use and for the same reason. FishNet packs every predicted behaviour's reconcile into one
+<code>StateUpdate</code> reader, so a reader that stops early does not merely lose its own state
+— every behaviour after it decodes from the wrong offset.
+</p>
+<p>
+<a class="xref" href="FishMMO.Shared.CharacterReconcileDataDeltaSerializer.html#FishMMO_Shared_CharacterReconcileDataDeltaSerializer_ReadCharacterReconcileData_FishNet_Serializing_Reader_">ReadCharacterReconcileData(Reader)</a> has four defensive aborts for array counts that
+cannot be trusted, and no way to drain past them: the per-entry sizes it would need to skip
+are derived from the count it just rejected. The length recorded here is what lets it
+resynchronise instead. Four bytes, and only on the absolute form — which FishNet emits once
+per second per owner, not on the per-tick deltas.
+</p>
+</div>
 
 
 

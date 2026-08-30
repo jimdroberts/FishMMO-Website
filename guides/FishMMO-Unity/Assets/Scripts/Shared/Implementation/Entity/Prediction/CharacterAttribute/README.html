@@ -100,7 +100,11 @@
 <li><a href="#installation--build">Installation / Build</a></li>
 <li><a href="#quick-start-guides">Quick Start Guides</a></li>
 <li><a href="#configuration">Configuration</a></li>
-<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#usage-examples">Usage Examples</a>
+<ul>
+<li><a href="#the-attributed-modifier-ledger">The attributed-modifier ledger</a></li>
+</ul>
+</li>
 <li><a href="#operational-checks">Operational Checks</a></li>
 <li><a href="#flow-diagram">Flow Diagram</a></li>
 <li><a href="#project-structure">Project Structure</a></li>
@@ -146,9 +150,9 @@
 <li>Formula-driven modifiers (flat bonus, percentage bonus) via ScriptableObject templates</li>
 <li>Depletable resource attributes (Health, Mana, Stamina) with current/max tracking</li>
 <li>Damage and resistance calculations with linked damage/resistance template pairs</li>
-<li>Tick-based regeneration (configurable <code>regenTickRate</code>, default 5 seconds) for resource attributes</li>
-<li>External modifier accumulation from items, buffs, and region effects — preserved across formula recalculations</li>
-<li>FishNet network synchronization with owner and observer broadcast paths</li>
+<li>Tick-based regeneration on a <strong>1 second pulse</strong> (<code>regenTickRate</code>), delivering a share of the amount authored against a 5 second window (<code>REGEN_AUTHORING_WINDOW_SECONDS</code>), so the pulse got finer without getting stronger. A 1 second consumption lockout suppresses regen right after a spend.</li>
+<li>An <strong>attributed-modifier ledger</strong>: every external contribution is keyed by <code>ModifierSource(Kind, Id, Index)</code> so it can be restated idempotently and released by contributor, and the server's total is installed as a residual over whatever this peer has attributed</li>
+<li>Two distinct sync paths, because state forwarding is off: the owner reconciles every tick, observers receive <code>CharacterAttributesBroadcast</code> / <code>CharacterResourcesBroadcast</code> on a change-driven scheduler</li>
 <li>Replicate/Reconcile prediction support via <code>IPredictableController</code> (Order=95) and <code>CharacterAttributeResourceState</code> snapshots</li>
 <li>Static events for damage, kill, and heal for cross-system integration</li>
 <li>Immortality flag to prevent all damage and kill processing</li>
@@ -173,7 +177,7 @@
 <li><strong>Assign formulas</strong> — In each template's <code>Formulas</code> dictionary, map child templates to <code>CharacterAttributeFormulaTemplate</code> assets (<code>FlatBonusFormulaTemplate</code> or <code>PercentageBonusFormulaTemplate</code>).</li>
 <li><strong>Attach controllers</strong> — Add <code>CharacterAttributeController</code> and <code>CharacterDamageController</code> NetworkBehaviour components to your character prefab.</li>
 <li><strong>Runtime wiring</strong> — On initialization the controller calls <code>AddDependents()</code> which resolves all parent, child, and dependency links between attribute instances.</li>
-<li><strong>External modifiers</strong> — Call <code>AddModifier(amount)</code> on any attribute to apply item, buff, or region bonuses. These persist across formula recalculations.</li>
+<li><strong>External modifiers</strong> — Call <code>SetSource(ModifierSource, value)</code> on any attribute to state an item, buff, dungeon-scaling, NPC or region bonus, and <code>ClearSourceGroup(kind, id)</code> to release everything one contributor added. These persist across formula recalculations. <code>SetSource</code> states a whole contribution rather than adding to one, so restating the same value every tick is idempotent — which is what makes an <code>OnRegionStay</code> trigger usable at all.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
 <h3 id="template-properties">Template Properties</h3>
@@ -291,7 +295,7 @@
 </tr>
 <tr>
 <td><code>ExternalModifier</code></td>
-<td>Accumulated from external sources (items, buffs, regions). Persistent across recalculations.</td>
+<td>The <strong>sum of the attributed ledger</strong> — one named entry per contributor (items, buffs, regions, dungeon scaling, NPC bonuses, and the server's residual). Persistent across recalculations.</td>
 </tr>
 <tr>
 <td><code>FinalValue</code></td>
@@ -318,19 +322,148 @@
 </tr>
 </tbody>
 </table>
+<h3 id="the-attributed-modifier-ledger">The attributed-modifier ledger</h3>
+<p><code>ExternalModifier</code> is not a running total that anyone may add to. It is the sum of a list of
+named contributions, each keyed by a <code>ModifierSource</code> — a <code>(Kind, Id, Index)</code> triple:</p>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Id</th>
+<th>Index</th>
+<th>Written by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Item</code></td>
+<td><code>Item.ID</code></td>
+<td>item-attribute template id</td>
+<td><code>ItemGenerator.ApplyAttributes</code></td>
+</tr>
+<tr>
+<td><code>Buff</code></td>
+<td>buff template id</td>
+<td>position in <code>BonusAttributes</code></td>
+<td><code>AttributeBuffTemplate</code> and friends</td>
+</tr>
+<tr>
+<td><code>Region</code></td>
+<td>region <code>NetworkObject.ObjectId</code></td>
+<td>authored entry index</td>
+<td><code>ApplyRegionAttributeAction</code></td>
+</tr>
+<tr>
+<td><code>DungeonScaling</code></td>
+<td>scalar template id</td>
+<td>—</td>
+<td><code>NPC</code></td>
+</tr>
+<tr>
+<td><code>NpcBonus</code></td>
+<td>template id</td>
+<td>entry index</td>
+<td><code>NPC</code></td>
+</tr>
+<tr>
+<td><code>Authoritative</code></td>
+<td>—</td>
+<td>—</td>
+<td>the server's total, installed as a residual</td>
+</tr>
+<tr>
+<td><code>Unattributed</code></td>
+<td>—</td>
+<td>—</td>
+<td><code>AddModifier</code>, which has no production caller</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why it exists.</strong> Every contributor used to call <code>AddModifier(delta)</code> and nothing recorded who
+had added what, so releasing a contribution meant adding its negation and trusting that the value
+being subtracted was still the value that had been added. Nothing enforced that. <code>SetSource</code>
+states a whole contribution instead, so restating it is idempotent and <code>ClearSourceGroup(kind, id)</code>
+releases everything one contributor wrote whatever it keyed the entries as — which means the apply
+and release halves do not have to agree on an index scheme forever.</p>
+<p><strong>The <code>Index</code> matters.</strong> Two authored entries may name the same attribute — a flat part and a
+scalar part — and a single key per contributor would silently keep only the last of them.</p>
+<h4 id="the-authoritative-residual">The authoritative residual</h4>
+<p>The server's total arrives at the owner every tick and it already contains every buff and every
+equipped item, because the server computed it by applying them. The owner has ALSO applied them
+locally, because that is what predicting them means. So the total is installed as a <strong>residual</strong>:</p>
+<pre><code>Authoritative = serverTotal - (sum of everything this peer has attributed)
+ExternalModifier = serverTotal        // by construction
+</code></pre>
+<p>This is not compensating for a mistake — the double application is structural and there is no
+upstream fix short of giving up prediction of equip and buff bonuses. The residual is what
+reconciles the two views, and it can legitimately go <strong>negative</strong> when the owner has predicted a
+bonus the server has not granted yet.</p>
+<p><strong>Where it can be briefly wrong.</strong> The residual is derived at install time from whatever was
+attributed <em>then</em>. If a total lands before its contributor is applied locally, the residual
+absorbs the contributor and the next local apply counts it twice — until the next install
+re-derives it. That window is <strong>zero</strong> for the reconcile path, because <code>IPredictableController.Order</code>
+runs <code>BuffController</code> (85) and <code>EquipmentController</code> (93) before <code>CharacterAttributeController</code>
+(95) in the same pass, so contributors are settled before the total is installed. For an
+out-of-band apply it is one tick.</p>
+<h4 id="pooled-characters">Pooled characters</h4>
+<p><code>RestoreTemplateBaseline</code> must use <code>ClearAllModifierSources()</code>, never <code>SetModifierDirect(0)</code>. The
+latter installs an authoritative residual of minus the attributed sum — a total of zero today, and
+the previous occupant's items and buffs still sitting in the ledger for the next one.</p>
 <h3 id="network-synchronization">Network Synchronization</h3>
 <h4 id="payload-serialization-fishnet-readerwriter">Payload Serialization (FishNet Reader/Writer)</h4>
-<ul>
-<li><strong>WritePayload</strong>: Writes <code>(templateID, value)</code> for regular attributes; <code>(templateID, value, currentValue)</code> for resource attributes. Used during initial spawn / state transfer only.</li>
-<li><strong>ReadPayload</strong>: Reads and applies via <code>SetAttribute()</code> / <code>SetResourceAttribute()</code>.</li>
-</ul>
+<p>The spawn payload has <strong>two shapes</strong>, chosen per connection by <code>PayloadVisibility.IsOwner</code>, and
+the shape flag is carried in the stream rather than re-derived at read time. The whole block is
+framed by a 4-byte length prefix: every <code>NetworkBehaviour</code> on an object shares one unframed
+buffer, so a reader that stopped early would leave every behaviour after it reading from the
+wrong offset. Every defensive abort seeks to the end of the frame before returning.</p>
+<table>
+<thead>
+<tr>
+<th>Shape</th>
+<th>Regular attributes</th>
+<th>Resource attributes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Owner</strong></td>
+<td><code>(templateID, value)</code> — base only</td>
+<td><code>(templateID, value, currentValue)</code> — base only</td>
+</tr>
+<tr>
+<td><strong>Observer</strong></td>
+<td><code>(templateID, value, externalModifier)</code></td>
+<td><code>(templateID, value, currentValue, externalModifier)</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The external modifier goes to observers only, and the asymmetry is the point.</strong> It is the
+server's TOTAL, so it already contains every buff and every equipped item. An observer applies
+none of those locally — <code>BuffController.MaterializeObservedBuffs</code> deliberately bypasses
+<code>Apply</code>/<code>Remove</code>, and <code>EquipmentController</code> equips an observer's items silently — so the total is
+the only thing it has and it is complete. The owner DOES apply them locally, as predictions, so
+sending it the total as well would double every bonus. The owner instead builds its external
+modifier from the buff and equipment restores that follow, and completes it on the first
+reconcile's authoritative residual, which is the only thing that carries the region,
+dungeon-scaling and NPC-bonus contributions no client can reconstruct.</p>
+<p>The owner's resource <em>current</em> values are deferred to <code>OnStartNetwork</code> rather than applied during
+the read: a depletable value is clamped against its maximum, and the owner's maximum is not
+complete until the buff and equipment restores have run.</p>
 <h4 id="reconcile-driven-synchronization-unified">Reconcile-Driven Synchronization (unified)</h4>
-<p><strong>There are no client broadcast handlers for attributes.</strong> Both base (non-resource) and
-resource attributes are replicated each prediction tick via <code>CharacterReconcileData</code>
-and reach owner <em>and</em> observers automatically through FishNet Prediction V2 state
-forwarding. The previous <code>CharacterAttributeUpdateBroadcast</code> /
-<code>CharacterAttributeUpdateMultipleBroadcast</code> / <code>CharacterObserverAttributeUpdateBroadcast</code>
-types were removed entirely along with the per-tick dirty-flush pipeline.</p>
+<p><strong>State forwarding is OFF for playable characters, and that is the intended configuration.</strong>
+Observers do not simulate their peers, so there are two distinct delivery paths and they carry
+different things:</p>
+<ul>
+<li><strong>The owner</strong> receives every attribute each prediction tick via <code>CharacterReconcileData</code>
+(<code>Attributes[]</code> for non-resource attributes, <code>ResourceState</code> for HP/MP/Stamina). This is the
+only path that carries the authoritative residual.</li>
+<li><strong>Observers</strong> receive <code>CharacterAttributesBroadcast</code> and <code>CharacterResourcesBroadcast</code> — real
+broadcasts, never RPCs, sent to the observer set except the owner. Resources are pushed on a
+scheduler rather than per tick: <code>observedResourcePushInterval</code> (6 ticks) in combat and
+<code>observedResourceOutOfCombatPushInterval</code> (12 ticks) out of it, and only when something changed.</li>
+</ul>
+<p>Derived and diagnostic values stay server-side; an observer is sent what it must display, not the
+state that produced it.</p>
 <table>
 <thead>
 <tr>
@@ -470,19 +603,25 @@ replicated — it is recomputed locally via the dependency graph in <code>ApplyC
 <p>The attribute system is consumed by many other systems:</p>
 <ul>
 <li><strong>Ability System</strong> — Checks/consumes mana, applies damage via attributes.</li>
-<li><strong>Buff System</strong> — Applies/removes external modifiers via <code>AddModifier()</code> / <code>AddModifier(-amount)</code>.</li>
-<li><strong>Item System</strong> — Applies item attribute bonuses via <code>AddModifier()</code> on equip, reversed on unequip.</li>
+<li><strong>Buff System</strong> — States and releases external modifiers via <code>SetSource(ModifierSource.Buff(templateID, entryIndex), value)</code> / <code>ClearSourceGroup(ModifierSourceKind.Buff, templateID)</code>. A stacking buff restates <code>(1 + Stacks) * Value</code>; it does not add a delta per stack.</li>
+<li><strong>Item System</strong> — <code>ItemGenerator.ApplyAttributes</code> states one entry per item attribute under <code>ModifierSource.Item(item.ID, attributeTemplateID)</code>; <code>RemoveAttributes</code> releases the contributor. An item with no database identity yet (<code>ID == 0</code>) writes nothing — see the Item README.</li>
 <li><strong>Quest System</strong> — Checks attribute prerequisites.</li>
 <li><strong>KCC (Movement)</strong> — Reads stamina for sprint/jump.</li>
 <li><strong>Party System</strong> — Gets health percentages (<code>CurrentValue / FinalValue</code>).</li>
 <li><strong>UI</strong> — Resource bars, target frames, pet controls.</li>
-<li><strong>Region Effects</strong> — Zone-based attribute modification via <code>AddModifier()</code>.</li>
+<li><strong>Region Effects</strong> — <code>ApplyRegionAttributeAction</code> states <code>ModifierSource.Region(regionObjectID, entryIndex)</code>; leaving releases every entry that region wrote.</li>
 <li><strong>Pet System</strong> — Manages pet attributes.</li>
 <li><strong>Achievement System</strong> — Tracks damage/heal/kill milestones.</li>
 <li><strong>Faction System</strong> — Adjusted on kill events.</li>
 <li><strong>Database Layer</strong> — Persists/loads via <code>CharacterAttributeData</code> DTO and <code>ICharacterAttributeService</code>.</li>
 </ul>
-<p>All external systems use <code>AddModifier()</code> / <code>SetModifier()</code> which operate on <code>ExternalModifier</code>, ensuring their contributions are never overwritten by the formula recalculation system.</p>
+<p>Every external system writes through the <strong>attributed-modifier ledger</strong> (<code>ModifierSource</code>), so
+<code>ExternalModifier</code> is the sum of named contributions rather than an anonymous running total, and
+each contributor can be released without knowing what anyone else added. See
+<a href="#the-attributed-modifier-ledger">The attributed-modifier ledger</a> below.</p>
+<p><code>AddModifier(amount)</code> still exists and writes into the <code>Unattributed</code> bucket. It has no production
+caller and should not gain one: nothing can release an unattributed contribution except by adding
+its negation, which is the failure the ledger exists to end.</p>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
 <thead>
@@ -514,14 +653,19 @@ replicated — it is recomputed locally via the dependency graph in <code>ApplyC
 <td><code>ExternalModifier</code> value unchanged</td>
 </tr>
 <tr>
+<td>Ledger release</td>
+<td>Equip an item, note <code>ExternalModifier</code>, unequip it</td>
+<td>Returns to exactly the pre-equip value, with the item's entry gone from <code>ModifierSourceCount</code></td>
+</tr>
+<tr>
 <td>Damage/resistance calculation</td>
 <td>Deal damage with a <code>DamageAttributeTemplate</code></td>
 <td>Health reduced by <code>RawDamage - Resistance.FinalValue</code> (clamped ≥ 0)</td>
 </tr>
 <tr>
 <td>Regeneration tick</td>
-<td>Wait for <code>regenTickRate</code> seconds (default 5.0) in Play mode with regen attributes set</td>
-<td>Resource <code>CurrentValue</code> increases by regen amount</td>
+<td>Wait <code>regenTickRate</code> seconds (default <strong>1.0</strong>) in Play mode with regen attributes set</td>
+<td>Resource <code>CurrentValue</code> increases by one pulse's share</td>
 </tr>
 <tr>
 <td>Network sync (owner)</td>
