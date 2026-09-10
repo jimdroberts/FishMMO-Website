@@ -144,6 +144,7 @@
 <li><strong>Tier-based rewards</strong> — Each tier can grant abilities, ability events, items, buffs, and titles upon completion.</li>
 <li><strong>FishNet network synchronization</strong> — Server-authoritative state broadcast to clients via <code>AchievementUpdateBroadcast</code> and <code>AchievementUpdateMultipleBroadcast</code>.</li>
 <li><strong>Fire-and-forget database persistence</strong> — Reward persistence (abilities, items) uses async services marshalled back to the main thread.</li>
+<li><strong>Progress persistence</strong> — <code>Achievement.PersistenceDirty</code> / <code>MarkChanged</code> / <code>MarkPersisted</code> track what the database has not confirmed; <code>CharacterSystem.Saving.AppendAchievementData</code> writes dirty rows on the periodic save, at despawn (before the session release) and for lingering combat-logout bodies. Before this leg existed, progress was fetched on login and never written back. <code>Version</code> is bumped by <strong>every mutation</strong>, not only by the save snapshot — that is what lets <code>MarkPersisted(persistedVersion)</code> refuse to clear a row changed while its write was in flight, the trap the attribute and ability tables fell into. The load path passes <code>skipEvent</code>, which doubles as &quot;this is a restore&quot; and leaves the restored rows clean, so a login does not rewrite every achievement a character owns.</li>
 <li><strong>Static events</strong> — <code>OnCompleteAchievement</code> and <code>OnUpdateAchievement</code> allow any system to react to achievement progress and completion.</li>
 <li><strong>ScriptableObject templates</strong> — <code>AchievementTemplate</code> blueprints are configured in the Unity Editor with icon, category, description, and tier definitions.</li>
 <li><strong>Inventory/bank fallback</strong> — Item rewards attempt inventory first, falling back to bank if inventory lacks space.</li>
@@ -518,8 +519,8 @@ achievementController.Increment(PetSummonAchievementTemplate, 1);
 </tr>
 <tr>
 <td><code>ItemRewards</code></td>
-<td><code>HandleItemRewards</code> — Adds to inventory (preferred) or bank (fallback), broadcasts to client</td>
-<td>Fire-and-forget async via <code>ICharacterItemService</code> or <code>ICharacterItemService</code></td>
+<td><code>HandleItemRewards</code> — Grants through <code>ICharacterInventorySystem.TryGrantItem</code>, to the inventory when it has enough free slots and otherwise the bank</td>
+<td>The grant funnel owns the write; the <code>ICharacterItemService</code> parameter is passed but unused</td>
 </tr>
 <tr>
 <td><code>BuffRewards</code></td>
@@ -533,7 +534,7 @@ achievementController.Increment(PetSummonAchievementTemplate, 1);
 </tr>
 </tbody>
 </table>
-<p>Item rewards attempt inventory first. If the inventory lacks sufficient free slots, the system falls back to the bank. If neither has space, items are silently dropped.</p>
+<p>Item rewards attempt inventory first. If the inventory lacks free slots for the whole tier, the system falls back to the bank. If neither has space, nothing is granted, the loss is logged, and the player is told so in a <code>ChatChannel.System</code> message — the rewards are dropped, but never silently.</p>
 <h3 id="external-integration-points">External Integration Points</h3>
 <ul>
 <li><strong>CharacterDamageController</strong> — Increments damage, kill, and heal achievements during combat.</li>

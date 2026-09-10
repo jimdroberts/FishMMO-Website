@@ -110,7 +110,7 @@
 <p>The Kick Request system enforces account disconnect requests issued through the database. It runs on any FishMMO server (Login, Scene, or World) as a <code>ServerBehaviour</code> and periodically polls for new kick requests using cursor-based pagination. Each request is validated against account last-login timestamps to filter stale entries (accounts that have already reconnected). Valid kick actions are marshalled to the Unity main thread through a dedicated <code>MainThreadQueueData</code> container, since FishNet connection operations are not thread-safe. The disconnect itself goes through <code>ServerBehaviour.DisconnectWithNotice(AdministrativeKick, terminal: true)</code> rather than <code>NetworkConnection.Kick(...)</code>.</p>
 <p>The system is split into a Core interface layer and an Implementation layer:</p>
 <ul>
-<li><strong>Core layer</strong> (<code>Server/Core/World/KickRequest/</code>) — Defines <code>IKickRequestSystem</code>, <code>IKickRequestSystemQueueData</code>, and <code>IKickRequestSystemMainThreadQueueData</code> as engine-agnostic contracts. Other systems can query or modify runtime pump parameters (<code>UpdatePumpRate</code>, <code>UpdateFetchCount</code>) without referencing the implementation.</li>
+<li><strong>Core layer</strong> (<code>Server/Core/KickRequest/</code>) — Defines <code>IKickRequestSystem</code>, <code>IKickRequestSystemQueueData</code>, and <code>IKickRequestSystemMainThreadQueueData</code> as engine-agnostic contracts. Other systems can query or modify runtime pump parameters (<code>UpdatePumpRate</code>, <code>UpdateFetchCount</code>) without referencing the implementation.</li>
 <li><strong>Implementation layer</strong> (<code>Server/Implementation/KickRequest/</code>) — Provides three concrete classes:
 <ul>
 <li><strong><code>KickRequestSystem</code></strong> — Orchestrates polling, validation, and kick execution. Extends <code>ServerBehaviour</code> and implements <code>IKickRequestSystem</code>.</li>
@@ -157,11 +157,11 @@
 <li><strong>Overlap protection</strong> — <code>IKickRequestSystemQueueData.IsProcessing</code> is checked under a lock before each poll to prevent concurrent overlapping database fetches.</li>
 <li><strong>Main-thread kick dispatch</strong> — All disconnects are enqueued via <code>TryEnqueueMainThread&lt;IKickRequestSystemMainThreadQueueData&gt;</code> and drained on the main thread each frame, respecting <code>maxMainThreadActionsPerFrame</code> to avoid frame spikes.</li>
 <li><strong>The player is told they were kicked</strong> — <code>DisconnectWithNotice(AdministrativeKick, terminal: true)</code>, never <code>NetworkConnection.Kick(...)</code>. FishNet does not carry a kick reason to the client, so a plain <code>Kick</code> landed the player on the login screen with no explanation <em>and</em> left the client's reconnect loop to spend all ten attempts dialling back into a server that would refuse them again. <code>Kick</code> would also have discarded the notice: it calls <code>Disconnect(true)</code>, which stops the transport immediately and throws away everything still queued for the tick. <code>Terminal = true</code> is what stops the retry loop, because an operator kick does not resolve by retrying.</li>
-<li><strong>Disconnect cleanup</strong> — When a remote connection stops, the system asynchronously deletes any pending kick request for that account from the database, preventing stale requests from re-triggering after legitimate disconnect/reconnect cycles.</li>
+<li><strong>Disconnect cleanup that cannot be dropped</strong> — When a remote connection stops, the system deletes any pending kick request for that account from the database, preventing stale requests from re-triggering after legitimate disconnect/reconnect cycles. This delete goes through <code>EnqueuePersistence</code>, not <code>TryEnqueueAsyncWork</code>: the connection is already gone, so there is nobody to tell if the write was refused, and a delete that is silently dropped kicks the account again on its next login. <code>EnqueuePersistence</code> falls back to running the work directly on the thread pool when the worker channel is full, and logs an Error when it does. The work is keyed by <code>accountName.GetDeterministicHashCode()</code>, so repeated cleanups for one account stay ordered.</li>
 <li><strong>Configurable pump rate</strong> — Poll interval (<code>updatePumpRate</code>) and fetch count (<code>updateFetchCount</code>) are exposed as serialized fields and runtime properties, tunable via the Unity Inspector or code.</li>
 <li><strong>Periodic update integration</strong> — Registers with <code>IPeriodicUpdateSystem</code> for fixed-rate polling cadence rather than relying on per-frame checks.</li>
 <li><strong>Graceful shutdown drain</strong> — On deinitialization, the system drains all remaining main-thread actions so clients receive their final disconnect messages.</li>
-<li><strong>Async worker backpressure</strong> — All database operations are submitted via <code>TryEnqueueAsyncWork</code>, which returns <code>false</code> when the worker pool is full. Warnings are logged on enqueue failure.</li>
+<li><strong>Async worker backpressure</strong> — The periodic poll is submitted via <code>TryEnqueueAsyncWork</code>, which returns <code>false</code> when the worker pool is full and logs a warning; a skipped poll costs nothing, because the next tick re-reads the same cursor. The disconnect cleanup deliberately does not use it — see above.</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -335,9 +335,14 @@ if (database.ServiceRegistry.TryGet&lt;IKickRequestService&gt;(out var kickServi
 <td>Kicks processed at <code>maxMainThreadActionsPerFrame</code> per frame</td>
 </tr>
 <tr>
-<td>Enqueue backpressure</td>
+<td>Poll backpressure</td>
 <td>Saturate async worker pool</td>
-<td>Warning logged: <code>&quot;Failed to enqueue...&quot;</code></td>
+<td>Warning logged: <code>&quot;Failed to enqueue periodic kick-request processing work item.&quot;</code></td>
+</tr>
+<tr>
+<td>Cleanup backpressure</td>
+<td>Saturate the pool, then disconnect an account with a pending kick request</td>
+<td>Error logged: <code>&quot;persistence running via direct fallback&quot;</code>; the request is still deleted</td>
 </tr>
 <tr>
 <td>Graceful shutdown</td>
@@ -416,8 +421,8 @@ if (database.ServiceRegistry.TryGet&lt;IKickRequestService&gt;(out var kickServi
 │  │    ├─ AccountManager.GetAccountNameByConnection(conn) │   │
 │  │    │                                                 │   │
 │  │    ▼  [Async Worker Thread]                          │   │
-│  │  TryEnqueueAsyncWork(DeleteKickRequestAsync)         │   │
-│  │    │  keyed by accountName.GetHashCode()             │   │
+│  │  EnqueuePersistence(DeleteKickRequestAsync)          │   │
+│  │    │  keyed by GetDeterministicHashCode()            │   │
 │  │    │                                                 │   │
 │  │    ▼                                                 │   │
 │  │  kickRequestService.DeleteAsync(accountName)         │   │
@@ -483,7 +488,7 @@ if (database.ServiceRegistry.TryGet&lt;IKickRequestService&gt;(out var kickServi
 <tr>
 <td>Async Worker Data</td>
 <td><code>AsyncWorkerData</code></td>
-<td>Bounded async execution with enqueue backpressure</td>
+<td>Bounded async execution with enqueue backpressure, plus the <code>EnqueuePersistence</code> fallback used by disconnect cleanup</td>
 </tr>
 <tr>
 <td>Main Thread Queue Data</td>

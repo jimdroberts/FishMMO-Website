@@ -172,6 +172,7 @@
 <li><strong>Version management</strong> — reads <code>VersionConfig</code> ScriptableObject and optionally validates against <code>version.txt</code> in standalone builds.</li>
 <li><strong>Dynamic Addressable load-path override</strong> — <code>DynamicAddressableLoadPathSystem</code> replaces remote asset URL domains at runtime via <code>Addressables.ResourceManager.InternalIdTransformFunc</code>.</li>
 <li><strong>Graceful async shutdown</strong> — handles <code>Application.wantsToQuit</code>, editor play-mode exit (<code>EditorApplication.playModeStateChanged</code>), and <code>OnDestroy</code> with deferred quit, logging config save, <code>Log.Shutdown()</code>, and Addressable asset release.</li>
+<li><strong><code>OnClientShutdownStarting</code></strong> — raised once at the very start of a standalone client's shutdown, before any teardown, so a handler still has the window and render state intact. It exists for the launcher, which returns the window to its own size before exit: a standalone player creates its next window in the mode recorded at the previous quit, and this process always quits from the game. <code>Screen.SetResolution</code> takes effect at the <em>end</em> of the frame it is requested in, so <code>PerformAsyncShutdown</code> yields one frame unconditionally before doing anything else — the awaits after it may complete synchronously and cannot be relied on to provide that frame. Invocation is isolated in <code>try/catch</code>, and it is not raised in the editor (no window to size) or on a server.</li>
 <li><strong>Duplicate-start and duplicate-completion guards</strong> — <code>StartBootstrap()</code> tracks <code>hasStartedBootstrap</code>; <code>hasCompletedPreload</code> and <code>hasCompletedPostload</code> ensure <code>OnCompletePreload()</code> and <code>OnCompleteProcessing()</code> each run at most once.</li>
 <li><strong>Ownership-checked log hook release</strong> — <code>Log.OnInternalLogMessage</code> is a single-cast static assigned by every bootstrap system's <code>Awake()</code>, so several are alive at once and the last to wake owns it. <code>OnDestroy()</code> clears it only if this instance is the current owner; clearing unconditionally silenced internal logging for every system still shutting down.</li>
 <li><strong>Boot survives a missing <code>VersionConfig</code></strong> — <code>MainBootstrapSystem</code> logs the error and continues with an unknown version instead of aborting <code>OnPreload()</code>. Aborting left the load queue empty, which made every downstream phase report &quot;done&quot; instantly and produced a permanently black screen; carrying on lets the launcher come up and report the bad version to the player.</li>
@@ -748,6 +749,7 @@ bootstrap explicitly rather than being auto-discovered and chained.</p>
     └── InitiateShutdown()
             │
             ├── Guard: skip if already shutting down
+            ├── OnClientShutdownStarting?.Invoke()  (!UNITY_EDITOR &amp;&amp; !UNITY_SERVER, isolated)
             ├── GraphicsCleanup() — releases Addressable assets
             ├── UnityLoggerBridge.Shutdown() — restores Unity's default log handler
             │
@@ -757,6 +759,7 @@ bootstrap explicitly rather than being auto-discovered and chained.</p>
             │
             └── Standalone path:
                 └── PerformAsyncShutdown()
+                        ├── await Task.Yield() — one frame, unconditionally
                         ├── Save logging config to disk
                         ├── await Log.Shutdown()
                         ├── canQuitApplication = true

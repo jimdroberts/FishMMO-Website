@@ -98,7 +98,10 @@
 <li><a href="#supported-platforms">Supported Platforms</a></li>
 <li><a href="#architecture">Architecture</a></li>
 <li><a href="#key-components">Key Components</a></li>
+<li><a href="#table-inventory">Table inventory</a></li>
+<li><a href="#items-live-in-one-table">Items live in one table</a></li>
 <li><a href="#configuration">Configuration</a></li>
+<li><a href="#credentials-are-never-in-appsettingsjson">Credentials are never in appsettings.json</a></li>
 <li><a href="#recommended-appsettings-files">Recommended appsettings files</a></li>
 <li><a href="#environment-variables-by-os">Environment variables by OS</a></li>
 <li><a href="#overriding-individual-settings-via-environment-variables">Overriding individual settings via environment variables</a></li>
@@ -108,9 +111,11 @@
 <li><a href="#flow-diagram">Flow Diagram</a></li>
 <li><a href="#notes">Notes</a></li>
 <li><a href="#character-session-ownership">Character session ownership</a></li>
+<li><a href="#expired-leases-are-not-online">Expired leases are not &quot;online&quot;</a></li>
 <li><a href="#scene-instance-identity">Scene instance identity</a></li>
 <li><a href="#scene-rows-are-reaped-not-just-written">Scene rows are reaped, not just written</a></li>
 <li><a href="#the-channel-switch-cooldown-lives-on-the-character">The channel-switch cooldown lives on the character</a></li>
+<li><a href="#kick-requests-expire">Kick requests expire</a></li>
 </ul>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
@@ -159,28 +164,46 @@
 </table>
 <h2 id="architecture">Architecture</h2>
 <pre><code>FishMMO-DB/
-├── Data/                       POCO entities + enums shared across servers
-├── Migrations/                 EF Core migrations (created by FishMMO-DB-Migrator)
+├── Data/                       Plain data records + enums shared across servers
+│   ├── Arena/                    ArenaMatchData, ArenaMatchComposer, ArenaRatingSource
+│   ├── Character/                Per-character sub-entity records, including CharacterItemData
+│   │                             and its ItemContainerType discriminator
+│   ├── Enums/                    ChatChannel, SceneStatus, SceneType, CharacterSessionState,
+│   │                             ArenaMatchStatus, ArenaSeatStatus, GroupFinderQueueStatus, …
+│   ├── GroupFinder/              GroupFinderQueueData, GroupFinderMatchData
+│   ├── Guild/                    Guild, rank, log, application and update records
+│   ├── Housing/                  PlotData, PlotStructureData, PlotAccessData, PlotVaultData,
+│   │                             PlotUpdateData
+│   └── Party/                    Party records
+├── Migrations/                 EF Core migrations (created by FishMMO-DB-Migrator; gitignored,
+│                                 so a checkout has none until they are generated locally)
 ├── Exceptions/                 Typed database exceptions
 ├── Npgsql/                     Concrete PostgreSQL implementation
-│   ├── NpgsqlDbContext.cs        EF Core DbContext
+│   ├── NpgsqlDbContext.cs        EF Core DbContext — one DbSet per table
 │   ├── NpgsqlDbContextFactory.cs Factory + interceptors + monitoring wiring
-│   ├── NpgsqlDbConfiguration.cs  Reads IConfiguration → connection string
+│   ├── NpgsqlDbConfiguration.cs  Reads the `Npgsql` IConfiguration section → connection string
 │   ├── NpgsqlServiceRegistry.cs  IDatabaseServiceRegistry implementation
-│   ├── Entities/                 EF Core entity types
-│   ├── EntityConfigurations/     Fluent EF Core configurations
+│   ├── SchemaValidationResult.cs Pending-migration report returned by ValidateSchemaAsync
+│   ├── DbContextExtensions.cs    GetTableName&lt;TEntity&gt;(), for services that emit raw SQL
+│   ├── Entities/                 EF Core entity types (Login / Scene / World)
+│   ├── EntityConfigurations/     Fluent EF Core configurations (see EntityConfigurations/README.md)
 │   ├── Services/                 Per-domain service implementations
-│   │   └── Interfaces/             IAccountService, ICharacterService, IEmailQueueService, …
+│   │   ├── BaseService.cs          Execution wrappers, transient retry, raw-SQL helpers
+│   │   ├── UnitOfWorkService.cs    IUnitOfWork — one ambient transaction across several services
+│   │   └── Interfaces/             IAccountService, ICharacterItemService, IPlotService, …
+│   │       └── Actions/              IPersistAction, IFetchByKeyAction, … reusable method shapes
 │   └── Monitoring/               Health / Metrics / Diagnostics (see Monitoring/README.md)
-├── Unity/                          Unity MonoBehaviour wrapper (see Unity/README.md)
+├── Unity/                      Unity MonoBehaviour wrapper, commented out (see Unity/README.md)
 ├── Database.cs                 High-level orchestrator (IDatabase implementation)
 ├── IDatabase.cs                Public contract consumed by servers / services
 ├── IDatabaseServiceRegistry.cs Per-domain service registry contract
-├── AppSettings.cs              Strongly-typed appsettings.json binder
+├── AppSettings.cs              Strongly-typed binder for the `Npgsql` appsettings section
+├── DatabaseSecrets.cs          Credential resolver — env vars / platform secrets file only
 ├── DatabaseConfigurationHelper.cs  Convenience helpers for IConfiguration builders
 ├── DatabaseErrorCodes.cs       Stable error code enum returned via DatabaseResult
 ├── DatabaseResult.cs           Result&lt;T&gt; envelope (IsSuccess / ErrorCode / Data)
-└── appsettings.json            Default config (do NOT commit secrets)
+└── BulkWriteResult.cs          What a batched, version-gated write actually did:
+                                 Filtered (refused) vs Superseded (lost the version race)
 </code></pre>
 <h2 id="key-components">Key Components</h2>
 <table>
@@ -197,7 +220,7 @@
 </tr>
 <tr>
 <td><code>IDatabase</code></td>
-<td>Public contract: <code>ServiceRegistry</code>, <code>ContextFactory</code>, async lifecycle.</td>
+<td>Public contract: <code>ServiceRegistry</code>, <code>DbContextFactory</code>, <code>HealthMonitor</code>, <code>MetricsTracker</code>, <code>Shutdown</code> / <code>ShutdownAsync</code>.</td>
 </tr>
 <tr>
 <td><code>IDatabaseServiceRegistry</code></td>
@@ -209,19 +232,35 @@
 </tr>
 <tr>
 <td><code>NpgsqlServiceRegistry</code></td>
-<td>Wires <code>IAccountService</code>, <code>ICharacterService</code>, <code>IChatService</code>, <code>IEmailQueueService</code>, <code>ILoginServerService</code>, etc.</td>
+<td>Holds the services. It registers nothing itself — <code>Database.RegisterNpgsqlServicesByReflection</code> discovers every <code>I*Service</code> in <code>FishMMO.Database.Npgsql.Services.Interfaces</code>, pairs it with the single concrete class in <code>FishMMO.Database.Npgsql.Services</code> (or a sub-namespace) that implements it, and constructs it with the <code>INpgsqlDbContextFactory</code>. Adding a table therefore needs no wiring: create the interface and the implementation and it is registered. A name that matches zero or several implementations throws at startup.</td>
 </tr>
 <tr>
 <td><code>NpgsqlDbConfiguration</code></td>
-<td>Builds the connection string from <code>IConfiguration</code> (<code>ConnectionStrings:NpgsqlConnection</code> or <code>Npgsql:*</code>).</td>
+<td>Builds the connection string from the <code>Npgsql</code> section of <code>IConfiguration</code>, plus credentials resolved by <code>DatabaseSecrets</code>. There is no <code>ConnectionStrings</code> key.</td>
 </tr>
 <tr>
-<td><code>AppSettings</code></td>
-<td>Strongly-typed <code>appsettings.json</code> binder (Npgsql).</td>
+<td><code>AppSettings</code> / <code>NpgsqlSettings</code></td>
+<td>Strongly-typed binder for the <code>Npgsql</code> section: <code>Host</code>, <code>Port</code>, <code>Database</code>, <code>Schema</code>, <code>CommandTimeout</code>, <code>ConnectionTimeout</code>, <code>MinPoolSize</code>, <code>MaxPoolSize</code>, <code>QueryPerformanceTracking</code>, <code>RetryPolicy</code>. Deliberately no <code>Username</code> or <code>Password</code>.</td>
+</tr>
+<tr>
+<td><code>DatabaseSecrets</code></td>
+<td>The only source of credentials: <code>FISHMMO_DB_*</code> environment variables, then the platform secrets file. See <a href="#credentials-are-never-in-appsettingsjson">Credentials are never in appsettings.json</a>.</td>
+</tr>
+<tr>
+<td><code>BaseService</code></td>
+<td>Base class for every service: execution wrappers, transient-failure retry, exception mapping, and the <code>{0}</code> → <code>@p0</code> placeholder rewriting used by the raw-SQL paths.</td>
+</tr>
+<tr>
+<td><code>IUnitOfWorkService</code> / <code>IUnitOfWork</code></td>
+<td>One ambient transaction shared by several services, finalized only by <code>CommitAsync</code> or <code>RollbackAsync</code>.</td>
 </tr>
 <tr>
 <td><code>DatabaseResult&lt;T&gt;</code> / <code>DatabaseErrorCodes</code></td>
 <td>Uniform error envelope returned from every service.</td>
+</tr>
+<tr>
+<td><code>BulkWriteResult</code></td>
+<td>Outcome of a batched, version-gated write. Separates <code>Filtered</code> (the service refused the row) from <code>Superseded</code> (the row lost the version race, and the stored value is the newer one).</td>
 </tr>
 <tr>
 <td><code>Monitoring/</code> (under Npgsql)</td>
@@ -229,10 +268,147 @@
 </tr>
 <tr>
 <td><code>Unity/DatabaseHealthService</code></td>
-<td>MonoBehaviour that surfaces all of the above to Unity headless servers. See <a href="Unity/README.html"><code>Unity/README.md</code></a>.</td>
+<td>Reference MonoBehaviour that would surface all of the above to Unity headless servers. The file is <strong>entirely commented out</strong> — this project targets .NET Standard 2.1 and cannot reference <code>UnityEngine</code>, so it is not compiled by anything today. See <a href="Unity/README.html"><code>Unity/README.md</code></a>.</td>
 </tr>
 </tbody>
 </table>
+<h2 id="table-inventory">Table inventory</h2>
+<p>55 tables, one entity type and one <code>IEntityTypeConfiguration&lt;T&gt;</code> apiece — the folders under
+<code>Npgsql/Entities/</code> and <code>Npgsql/EntityConfigurations/</code> mirror each other exactly. The table name
+each configuration declares with <code>ToTable(...)</code> is the authority; the C# names are
+<code>&lt;Name&gt;Entity</code> / <code>&lt;Name&gt;EntityConfiguration</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Tables</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(root)</td>
+<td><code>deployment_secrets</code></td>
+</tr>
+<tr>
+<td><code>Login/</code></td>
+<td><code>accounts</code>, <code>auth_tokens</code>, <code>connection_token_keys</code>, <code>email_queue</code>, <code>login_servers</code>, <code>login_server_signing_keys</code>, <code>two_factor_recovery_codes</code></td>
+</tr>
+<tr>
+<td><code>World/</code></td>
+<td><code>world_servers</code>, <code>kick_requests</code></td>
+</tr>
+<tr>
+<td><code>Scene/</code></td>
+<td><code>scenes</code>, <code>scene_servers</code>, <code>chat</code>, <code>quests</code>, <code>group_finder_queue</code></td>
+</tr>
+<tr>
+<td><code>Scene/Character/</code></td>
+<td><code>characters</code>, <code>character_abilities</code>, <code>character_achievements</code>, <code>character_archetypes</code>, <code>character_attributes</code>, <code>character_buffs</code>, <code>character_dialogue_choices</code>, <code>character_factions</code>, <code>character_friends</code>, <code>character_guild</code>, <code>character_hotkeys</code>, <code>character_item</code>, <code>character_itemcooldowns</code>, <code>character_knownabilities</code>, <code>character_mail</code>, <code>character_party</code>, <code>character_pet</code>, <code>character_pet_attributes</code>, <code>character_pet_buffs</code>, <code>character_quests</code>, <code>character_skills</code>, <code>character_waypoints</code>, <code>currency_ledger</code></td>
+</tr>
+<tr>
+<td><code>Scene/Guild/</code></td>
+<td><code>guilds</code>, <code>guild_rank</code>, <code>guild_log</code>, <code>guild_application</code>, <code>guild_updates</code></td>
+</tr>
+<tr>
+<td><code>Scene/Party/</code></td>
+<td><code>parties</code>, <code>party_updates</code></td>
+</tr>
+<tr>
+<td><code>Scene/Arena/</code></td>
+<td><code>arena_match</code>, <code>arena_match_member</code>, <code>arena_season</code>, <code>arena_rating</code>, <code>arena_penalty</code></td>
+</tr>
+<tr>
+<td><code>Scene/Housing/</code></td>
+<td><code>plots</code>, <code>plot_structures</code>, <code>plot_access</code>, <code>plot_vault</code>, <code>plot_updates</code></td>
+</tr>
+</tbody>
+</table>
+<p>The newer groups and what owns them:</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Service(s)</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>group_finder_queue</code></td>
+<td><code>IGroupFinderQueueService</code></td>
+<td>The dungeon and arena queue. Shared by every scene server on a world server, each running the same matching pump; every state change is a single statement or single transaction whose <code>WHERE</code> re-asserts the state it expects, so two servers acting at once give one winner and one no-op. <code>TryFormArenaMatchAsync</code> is the only thing that creates an arena match, inside the transaction that takes its players out of the queue.</td>
+</tr>
+<tr>
+<td><code>arena_*</code></td>
+<td><code>IArenaMatchService</code>, <code>IArenaRatingService</code>, <code>IArenaPenaltyService</code></td>
+<td>Match status only ever moves forward — the <code>WHERE</code> refuses a status lower than the current one, so a late write from a server that lost the instance cannot reopen an ended match. Ratings are keyed by season; <code>arena_penalty</code> is the deserter queue-lock.</td>
+</tr>
+<tr>
+<td><code>plot_*</code> / <code>plots</code></td>
+<td><code>IPlotService</code>, <code>IPlotStructureService</code>, <code>IPlotAccessService</code>, <code>IPlotVaultService</code>, <code>IPlotUpdateService</code></td>
+<td>Plots are scoped to a world server: the same scene runs on every world, and an unscoped row would show one player's house as owned land to everybody on every other world. Every ownership change reports its affected-row count and the caller must check it — treating zero as success sells one plot to two players.</td>
+</tr>
+<tr>
+<td><code>character_waypoints</code></td>
+<td><code>ICharacterWaypointService</code></td>
+<td>Bitmask pages, OR-merged rather than replaced. <code>MergeAsync</code> is idempotent and can never clear a bit; a character does not un-discover a place.</td>
+</tr>
+<tr>
+<td><code>currency_ledger</code></td>
+<td><code>ICurrencyLedgerService</code></td>
+<td>Append-only, written after the balance change is persisted and the outcome known. A lost row is a gap in reporting, never a gap in the economy.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="items-live-in-one-table">Items live in one table</h2>
+<p><code>character_item</code> replaced <code>character_inventory</code>, <code>character_equipment</code> and <code>character_bank</code>.
+The three tables had three identity sequences, so inventory row 42 and equipment row 42 were two
+different items wearing the same number — which made an item id useless as an identity and forced
+a second, process-local id alongside it.</p>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Shape at HEAD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Key</td>
+<td><code>character_item.id</code>, database-generated on first insert. It is the <strong>item's</strong> identity, not the slot's.</td>
+</tr>
+<tr>
+<td>Container</td>
+<td><code>ItemContainerType</code> (<code>Inventory</code> = 0, <code>Equipment</code> = 1, <code>Bank</code> = 2), an ordinary mutable column. Its numeric values must match <code>FishMMO.Shared.InventoryType</code>; <code>ItemContainerTypeParityTests</code> pins the pairing.</td>
+</tr>
+<tr>
+<td>Slot</td>
+<td>An ordinary mutable column. Moving an item updates the row it already had.</td>
+</tr>
+<tr>
+<td>Uniqueness</td>
+<td>A unique index on <code>(character_id, container, slot)</code> — one item per slot. It is <strong>not</strong> the upsert conflict target; the primary key is.</td>
+</tr>
+<tr>
+<td>Entity / data</td>
+<td><code>CharacterItemEntity</code>, <code>CharacterItemData</code>, <code>CharacterEntity.Items</code>, <code>NpgsqlDbContext.CharacterItems</code>.</td>
+</tr>
+<tr>
+<td>Service</td>
+<td><code>ICharacterItemService</code>, replacing <code>ICharacterInventoryService</code> / <code>ICharacterEquipmentService</code> / <code>ICharacterBankService</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>CharacterItemData.ID</code> of zero means &quot;never written&quot;: the write paths draw the next identity from
+the table's sequence and return it, and the caller must write that value back onto the runtime item.</p>
+<p><code>SaveSnapshotAsync(characterId, containers, items)</code> is the backstop for the incremental per-item
+writes, which can be silently rejected by the version gate. It deletes and re-inserts every row for
+the containers it names — supplied identities are preserved, zero ids draw new ones and come back in
+<code>CharacterItemIdAssignment</code>. Deleting first is what makes it immune to the unique index: two items
+swapping slots have no intermediate state in which both hold the same one. Containers <strong>not</strong> listed
+are left untouched, so a caller that could read only two of the three does not prune the third.
+It is deliberately not version-gated, since version gating is the very mechanism it exists to
+survive.</p>
 <h2 id="configuration">Configuration</h2>
 <p><code>FishMMO-DB</code> reads configuration through the standard ASP.NET / .NET Generic Host <code>IConfiguration</code> pipeline. The recommended source order is:</p>
 <ol>
@@ -257,17 +433,17 @@
 <li><code>appsettings.Development.json</code></li>
 <li><code>appsettings.Production.json</code></li>
 </ul>
-<p>Example override file:</p>
+<p>Example override file. Note that every key this library reads lives <strong>inside</strong> the <code>Npgsql</code>
+section — <code>NpgsqlDbConfiguration</code> binds <code>configuration.GetSection(&quot;Npgsql&quot;)</code> and nothing else — and
+that there is no <code>Username</code> or <code>Password</code> key at any level:</p>
 <pre><code class="lang-json">{
   &quot;Npgsql&quot;: {
     &quot;Host&quot;: &quot;127.0.0.1&quot;,
     &quot;Database&quot;: &quot;fishmmo_dev&quot;,
-    &quot;Username&quot;: &quot;postgres&quot;,
-    &quot;Password&quot;: &quot;dev_password&quot;
-  },
-  &quot;QueryPerformanceTracking&quot;: {
-    &quot;Enabled&quot;: true,
-    &quot;Level&quot;: &quot;Basic&quot;
+    &quot;QueryPerformanceTracking&quot;: {
+      &quot;Enabled&quot;: true,
+      &quot;Level&quot;: &quot;Basic&quot;
+    }
   }
 }
 </code></pre>
@@ -326,16 +502,39 @@ EnvironmentFile=/etc/fishmmo-db.env
 <li><code>Npgsql__Host</code></li>
 <li><code>Npgsql__Port</code></li>
 <li><code>Npgsql__Database</code></li>
-<li><code>Npgsql__Username</code></li>
-<li><code>Npgsql__Password</code></li>
+<li><code>Npgsql__Schema</code></li>
 <li><code>Npgsql__CommandTimeout</code></li>
+<li><code>Npgsql__MinPoolSize</code> / <code>Npgsql__MaxPoolSize</code></li>
+<li><code>Npgsql__QueryPerformanceTracking__Enabled</code> / <code>__Level</code> / <code>__SlowQueryThresholdMs</code> / <code>__SampleRate</code></li>
 </ul>
+<p><code>Npgsql__Username</code> and <code>Npgsql__Password</code> are <strong>not</strong> in that list and do nothing. Credentials
+have their own resolver — see <a href="#credentials-are-never-in-appsettingsjson">Credentials are never in appsettings.json</a>.</p>
 <p>Example (fish):</p>
 <pre><code class="lang-fish">set -x Npgsql__Host 10.0.0.25
 set -x Npgsql__Database fishmmo
-set -x Npgsql__Username postgres
-set -x Npgsql__Password super_secret
+set -x FISHMMO_DB_USERNAME postgres
+set -x FISHMMO_DB_PASSWORD super_secret
 </code></pre>
+<h2 id="credentials-are-never-in-appsettingsjson">Credentials are never in appsettings.json</h2>
+<p><code>NpgsqlDbConfiguration</code> binds the non-sensitive settings from the <code>Npgsql</code> section and then asks
+<code>DatabaseSecrets</code> for the username and password. There is no <code>IConfiguration</code> fallback for either:
+the keys were removed from <code>NpgsqlSettings</code> entirely, so putting them in a JSON file has no effect
+at all rather than a partial one.</p>
+<p>Resolution order, first wins:</p>
+<ol>
+<li>Environment variables — <code>FISHMMO_DB_USERNAME</code>, <code>FISHMMO_DB_PASSWORD</code></li>
+<li>Platform secrets file:
+<ul>
+<li>Linux: <code>/etc/fishmmo/db-secrets.env</code></li>
+<li>Windows: <code>%ProgramData%\FishMMO\db-secrets.env</code></li>
+</ul>
+</li>
+</ol>
+<p>The secrets file is <code>KEY=VALUE</code>, one per line, with <code>#</code> comments and blank lines ignored. On Linux
+it should be <code>chmod 600</code> and owned by the service user.</p>
+<p><code>FISHMMO_DB_HOST</code>, <code>FISHMMO_DB_PORT</code> and <code>FISHMMO_DB_NAME</code> are resolved the same way and override
+the JSON values, so a container deployment can configure the database entirely from environment
+variables.</p>
 <hr>
 <h2 id="databasecs-setup-examples">Database.cs setup examples</h2>
 <h2 id="1-build-iconfiguration-and-pass-it-to-database">1) Build IConfiguration and pass it to Database</h2>

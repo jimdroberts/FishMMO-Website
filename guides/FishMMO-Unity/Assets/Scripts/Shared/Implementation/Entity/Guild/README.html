@@ -349,8 +349,8 @@
 </tr>
 <tr>
 <td><code>OnAddGuildMember</code></td>
-<td><code>long characterID, long guildID, GuildRank rank, string location</code></td>
-<td>Member added to guild list</td>
+<td><code>GuildAddBroadcast</code></td>
+<td>Member added to the guild list. The broadcast carries <code>GuildID</code> plus one <code>GuildAddEntry</code> (<code>Member</code>); <code>GuildAddMultipleBroadcast</code> carries the guild id <strong>once</strong> and a list of entries, re-attaching it per row so the same handler serves a roster refresh and a single add</td>
 </tr>
 <tr>
 <td><code>OnValidateGuildMembers</code></td>
@@ -372,8 +372,54 @@
 <td><code>GuildResultType result</code></td>
 <td>Result of a guild operation</td>
 </tr>
+<tr>
+<td><code>OnReceiveGuildInfo</code></td>
+<td><code>long guildID, string name, string notice, string motd</code></td>
+<td>Descriptive text arrived</td>
+</tr>
+<tr>
+<td><code>OnReceiveGuildLog</code></td>
+<td><code>GuildLogEntry[] entries</code></td>
+<td>Recent activity, newest first</td>
+</tr>
+<tr>
+<td><code>OnReceiveGuildRanks</code></td>
+<td><code>GuildRankListBroadcast</code></td>
+<td>The rank ladder</td>
+</tr>
+<tr>
+<td><code>OnReceiveGuildRecruitmentInfo</code></td>
+<td><code>GuildRecruitmentInfoBroadcast</code></td>
+<td>Recruitment listing state</td>
+</tr>
+<tr>
+<td><code>OnReceiveGuildDirectory</code></td>
+<td><code>GuildDirectoryEntry[]</code></td>
+<td>Browsable guild directory</td>
+</tr>
+<tr>
+<td><code>OnReceiveGuildApplications</code></td>
+<td><code>GuildApplicationEntry[]</code></td>
+<td>Pending applications</td>
+</tr>
+<tr>
+<td><code>OnReceiveGuildCreationCost</code></td>
+<td><code>int currencyTemplateID, long amount</code></td>
+<td>The creation fee, both 0 when there is none (issue #186)</td>
+</tr>
 </tbody>
 </table>
+<p>The creation fee is also <strong>stored</strong> on the controller as <code>CreationCostCurrencyTemplateID</code> /
+<code>CreationCost</code>, not only raised, because the guild panel is usually bound after the broadcast
+arrives: it reads the stored values when it binds and listens for changes afterwards.</p>
+<h3 id="pooling-reset">Pooling reset</h3>
+<p><code>ResetState(bool)</code> calls <code>ClearGuildStanding()</code> and nulls every event subscriber. <code>ID</code> is a SyncVar
+and FishNet's own reset returns it to its default, but the three plain fields behind it —
+<code>RankOrder</code>, <code>Permissions</code>, <code>LeaderRankOrder</code> — are written from roster broadcasts and would
+otherwise stay exactly as the previous occupant of the pool slot left them: a guildless character
+inheriting a leader's permission mask draws every officer control in the guild panel, and the server
+refuses each one with a result the panel cannot explain. <code>ClearGuildStanding</code> is reused rather than
+repeated so the leave path and the reset path cannot drift apart.</p>
 <h3 id="broadcast-types">Broadcast Types</h3>
 <pre><code>GuildCreateBroadcast                 # Client → Server: request to create a guild
 GuildInviteBroadcast                 # Bidirectional: invite a character to a guild

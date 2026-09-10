@@ -359,10 +359,25 @@
 <td>Ability</td>
 <td>Ability or consumable template ID to activate</td>
 </tr>
+<tr>
+<td><code>EquipmentRequest</code></td>
+<td><code>byte</code></td>
+<td>Equipment</td>
+<td>One packed equip/unequip request (<code>EquipmentReplicateInput</code>), 0 for &quot;nothing asked&quot;</td>
+</tr>
+<tr>
+<td><code>EquipmentIndex</code></td>
+<td><code>short</code></td>
+<td>Equipment</td>
+<td>The source index in the named container for an equip; ignored for an unequip</td>
+</tr>
 </tbody>
 </table>
-<p>Delta serialized with an 8-bit bitmask — only changed fields are transmitted. The axes ride a
-single signed byte each (<code>MoveAxisCompression</code>) and the aim direction a packed <code>uint</code>
+<p>Delta serialized with an 8-bit bitmask, and <strong>all eight bits are now allocated</strong>
+(<code>KCCPredictionDeltaSerializers</code>: forward, right, move flags, equipment, aim direction, activation
+flags, queued ability, view offset). A ninth field means widening the mask to a <code>ushort</code>, which
+costs a byte on every replicate. The two equipment fields deliberately share one bit. The axes ride
+a single signed byte each (<code>MoveAxisCompression</code>) and the aim direction a packed <code>uint</code>
 (<code>AimDirectionCompression</code>: 16 bits of yaw, 16 of pitch).</p>
 <p><strong><code>AimDirection</code> replaced a full <code>Quaternion CameraRotation</code>.</strong> Nothing ever read the roll —
 movement takes <code>rotation * Vector3.forward</code> to build its planar basis and the ability path takes
@@ -377,6 +392,21 @@ the quantisation error. <code>Encode</code>/<code>Decode</code> is a fixed point
 <code>Atan2</code> rather than <code>Asin</code>, which is numerically flat near ±1.</p>
 <p><strong>The view offset is a client measurement the server cannot derive.</strong> It is the full round trip
 plus the client's interpolation buffer — see <a href="#lag-compensation">Lag compensation</a>.</p>
+<p><strong>Equipment is input, and it rides here.</strong> <code>EquipmentReplicateInput.TryPack</code> packs a request into
+one byte — two bits of <code>EquipmentRequestKind</code>, two of <code>InventoryType</code> (Inventory or Bank only), four
+of <code>ItemSlot</code> — and <code>EquipmentReplicateInput.TryUnpack</code> refuses anything that does not name a
+defined kind, container and socket. Zero is &quot;no request&quot; by construction, because
+<code>EquipmentRequestKind.None</code> is zero and occupies the low bits. <code>EquipmentController.PopulateInput</code>
+carries at most <strong>one request per tick</strong>; a second waits for the next.</p>
+<p>An equip used to travel as a reliable broadcast the server applied at whatever tick it landed on, so
+the item's attribute bonuses reached the owner only through the following reconcile and the movement
+between the two was replayed at the new speed — a +15% speed item equipped mid-stride was a visible
+snap. Carried on the replicate, both peers apply the change on the same tick, the reconcile confirms
+rather than corrects, and a stale reconcile is undone and re-applied by the replay like any other
+predicted action. The owner records each predicted move (<code>PredictedMove</code>: tick, item id, the
+container on the other side and the index in it) so a reconcile that does not yet include the change
+can put the item back exactly where it came from rather than into &quot;the first container with room&quot;,
+which the replay could not then undo.</p>
 <h3 id="characterreconciledata">CharacterReconcileData</h3>
 <p>Unified per-tick authoritative state struct.</p>
 <table>
@@ -508,6 +538,22 @@ Replicate(input);
 // 3. Server creates reconcile
 CreateReconcile();
 </code></pre>
+<h4 id="the-replicate-tick-is-the-owners-clock">The replicate tick is the owner's clock</h4>
+<p><code>input.GetTick()</code> is the owning client's <code>LocalTick</code>, a counter that restarts at zero when that
+client connects. The server runs the body every tick whether or not input is queued; with an empty
+queue FishNet builds default data and stamps it <code>_lastOrderedReplicatedTick + 1</code>, and before the
+owner's first input has arrived (the spawn round trip) that baseline is <em>seeded from an estimate</em>.
+Upstream seeds it from <code>TimeManager.LastPacketTick</code>, which is fed by every connection's packets
+and keeps only the highest tick it has ever seen — so every login after the first one a server
+process has handled (a relog, a character switch, a scene transfer back, or a second player)
+stamped the spawning character with an earlier session's clock, tens of thousands of ticks ahead.
+<strong>FISHMMO EDIT in <code>NetworkBehaviour.GetDefaultedLastReplicateTick</code>:</strong> the server seeds from
+<code>Owner.PacketTick</code>, the same estimate kept per connection. Without it
+<code>CharacterAttributeController.Regenerate</code>'s high-water mark rejected the owner's real inputs for
+the whole session (stamina and mana never regenerated on any long-running server), and
+<code>BuffController</code>/<code>CooldownController</code> translated their pre-replicate ticks by a garbage offset. <code>CharacterAttributeController.AcceptReplicateTick</code> adds a
+second line of defence: a replicate that carried no real input (<code>ReplicateState.Created</code> unset)
+cannot anchor the regen schedule until one that did has run. <code>RegenReplicateTickSeedTests</code> pins both.</p>
 <h3 id="controller-order-example">Controller Order Example</h3>
 <p>If you need current movement/camera state to be available before buff, cooldown, attribute, and ability logic:</p>
 <pre><code>KCCPlayer (Order=80)          → Updates position/velocity/camera state
@@ -718,10 +764,41 @@ observer path:</p>
 <code>ObserverBroadcastScope</code>. Every one of these is also written into the spawn payload in an
 observer-shaped form, so a late joiner reconstructs the same visible state a peer that was present
 the whole time holds.</p>
+<h3 id="transform-stream-rules">Transform stream rules</h3>
+<p>Observers receive position through <code>NetworkTransform</code>, shaped per observer by
+<code>NetworkTransformDistanceLod</code> (distance) and <code>ObserverStreamingEntry</code> (the viewer's full-rate cap).
+Four rules keep that stream rendering as motion, and each was learned from a live &quot;NPCs teleporting
+or rubber banding&quot; report (issue #176):</p>
+<ul>
+<li><strong>No per-observer interval above <code>ObserverStreamingPolicy.MaxSendInterval</code> (2)</strong>, which mirrors
+<code>NetworkTransform._interpolation</code> on every prefab. Both throttle tables — the prefab bands and the
+policy's cap bands — are clamped to it. The client waits for that many goals before it moves and
+again whenever its queue runs dry, and a queue overflow snaps to the newest goal; both scale with
+the interval. <code>NetworkTransformLodBufferTests</code> pins prefabs and policy together.</li>
+<li><strong>The first unreliable send after a reliable one goes to every observer</strong> (FISHMMO EDIT in
+<code>NetworkBehaviour.SendObserversRpc</code>). The receiver measures it against the settle as one tick, so
+a filtered observer would otherwise play N ticks of motion in one at every stop-and-go.</li>
+<li><strong>Positions pack to 24 bits at 1 cm</strong> (FISHMMO EDIT in <code>NetworkTransform</code>, multiplier 100 on
+every prefab). The wire grid must stay well under a walking character's per-tick displacement
+(5 cm at 30 Hz); the 10 cm grid tried before rendered a walk as alternating stalls and hops.</li>
+<li><strong>The NavMeshAgent is disabled on clients</strong> (<code>AIController.OnStartNetwork</code>). Left enabled it
+re-maps the interpolated transform onto the client's NavMesh every frame.</li>
+</ul>
 <p>The one thing genuinely broken by forwarding-off is a character with nothing to replicate position —
 <code>CharacterPredictionController.OnStartNetwork</code> warns for a predicted object with no
 <code>NetworkTransform</code>, because that presents as a content bug (a frozen character that keeps dealing
 damage) rather than a networking one.</p>
+<h3 id="the-exception-moving-platforms">The exception: moving platforms</h3>
+<p><code>KCCPlatform</code> is the one object that <strong>does</strong> forward state (<code>_enableStateForwarding: 1</code> on the
+scene <code>MovingPlatform</code>, pinned by <code>InterestManagementWiringTests.OnlyPlatforms_ShipWithStateForwardingOn</code>).
+The scale argument above is about relaying every owner's <em>input</em> to every observer; an ownerless
+platform has no input — its replicate is an empty struct — and the only cost is one delta-encoded
+reconcile (Vector3 + goal byte + chain sequence) per observer per tick. In return FishNet runs the
+platform's replicate on every client (ahead of the server by that client's ping, exactly as the
+FishNet demo describes), and rolls it back and replays it in lockstep with the rider on every
+reconcile, so a replayed ground probe meets the deck where it actually stood. The rider is conveyed
+through KCC's attached-rigidbody seam in <code>KinematicCharacterMotor.UpdatePhase1</code> (FISHMMO EDIT),
+never through <code>BaseVelocity</code>, which the controller overwrites before the move. See issue #228.</p>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
 <thead>
@@ -740,7 +817,7 @@ damage) rather than a networking one.</p>
 <tr>
 <td>State Forwarding</td>
 <td>Inspect <code>NetworkObject</code> Prediction settings</td>
-<td><code>EnableStateForwarding == false</code> on every shipped prefab — the interpolated open-world mode. Observers are fed by per-controller broadcasts, not by a forwarded reconcile; see <code>ObserverSyncMode</code>. <code>CharacterPredictionController.OnStartNetwork</code> warns only when forwarding is off AND there is no <code>NetworkTransform</code>, because then nothing replicates position at all</td>
+<td><code>EnableStateForwarding == false</code> on every shipped prefab (the scene <code>MovingPlatform</code> is the deliberate exception — see above) — the interpolated open-world mode. Observers are fed by per-controller broadcasts, not by a forwarded reconcile; see <code>ObserverSyncMode</code>. <code>CharacterPredictionController.OnStartNetwork</code> warns only when forwarding is off AND there is no <code>NetworkTransform</code>, because then nothing replicates position at all</td>
 </tr>
 <tr>
 <td>Tick execution</td>
@@ -779,6 +856,23 @@ damage) rather than a networking one.</p>
 </tr>
 </tbody>
 </table>
+<p><strong>FISHMMO EDIT in the FishNet weaver (<code>CodeGenerating/Extension/MethodDefinitionExtensions.CreateParameters</code>,
+<code>CreateCopy</code>, <code>TypeDefinitionExtensions.GetOrCreateMethodDefinition</code>, <code>GeneralHelper.CreateParameter</code>; issue #229).</strong>
+For every predicted behaviour the weaver copies <code>NetworkBehaviour.Replicate_Replay_Start(uint replayTick)</code> into
+the user assembly. Upstream built the copied parameter around FishNet.Runtime's own <code>uint</code> type reference
+instead of an imported one. Cecil reads a parameter's custom attributes lazily through
+<code>ParameterType.Module</code>, and its writer assigns the parameter's new Param row id <em>before</em> it asks
+<code>HasCustomAttributes</code>, so the lookup went to FishNet.Runtime's attribute table at whatever row the copy
+received in <code>FishMMO.Shared</code>. Whenever that row was an <code>in</code> parameter over there, its <code>[IsReadOnly]</code>
+attribute (constructor owned by the other module) came along and the weave died with
+&quot;Member 'IsReadOnlyAttribute::.ctor()' is declared in another module and needs to be imported&quot; — logged
+by Unity as &quot;Scripts have compiler errors&quot; with no <code>error CS</code> anywhere. Whether the rows collide depends on
+the parameter counts of both assemblies, which is why unrelated edits (a new helper method, an Editor
+asmdef split) and different platforms flipped it. The edit imports the type, seals the attribute list
+while the row id is still 0, and clones any copied attribute with an imported constructor. Re-apply after a
+FishNet upgrade; the reproduction is a method with enough parameters to push the generated row onto one
+of FishNet.Runtime's <code>[IsReadOnly]</code> rows (Param rows of <code>Library/Bee/artifacts/*/FishNet.Runtime.dll</code>,
+the pre-weave build the resolver actually opens).</p>
 <h2 id="system-architecture-mermaid">System Architecture (Mermaid)</h2>
 <p>The diagrams below describe the entire <code>Prediction/</code> folder — components, the unified data structs, delta-serializer paths, and the per-tick lifecycle. They are the canonical reference; ASCII diagrams further down repeat the same information for terminal-only viewers.</p>
 <h3 id="1-component--data-flow-topology">1. Component &amp; Data-Flow Topology</h3>
@@ -823,7 +917,7 @@ damage) rather than a networking one.</p>
         BUF_SER[&quot;BuffReconcileEntry\nWrite/ReadArrayDelta&quot;]:::serializer
         CD_SER[&quot;CooldownReconcileEntry\nWrite/ReadArrayDelta&quot;]:::serializer
         ATT_SER[&quot;AttributeReconcileEntry\nWrite/ReadArrayDelta&quot;]:::serializer
-        KCC_SER[&quot;KCCPredictionDeltaSerializers\n(MotorState 14-bit bitmask)&quot;]:::serializer
+        KCC_SER[&quot;KCCPredictionDeltaSerializers\n(MotorState 13 live bits)&quot;]:::serializer
     end
 
     subgraph Sep[&quot;Separate NetworkObjects (own predicted pair)&quot;]
@@ -895,8 +989,8 @@ damage) rather than a networking one.</p>
 
     RC([CharacterReconcileData])
 
-    RC --&gt; MS[&quot;MotorState\n14-bit bitmask&quot;]:::field
-    RC --&gt; RS[&quot;ResourceState\n(7-bit bitmask: HP/MP/Stamina + max + RegenTickAccum)&quot;]:::field
+    RC --&gt; MS[&quot;MotorState\n13 live bits of a 16-bit mask&quot;]:::field
+    RC --&gt; RS[&quot;ResourceState\n(7-bit bitmask: HP/MP/Stamina + max + NextRegenTick)&quot;]:::field
     RC --&gt; AID[&quot;AbilityID + RemainingTicks + Seed&quot;]:::field
     RC --&gt; PFS[&quot;PackedFlagsAndSlot (int32)\nlow 16 = AbilityActivationFlags\nhigh 16 = consumable slot (signed)&quot;]:::field
     RC --&gt; RNG[&quot;RngS0..RngS3 (xoshiro128**)&quot;]:::field
@@ -1022,9 +1116,9 @@ damage) rather than a networking one.</p>
 └──────────────────────────────────────────────────┘
 </code></pre>
 <h3 id="delta-serialization">Delta Serialization</h3>
-<pre><code>CharacterReplicateData: 7-bit byte bitmask → only changed fields written
-CharacterReconcileData: ushort bitmask → per-field delta encoding
-├── KinematicCharacterMotorState: 14-bit ushort bitmask
+<pre><code>CharacterReplicateData: 8-bit byte bitmask (fully allocated) → only changed fields written
+CharacterReconcileData: ushort bitmask, 12 of 16 bits in use → per-field delta encoding
+├── KinematicCharacterMotorState: ushort bitmask, 13 live bits (bit 4 retired, left as a gap)
 ├── CharacterAttributeResourceState: 7-bit byte bitmask
 ├── CooldownReconcileEntry[]: index-delta compression (reference-equality shortcut)
 ├── BuffReconcileEntry[]: index-delta compression (reference-equality shortcut)
@@ -1059,6 +1153,7 @@ CharacterReconcileData: ushort bitmask → per-field delta encoding
 │   ├── PredictedAbilityStateHistory.cs         # Owner-side per-tick (seed, abilityID) record the reconcile compares against
 │   ├── AbilityPrefabColliderCache.cs           # Caches colliders per ability prefab to avoid GetComponent per spawn
 │   ├── AbilityContainerAllocator.cs            # Allocates deterministic container IDs for spawned objects
+│   ├── AbilitySummary.cs                       # AbilityStatBlock + the one composition behind every ability tooltip
 │   ├── AbilityActivationFlags.cs               # 16-bit flags packed into CharacterReconcileData.PackedFlagsAndSlot
 │   ├── Activation/                             # AbilityActivationReplicateData (per-ability input shape)
 │   ├── Cooldown/                               # Cooldown system (see Ability/Cooldown/README.md)
@@ -1067,9 +1162,15 @@ CharacterReconcileData: ushort bitmask → per-field delta encoding
 ├── Buff/                                       # Buff system (see Buff/README.md)
 │   ├── Buff.cs                                 # Per-buff state holder
 │   ├── BuffController.cs                       # IPredictableController (Order=85)
-│   ├── BuffReconcileEntry.cs                   # (TemplateID, ExpiryTick, NextTickTick, Stacks) + array-delta
+│   ├── BuffReconcileEntry.cs                   # (TemplateID, ExpiryTick, NextTickTick, Stacks, TickCount, CumulativeTickMultiplier, RemainingCharges) + array-delta
+│   ├── ObservedBuffEntry.cs                    # Display-only observer strip entry (7-byte wire) + ObservedBuffStatement provenance
+│   ├── DamageMitigation.cs                     # Block / absorb / deflect resolution consulted when a hit lands
+│   ├── ShieldVolume.cs                         # Authored shield shape, tested in the character's OWN space
 │   └── Template/                               # AttributeBuffTemplate, CompositeBuffTemplate, etc.
-├── Equipment/                                  # Equipment state reconcile (EquipmentController, EquipmentReconcileEntry)
+├── Equipment/                                  # Equipment rides the replicate
+│   ├── EquipmentController.cs                  # IPredictableController (Order=93)
+│   ├── EquipmentReconcileEntry.cs              # Per-slot authoritative snapshot + array-delta
+│   └── EquipmentReplicateInput.cs              # TryPack/TryUnpack for the one-byte equip/unequip request on CharacterReplicateData
 ├── CharacterAttribute/                         # Attribute system (see CharacterAttribute/README.md)
 │   ├── CharacterAttributeController.cs         # IPredictableController (Order=95)
 │   ├── CharacterAttribute.cs                   # Non-resource attribute runtime
@@ -1102,7 +1203,9 @@ CharacterReconcileData: ushort bitmask → per-field delta encoding
 │   ├── ObserverStreamingRegistry.cs            # Registration and per-observer decisions
 │   ├── ObserverStreamingPolicy.cs              # Density-scaled range and budget policy
 │   ├── ObserverStreamingEntry.cs               # Per-object streaming state
-│   └── ObserverBudgetCondition.cs              # FishNet observer condition implementing the budget
+│   ├── ObserverClassification.cs               # The classification an object is budgeted and ranged under
+│   ├── ClassifiedDistanceCondition.cs          # FishNet observer condition: per-classification runtime range
+│   └── ObserverBudgetCondition.cs              # FishNet observer condition implementing the per-classification budget
 └── Region/                                     # Region trigger system (server-authoritative; NOT part of the predicted character pipeline)
     ├── Region.cs                               # NetworkBehaviour with NetworkTrigger; OnRegionEnter/Stay/Exit Trigger lists
     ├── RegionGeometry.cs                        # Authored region shape

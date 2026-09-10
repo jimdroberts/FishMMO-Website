@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class KCCPlatform | FishMMO Documentation ">
       
-      <meta name="description" content="Predicted moving platform that uses FishNet Prediction V2 for deterministic movement. Players standing on this platform receive platform velocity through .">
+      <meta name="description" content="Predicted moving platform on FishNet&#39;s own model: every peer runs the same autonomous, deterministic replicate, the server reconciles it to every observer, and FishNet rolls it back and replays it with everything else. Riders inherit its per-tick velocity through .">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_KCCPlatform" data-uid="FishMMO.Shared.KCCPlatform" class="text-break">
-Class KCCPlatform  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L16"><i class="bi bi-code-slash"></i></a>
+Class KCCPlatform  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L48"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,8 +97,10 @@ Class KCCPlatform  <a class="header-action link-secondary" title="View source" h
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Predicted moving platform that uses FishNet Prediction V2 for deterministic movement.
-Players standing on this platform receive platform velocity through <a class="xref" href="FishMMO.Shared.KCCPlayer.html">KCCPlayer</a>.</p>
+  <div class="markdown summary"><p>Predicted moving platform on FishNet's own model: every peer runs the same autonomous,
+deterministic replicate, the server reconciles it to every observer, and FishNet rolls it
+back and replays it with everything else. Riders inherit its per-tick velocity through
+<a class="xref" href="FishMMO.Shared.KCCPlayer.html">KCCPlayer</a>.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -823,6 +825,35 @@ Players standing on this platform receive platform velocity through <a class="xr
 
 
 
+  <h2 id="FishMMO_Shared_KCCPlatform_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+A fork of FishNet's <code>Demos/Prediction/CharacterController/MovingPlatform</code>, and since
+issue #228 deliberately back ON that model. This platform's <code>NetworkObject</code> is the one
+kind of scene object in the project with state forwarding ENABLED (pinned by
+<code>InterestManagementWiringTests.OnlyPlatforms_ShipWithStateForwardingOn</code>), because the
+argument that keeps forwarding off everywhere else does not apply to it: forwarding a
+character relays every owner's INPUT to every observer, which is what makes 100-200 players
+unaffordable — an ownerless platform has no input. Its replicate is an empty struct, and the
+only wire cost is one delta-encoded reconcile (Vector3 + byte) per observer per tick.
+</p>
+<p>
+What that buys, in the demo's own words: with the body run in EVERY replicate state,
+<code>IsFuture</code> included, a client's platform runs AHEAD of the server by that client's ping —
+where the platform will be by the time the client's input reaches the server — and every
+reconcile rolls the platform back to the server's state and replays it in lockstep with the
+rider, so a replayed ground probe meets the deck where it actually stood on that tick.
+</p>
+<p>
+The previous model — forwarding off, each client stepping the platform itself from a
+one-shot spawn payload — had neither property. With forwarding off FishNet returns from
+<code>Replicate_NonAuthoritative</code> before invoking the body and sends no reconcile for an
+ownerless object, so the client copy was seeded from the payload and dead-reckoned open-loop
+for the rest of the session: seeded BEHIND the server (aligned to the interpolated observer
+frame ability objects use, the opposite of what a deck the owner stands on needs), and never
+rolled back, so a reconcile replay probed a deck up to a round trip downstream of where the
+rider stood. Riders sank through moving decks, worst at high ping, worst near the edges.
+</p>
+</div>
 
 
   <h2 class="section" id="properties">Properties
@@ -833,7 +864,7 @@ Players standing on this platform receive platform velocity through <a class="xr
 
   <h3 id="FishMMO_Shared_KCCPlatform_GameObject" data-uid="FishMMO.Shared.KCCPlatform.GameObject">
   GameObject
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L175"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L231"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The Unity GameObject associated with this scene object.</p>
@@ -865,7 +896,7 @@ Players standing on this platform receive platform velocity through <a class="xr
 
   <h3 id="FishMMO_Shared_KCCPlatform_ID" data-uid="FishMMO.Shared.KCCPlatform.ID">
   ID
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L172"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L228"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unique identifier for the scene object.</p>
@@ -897,17 +928,13 @@ Players standing on this platform receive platform velocity through <a class="xr
 
   <h3 id="FishMMO_Shared_KCCPlatform_LastCompletedTickVelocity" data-uid="FishMMO.Shared.KCCPlatform.LastCompletedTickVelocity">
   LastCompletedTickVelocity
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L122"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L169"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Velocity of the platform during its most recently completed <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">Step(float)</a>, in world
-units per second. Players riding the platform read this value so the inherited platform
-velocity is independent of whether the player's NetworkBehaviour ticks before or after
-this platform within the same network tick (FishNet does not guarantee a deterministic
-OnTick order across separate NetworkObjects). Lag is at most one tick (acceptable for
-moving-platform inheritance) but the value is consistent between server and client
-because both compute it from the same deterministic <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">Step(float)</a> — the server from
-inside its <code>[Replicate]</code>, a client directly from its tick.</p>
+units per second. Refreshed by every run of the replicate body — the live tick on both
+peers, and each replayed tick on a client — so it is the velocity of whatever tick the
+platform last simulated.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -940,7 +967,7 @@ inside its <code>[Replicate]</code>, a client directly from its tick.</p>
 
   <h3 id="FishMMO_Shared_KCCPlatform_CreateReconcile" data-uid="FishMMO.Shared.KCCPlatform.CreateReconcile">
   CreateReconcile()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L325"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L387"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Override this method to create your reconcile data, and call your reconcile method.</p>
@@ -967,7 +994,7 @@ inside its <code>[Replicate]</code>, a client directly from its tick.</p>
 
   <h3 id="FishMMO_Shared_KCCPlatform_OnStartNetwork" data-uid="FishMMO.Shared.KCCPlatform.OnStartNetwork">
   OnStartNetwork()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L242"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L329"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when the network has initialized this object. May be called for server or client but will only be called once.
@@ -996,7 +1023,7 @@ When as client only the method will run before OnStartClient.</p>
 
   <h3 id="FishMMO_Shared_KCCPlatform_ReadPayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.KCCPlatform.ReadPayload(FishNet.Connection.NetworkConnection,FishNet.Serializing.Reader)">
   ReadPayload(NetworkConnection, Reader)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L273"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L343"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called before network start callbacks, but after the object is initialized with network values. This may be used to read information from predicted spawning, or simply have values set before initialization without depending on SyncTypes.</p>
@@ -1024,29 +1051,12 @@ When as client only the method will run before OnStartClient.</p>
 
 
   <h4 class="section" id="FishMMO_Shared_KCCPlatform_ReadPayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Reader__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>
-Position and goal index are the platform's whole simulation state, and they are carried
-here rather than by a reconcile because state forwarding is off on every object in this
-project. With forwarding off a scene object has no owner to send a reconcile to
-(<code>Server_SendReconcileRpc</code> returns immediately when <code>!Owner.IsValid</code>), so a
-client that arrives mid-cycle would otherwise start the platform from its authored
-position and run a full lap out of phase with the server, for the lifetime of the scene.
-</p>
-<p>
-Per-tick movement needs no wire at all: <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">Step(float)</a> is autonomous and deterministic
-— <code>MoveTowards</code> by a fixed <code>TimeManager.TickDelta</code> step — and it snaps exactly
-onto each waypoint on arrival, so float drift is bounded within one leg and reset at every
-corner. Both peers run it: the server from its <code>[Replicate]</code>, a client directly from
-<code>TimeManager_OnTick</code>, because FishNet will not invoke an ownerless, non-forwarded
-replicate body on a client (which is why the platform stood still on every client until
-the 2026-08-28 audit). Fourteen bytes once per observer, instead of a reconcile every tick
-to every observer.
-</p>
-<p>
-<code>goals</code> is built in <code>Awake</code> from the authored scene position, which is identical
-on every peer, and <code>Awake</code> runs before this — so assigning the live position here
-cannot disturb the waypoints it was derived from.
-</p>
+  <div class="markdown level1 remarks"><p>A SEED, not a sync. A client arriving mid-cycle would otherwise draw the platform at its
+authored pose for the tick or two before its first reconcile lands; the reconcile is what
+places it, and every reconcile after that keeps it placed. The catch-up that used to
+live here (fast-forwarding the snapshot by its transit) is gone with the reason it
+existed — the payload is no longer the only word the client ever hears about this
+platform.</p>
 </div>
 
 
@@ -1056,7 +1066,7 @@ cannot disturb the waypoints it was derived from.
 
   <h3 id="FishMMO_Shared_KCCPlatform_ResetState_System_Boolean_" data-uid="FishMMO.Shared.KCCPlatform.ResetState(System.Boolean)">
   ResetState(bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L391"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L467"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resets this NetworkBehaviour so that it may be added to an object pool.</p>
@@ -1088,7 +1098,7 @@ cannot disturb the waypoints it was derived from.
 
   <h3 id="FishMMO_Shared_KCCPlatform_TimeManager_OnTick" data-uid="FishMMO.Shared.KCCPlatform.TimeManager_OnTick">
   TimeManager_OnTick()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L305"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L374"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
@@ -1107,13 +1117,12 @@ cannot disturb the waypoints it was derived from.
 
 
   <h4 class="section" id="FishMMO_Shared_KCCPlatform_TimeManager_OnTick_remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>The server drives the platform through the predicted <a class="xref" href="FishMMO.Shared.KCCPlatform.ReplicateData.html">PerformReplicate(ReplicateData, ReplicateState, Channel)</a>.
-A client cannot: with state forwarding off and no owner, FishNet's
-<code>Replicate_NonAuthoritative</code> returns before it invokes the replicate body, no
-reconcile is ever sent (see <a class="xref" href="FishMMO.Shared.KCCPlatform.html#FishMMO_Shared_KCCPlatform_ReadPayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Reader_">ReadPayload(NetworkConnection, Reader)</a>), and this object carries no
-NetworkTransform — so left to the replicate the platform never moved on any client
-while it moved on the server, and riders diverged every tick. The client runs the
-same deterministic step directly, from the state the spawn payload handed it.</p>
+  <div class="markdown level1 remarks"><p>Identical on every peer, exactly as the FishNet demo has it. The server's call is
+authoritative and drives the reconcile; a client's routes through
+<code>Replicate_NonAuthoritative</code>, which — because this object forwards state — runs the
+body with the server's queued data when it has some and with default, <code>IsFuture</code>
+data when it does not. The body moves in either case, which is what puts the client's
+platform ahead of the server by its ping rather than behind it.</p>
 </div>
 
 
@@ -1123,10 +1132,10 @@ same deterministic step directly, from the state the spawn payload handed it.</p
 
   <h3 id="FishMMO_Shared_KCCPlatform_TryGetVelocityForTick_System_UInt32_UnityEngine_Vector3__" data-uid="FishMMO.Shared.KCCPlatform.TryGetVelocityForTick(System.UInt32,UnityEngine.Vector3@)">
   TryGetVelocityForTick(uint, out Vector3)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L145"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L201"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>The velocity this platform produced on a specific tick.</p>
+  <div class="markdown level1 summary"><p>The velocity this platform produced on a specific tick, in the CLIENT tick domain.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -1158,10 +1167,19 @@ same deterministic step directly, from the state the spawn payload handed it.</p
 
 
   <h4 class="section" id="FishMMO_Shared_KCCPlatform_TryGetVelocityForTick_System_UInt32_UnityEngine_Vector3___remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>A rider replaying k ticks after a reconcile needs the velocity of each replayed tick, not
-the platform's present one. The platform itself never replays — it has no owner and no
-reconcile reaches a client — so without this every replayed tick inherited one frozen
-value and the rider's replayed path bent at each direction reversal.</p>
+  <div class="markdown level1 remarks"><p>
+FishNet promises no tick order across NetworkObjects, so a rider simulating tick T cannot
+know whether this platform has already stepped T or is still on T-1 when it asks for
+<a class="xref" href="FishMMO.Shared.KCCPlatform.html#FishMMO_Shared_KCCPlatform_LastCompletedTickVelocity">LastCompletedTickVelocity</a>. The ring answers by tick instead, and is filled
+wherever the platform runs a tick on a client: from <a class="xref" href="FishMMO.Shared.KCCPlatform.html#FishMMO_Shared_KCCPlatform_TimeManager_OnTick">TimeManager_OnTick()</a> keyed
+by <code>LocalTick</code> for the live tick, and from the replayed replicate keyed by
+<code>PredictionManager.ClientReplayTick</code> — both the same counter a rider's input carries.
+</p>
+<p>
+The server fills it too, keyed by ITS local tick, but must not consult it with a rider's
+input tick: that tick is the owning client's unsynchronised counter, so the lookup is an
+arbitrary hit or a miss. The server never replays, and reads the live value instead.
+</p>
 </div>
 
 
@@ -1171,7 +1189,7 @@ value and the rider's replayed path bent at each direction reversal.</p>
 
   <h3 id="FishMMO_Shared_KCCPlatform_WritePayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Writer_" data-uid="FishMMO.Shared.KCCPlatform.WritePayload(FishNet.Connection.NetworkConnection,FishNet.Serializing.Writer)">
   WritePayload(NetworkConnection, Writer)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L288"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/KCC/KCCPlatform.cs/#L358"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when writing a spawn. This may be used to deliver information for predicted spawning, or simply have values set before initialization without depending on SyncTypes.</p>

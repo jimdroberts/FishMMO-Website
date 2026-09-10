@@ -104,6 +104,10 @@
 <ul>
 <li><a href="#persistence-shape">Persistence shape</a></li>
 <li><a href="#item-identity-and-the-zero-id-rule">Item identity and the zero-id rule</a></li>
+<li><a href="#stack-split-and-merge">Stack split and merge</a></li>
+<li><a href="#slot-locks">Slot locks</a></li>
+<li><a href="#tooltips">Tooltips</a></li>
+<li><a href="#server-hooks-for-shared-code">Server hooks for shared code</a></li>
 </ul>
 </li>
 <li><a href="#operational-checks">Operational Checks</a></li>
@@ -149,11 +153,14 @@
 <li>Seed-based deterministic attribute generation for weapons, armor, and random attribute pools</li>
 <li>Slot-based abstract <code>ItemContainer</code> with concrete <code>InventoryController</code> (32 slots), <code>EquipmentController</code> (10 slots), and <code>BankController</code> (100 slots)</li>
 <li>Full stacking logic with same-template/same-seed matching, stack merging, and unstacking</li>
+<li>Quantity-conserving stack split and merge (<code>ItemStackTransfer</code>), all-or-nothing and pinned by <code>ItemStackSplitMergeTests</code></li>
+<li>Per-slot locks (<code>LockSlot</code> / <code>UnlockSlot</code> / <code>OnSlotLockChanged</code>) that make a slot in flight untouchable</li>
 <li>Equip/unequip flow with live character attribute modifier application and removal</li>
 <li>Cross-container slot swaps between inventory, equipment, and bank</li>
-<li>Consumable system with charge-based usage, cooldowns, and scroll-based ability learning</li>
+<li>Consumable system with charge-based usage, cooldowns, and scroll-based ability learning; concrete <code>ResourceConsumableTemplate</code> and <code>KnowledgeScrollTemplate</code> assets</li>
 <li>FishNet network synchronization via typed broadcasts (set, batch set, remove, swap) per container</li>
-<li>Event-driven slot updates (<code>OnSlotUpdated</code>, <code>OnEquip</code>, <code>OnUnequip</code>, <code>OnDestroy</code>)</li>
+<li>Event-driven slot updates (<code>OnSlotUpdated</code>, <code>OnSlotLockChanged</code>, <code>OnEquip</code>, <code>OnUnequip</code>, <code>OnDestroy</code>)</li>
+<li>Typed tooltip rows (<code>TooltipContent</code>) built by every template and by the generated roll</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -170,7 +177,7 @@
 <li><strong>Instantiate at runtime</strong> — Create an item via <code>new Item(id, seed, templateID, amount)</code>. The constructor auto-wires sub-components based on the template type.</li>
 <li><strong>Add to a container</strong> — Call <code>inventoryController.TryAddItem(item, out modifiedItems)</code> to place the item in a character's inventory.</li>
 <li><strong>Equip an item</strong> — Call <code>equipmentController.Equip(item, inventoryIndex, sourceContainer, targetSlot)</code> to equip from inventory.</li>
-<li><strong>Consume an item</strong> — Call <code>consumableTemplate.Invoke(character, item)</code> for charge-based consumable usage.</li>
+<li><strong>Consume an item</strong> — Call <code>inventoryController.Activate(slot)</code>. A <code>ConsumableTemplate</code> is handed to <code>IAbilityController.ActivateConsumable(item)</code>, which pre-filters on the client, queues the use into the next replicate, and lets the server re-validate. Nothing is consumed by <code>Activate</code> itself; the template's <code>Invoke(character, item, currentTick)</code> runs from the activation pipeline.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
 <h3 id="baseitemtemplate-inspector">BaseItemTemplate (Inspector)</h3>
@@ -378,10 +385,12 @@ cannot tell that apart from a mistake.</li>
 <tr>
 <td><code>BankController</code></td>
 <td>100</td>
-<td>Persistent bank storage with currency</td>
+<td>Persistent bank storage</td>
 </tr>
 </tbody>
 </table>
+<p><code>BankController</code> no longer carries a <code>Currency</code> field of its own; the bank is a container of
+items and nothing else.</p>
 <p>Containers are pre-sized with empty slots at <code>OnAwake</code> (<code>AddSlots(null, count)</code>), so
 <code>Items.Count</code> <strong>is</strong> the capacity and an empty slot is a <code>null</code> entry rather than a missing one.
 The inventory and bank panels size their grids from that count rather than from how many slots
@@ -402,8 +411,8 @@ they have.</p>
 <tbody>
 <tr>
 <td><code>ID</code></td>
-<td><code>long</code></td>
-<td>Database identity. <strong>Zero means &quot;not yet written&quot;</strong> — see <a href="#item-identity-and-the-zero-id-rule">Item identity and the zero-id rule</a>.</td>
+<td><code>long</code> (get-only)</td>
+<td>Database identity, written by the constructors and by <code>AssignPersistentID</code>. <strong>Zero means &quot;not yet written&quot;</strong> — see <a href="#item-identity-and-the-zero-id-rule">Item identity and the zero-id rule</a>.</td>
 </tr>
 <tr>
 <td><code>Version</code></td>
@@ -457,7 +466,18 @@ has already been issued, since that would move the item's ledger key out from un
 it has already applied.</p>
 <p>Deriving the seed there closes a related trap: <code>Initialize</code> derives a generated item's seed from
 its id, so a looted weapon with no id rolled its attributes from seed 0 and the reload after
-logout re-derived a real seed and rolled a <em>different</em> set.</p>
+logout re-derived a real seed and rolled a <em>different</em> set. Both paths now call the same
+<code>Item.DeriveSeed(long id)</code> — high word of the id when positive, low word otherwise, and 0 for
+id 0 — so the seed an item is created with and the seed it is reloaded with cannot drift apart.</p>
+<p><code>Initialize(long id, uint amount, int seed)</code> is <strong><code>internal</code></strong> for the same reason: it writes <code>ID</code>
+directly and does not re-key contributions the item has already applied, so its only callers are
+<code>Item</code>'s own constructors.</p>
+<p><code>Item.Destroy()</code> unequips <strong>before</strong> detaching its handlers. <code>Equippable.Destroy()</code> raises
+<code>OnUnequip</code>, and this item's own handler is what calls <code>ItemGenerator.RemoveAttributes</code>; detaching
+first fired that event into an empty invocation list, so every generated modifier an equipped item
+had applied stayed on the character's <code>ExternalModifier</code> after the item was destroyed. Clients
+happen to recover from the next spawn payload; the server has nothing that re-asserts it, so a
+pooled character carried the previous occupant's gear bonuses.</p>
 <h4 id="persistence-shape">Persistence shape</h4>
 <p>Every item a character owns — inventory, equipment and bank alike — is <strong>one row in
 <code>character_item</code>, keyed by the item's own <code>ID</code></strong>. <code>ItemContainerType</code> (<code>Inventory</code> / <code>Equipment</code> /
@@ -554,6 +574,89 @@ two columns rather than a delete and an insert across two different tables.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="tooltips">Tooltips</h3>
+<p>Items build <strong>typed tooltip rows</strong> into a <code>TooltipContent</code>; the string-building <code>TooltipBuilder</code>
+is gone. Every level of the hierarchy contributes:</p>
+<table>
+<thead>
+<tr>
+<th>Writer</th>
+<th>Rows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BaseItemTemplate.BuildTooltip(content, describingInstance)</code></td>
+<td>icon, title, &quot;Stacks to&quot; when stackable, &quot;Price&quot;</td>
+</tr>
+<tr>
+<td><code>EquippableItemTemplate</code></td>
+<td>subtitle = the <code>ItemSlot</code> it is worn in</td>
+</tr>
+<tr>
+<td><code>WeaponTemplate</code> / <code>ArmorTemplate</code></td>
+<td>attack power / attack speed / armor, via <code>AddAttributeRange</code></td>
+</tr>
+<tr>
+<td><code>ConsumableTemplate</code></td>
+<td>subtitle = <code>ConsumableType</code>, &quot;Use Time&quot;, &quot;Cooldown&quot;, &quot;Charges per use&quot;</td>
+</tr>
+<tr>
+<td><code>ResourceConsumableTemplate</code></td>
+<td>a &quot;Restores&quot; header and one row per resource</td>
+</tr>
+<tr>
+<td><code>ScrollConsumableTemplate</code></td>
+<td>a &quot;Teaches&quot; header naming each base ability and effect, plus a hint pointing at the Knowledge tab and an Ability Crafter</td>
+</tr>
+<tr>
+<td><code>ItemGenerator.BuildTooltip(content)</code></td>
+<td>an &quot;Attributes&quot; header and every rolled value, then a muted &quot;Seed&quot;</td>
+</tr>
+<tr>
+<td><code>Item.BuildTooltip(content)</code></td>
+<td>&quot;Amount&quot; when the stack holds more than one, then a muted &quot;Slot&quot; (omitted when <code>Slot &lt; 0</code>) and &quot;Item ID&quot; in the footer</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>describingInstance</code> flag is the reason a template and an instance can share one tooltip. A
+template can only say what an item of this kind <em>can</em> be — &quot;Attack Power 1 - 3&quot; — while an
+instance knows what it rolled. <code>Item.BuildTooltip</code> sets the flag when the generator has rolled
+anything, and <code>AddAttributeRange</code> writes nothing when it is set, so the range and the roll never
+appear in the same tooltip under two different names.</p>
+<h3 id="server-hooks-for-shared-code">Server hooks for shared code</h3>
+<p><code>ServerItemHooks</code> is a static pair of callbacks installed by <code>CharacterInventorySystem</code> when it
+initialises and cleared when it goes away. It is <strong>null on every other peer</strong>, and shared callers
+must treat null as &quot;not the server&quot;.</p>
+<table>
+<thead>
+<tr>
+<th>Hook</th>
+<th>Signature</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GrantInventoryItem</code></td>
+<td><code>Func&lt;ICharacter, Item, bool&gt;</code></td>
+<td>Places an item in a character's inventory, tells the owner, persists it. True when the whole item was placed</td>
+</tr>
+<tr>
+<td><code>InventoryChanged</code></td>
+<td><code>Action&lt;ICharacter, IReadOnlyList&lt;Item&gt;, IReadOnlyList&lt;RemovedItemRecord&gt;&gt;</code></td>
+<td>Reports rows that changed (a reduced stack) and rows that ceased to exist, so they are written and the owner is told</td>
+</tr>
+</tbody>
+</table>
+<p>The ECA actions that give and remove items are shared code running on the server, and they used to
+mutate the containers and stop: a quest that handed out an item produced one that vanished at the
+next snapshot or reappeared after a crash, and the player saw it only after a relog. Equip and
+unequip are covered by the controller's own <code>IEquipmentController.OnServerEquipmentChanged</code>; these
+two cover the inventory.</p>
+<p><code>RemovedItemRecord</code> (<code>ItemID</code>, <code>Version</code>, <code>Slot</code>) exists because <code>ItemContainer.RemoveItem</code> sets
+the removed item's <code>Slot</code> to <code>-1</code> on the way out, so anything that needs to tell the owning client
+which slot emptied has to capture it first. <code>Version</code> is what the delete is authorised against.</p>
 <h3 id="container-api">Container API</h3>
 <p>All containers extend <code>ItemContainer</code> which provides:</p>
 <table>
@@ -597,11 +700,40 @@ two columns rather than a delete and an insert across two different tables.</p>
 <td>Search by template</td>
 </tr>
 <tr>
+<td><code>IsValidSlot(slot)</code> / <code>IsSlotEmpty(slot)</code> / <code>TryGetItem(slot, out item)</code></td>
+<td>Slot queries</td>
+</tr>
+<tr>
+<td><code>IsSlotLocked(slot)</code> / <code>LockSlot(slot)</code> / <code>UnlockSlot(slot)</code></td>
+<td>Per-slot lock — see <a href="#slot-locks">Slot locks</a></td>
+</tr>
+<tr>
+<td><code>Clear()</code></td>
+<td>Empties every slot, keeping the capacity</td>
+</tr>
+<tr>
 <td><code>CanManipulate()</code></td>
-<td>Checks character is alive and container is non-empty</td>
+<td><strong>Only</strong> whether there is anything here to manipulate (<code>Items.Count &gt; 0</code>). It does <strong>not</strong> check that the character is alive — see below</td>
 </tr>
 </tbody>
 </table>
+<p><code>CanManipulate()</code> used to refuse while the character was dead. Every mutation consults it,
+including the ones a client applies on the server's authority, so a dead character's containers
+refused the server's own updates and drifted from it. Whether a character may <em>originate</em> a
+request is a separate question and <code>CharacterStateValidation.CanAct(ICharacter)</code> is the one rule
+for it: the server's handlers ask it before touching a container, and the client asks it before
+queueing a request.</p>
+<h3 id="slot-locks">Slot locks</h3>
+<p>A slot is locked for the duration of an operation that has left the client — a consumable
+activation, an equip round trip — and unlocked when that operation resolves. A locked slot is
+unswappable, unremovable and untransferable, and <code>OnSlotLockChanged</code> is what the UI greys out
+from.</p>
+<p><code>ItemContainer</code> drops both the subscriber lists and every lock in <strong><code>ResetState(bool asServer)</code></strong>
+as well as in <code>OnDestroying</code>. A despawn mid-flight resolves nothing, and a pooled object never
+takes the destroy path, so a lock set at despawn used to survive into the next character to
+occupy that <code>NetworkObject</code> — a permanently locked inventory slot with nothing in the UI to
+explain it. Items are deliberately <em>not</em> cleared there: each concrete container clears its own in
+its own <code>ResetState</code>, because <code>EquipmentController</code> has to run work on either side of that call.</p>
 <h3 id="stacking-logic">Stacking Logic</h3>
 <p>Items stack when they have the same template ID and matching generation seed (via <code>IsMatch()</code>).</p>
 <pre><code>ItemStackable.AddToStack(other)
@@ -611,28 +743,159 @@ two columns rather than a delete and an insert across two different tables.</p>
   └── other.Amount = remainder
 
 ItemStackable.TryUnstack(amount, out instance)
-  ├── If amount &gt;= Amount: return entire item
-  └── Else: reduce Amount, return null (new instance creation unfinished)
+  ├── If amount &gt;= Amount: hands back the original item (taking everything is a move, not a split)
+  └── Else: allocates a new Item(0, sourceSeed, template, amount) FIRST, then decrements Amount
+      └── the seed is copied so the two halves still IsMatch() and can be re-stacked
 </code></pre>
+<p><code>ItemStackable.RemainingCapacity</code> is <code>MaxStackSize - Amount</code>, and is what both the merge and the
+split check against.</p>
+<h3 id="stack-split-and-merge">Stack split and merge</h3>
+<p><code>ItemStackTransfer</code> (issue #198) is the static, container-level pair that moves quantity between
+two slots without going through add/remove. It performs no persistence and no broadcasting — the
+server handler owns writing the rows and telling the owner, and the client never calls it at all:
+it learns the outcome from the ordinary set-slot messages.</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CanMergeInto(destination, source)</code></td>
+<td>True when dropping <code>source</code> on <code>destination</code> should merge rather than swap. Agrees with <code>ItemStackable.AddToStack</code>, including its refusal of a <strong>full</strong> donor — pouring a full stack into a partial one is a swap by another name</td>
+</tr>
+<tr>
+<td><code>CanSplitOnto(occupant, source, amount)</code></td>
+<td>True when <code>amount</code> split off <code>source</code> can land on the destination: null (empty) or a matching stack with room for <strong>all</strong> of it</td>
+</tr>
+<tr>
+<td><code>IsValidSplitAmount(source, amount)</code></td>
+<td><code>amount &gt;= 1 &amp;&amp; amount &lt; source.Stackable.Amount</code>. The whole stack is not a valid split — taking everything is the existing swap</td>
+</tr>
+<tr>
+<td><code>TryMerge(from, fromSlot, to, toSlot, out source, out destination, out sourceEmptied)</code></td>
+<td>Pours as much as fits. The donor keeps the remainder and stays put, or its slot is cleared and <code>sourceEmptied</code> reports it so the caller can delete the row. The donor instance is handed back either way — the caller needs its identity and version for that delete</td>
+</tr>
+<tr>
+<td><code>TrySplit(from, fromSlot, to, toSlot, amount, out source, out destination, out destinationCreated)</code></td>
+<td>Takes <code>amount</code> off the stack: onto a matching occupant, or into a <strong>new instance with <code>ID = 0</code></strong> when the slot is empty (<code>destinationCreated</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Both operations <strong>conserve quantity and are all-or-nothing</strong>. Every refusal happens before
+anything is written, and the one write that can still fail afterwards — placing a freshly split
+instance into its slot — is undone by putting the amount back on the source. A partially filled
+destination is refused rather than partly filled, so the server's answer is either &quot;done as
+asked&quot; or &quot;nothing happened&quot;. <code>ItemStackSplitMergeTests</code> and <code>ItemStackConservationTests</code> pin
+that.</p>
+<p>The shared pre-flight (<code>SlotsAreUsable</code>) requires two real containers, two valid and <em>different</em>
+slots, <code>CanManipulate()</code> on both, and <strong>neither slot locked</strong>. Locks are checked up front rather
+than left to <code>SetItemSlot</code>'s own refusal, because both operations write two slots in sequence and
+a refusal on the second would leave the first already changed.</p>
+<p><code>ItemContainer.TryAddItem</code> has a related invariant: the <strong>donor joins <code>modifiedItems</code> only once
+it has a slot of its own</strong>. Every caller turns that list straight into persistence rows and
+set-slot broadcasts, and a donor's <code>Slot</code> is <code>-1</code> until it is placed, so listing it after a merge
+wrote <code>(slot = -1, amount = …)</code> rows and broadcast a slot the client discards. The stacks it
+merged into are already listed; a donor that never gets a slot has no row to write.</p>
 <h3 id="consumable-usage">Consumable Usage</h3>
-<p>Consumables use a charge-based model with cooldowns:</p>
-<pre><code>ConsumableTemplate.Invoke(character, item)
-  ├── CanConsume: character alive, item stackable, Amount &gt;= ChargeCost, not on cooldown
-  ├── Apply cooldown (if Cooldown &gt; 0)
-  ├── item.Stackable.Remove(ChargeCost)
-  └── If Amount &lt; 1: item.Destroy()
-
-ScrollConsumableTemplate extends this to grant abilities:
-  └── abilityController.LearnBaseAbilities(AbilityTemplates)
+<p>Consumables are charge-based, cooldown-gated, and <strong>activated through the ability controller</strong> —
+that is what owns activation, prediction and the slot lock. <code>InventoryController.Activate(index)</code>
+does nothing but route:</p>
+<pre><code>InventoryController.Activate(index)
+  ├── ICharacterDamageController.IsAlive?   (returns silently if dead)
+  ├── TryGetItem(index, out item)
+  ├── If item.Template is ConsumableTemplate → IAbilityController.ActivateConsumable(item)
+  │     └── client pre-filters, queues the use into the next replicate; the server re-validates
+  └── Else → Log.Debug(&quot;… has no use action.&quot;)
 </code></pre>
+<p><code>Activate</code> consumes nothing itself. The template's <code>Invoke</code> runs from the activation pipeline:</p>
+<pre><code>ConsumableTemplate.Invoke(character, item, currentTick)     [virtual]
+  ├── CanConsume: character/item non-null, item stackable, Amount &gt;= ChargeCost,
+  │               ICooldownController present and not on cooldown for this template ID
+  ├── If Cooldown &gt; 0: cooldownController.AddCooldown(ID, new CooldownInstance(...))
+  ├── If stackable: item.Stackable.Remove(ChargeCost)   ← one path for every charge, the last included
+  └── Else: item.Destroy()                              ← a non-stackable consumable has exactly one use
+</code></pre>
+<p><code>ItemStackable.Remove</code> is saturating and destroys the item itself once the stack empties, so
+there is no &quot;this is the final charge&quot; special case. There used to be one, and it called
+<code>Destroy()</code> <strong>without</strong> decrementing while <code>Destroy()</code> did not zero the stack — so <code>CanConsume</code>
+kept seeing a full charge and the item could be used forever until the character relogged.</p>
+<h4 id="concrete-consumables">Concrete consumables</h4>
+<p><code>ConsumableTemplate</code> and <code>ScrollConsumableTemplate</code> are both abstract and nothing derived from
+either, so no consumable item could be authored at all — the charge, cooldown and destroy
+machinery had nothing to run on. Two concrete templates close that:</p>
+<table>
+<thead>
+<tr>
+<th>Template</th>
+<th>Create menu</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ResourceConsumableTemplate</code></td>
+<td><code>FishMMO/Character/Item/Consumable/Resource Consumable</code></td>
+<td><code>List&lt;ResourceRestoration&gt;</code> (a <code>CharacterAttributeTemplate</code> + an <code>int Amount</code>). Health is restored through <code>ICharacterDamageController.Heal</code> so a potion behaves like every other heal — refused on a dead character, draws a combat number, feeds healing achievements. Every other resource is a plain <code>CharacterResourceAttribute.Gain</code>, which clamps at the maximum</td>
+</tr>
+<tr>
+<td><code>KnowledgeScrollTemplate</code></td>
+<td><code>FishMMO/Character/Item/Consumable/Knowledge Scroll</code></td>
+<td>The concrete <code>ScrollConsumableTemplate</code>. Behaviour is entirely inherited; it exists so a scroll can be created as an asset</td>
+</tr>
+</tbody>
+</table>
+<h4 id="scrolls-teach-two-kinds-of-knowledge-server-side-only">Scrolls teach two kinds of knowledge, server-side only</h4>
+<p><code>ScrollConsumableTemplate</code> carries <code>List&lt;BaseAbilityTemplate&gt; AbilityTemplates</code> <strong>and</strong>
+<code>List&lt;AbilityEvent&gt; AbilityEvents</code>. Crafting needs both — a base ability is the core, an effect is
+what configures it — and a scroll could previously only teach the first.</p>
+<p>The grant runs <strong>only on the server</strong> (<code>character.NetworkObject.IsServerStarted</code>) and is then told
+to the owner:</p>
+<pre><code>ScrollConsumableTemplate.Invoke(character, item, currentTick)
+  ├── base.Invoke(...)   → charge + cooldown; returns false and stops if the use was refused
+  ├── server only, else return true
+  ├── GrantBaseAbilities: for each unknown template (KnowsAbility(ID) == false)
+  │     ├── abilityController.LearnBaseAbility(template)
+  │     └── owner.Broadcast(new KnownAbilityAddBroadcast { TemplateID })
+  └── GrantAbilityEvents: for each unknown event (KnowsAbilityEvent(ID) == false)
+        ├── abilityController.LearnAbilityEvent(abilityEvent)
+        └── owner.Broadcast(new KnownAbilityEventAddBroadcast { TemplateID })
+</code></pre>
+<p><code>Invoke</code> also runs on the owning client, because the consumable pipeline predicts the use — but
+knowledge is not a thing to predict. A predicted grant the server then denies leaves the client
+believing it knows something it does not, and nothing short of a relog corrects it. Both grants
+are idempotent: an already-known template is neither re-learned nor re-announced.</p>
 <h3 id="attribute-generation">Attribute Generation</h3>
 <p>The <code>ItemGenerator</code> uses deterministic seed-based generation:</p>
 <ol>
 <li><strong>Seed derivation</strong>: If no seed provided, derived from item ID bytes for reproducibility.</li>
-<li><strong>Base attributes</strong>: <code>WeaponTemplate</code> generates AttackPower + AttackSpeed; <code>ArmorTemplate</code> generates ArmorBonus — values randomized within template min/max ranges.</li>
-<li><strong>Random attributes</strong>: Up to <code>MaxItemAttributes</code> drawn from <code>RandomAttributeDatabases</code>, each with randomized values.</li>
+<li><strong>Base attributes</strong>: <code>WeaponTemplate</code> generates AttackPower + AttackSpeed; <code>ArmorTemplate</code> generates ArmorBonus — values rolled within the template's min/max range.</li>
+<li><strong>Random attributes</strong>: Up to <code>MaxItemAttributes</code> drawn from <code>RandomAttributeDatabases</code>, each with a rolled value.</li>
 <li><strong>Additional attributes</strong>: <code>BaseItemTemplate.Attributes</code> list merged/summed into generated attributes.</li>
 </ol>
+<h4 id="minvalue-and-maxvalue-are-inclusive"><code>MinValue</code> and <code>MaxValue</code> are INCLUSIVE</h4>
+<p><code>DeterministicRNG.Next(int, int)</code> takes an <strong>exclusive</strong> upper bound, and every authored value
+range used to be passed to it directly — so a template authored <code>1..3</code> could only ever roll 1 or
+2, and the authored maximum was unreachable on every item in the game. <code>ItemGenerator.RollValue</code>
+and <code>ItemGenerator.RollInclusive</code> fix the contract: a range authored as a single number
+(<code>min == max</code>) must be able to produce that number, and an inverted range is the authored value
+rather than an error. <code>int.MaxValue</code> as the maximum is the one case left exclusive, because
+<code>max + 1</code> would overflow.</p>
+<p>This matters most at the small end. With resistance applied as a 1:1 reduction, tiers are
+authored as tight ranges, and under the old exclusive bound every one of them collapsed to its
+minimum (<code>0..1</code> was always 0, <code>1..2</code> always 1). Counts and indices elsewhere in the class stay
+exclusive, which is correct for them. The change alters the <strong>value</strong> a given seed produces but
+not how many draws are taken, so the stream stays aligned across peers; existing items re-roll to
+a new value from the same seed the next time they are generated.</p>
+<h4 id="a-duplicate-random-draw-is-skipped-not-dropped">A duplicate random draw is skipped, not dropped</h4>
+<p>The random-attribute draws are independent, so the same template can come up twice, and
+<code>Dictionary.Add</code> throws on a duplicate key. That exception escaped <code>Item</code>'s constructor — which
+runs from <code>EquipmentController.ReadPayload</code> and from the equipment reconcile — and took out the
+rest of the spawn payload or the reconcile body. The value is now <strong>drawn regardless</strong> and only
+the insert is skipped, so the RNG stream advances identically on every peer and the seed still
+describes the same item everywhere.</p>
 <p><code>SetAttribute(name, newValue)</code> updates a generated attribute and, if the item is equipped,
 restates its whole ledger contribution under <code>ModifierSource.Item(item.ID, attributeTemplateID)</code>.
 It states rather than adjusting: an &quot;add the difference&quot; form is only correct while the old value
@@ -759,10 +1022,15 @@ lived in no container, leaving nothing that could ever unequip it.</p>
 <td>Server → Client</td>
 <td>Swap slots (within inventory or cross-container)</td>
 </tr>
+<tr>
+<td><code>InventorySplitItemBroadcast</code></td>
+<td>Client → Server</td>
+<td>Split <code>Amount</code> off the stack in <code>From</code> into <code>To</code> of <code>FromInventory</code>. <strong>Never echoed</strong> — the client has never seen the item a split creates, so the server answers with ordinary set-slot messages for both slots</td>
+</tr>
 </tbody>
 </table>
 <h4 id="broadcast-types--equipment">Broadcast Types — Equipment</h4>
-<p>Equipment state is synchronized via the prediction pipeline (<code>EquipmentController</code> at Order 93 in <code>CharacterReconcileData</code>). Only client→server request broadcasts remain:</p>
+<p>Equipment is predicted end to end: the owner's equip/unequip request rides <code>CharacterReplicateData.EquipmentRequest</code>, both peers apply it inside the replicate tick (<code>EquipmentController</code> at Order 93), and the reconcile's equipment array confirms or reverts the socket. One server → owner message remains:</p>
 <table>
 <thead>
 <tr>
@@ -773,14 +1041,14 @@ lived in no container, leaving nothing that could ever unequip it.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>EquipmentEquipItemBroadcast</code></td>
-<td>Client ↔ Server</td>
-<td>Equip from inventory/bank (echoed back as acknowledgement)</td>
+<td><code>EquipmentUnequipItemBroadcast</code></td>
+<td>Server → Owner</td>
+<td>Where an unequipped item landed (<code>ItemID</code>, <code>ToInventory</code>, <code>ToSlot</code>); the owner moves it there by identity</td>
 </tr>
 <tr>
-<td><code>EquipmentUnequipItemBroadcast</code></td>
-<td>Client ↔ Server</td>
-<td>Unequip to inventory/bank (echoed back as acknowledgement)</td>
+<td><code>EquipmentObservedSlotBroadcast</code></td>
+<td>Server → Observers</td>
+<td>An observed peer's equipment slot changed. Handled by <code>ApplyObservedSlot</code>, which attaches the item silently — no <code>OnEquip</code>, no attribute bonuses</td>
 </tr>
 </tbody>
 </table>
@@ -814,8 +1082,33 @@ lived in no container, leaving nothing that could ever unequip it.</p>
 <td>Server → Client</td>
 <td>Swap slots (within bank or cross-container)</td>
 </tr>
+<tr>
+<td><code>BankSplitItemBroadcast</code></td>
+<td>Client → Server</td>
+<td>The bank-side split request; answered the same way</td>
+</tr>
 </tbody>
 </table>
+<h4 id="refusals">Refusals</h4>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Direction</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ItemOperationFailedBroadcast</code></td>
+<td>Server → Owner</td>
+<td><code>Operation</code> (<code>ItemOperationType</code>), <code>Reason</code> (<code>ItemOperationFailureReason</code>), <code>Container</code> (<code>InventoryType</code>), <code>Slot</code>, <code>SecondarySlot</code></td>
+</tr>
+</tbody>
+</table>
+<p>It carries <strong>no item identity</strong>, only slot indices the client already sent: it is a &quot;resync these
+slots&quot; instruction, not a data source. The client must re-read the affected slots from its
+authoritative container state rather than infer anything from the message.</p>
 <h4 id="cross-container-swaps">Cross-Container Swaps</h4>
 <p>Swap broadcasts include an <code>InventoryType</code> field (<code>Inventory</code>, <code>Equipment</code>, <code>Bank</code>) to identify the source container. The receiving controller resolves the other container via <code>Character.TryGet&lt;T&gt;()</code> and performs the swap across both containers.</p>
 <h3 id="external-integration-points">External Integration Points</h3>
@@ -845,7 +1138,15 @@ lived in no container, leaving nothing that could ever unequip it.</p>
 </tr>
 <tr>
 <td><strong>Achievement System</strong></td>
-<td>Item rewards delivered via <code>InventoryController.TryAddItem</code></td>
+<td>Item rewards delivered via <code>ServerItemHooks.GrantInventoryItem</code></td>
+</tr>
+<tr>
+<td><strong>ECA Actions</strong></td>
+<td>Shared server-side give/remove actions persist and announce through <code>ServerItemHooks</code> — see <a href="#server-hooks-for-shared-code">Server hooks for shared code</a></td>
+</tr>
+<tr>
+<td><strong>Tooltip System</strong></td>
+<td>Every template and the generator write typed rows into <code>TooltipContent</code> — see <a href="#tooltips">Tooltips</a></td>
 </tr>
 <tr>
 <td><strong>Quest System</strong></td>
@@ -907,8 +1208,23 @@ lived in no container, leaving nothing that could ever unequip it.</p>
 </tr>
 <tr>
 <td>Consumable use</td>
-<td><code>consumableTemplate.Invoke(character, item)</code></td>
-<td>Charges consumed, cooldown applied, item destroyed if empty</td>
+<td><code>inventoryController.Activate(slot)</code> on a <code>ConsumableTemplate</code> item</td>
+<td>Routed to <code>IAbilityController.ActivateConsumable</code>; on resolution charges are consumed, cooldown applied, item destroyed when the stack empties</td>
+</tr>
+<tr>
+<td>Stack split</td>
+<td><code>ItemStackTransfer.TrySplit(...)</code> with <code>1 &lt;= amount &lt; stack</code></td>
+<td>Quantity conserved; destination is a new <code>ID = 0</code> instance on an empty slot, or the matching stack</td>
+</tr>
+<tr>
+<td>Stack merge</td>
+<td><code>ItemStackTransfer.TryMerge(...)</code> onto a matching partial stack</td>
+<td>Quantity conserved; <code>sourceEmptied</code> true only when the donor was fully absorbed</td>
+</tr>
+<tr>
+<td>Inclusive roll</td>
+<td>Author an <code>ItemAttributeTemplate</code> with <code>MinValue == MaxValue</code></td>
+<td>Generated items roll exactly that value</td>
 </tr>
 <tr>
 <td>Cross-container swap</td>
@@ -918,6 +1234,15 @@ lived in no container, leaving nothing that could ever unequip it.</p>
 </tbody>
 </table>
 <h2 id="flow-diagrams">Flow Diagrams</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Pickup[Pickup / loot / craft] --&gt; Inst[Item instance]
+    Inst --&gt; Tmpl[Item template]
+    Inst --&gt; Inv[Inventory]
+    Inv --&gt; Equip[Equipment slots]
+    Equip --&gt; Stats[Character stats]
+    Inv --&gt;|persist| DB[(PostgreSQL)]
+</code></pre>
 <h3 id="item-initialization">Item Initialization</h3>
 <pre><code>new Item(id, seed, templateID, amount)
   └── Initialize(id, amount, seed)
@@ -964,25 +1289,24 @@ lived in no container, leaving nothing that could ever unequip it.</p>
 <h2 id="project-structure">Project Structure</h2>
 <h3 id="directory-structure">Directory Structure</h3>
 <pre><code>Item/
-├── Item.cs                                    # Runtime item instance (composition root)
+├── Item.cs                                    # Runtime item instance (composition root); ID, AssignPersistentID, DeriveSeed
 ├── ItemAttribute.cs                           # Runtime attribute instance on an item
 ├── ItemEquippable.cs                          # Equip/unequip component (IEquippable&lt;ICharacter&gt;)
 ├── ItemGenerator.cs                           # Seed-based attribute generation and application
 ├── ItemSlot.cs                                # Enum: Head, Chest, Shoulders, Hands, Legs, Feet, Back, Primary, Secondary, Accessory
-├── ItemStackable.cs                           # Stack management component (IStackable&lt;Item&gt;)
+├── ItemStackable.cs                           # Stack management component (IStackable&lt;Item&gt;); RemainingCapacity, TryUnstack
+├── ServerItemHooks.cs                         # Server-installed grant / changed callbacks + RemovedItemRecord
 ├── Container/
-│   ├── IItemContainer.cs                      # Container interface (slot CRUD, events)
-│   ├── ItemContainer.cs                       # Abstract base container (CharacterBehaviour)
+│   ├── ItemContainer.cs                       # Abstract base container (CharacterBehaviour); slots, locks, ResetState
+│   ├── ItemStackTransfer.cs                   # Static split / merge (issue #198)
 │   ├── Bank/
-│   │   ├── IBankController.cs                 # Bank interface (currency, swap validation)
-│   │   └── BankController.cs                  # Bank container (100 slots, currency)
-│   ├── Equipment/
-│   │   └── IEquipmentController.cs            # Equipment interface (equip, unequip, activate)
-│   │   # EquipmentController.cs moved to Prediction/Equipment/
+│   │   └── BankController.cs                  # Bank container (100 slots)
 │   └── Inventory/
-│       ├── IInventoryController.cs            # Inventory interface (activate, swap validation)
-│       ├── InventoryController.cs             # Main inventory container (32 slots)
+│       ├── InventoryController.cs             # Main inventory container (32 slots); Activate routes consumables
 │       └── InventoryType.cs                   # Enum: Inventory, Equipment, Bank
+├── Loot/
+│   ├── LootTableEntry.cs                      # One weighted drop entry
+│   └── LootTableTemplate.cs                   # ScriptableObject: drop entries + currency range
 └── Template/
     ├── ItemTemplateDatabase.cs                # ScriptableObject lookup: name → BaseItemTemplate
     ├── Attribute/
@@ -991,20 +1315,35 @@ lived in no container, leaving nothing that could ever unequip it.</p>
     └── Types/
         ├── BaseItemTemplate.cs                # Abstract base template (price, icon, stackability, attributes)
         ├── Consumable/
-        │   ├── ConsumableTemplate.cs          # Abstract consumable (charge cost, cooldown)
+        │   ├── ConsumableTemplate.cs          # Abstract consumable (charge cost, cooldown, activation time)
         │   ├── ConsumableType.cs              # Enum: Potion, Food, Mount, Scroll
-        │   └── ScrollConsumableTemplate.cs    # Scroll that teaches abilities on use
+        │   ├── ResourceConsumableTemplate.cs  # Concrete: restores Health / Mana / Stamina
+        │   ├── ScrollConsumableTemplate.cs    # Abstract scroll: teaches base abilities + ability events
+        │   └── KnowledgeScrollTemplate.cs     # Concrete scroll asset
         └── Equipment/
             ├── EquippableItemTemplate.cs       # Abstract equippable (slot, random attributes, model data)
             ├── WeaponTemplate.cs               # Weapon: attack power + attack speed
             └── ArmorTemplate.cs                # Armor: armor bonus
 </code></pre>
 <h3 id="related-files-outside-this-directory">Related Files (Outside This Directory)</h3>
-<pre><code>Shared/Implementation/Network/Character/InventoryBroadcasts.cs          # Inventory broadcast structs
-Shared/Implementation/Network/Character/EquipmentBroadcasts.cs          # Equipment broadcast structs
-Shared/Implementation/Network/Character/BankBroadcasts.cs               # Bank broadcast structs
-Server/Implementation/World/SceneServer/Character/CharacterSystem.cs  # Loads items from DB on character connect
+<pre><code>Shared/Core/Entity/Item/Container/IItemContainer.cs                              # Container interface (slot CRUD, locks, events)
+Shared/Core/Entity/Item/Container/Bank/IBankController.cs                        # Bank interface (LastInteractableID, swap validation)
+Shared/Core/Entity/Item/Container/Equipment/IEquipmentController.cs              # Equipment interface (equip, unequip, OnServerEquipmentChanged)
+Shared/Core/Entity/Item/Container/Inventory/IInventoryController.cs              # Inventory interface (Activate, swap validation)
+Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs         # Equipment container, predicted at Order 93
+Shared/Implementation/Network/Character/Inventory/InventoryBroadcasts.cs         # Inventory broadcast structs
+Shared/Implementation/Network/Character/Inventory/EquipmentBroadcasts.cs         # Equipment broadcast structs
+Shared/Implementation/Network/Character/Inventory/EquipmentObserverBroadcasts.cs # Observed equipment slot broadcast
+Shared/Implementation/Network/Character/Inventory/BankBroadcasts.cs              # Bank broadcast structs
+Shared/Implementation/Network/Character/Inventory/ItemOperationBroadcasts.cs     # Refusal broadcast + operation/reason enums
+Server/Implementation/World/SceneServer/CharacterInventory/CharacterInventorySystem.cs # Persists items, installs ServerItemHooks
+UnitTests/ItemStackSplitMergeTests.cs                                            # Split / merge conservation
+UnitTests/ItemStackConservationTests.cs                                          # Stacking conservation
 </code></pre>
+<blockquote>
+<p>The container <strong>interfaces</strong> live under <code>Shared/Core/Entity/Item/</code>, not beside the
+implementations. <code>EquipmentController.cs</code> lives under <code>Prediction/Equipment/</code>.</p>
+</blockquote>
 <h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
 <h4 id="runtime-instances-composition">Runtime Instances (Composition)</h4>
 <pre><code>Item
@@ -1016,7 +1355,9 @@ Server/Implementation/World/SceneServer/Character/CharacterSystem.cs  # Loads it
 <pre><code>CachedScriptableObject&lt;BaseItemTemplate&gt;
 └── BaseItemTemplate
     ├── ConsumableTemplate (abstract)
+    │   ├── ResourceConsumableTemplate
     │   └── ScrollConsumableTemplate (abstract)
+    │       └── KnowledgeScrollTemplate
     └── EquippableItemTemplate (abstract)
         ├── WeaponTemplate
         └── ArmorTemplate
@@ -1032,19 +1373,15 @@ CachedScriptableObject&lt;ItemAttributeTemplate&gt;
     └── BankController      : IBankController
 </code></pre>
 <blockquote>
-<p><strong>Note:</strong> <code>EquipmentController.cs</code> was moved to <code>Prediction/Equipment/</code> and now implements <code>IPredictableController</code> at Order 93. Equipment state is reconciled alongside other predicted state. The broadcast path (<code>EquipmentEquipItemBroadcast</code>/<code>EquipmentUnequipItemBroadcast</code>) handles client→server requests; attribute application is deferred to the reconcile path.</p>
+<p><strong>Note:</strong> <code>EquipmentController.cs</code> lives under <code>Prediction/Equipment/</code> and implements
+<code>IPredictableController</code> at Order 93. Equip and unequip requests ride
+<code>CharacterReplicateData.EquipmentRequest</code> rather than a broadcast, and equipment state is
+reconciled alongside the rest of the predicted state. The two remaining messages are
+<code>EquipmentUnequipItemBroadcast</code> (server → owner, where the item landed) and
+<code>EquipmentObservedSlotBroadcast</code> (server → observers, mesh only).</p>
 </blockquote>
 <h2 id="license">License</h2>
 <p>This project is subject to the FishMMO project license.</p>
-<h2 id="flow-diagram">Flow Diagram</h2>
-<pre><code class="lang-mermaid">flowchart LR
-    Pickup[Pickup / loot / craft] --&gt; Inst[Item instance]
-    Inst --&gt; Tmpl[Item template]
-    Inst --&gt; Inv[Inventory]
-    Inv --&gt; Equip[Equipment slots]
-    Equip --&gt; Stats[Character stats]
-    Inv --&gt;|persist| DB[(PostgreSQL)]
-</code></pre>
 
 </article>
 

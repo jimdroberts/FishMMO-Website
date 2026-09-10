@@ -129,7 +129,12 @@ not, and never was tracked — the ignore rule above predates that note.</p>
 <tr>
 <td><strong>Windows x86_64</strong></td>
 <td><code>windows_x86_64/</code></td>
-<td><code>powershell -File build_windows.ps1</code></td>
+<td><code>powershell -File build_windows.ps1</code> (or <code>build_local.bat</code>)</td>
+</tr>
+<tr>
+<td><strong>Windows x86_64, from Linux</strong></td>
+<td><code>windows_x86_64/</code></td>
+<td><code>cd FishMMO-WebTransport &amp;&amp; ./build_windows_cross.sh</code> (Zig)</td>
 </tr>
 <tr>
 <td><strong>macOS x86_64</strong></td>
@@ -138,10 +143,21 @@ not, and never was tracked — the ignore rule above predates that note.</p>
 </tr>
 </tbody>
 </table>
+<p><code>rebuild_only.ps1</code> / <code>rebuild_only.bat</code> are the incremental Windows path: they
+reuse whichever tree already exists rather than reconfiguring.</p>
 <h3 id="why-build-on-the-deployment-server">Why build on the deployment server?</h3>
-<p>Each platform's binary links against the locally-installed OpenSSL (<code>libssl</code>)
-and msquic libraries. Pre-built binaries from a different machine may have ABI
-incompatibilities with the deployment server's libraries.</p>
+<p>Not because of a system OpenSSL — the library does not link one. Linux, macOS
+and <code>build_windows.ps1 -Static</code> configure CMake with <code>-DWT_STATIC_MSQUIC=ON</code>,
+which fetches msquic <code>v2.5.9</code> and links it, with its own quictls, statically
+into the output. (Linking the system <code>libssl</code>/<code>libcrypto</code> <em>as well</em> put two
+OpenSSL implementations in one library and segfaulted the server on the first
+certificate load, which is why <code>CMakeLists.txt</code> only adds <code>OpenSSL::SSL</code> when
+<code>WT_STATIC_MSQUIC=OFF</code>.) What ties a binary to its host is the toolchain and C++
+runtime it was compiled with — plus, on Linux, <code>libnuma</code>, which the NUMA-aware
+msquic static archive needs. A binary copied from another machine may fail to
+load; the managed side catches the older-than-the-caller case up front through
+the ABI check (<code>WT_ABI_VERSION</code> / <code>WebTransportNative.ExpectedAbiVersion</code>, both
+<strong>3</strong> at present).</p>
 <h3 id="what-gets-built">What gets built?</h3>
 <table>
 <thead>
@@ -156,8 +172,12 @@ incompatibilities with the deployment server's libraries.</p>
 <td><code>libfishmmo_webtransport.so</code></td>
 </tr>
 <tr>
-<td>Windows</td>
+<td>Windows (default, NuGet msquic)</td>
 <td><code>fishmmo_webtransport.dll</code> + <code>msquic.dll</code></td>
+</tr>
+<tr>
+<td>Windows (<code>-Static</code>)</td>
+<td><code>fishmmo_webtransport.dll</code> only — msquic is inside it</td>
 </tr>
 <tr>
 <td>macOS</td>
@@ -165,11 +185,24 @@ incompatibilities with the deployment server's libraries.</p>
 </tr>
 </tbody>
 </table>
+<p>The Windows default does not build msquic at all: it compiles the seven wrapper
+sources against the prebuilt <strong><code>Microsoft.Native.Quic.MsQuic.OpenSSL</code></strong> 2.5.9
+NuGet package and ships that package's <code>msquic.dll</code> next to the wrapper. The
+OpenSSL flavour is required for a server — <code>-Tls Schannel</code> selects the other
+package, whose msquic reads the Windows certificate store and cannot load the
+PEM files the server configs point at, so <code>wt_server_start</code> fails with
+<code>WT_ERR_TLS_BACKEND</code> (-8) and no port is bound. Schannel is a client-only
+escape hatch.</p>
 <h3 id="development-note">Development note</h3>
 <p>During development on Linux, only <code>libfishmmo_webtransport.so</code> is typically
-present (built locally). Windows and macOS binaries must be built on their
-respective deployment hosts. The Unity Editor on Linux will load the <code>.so</code>
-automatically; testing on Windows/macOS requires building those binaries first.</p>
+present (built locally). Windows binaries can be produced from a Linux host with
+<code>build_windows_cross.sh</code>; macOS must be built on a Mac, because msquic's quictls
+dependency carries platform-specific assembly. The Unity Editor on Linux will
+load the <code>.so</code> automatically; testing on Windows/macOS requires building those
+binaries first.</p>
+<p>Full build details, the TLS-provider table, the ABI-version contract and the
+transport-level limits live in
+<a href="../../../../../../../FishMMO-WebTransport/README.html">FishMMO-WebTransport/README.md</a>.</p>
 
 </article>
 

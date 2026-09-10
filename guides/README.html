@@ -92,7 +92,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p>A modular, open-source MMO framework built on <strong>Unity 6.3 LTS</strong>, <strong>FishNet</strong>, <strong>QUIC/WebTransport</strong>, and <strong>PostgreSQL</strong>.</p>
+<p>A modular, open-source MMO framework built on <strong>Unity 6.4</strong>, <strong>FishNet</strong>, <strong>QUIC/WebTransport</strong>, and <strong>PostgreSQL</strong>.</p>
 <hr>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
@@ -195,7 +195,7 @@
 <tbody>
 <tr>
 <td><strong>FishMMO-Unity</strong></td>
-<td>Unity project containing client, server, and shared game code (900+ C# files) — a unified client-side prediction pipeline with lag-compensated hit resolution, modular character visuals, tick-driven archetype AI with threat and pet systems, ECA trigger system</td>
+<td>Unity project containing client, server, and shared game code (1,247 C# files) — a unified client-side prediction pipeline with lag-compensated hit resolution, modular character visuals, tick-driven archetype AI with threat and pet systems, ECA trigger system</td>
 </tr>
 <tr>
 <td><strong>FishMMO-Auth</strong></td>
@@ -203,7 +203,7 @@
 </tr>
 <tr>
 <td><strong>FishMMO-Database (FishMMO-DB)</strong></td>
-<td>PostgreSQL data-access layer using Entity Framework Core + Npgsql (41 entities/tables, 42 services)</td>
+<td>PostgreSQL data-access layer using Entity Framework Core + Npgsql (55 entities/tables, 55 services)</td>
 </tr>
 <tr>
 <td><strong>FishMMO-WebTransport</strong></td>
@@ -239,7 +239,7 @@
 </tr>
 <tr>
 <td><strong>FishMMO-Setup</strong></td>
-<td>Configuration templates — nginx.conf, server .cfg files, appsettings.json, deploy hooks, stream config generator</td>
+<td>Configuration templates — nginx.conf, server .cfg files, appsettings.json</td>
 </tr>
 <tr>
 <td><strong>FishMMO-DiscordBot</strong></td>
@@ -359,7 +359,7 @@
 <tbody>
 <tr>
 <td>Unity</td>
-<td>6.3 LTS (6000.3.2f1)</td>
+<td>6.4 (6000.4.10f1)</td>
 </tr>
 <tr>
 <td>.NET SDK</td>
@@ -388,7 +388,7 @@
 <ul>
 <li><strong>Git</strong> for cloning the repository</li>
 <li><strong>.NET 8.0 SDK</strong></li>
-<li><strong>Unity Hub</strong> with <strong>Unity 6.3 LTS</strong> (the installer can install these for you)</li>
+<li><strong>Unity Hub</strong> with <strong>Unity 6.4</strong> (the installer can install these for you)</li>
 <li><strong>CMake 3.20+</strong> and a C++17 compiler (for building the WebTransport native library)</li>
 <li><strong>OpenSSL 3+</strong> development headers (libssl-dev / openssl-devel)</li>
 <li><strong>PostgreSQL 14+</strong> (the installer can install this for you)</li>
@@ -508,11 +508,12 @@ FishMMO-Installer --log-file /path/to.log    # Tee log output to a file
 <pre><code class="lang-json">{
   &quot;components&quot;: [&quot;dotnet-sdk&quot;, &quot;postgresql&quot;, &quot;nginx&quot;, &quot;firewall&quot;, &quot;systemd-services&quot;],
   &quot;configureFirewall&quot;: true,
-  &quot;firewallPorts&quot;: [80, 443],
+  &quot;firewallPorts&quot;: [80, 443, &quot;7770-7999/udp&quot;],
   &quot;registerSystemdServices&quot;: true,
   &quot;validateAfterInstall&quot;: true
 }
 </code></pre>
+<p><code>firewallPorts</code> entries are either a bare port number (TCP) or a string with an optional range and protocol: <code>443</code>, <code>&quot;443/tcp&quot;</code>, <code>&quot;7770-7999/udp&quot;</code>. Ranges are inclusive and the protocol defaults to <code>tcp</code> when omitted.</p>
 <p><strong>Available component names for CLI use</strong> (<code>--list-components</code> prints this list):
 <code>dotnet-ef</code>, <code>aspnet-runtime</code>, <code>vs-build-tools</code>, <code>postgresql</code>, <code>pgbouncer</code>, <code>fishmmo-db</code>, <code>nginx</code>, <code>letsencrypt</code>, <code>unity-hub</code>, <code>unity-editor</code>, <code>build-projects</code>, <code>build-unity</code>, <code>appsettings</code>, <code>create-migration</code>, <code>firewall</code>, <code>systemd-services</code>, <code>all</code></p>
 <blockquote>
@@ -737,20 +738,27 @@ sudo dnf install cmake openssl-devel gcc-c++
 </code></pre>
 <p><strong>Output:</strong> <code>libfishmmo_webtransport.so</code> placed directly into <code>../FishMMO-Unity/Assets/Plugins/FishNet/Plugins/WebTransport/Plugins/linux_x86_64/</code></p>
 <blockquote>
-<p><strong>The Linux binary is committed to the repository.</strong> If you're deploying on Linux, you can skip this build step. Windows and macOS binaries must be built on their respective platforms.</p>
+<p><strong>No native binary is tracked for any platform</strong> (the plugin subdirectories are gitignored), so this step is required on Linux too, on a fresh clone as much as on a deployment server. After a pull that changes <code>FishMMO-WebTransport/src/</code>, rebuild: the transport checks the library's ABI version at start-up and refuses a stale one with the rebuild command in the log.</p>
 </blockquote>
 <h4 id="windows-native-build">Windows (Native Build)</h4>
-<p><strong>Prerequisites:</strong></p>
+<p><strong>Prerequisites (default):</strong></p>
 <ul>
-<li>Visual Studio 2022 with C++ workload</li>
-<li>CMake 3.20+ (<code>winget install Kitware.CMake</code>)</li>
-<li>OpenSSL (<code>vcpkg install openssl:x64-windows</code>)</li>
+<li>Visual Studio 2022+ with the C++ desktop workload — nothing else</li>
 </ul>
 <p><strong>Build:</strong></p>
 <pre><code class="lang-powershell">cd FishMMO-WebTransport
 .\build_windows.ps1
 </code></pre>
-<p><strong>Output:</strong> <code>fishmmo_webtransport.dll</code> in <code>.../Plugins/windows_x86_64/</code> (msquic is statically linked — no separate <code>msquic.dll</code> needed)</p>
+<p>The default build compiles only the wrapper sources against the prebuilt
+<code>Microsoft.Native.Quic.MsQuic.OpenSSL</code> NuGet package, whose <code>msquic.dll</code> has quictls built in.
+That is the flavour that loads the PEM certificate/key files the server configs point at
+(<code>CertificatePath</code> / <code>PrivateKeyPath</code>). msquic's Schannel flavour cannot (it reads the Windows
+certificate store only), so it is not a server option; <code>-Tls Schannel</code> exists for client-only builds.</p>
+<p><strong>Output:</strong> <code>fishmmo_webtransport.dll</code> + <code>msquic.dll</code> in <code>.../Plugins/windows_x86_64/</code></p>
+<p><strong>Optional static build</strong> (<code>.\build_windows.ps1 -Static</code>) fetches and builds msquic + quictls with
+CMake 3.20+ (<code>winget install Kitware.CMake</code>; Ninja recommended) and needs an OpenSSL install for the
+configure step (<code>vcpkg install openssl:x64-windows</code>). It produces a single self-contained
+<code>fishmmo_webtransport.dll</code> and is slow the first time.</p>
 <h4 id="windows-cross-compile-from-linux-zig">Windows Cross-Compile from Linux (Zig)</h4>
 <p>If you develop on Linux but need a Windows <code>.dll</code> for client builds:</p>
 <p><strong>Prerequisites:</strong></p>
@@ -764,11 +772,11 @@ sudo pacman -S zig
 </code></pre>
 <p>This script:</p>
 <ol>
-<li>Downloads the msquic NuGet package (<code>Microsoft.Native.Quic.MsQuic.Schannel/2.5.9</code>)</li>
+<li>Downloads the OpenSSL flavour of the msquic NuGet package (<code>Microsoft.Native.Quic.MsQuic.OpenSSL/2.5.9</code>) — the one that loads PEM certificates</li>
 <li>Extracts headers and DLL from the NuGet package</li>
 <li>Compiles all <code>.cpp</code> files with <code>zig c++ -target x86_64-windows-gnu</code></li>
 <li>Links into a DLL importing <code>msquic.dll</code></li>
-<li>Copies both <code>fishmmo_webtransport.dll</code> and <code>msquic.dll</code> to the Unity plugins directory (cross-compile requires <code>msquic.dll</code> alongside the main DLL — unlike native VS builds where msquic is statically linked)</li>
+<li>Copies both <code>fishmmo_webtransport.dll</code> and <code>msquic.dll</code> to the Unity plugins directory (the same pair the default native build produces; only <code>-Static</code> folds msquic into a single DLL)</li>
 </ol>
 <h4 id="macos-native-build">macOS (Native Build)</h4>
 <p>Must be built on a Mac:</p>
@@ -782,7 +790,9 @@ cd FishMMO-WebTransport
 <ul>
 <li>Fetches msquic v2.5.9 from GitHub (<code>FetchContent</code>) and statically links it</li>
 <li>Uses <code>quictls</code> (OpenSSL fork) as msquic's TLS backend</li>
-<li>Finds system OpenSSL for the wrapper library's own TLS needs</li>
+<li>Finds system OpenSSL because msquic's <code>quictls</code> build requires it at configure time — the
+wrapper itself never calls OpenSSL directly, and with <code>WT_STATIC_MSQUIC=ON</code> it does not link
+the system OpenSSL either (TLS comes from the quictls copy inside msquic)</li>
 <li>Compiles 7 <code>.cpp</code> source files (server, client, session, stream_manager, datagram_queue, http3, webtransport_api)</li>
 <li>Outputs the shared library directly to the Unity project's Plugins directory</li>
 </ul>
@@ -818,7 +828,7 @@ cd FishMMO-WebTransport
 <ol>
 <li>Open <strong>Unity Hub</strong></li>
 <li>Click <strong>ADD</strong> → Select the <code>FishMMO-Unity</code> directory</li>
-<li>Open the project with <strong>Unity 6.3 LTS</strong></li>
+<li>Open the project with <strong>Unity 6.4</strong></li>
 <li>Wait for the initial asset import and script compilation to complete</li>
 <li>Follow the <a href="#unity-project-setup">Unity Project Setup</a> section below</li>
 </ol>
@@ -982,6 +992,19 @@ export FISHMMO_DB_PASSWORD=super_secret
 <p>This caches important game world details (spawn points, teleporters, boundaries, scene metadata) for both clients and servers. <strong>Run this whenever you add or modify a scene.</strong></p>
 <p><strong>Unity Menu:</strong> <code>FishMMO → Rebuild World Scene Details</code>, or <code>FishMMO → FishMMO Dashboard</code> → <strong>World Scene Details</strong> in the World category</p>
 <p>This generates <code>WorldSceneDetailsCache</code> assets that are loaded at runtime by the WorldServer and SceneServer for scene routing and character placement.</p>
+<p><strong>World map bake.</strong> <code>FishMMO → World Map → Bake Maps</code> renders a map definition and image for every
+world scene, and <code>FishMMO → World Map → Remove Baked Maps</code> deletes them again. A <strong>client</strong>
+Addressables build does both for you: it bakes, rebuilds the world scene details cache so it
+references the baked definitions, builds the bundles, then removes the bake and rebuilds the cache
+once more, leaving the project as it found it. <strong>Server builds skip both</strong> — a server never draws a
+map. A bake that fails is logged as a warning and does not fail the build; the world map simply
+falls back to a plain background without its image.</p>
+<p>Everything the bake produces is build output and is gitignored — <code>Assets/Prefabs/Shared/WorldMaps/</code>,
+<code>Assets/AddressableAssetsData/AssetGroups/ClientWorldMaps.asset*</code> and their
+<code>Schemas/ClientWorldMaps_*</code> — so a bake must never be committed. If a manual bake (or an interrupted
+client build) leaves one behind, <code>WorldMapDefinitionTests.TheCommittedCache_CarriesNoBakeLeftovers</code>
+fails and names the fix: run <code>FishMMO → World Map → Remove Baked Maps</code>, then
+<code>FishMMO → Rebuild World Scene Details</code>.</p>
 <h3 id="versioning">Versioning</h3>
 <p>Manage the project's semantic versioning from the <strong>FishMMO Dashboard</strong>.</p>
 <p><strong>Unity Menu:</strong> <code>FishMMO → FishMMO Dashboard</code> (Ctrl+Shift+D) → Select <strong>Version</strong> in the Core category</p>
@@ -1102,6 +1125,9 @@ export FISHMMO_DB_PASSWORD=super_secret
 <p>The build process copies the appropriate <code>.cfg</code> and <code>appsettings.json</code> files from <code>FishMMO-Setup/Development/</code> or <code>FishMMO-Setup/Production/</code> into the build output.</p>
 <blockquote>
 <p><strong>Important:</strong> Build Addressables first, then build the game. The game build depends on the Addressable bundles produced in the first step.</p>
+</blockquote>
+<blockquote>
+<p><strong>Client Addressables builds bake the world maps</strong> before building bundles and remove them afterwards — see <a href="#build-world-scene-details">Build World Scene Details</a>. Server builds do neither.</p>
 </blockquote>
 <p><strong>Headless builds and the build-target switch.</strong> A CLI build (<code>-batchmode -executeMethod</code>) that has to switch build target used to be rejected for running while scripts were compiling, producing no artifact — and re-running the identical command immediately afterwards succeeded, because by then the target already matched and no switch happened. <code>SwitchActiveBuildTarget</code> is synchronous and already recompiles for the new target, and the <code>AssetDatabase.Refresh(ForceUpdate)</code> that follows settles the define symbols; the extra <code>ForceEditorScriptRecompile</code> on top of that queued a <em>further</em> compile, and under <code>-executeMethod</code> nothing turns the editor loop over until the method returns, so it stayed pending for the rest of the invocation. That recompile is now skipped in batch mode — interactive Dashboard builds keep it, where the editor loop can service it. <code>RunCliBuild</code> also fails fast, naming the reason, if scripts somehow are still compiling: nothing on that thread can advance a pending compile in batch mode, so waiting cannot help and sleeping would block the very thread that runs compilation.</p>
 <p><strong>A batch-mode build never reports success without a player.</strong> The two failure modes above were both silent in the same way, and the shared guard that starts every build could still reproduce it: when scripts are compiling, <code>CustomBuildTool</code> declines to start and returns. Interactively that is right — it warns, offers a dialog, and the player tries again. Under <code>-batchmode</code> nothing services the pending compile and nothing surfaces the warning, so the process exited <code>0</code> having produced no player, while Addressables had already run and written real bundles; the output directory still held the <em>previous</em> build, and the only way to notice was to compare a timestamp. Adding a single editor script is enough to trigger it, because the recompile outlives the Addressables step and the guard then fires. In batch mode that path now logs an error naming the cause and exits <code>1</code>.</p>
@@ -1292,7 +1318,6 @@ Address=127.0.0.1
 Port=7790
 StaleSceneTimeout=5
 StaleInstanceSceneTimeout=2
-MaxInstanceLifetimeMinutes=120
 CertificatePath=/etc/fishmmo/certs/fullchain.pem
 PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 </code></pre>
@@ -1327,7 +1352,7 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 </tr>
 <tr>
 <td><code>StaleSceneTimeout</code></td>
-<td><strong>Minutes</strong> an empty <strong>open-world</strong> scene instance stays loaded before it is unloaded and its scene row deleted. SceneServer only. The templates ship <code>5</code>; the code's fallback when the key is missing is <code>60</code></td>
+<td><strong>Minutes</strong> an empty <strong>open-world</strong> scene instance stays loaded before it is unloaded and its scene row deleted. SceneServer only. The templates ship <code>5</code>; the code's fallback when the key is missing is also <code>5</code></td>
 <td>5</td>
 </tr>
 <tr>
@@ -1337,7 +1362,7 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 </tr>
 <tr>
 <td><code>MaxInstanceLifetimeMinutes</code></td>
-<td><strong>Minutes</strong> an instanced scene may exist before it is closed regardless of who is inside. SceneServer only. Measured from the scene row's creation, so it includes the time spent queued and loading. <code>StaleInstanceSceneTimeout</code> only ever reclaims an <strong>empty</strong> instance, so an occupied one had no upper bound at all — and since a party may hold only one instance at a time, a dungeon nobody finishes locks that party out of every other. Occupants are warned at 10 / 5 / 1 minutes and then returned to the open world through the ordinary leave-instance path. Open-world scenes are exempt. A dungeon difficulty that declares its own <code>LifetimeMinutes</code> overrides this for instances opened at it — a timed challenge is one of the few levers that changes how a dungeon plays without touching a number in combat — and this remains the backstop for everything that declares nothing. Code's fallback when the key is missing is <code>120</code></td>
+<td><strong>Minutes</strong> an instanced scene may exist before it is closed regardless of who is inside. SceneServer only. Measured from the scene row's creation, so it includes the time spent queued and loading. <code>StaleInstanceSceneTimeout</code> only ever reclaims an <strong>empty</strong> instance, so an occupied one had no upper bound at all — and since a party may hold only one instance at a time, a dungeon nobody finishes locks that party out of every other. Occupants are warned at 10 / 5 / 1 minutes and then returned to the open world through the ordinary leave-instance path. Open-world scenes are exempt. A dungeon difficulty that declares its own <code>LifetimeMinutes</code> overrides this for instances opened at it — a timed challenge is one of the few levers that changes how a dungeon plays without touching a number in combat — and this remains the backstop for everything that declares nothing. <strong>Not present in either template</strong> — it exists only as a code fallback, so add the key by hand to override it. Code's fallback when the key is missing is <code>120</code></td>
 <td>120</td>
 </tr>
 <tr>
@@ -1368,7 +1393,7 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 <tr>
 <td><code>Smtp:Host</code> / <code>Smtp:Port</code> / <code>Smtp:Username</code> / <code>Smtp:Password</code> / <code>Smtp:FromAddress</code> / <code>Smtp:FromName</code> / <code>Smtp:UseSsl</code></td>
 <td>LoginServer only — verification-email relay. Port 465 = implicit TLS (<code>UseSsl=true</code>); port 587 = STARTTLS (<code>UseSsl=false</code>)</td>
-<td><code>localhost</code> / <code>465</code> / — / — / <code>noreply@fishmmo.com</code> / <code>FishMMO</code> / <code>true</code></td>
+<td>Prod: <code>localhost</code> / <code>465</code> / — / — / <code>noreply@fishmmo.com</code> / <code>FishMMO</code> / <code>true</code>; Dev ships <code>587</code> / <code>false</code></td>
 </tr>
 <tr>
 <td><code>LoginQueueUpdateRateSeconds</code></td>
@@ -1436,30 +1461,35 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 </tbody>
 </table>
 <h3 id="logging-configuration">Logging Configuration</h3>
-<p>All projects share a single canonical <code>logging.json</code> at <a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Setup/logging.json"><code>FishMMO-Setup/logging.json</code></a>. Each project's build copies it into the output directory automatically — operators only need to edit the one source file.</p>
+<p><code>logging.json</code> at <a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Setup/logging.json"><code>FishMMO-Setup/logging.json</code></a> is the canonical copy. Five .NET projects copy it into their output directory as part of the build — AppHealthMonitor, IpFetchServer, Patcher, WebGLServer and FishMMO-Installer — and the Unity <strong>server</strong> builds copy it alongside the <code>.cfg</code> files via <code>BuildExecutor.CopyConfigurationFiles()</code>. FishMMO-CMS and FishMMO-DiscordBot do <strong>not</strong> pick it up; configure their logging separately.</p>
 <pre><code class="lang-json">{
   &quot;LoggingManager&quot;: {
-    &quot;ConsoleAllowedLevels&quot;: [&quot;Info&quot;, &quot;Warning&quot;, &quot;Error&quot;, &quot;Critical&quot;, &quot;Debug&quot;]
+    &quot;ConsoleAllowedLevels&quot;: [&quot;Info&quot;, &quot;Warning&quot;, &quot;Error&quot;, &quot;Critical&quot;],
+    &quot;FileSink&quot;: {
+      &quot;Description&quot;: &quot;...&quot;,
+      &quot;_enabled&quot;: true,
+      &quot;Path&quot;: &quot;/var/log/fishmmo/server.log&quot;,
+      &quot;FileSizeLimitMb&quot;: 100,
+      &quot;MaxFileCount&quot;: 10,
+      &quot;AllowedLevels&quot;: [&quot;Warning&quot;, &quot;Error&quot;, &quot;Critical&quot;]
+    }
   },
   &quot;Loggers&quot;: []
 }
 </code></pre>
-<p><strong>Log levels:</strong> <code>Verbose</code>, <code>Debug</code>, <code>Info</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code>.</p>
-<p><strong>Adding file logging</strong> (edit <code>FishMMO-Setup/logging.json</code>):</p>
+<p>The shipped <code>Description</code> field is prose — it records the rotation policy (100 MB files, 10 kept) and points at tailing <code>/var/log/fishmmo/*.log</code> with a shipper for centralised aggregation. It is abbreviated above.</p>
+<p><strong>Log levels:</strong> <code>Verbose</code>, <code>Debug</code>, <code>Info</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code>. Note that <code>Debug</code> is <strong>not</strong> in the shipped <code>ConsoleAllowedLevels</code> — add it when you need it.</p>
+<p><strong>Adding file logging</strong> (edit <code>FishMMO-Setup/logging.json</code>): file output is driven by an entry in the
+<code>Loggers</code> array, which ships empty. The <code>LoggingManager.FileSink</code> block above describes the intended
+production sink but is not read by <code>FishMMO-Logger</code> — <code>LoggingManagerConfig</code> binds <code>ConsoleAllowedLevels</code>
+only — so to actually write files, add a <code>FileLoggerConfig</code> to <code>Loggers</code>:</p>
 <pre><code class="lang-json">{
-  &quot;LoggingManager&quot;: {
-    &quot;ConsoleAllowedLevels&quot;: [&quot;Info&quot;, &quot;Warning&quot;, &quot;Error&quot;, &quot;Critical&quot;]
-  },
-  &quot;Loggers&quot;: [
-    {
-      &quot;Type&quot;: &quot;FileLoggerConfig&quot;,
-      &quot;LoggerType&quot;: &quot;FileLogger&quot;,
-      &quot;Enabled&quot;: true,
-      &quot;AllowedLevels&quot;: [&quot;Info&quot;, &quot;Warning&quot;, &quot;Error&quot;, &quot;Critical&quot;, &quot;Debug&quot;],
-      &quot;LogDirectory&quot;: &quot;logs&quot;,
-      &quot;FileName&quot;: &quot;server.log&quot;
-    }
-  ]
+  &quot;Type&quot;: &quot;FileLoggerConfig&quot;,
+  &quot;LoggerType&quot;: &quot;FileLogger&quot;,
+  &quot;Enabled&quot;: true,
+  &quot;AllowedLevels&quot;: [&quot;Info&quot;, &quot;Warning&quot;, &quot;Error&quot;, &quot;Critical&quot;, &quot;Debug&quot;],
+  &quot;LogDirectory&quot;: &quot;logs&quot;,
+  &quot;FileName&quot;: &quot;server.log&quot;
 }
 </code></pre>
 <p><strong>Adding email alerts</strong> (append to the <code>Loggers</code> array):</p>
@@ -1481,7 +1511,7 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 <blockquote>
 <p><strong>Security:</strong> Keep SMTP credentials out of source control. Load them via environment variables (e.g., <code>FISHMMO_SMTP_PASSWORD</code>). Application secrets (gate secret, KEK, connection token HMAC key) are stored in the database — see <a href="#fishmmo-auth--signing-keys--kek">FishMMO-Auth — Signing Keys &amp; KEK</a>. See <a href="FishMMO-Logger/README.html">FishMMO-Logger README</a> for full configuration details.</p>
 </blockquote>
-<p><strong>Runtime override:</strong> Place a modified <code>logging.json</code> in the working directory — it takes precedence over the bundled copy. The log level can also be overridden via the <code>FISHMMO_LOG_LEVEL</code> environment variable (e.g. <code>Debug</code>, <code>Verbose</code>).</p>
+<p><strong>Runtime override:</strong> Place a modified <code>logging.json</code> in the working directory — it takes precedence over the bundled copy. The <code>FISHMMO_LOG_LEVEL</code> environment variable (e.g. <code>Debug</code>, <code>Verbose</code>) overrides console verbosity for the <strong>Installer only</strong> — no game server or web server reads it.</p>
 <p><strong>Level policy (why it is a data-handling decision, not just noise control):</strong> <code>Warning</code> and
 above are the tiers that get shipped off-host, aggregated and retained longest. Two rules follow
 for server code, and both have been violated in this codebase before:</p>
@@ -1664,7 +1694,7 @@ FishMMO-Installer --configure-server-secrets default
 <li><p><strong>Install Required Modules:</strong></p>
 <ul>
 <li>Go to the <strong>Installs</strong> tab.</li>
-<li>Click the gear icon next to your Unity 6.3 LTS version → <strong>Add Modules</strong>.</li>
+<li>Click the gear icon next to your Unity 6.4 version → <strong>Add Modules</strong>.</li>
 <li>Install:
 <ul>
 <li><strong>Linux Build Support (IL2CPP and Mono)</strong></li>
@@ -1902,7 +1932,7 @@ sudo nginx -t &amp;&amp; sudo nginx -s reload
 }
 </code></pre>
 <blockquote>
-<p><strong>Keep <code>PROXY_TIMEOUT</code> in step with <code>StaleSceneTimeout</code>.</strong> The game servers' idle disconnect threshold is <code>StaleSceneTimeout</code> in the <code>.cfg</code> files (default <code>5</code> seconds). <code>proxy_timeout</code> must be <code>&gt;= StaleSceneTimeout</code> plus a margin — the 30s default is deliberately generous — but a <code>proxy_timeout</code> far larger than the server's threshold leaves NGINX holding session mappings for connections the server has already freed, wasting memory and file descriptors.</p>
+<p><strong>Size <code>PROXY_TIMEOUT</code> against real sessions, not against <code>StaleSceneTimeout</code>.</strong> <code>StaleSceneTimeout</code> is a scene-unload timer measured in <strong>minutes</strong> and has nothing to do with connection idleness — it only decides how long an <strong>empty</strong> scene stays loaded. <code>proxy_timeout</code> must simply outlive a legitimate gap between datagrams (the 30s default is deliberately generous), but setting it far higher leaves NGINX holding session mappings for connections the server has already freed, wasting memory and file descriptors.</p>
 <p><strong>The stream module has no health checking</strong>, not even passive. If a game server crashes, NGINX keeps forwarding datagrams to the dead upstream until the stream config is regenerated and reloaded. See the comment block at the top of <code>FishMMO-Setup/nginx.conf</code> for external health-check patterns (systemd timer, cron, or Consul Template).</p>
 </blockquote>
 <blockquote>
@@ -2235,6 +2265,26 @@ out. These two commands exist so that is a decision rather than a wait. Both are
 <tr>
 <td>Dungeon finder (a dungeon entrance)</td>
 <td>Lists the runs of that dungeon currently open at the chosen difficulty, with who is running each and how full it is. Joining one enters the dungeon <strong>and joins that group's party</strong>, so it is refused for anyone already in a party with somebody else. Opening a new run picks a difficulty and whether to list it for strangers</td>
+</tr>
+<tr>
+<td>Find Group (dungeon finder)</td>
+<td>Queues the character for that dungeon at that difficulty. The finder panel stays open and shows the wait in a strip above the list; <strong>closing the panel leaves the queue, and walking more than a few metres from the entrance drops the player from it</strong> (told why), so nobody is ever moved into a dungeon they have wandered away from. The finder first fills runs already <strong>open to others</strong> that have room — the late-join path, and how a partial group gets its missing members — and otherwise forms a fresh party once enough players have gathered (the difficulty's <code>GroupFinderSize</code>, else the run's capacity; never fewer than two or than <code>MinimumPartySize</code>). Matching joins a party, so it is refused for anyone in a party with somebody else. A matched player is moved as soon as they are out of combat and back at the door, and dropped from the group if they stay away for a minute. Off per difficulty via <code>GroupFinderEnabled</code></td>
+</tr>
+<tr>
+<td>Arena board (an <code>ArenaBoard</code> interactable)</td>
+<td>Queues the character for a PvP arena at a chosen format (1v1, 2v2, 3v3, 4v4, 8v8 and so on, as the <code>ArenaTemplate</code> lists them; a format may be <strong>ranked</strong>). The board panel stays open and shows the wait; <strong>closing it leaves the queue, and walking away from the board drops the player</strong>. It also shows the character's <strong>season standing</strong> (rating once placed, wins and losses, any queue lock), a <strong>History</strong> tab of their recent matches and a <strong>Leaderboard</strong> tab of the season's top ratings. A party queues together through <strong>Queue as Party</strong> (leader only, every member at the board, party no larger than a team; in a ranked format the party must fill a whole team) and is kept on one team. Matches form first-come, atomically across scene servers, within a <strong>rating band that widens with wait time</strong> for ranked formats, and <strong>balanced by rating</strong> across teams when the template asks; a <strong>vacated seat in a live match is backfilled</strong> from the queue during the template's window. Everyone is moved into the arena instance, waits for all seats to arrive, answers a <strong>ready check</strong> (a decline or a silence cancels the match and locks the culprit out of the queue for a while), then a <strong>10 second countdown</strong> (with per-second cue hooks for audio and effects) starts the match. <strong>Team Deathmatch</strong> scores kills, <strong>Capture the Flag</strong> scores deliveries of the enemy flag to your own stand (a carrier's death <strong>drops the flag</strong> where they fell: their team touches it home, an enemy picks it up, or it returns by itself), <strong>King of the Hill</strong> scores time holding a control point; the dead respawn at their team's spawn after a <strong>death recap</strong> naming the killer, and the match ends on the score limit, the clock, or a walkover. A <strong>kill feed and announcer</strong> (first blood, killing sprees, flags, time and score warnings) run from server events, each also a template cue hook. Leaving a live match <strong>forfeits</strong> it and locks the deserter out of the queue; a player who <strong>disconnects</strong> keeps their seat for the template's grace and is refunded the forfeit if they come back in time. A results screen shows the winner, the team scores, a pedestal of the top scorers and, for ranked, the rating change, and everyone is returned to the world. Arenas <strong>count against the one-instance-per-party rule</strong>, and every result moves the character's <code>PvP Rank</code>, <code>PvP Wins</code>, <code>PvP Losses</code> and <code>PvP Matches</code> attributes; ranked results move a per-season Elo rating (10 placement games at a higher K). Rewards are not decided yet: <code>ArenaServerEvents.OnMatchEnded</code> and the template's reward trigger lists are the hooks</td>
+</tr>
+<tr>
+<td><code>/team</code> (<code>/tm</code>)</td>
+<td>Arena team chat: reaches your teammates in the match you are standing in, and nobody else. Not persisted</td>
+</tr>
+<tr>
+<td><code>/spectatearena &lt;matchId&gt;</code></td>
+<td>Game masters only. Enters a running arena match as a spectator, who can neither hit nor be hit; leave with <code>/leaveinstance</code> or wait for the match to close</td>
+</tr>
+<tr>
+<td><code>/spectateteam &lt;n&gt;</code></td>
+<td>Game masters only, while spectating an arena match. Moves the spectator to team n's spawn. The arena HUD also offers a spectator a <strong>free camera</strong> (right mouse to look, WASD, Q/E)</td>
 </tr>
 <tr>
 <td><code>/closedungeon</code> (<code>/closeinstance</code>)</td>
@@ -2744,15 +2794,15 @@ cannot be lost by editing a scene.</p>
 <tbody>
 <tr>
 <td><strong>Display</strong></td>
-<td>Resolution, refresh rate, fullscreen mode, quality level, brightness, frame-rate limit, VSync</td>
+<td>Resolution, refresh rate, fullscreen mode, quality level, texture filtering, antialiasing, brightness, look sensitivity, frame-rate limit, VSync</td>
 </tr>
 <tr>
 <td><strong>Audio</strong></td>
-<td>Master volume; mute when unfocused. The other five channels are stored and applied but not offered — nothing in the client owns an <code>AudioSource</code> yet, and a slider that saves perfectly while changing nothing audible is worse than a missing one</td>
+<td>One slider per channel — Master, Music, Sound Effects, Ambient, Interface, Voice — built from <code>ClientAudioSettings.PlayableChannels</code>; mute when unfocused</td>
 </tr>
 <tr>
 <td><strong>Gameplay</strong></td>
-<td>Damage numbers, healing numbers, achievement popups, ignore party invites, ignore guild invites</td>
+<td>Damage numbers, healing numbers, achievement popups, ignore party invites, ignore guild invites. Plus a <strong>Crosshair</strong> section (show, style, size, opacity), a <strong>World Labels</strong> section (label size, opacity, draw distance, maximum on screen, hide behind geometry) and a <strong>Nameplates</strong> section (size, opacity, background opacity, show guild names, show titles, maximum on screen, NPC name range, player name range, show my name)</td>
 </tr>
 <tr>
 <td><strong>Key Bindings</strong></td>
@@ -2760,7 +2810,7 @@ cannot be lost by editing a scene.</p>
 </tr>
 <tr>
 <td><strong>UI</strong></td>
-<td>Interface scale, window snap grid, window layout reset, the ten theme colours, and shareable UI profiles</td>
+<td>Interface scale, window snap grid, window layout reset, the twelve theme colours, and shareable UI profiles</td>
 </tr>
 </tbody>
 </table>
@@ -2806,10 +2856,28 @@ player waiting out a countdown whose prompt is no longer on screen.</p>
 <td>Stored by <strong>name</strong>, not index — quality levels can be reordered between builds and an index would silently select a different one</td>
 </tr>
 <tr>
+<td><code>Anisotropic Filtering</code></td>
+<td><code>PerTexture</code> (<code>1</code>)</td>
+<td><code>Off</code> (0), <code>PerTexture</code> (1), <code>Forced</code> (2)</td>
+<td>Stored as the ordinal of <code>ClientDisplaySettings.AnisotropicOption</code> and clamped into range on read — the default honours whatever level each texture was imported with</td>
+</tr>
+<tr>
+<td><code>Antialiasing</code></td>
+<td><code>Balanced</code> (<code>2</code>)</td>
+<td><code>Off</code> (0), <code>Fast</code> (1), <code>Balanced</code> (2), <code>Temporal</code> (3)</td>
+<td>Edge smoothing on the live camera, stored as the ordinal of <code>ClientCameraSettings.AntialiasingOption</code>. Defaults to SMAA rather than off: the camera itself ships with antialiasing disabled, which is what made silhouettes stair-step</td>
+</tr>
+<tr>
 <td><code>Brightness</code></td>
 <td><code>1.0</code></td>
 <td>0–1</td>
 <td>Scene ambient light — both <code>ambientLight</code> (Flat scenes) and <code>ambientIntensity</code> (Skybox scenes). Re-applied on every scene load</td>
+</tr>
+<tr>
+<td><code>Look Sensitivity</code></td>
+<td><code>0.5</code></td>
+<td>0.1–1</td>
+<td>Multiplier on camera look input, clamped on both read and write</td>
 </tr>
 <tr>
 <td><code>Frame Rate Limit</code></td>
@@ -2839,7 +2907,7 @@ player waiting out a countdown whose prompt is no longer on screen.</p>
 <td><code>Audio.Volume.Effects</code> / <code>.Ambient</code> / <code>.Interface</code> / <code>.Voice</code></td>
 <td><code>1.0</code> / <code>0.8</code> / <code>0.8</code> / <code>1.0</code></td>
 <td>0–1</td>
-<td>Read through <code>ClientAudioSettings.EffectiveVolume(channel)</code> by anything that plays a sound. Stored and applied, but <strong>not currently offered in the panel</strong> — see <code>ClientAudioSettings.PlayableChannels</code></td>
+<td>Read through <code>ClientAudioSettings.EffectiveVolume(channel)</code> by anything that plays a sound — <code>ClientUIAudio</code> plays one-shot interface sounds on <code>AudioChannel.Interface</code>, and <code>ChannelAudioSource</code> routes a scene's <code>AudioSource</code> through its channel. Every channel in <code>ClientAudioSettings.PlayableChannels</code> gets a slider</td>
 </tr>
 <tr>
 <td><code>Audio.MuteWhenUnfocused</code></td>
@@ -2858,6 +2926,126 @@ player waiting out a countdown whose prompt is no longer on screen.</p>
 <td><code>false</code></td>
 <td>—</td>
 <td>Invitations are <strong>declined</strong>, not dropped: an invitation silently discarded leaves the inviter staring at a prompt that never resolves and the server holding an invitation that blocks the next one</td>
+</tr>
+<tr>
+<td><code>Crosshair.Enabled</code></td>
+<td><code>true</code></td>
+<td>—</td>
+<td>Whether the crosshair is drawn at all</td>
+</tr>
+<tr>
+<td><code>Crosshair.Style</code></td>
+<td><code>Cross</code> (<code>0</code>)</td>
+<td><code>Cross</code> (0), <code>Dot</code> (1), <code>Circle</code> (2)</td>
+<td>Stored as the ordinal of <code>ClientCrosshairSettings.CrosshairStyle</code>; an out-of-range value falls back to the default rather than drawing nothing</td>
+</tr>
+<tr>
+<td><code>Crosshair.Size</code></td>
+<td><code>8</code></td>
+<td>4–32 points</td>
+<td>Crosshair size</td>
+</tr>
+<tr>
+<td><code>Crosshair.Opacity</code></td>
+<td><code>1.0</code></td>
+<td>0.1–1</td>
+<td>Floored above zero — an invisible crosshair is what the show toggle is for</td>
+</tr>
+<tr>
+<td><code>WorldLabels.Scale</code></td>
+<td><code>1.0</code></td>
+<td>0.5–2</td>
+<td>Size of the floating world labels</td>
+</tr>
+<tr>
+<td><code>WorldLabels.Opacity</code></td>
+<td><code>1.0</code></td>
+<td>0.2–1</td>
+<td>World label opacity</td>
+</tr>
+<tr>
+<td><code>WorldLabels.Distance</code></td>
+<td><code>80</code></td>
+<td>10–200 m</td>
+<td>Draw distance beyond which world labels are not shown</td>
+</tr>
+<tr>
+<td><code>WorldLabels.MaxVisible</code></td>
+<td><code>64</code></td>
+<td>16–256</td>
+<td>Cap on labels on screen; past it the nearest are kept and the furthest dropped</td>
+</tr>
+<tr>
+<td><code>WorldLabels.Occlude</code></td>
+<td><code>false</code></td>
+<td>—</td>
+<td>Hide labels behind geometry. Off by default: it costs a physics ray per visible label, every frame</td>
+</tr>
+<tr>
+<td><code>WorldLabels.NpcNameRange</code> / <code>.PlayerNameRange</code></td>
+<td><code>30</code> / <code>30</code></td>
+<td>0–200 m</td>
+<td>Range within which NPC and player names show. At <code>0</code> a name shows only on your target</td>
+</tr>
+<tr>
+<td><code>WorldLabels.ShowOwnName</code></td>
+<td><code>true</code></td>
+<td>—</td>
+<td>Whether your own character's name is drawn</td>
+</tr>
+<tr>
+<td><code>Nameplates.Scale</code></td>
+<td><code>1.0</code></td>
+<td>0.5–2</td>
+<td>Nameplate size</td>
+</tr>
+<tr>
+<td><code>Nameplates.Opacity</code></td>
+<td><code>1.0</code></td>
+<td>0.2–1</td>
+<td>Nameplate opacity</td>
+</tr>
+<tr>
+<td><code>Nameplates.BackgroundOpacity</code></td>
+<td><code>1.0</code></td>
+<td>0–1</td>
+<td>Opacity of the plate behind the text. At zero the names are drawn straight over the world</td>
+</tr>
+<tr>
+<td><code>Nameplates.ShowGuild</code> / <code>.ShowTitles</code></td>
+<td><code>true</code></td>
+<td>—</td>
+<td>Whether guild names and titles appear on nameplates</td>
+</tr>
+<tr>
+<td><code>Nameplates.MaxVisible</code></td>
+<td><code>64</code></td>
+<td>8–256</td>
+<td>Cap on nameplates on screen; the nearest are kept</td>
+</tr>
+<tr>
+<td><code>Map.ShowCoordinates</code></td>
+<td><code>true</code></td>
+<td>—</td>
+<td>Numeric coordinates on the map and minimap — subject to the character's Cartography tier, which can withhold them regardless</td>
+</tr>
+<tr>
+<td><code>Map.MinimapFrameRate</code></td>
+<td><code>30</code></td>
+<td>5–60 fps</td>
+<td>How often the minimap is re-rendered. Capped: past the draw rate it buys nothing and only spends frame budget</td>
+</tr>
+<tr>
+<td><code>Map.MinimapRotates</code></td>
+<td><code>false</code></td>
+<td>—</td>
+<td>Minimap turns with the character rather than staying north-up</td>
+</tr>
+<tr>
+<td><code>Map.MinimapZoom</code></td>
+<td><code>25</code></td>
+<td>5–200</td>
+<td>Minimap zoom, written by the minimap itself rather than by the options panel</td>
 </tr>
 <tr>
 <td><code>UI.Scale</code></td>
@@ -2887,7 +3075,7 @@ player waiting out a countdown whose prompt is no longer on screen.</p>
 <td><code>&lt;Name&gt;ColorR/G/B/A</code></td>
 <td><em>(unset)</em></td>
 <td>0–255</td>
-<td>The ten themeable colours. Presence is decided by the <code>R</code> channel, so a legitimately black colour is not mistaken for an absent one. Clearing one <strong>removes</strong> the keys rather than emptying them, so a reset does not leave forty dead lines in the file</td>
+<td>The twelve themeable colours (<code>UITKTheme.ColorNames</code>): Primary, Secondary, Highlight, Background, Text, Health, Mana, Stamina, Crosshair, TooltipLabel, ScrollTrack, ScrollThumb. Presence is decided by the <code>R</code> channel, so a legitimately black colour is not mistaken for an absent one. Clearing one <strong>removes</strong> the keys rather than emptying them, so a reset does not leave forty-eight dead lines in the file</td>
 </tr>
 </tbody>
 </table>
@@ -3056,8 +3244,23 @@ line sit outside the scrolling list, so neither is off-screen behind forty rows 
 <td>—</td>
 </tr>
 <tr>
+<td>World Map</td>
+<td><code>N</code></td>
+<td>—</td>
+</tr>
+<tr>
 <td>Lore</td>
 <td><code>L</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Arena scoreboard</td>
+<td><code>B</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Pin Target <em>(toggles keeping the current target on the HUD)</em></td>
+<td><code>F</code></td>
 <td>—</td>
 </tr>
 <tr>
@@ -3456,7 +3659,7 @@ the shape is:</p>
 </tr>
 </tbody>
 </table>
-<p>Behaviour is pinned by roughly <strong>1,080 EditMode tests</strong>
+<p>Behaviour is pinned by roughly <strong>2,100 test methods across 221 fixtures</strong>
 (<a href="FishMMO-Unity/Assets/UnitTests/README.html"><code>Assets/UnitTests/README.md</code></a>), including a
 closed-loop fixture that composes both halves of the lag-compensation derivation across a spread
 of round-trip times and asserts the server resolves to the position the shooter was rendering.</p>

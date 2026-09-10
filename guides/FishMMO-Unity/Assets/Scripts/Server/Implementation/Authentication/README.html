@@ -248,6 +248,9 @@ not block, not to annotate.</p>
 <li><strong>RejectAndPurge unified failure handling</strong> — All failure paths use a shared helper to atomically notify, disconnect, and purge, preventing information leakage through inconsistent error timing.</li>
 <li><strong>Error indistinguishability</strong> — Most failure paths disconnect without protocol-level detail, preventing oracle attacks.</li>
 <li><strong>Connection IP caching</strong> — <code>LastSeenCacheTracker&lt;int, string&gt;</code> with 120 s TTL caches resolved IP strings to avoid repeated allocations on hot paths, and optionally stores real client IPs recovered from connection tokens (proxy deployments). Behind an L4 proxy, connection IP recovery requires the client to include a connection token validated via <code>IConnectionTokenService</code>; the recovered real IP is stored in the same cache for rate-limiting purposes.</li>
+<li><strong>Hop-token minting</strong> — <code>BaseServerAuthenticator</code> answers <code>RequestConnectionTokenBroadcast</code> with <code>ConnectionTokenBroadcast</code>, so a client can carry a verified real IP across a Login → World → Scene hop. The handler is registered with <code>requireAuthentication: true</code>, so an unauthenticated peer cannot use it as an IP oracle or a token faucet. <code>TryMintConnectionToken</code> signs <code>&quot;{keyId:}{realIp}|{expiryUnix}&quot;</code> with HMAC-SHA256 and emits <code>base64url(payload).base64url(signature)</code>, matching the IPFetch encoding, with a <code>MintedConnectionTokenTtlSeconds</code> (60 s) lifetime. The IP is the one this server resolved — never a client-supplied value — so a stolen token grants nothing beyond what the holder of that IP already has. Signing keys under 32 bytes are refused, and an ambiguous key map (no <code>&quot;shared&quot;</code> entry, more than one usable key) refuses to guess. A failed mint replies with an <em>empty</em> token rather than silence, so the waiting client fails fast instead of blocking on its own timeout.</li>
+<li><strong>Per-connection token-mint debounce</strong> — <code>ExpiringKeyTracker&lt;int&gt;</code> keyed on <code>conn.ClientId</code> admits one <code>RequestConnectionTokenBroadcast</code> per <code>TokenMintRateLimitDuration</code> (1 s). Excess requests are <em>dropped, not answered</em> — the reply is the cost being limited. Swept alongside the handshake limiter (<code>maxScan: 64</code>, <code>maxRemove: 16</code>) and removed on disconnect, because FishNet recycles ClientIds.</li>
+<li><strong>Connection-token key refresh logs only changes</strong> — <code>KeyRefreshLoop</code> reloads the signing-key map from the database every 60 s. <code>KeySetChanged</code> compares key <em>identifiers</em> only, never the secret bytes: a rotation issues a new key id, and touching secret material on a timer to answer a logging question is not worth it. A changed set logs at <code>Info</code> (that is the event that explains why tokens which verified a moment ago stopped); an unchanged refresh logs at <code>Debug</code>. This path used to report success at <code>Warning</code> on every pass — three roles produced over five hundred Warnings in three hours saying nothing had changed.</li>
 <li><strong>Token generation and issuance</strong> — LoginServer generates HMAC-signed auth tokens with configurable expiration (default 10 min), encrypted with session keys, and persisted for revocation support.</li>
 <li><strong>Token revocation</strong> — World/Scene servers verify token revocation status via database hash lookup before granting access.</li>
 <li><strong>Protocol version negotiation</strong> — <code>CryptoHelper.NegotiateProtocolVersion</code> with version range binding in the ECDH transcript hash prevents downgrade attacks.</li>
@@ -312,17 +315,75 @@ not block, not to annotate.</p>
 <tr>
 <td><code>maxMainThreadActionsPerUpdate</code></td>
 <td>100</td>
-<td>Max queued main-thread actions drained per Update frame</td>
+<td>Max queued main-thread actions drained per <code>Update</code> frame (<code>BaseServerAuthenticator</code>)</td>
 </tr>
 <tr>
-<td><code>useConnectionIdForRateLimit</code></td>
-<td>false</td>
-<td>Use connection ID instead of remote IP for rate limiting. Enable when behind a NAT/proxy/load balancer</td>
+<td><code>authHandshakeTimeoutSeconds</code></td>
+<td>15 s</td>
+<td>How long a newly-connected client has to send a valid <code>ClientHandshake</code> before disconnect (<code>BaseServerAuthenticator</code>)</td>
 </tr>
 <tr>
 <td><code>tokenExpirationMinutes</code></td>
 <td>10 min</td>
-<td>Auth token expiration (<code>ServerAuthenticator</code> only; Inspector-configurable)</td>
+<td>Auth token expiration (<code>ServerAuthenticator</code> only)</td>
+</tr>
+<tr>
+<td><code>renewalTokenExpirationMinutes</code></td>
+<td>10 min</td>
+<td>Lifetime of renewal-issued tokens (<code>TokenServerAuthenticator</code>)</td>
+</tr>
+<tr>
+<td><code>renewalRefreshFraction</code></td>
+<td>0.5 (<code>[Range(0.1, 0.9)]</code>)</td>
+<td>Fraction of the token lifetime after which a connection's token is re-minted (<code>TokenServerAuthenticator</code>)</td>
+</tr>
+<tr>
+<td><code>requireTokenRealIp</code></td>
+<td>true</td>
+<td>Require presented auth tokens to carry a verified real client IP. Keep enabled behind the L4 proxy; disable only when clients connect to this server directly (<code>TokenServerAuthenticator</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="baseserverauthenticator-constants-this-directory">BaseServerAuthenticator Constants (this directory)</h3>
+<p>These live in the Unity wrapper, not in FishMMO-Auth.</p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HandshakeRateLimitInterval</code></td>
+<td>100 ms</td>
+<td>Minimum interval between accepted <code>ClientHandshake</code> broadcasts per rate-limit key (10/sec)</td>
+</tr>
+<tr>
+<td><code>RevokeRateLimitDuration</code></td>
+<td>5 s</td>
+<td>Per-IP debounce on token revocation broadcasts</td>
+</tr>
+<tr>
+<td><code>RevokeGlobalRateLimitDuration</code></td>
+<td>100 ms</td>
+<td>Global revocation cap (10/sec), the safety net for when the per-IP key falls back to <code>conn:{clientId}</code> behind an L4 proxy</td>
+</tr>
+<tr>
+<td><code>TokenMintRateLimitDuration</code></td>
+<td>1 s</td>
+<td>Per-connection debounce on <code>RequestConnectionTokenBroadcast</code></td>
+</tr>
+<tr>
+<td><code>MintedConnectionTokenTtlSeconds</code></td>
+<td>60 s</td>
+<td>Lifetime of a minted hop connection token</td>
+</tr>
+<tr>
+<td><em>(key refresh)</em></td>
+<td>60 s</td>
+<td><code>KeyRefreshLoop</code> interval for reloading the connection-token signing keys</td>
 </tr>
 </tbody>
 </table>
@@ -586,6 +647,22 @@ internal override Task&lt;ClientAuthenticationResult&gt; TryLoginAsync(
 <tr>
 <td>Main-thread back-pressure</td>
 <td>Log warning: <code>&quot;Main-thread queue back-pressure: N actions remain after draining 100.&quot;</code></td>
+</tr>
+<tr>
+<td>Hop token minted</td>
+<td>Debug log <code>&quot;Hop token minted for conn=N len=... keys=K&quot;</code>. Every Login→World and World→Scene hop mints one, so this is Debug on purpose — and it deliberately omits the client's address</td>
+</tr>
+<tr>
+<td>Hop token mint failed</td>
+<td>Warning <code>&quot;Hop token mint FAILED for conn=N — sending empty token.&quot;</code>; the client still receives a <code>ConnectionTokenBroadcast</code> with an empty token</td>
+</tr>
+<tr>
+<td>Hop token flood</td>
+<td>Send <code>RequestConnectionTokenBroadcast</code> twice within one second on the same connection — the second is dropped with no reply</td>
+</tr>
+<tr>
+<td>Signing keys rotated</td>
+<td><code>Info</code>: <code>&quot;Connection token keys changed: now N active key(s) (was ...)&quot;</code>. A steady state logs <code>&quot;Connection token keys unchanged&quot;</code> at Debug only</td>
 </tr>
 <tr>
 <td>Cookie rotation</td>
@@ -944,6 +1021,16 @@ private sealed class ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkCo
 <td>Encrypted TOTP or recovery code + sequence number</td>
 </tr>
 <tr>
+<td><code>RequestConnectionTokenBroadcast</code></td>
+<td>Client → Server</td>
+<td>Ask for a hop token for the next server (requires an authenticated connection)</td>
+</tr>
+<tr>
+<td><code>ConnectionTokenBroadcast</code></td>
+<td>Server → Client</td>
+<td>The minted hop token, or an empty string when minting failed</td>
+</tr>
+<tr>
 <td><code>ClientAuthResultBroadcast</code></td>
 <td>Server → Client</td>
 <td>Authentication result code</td>
@@ -1136,6 +1223,14 @@ private sealed class ServerAuthenticatorCore : SrpAuthenticatorCore&lt;NetworkCo
 <tr>
 <td><strong>Cookie Key Rotation</strong></td>
 <td><code>InitializeWorkers()</code> regenerates HMAC key; <code>ShutdownWorkers()</code> zeroes it — in-flight cookies fail-closed</td>
+</tr>
+<tr>
+<td><strong>Connection-Token Key Refresh</strong></td>
+<td><code>KeyRefreshLoop</code> reloads <code>s_dbConnectionTokenKeyMap</code> from the database every 60 s; only a changed key set is logged above <code>Debug</code></td>
+</tr>
+<tr>
+<td><strong>Rate-limiter sweeps</strong></td>
+<td>Each auth sweep evicts expired entries from the handshake, token-mint (<code>maxScan: 64</code>, <code>maxRemove: 16</code>) and revocation limiters (the global one holds a single key, so it sweeps 1/1)</td>
 </tr>
 </tbody>
 </table>

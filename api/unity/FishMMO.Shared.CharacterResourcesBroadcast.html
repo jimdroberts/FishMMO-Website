@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_CharacterResourcesBroadcast" data-uid="FishMMO.Shared.CharacterResourcesBroadcast" class="text-break">
-Struct CharacterResourcesBroadcast  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L25"><i class="bi bi-code-slash"></i></a>
+Struct CharacterResourcesBroadcast  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L36"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -153,7 +153,18 @@ health bar. This is the replacement path.
 </p>
 <p>
 Rate limited and change gated by the sender, so an idle character at full health costs
-nothing and a fight costs a handful of updates a second rather than thirty.
+nothing and a fight costs a handful of updates a second rather than thirty. The gate is
+split: health and the maxima on one schedule, mana and stamina on a far coarser one, because
+no observer-facing readout draws a peer's mana or stamina at all. See
+<a class="xref" href="FishMMO.Shared.ObservedResourcePushScheduler.html">ObservedResourcePushScheduler</a>.
+</p>
+<p>
+<b>Field gated as well as change gated.</b> <a class="xref" href="FishMMO.Shared.CharacterResourcesBroadcast.html#FishMMO_Shared_CharacterResourcesBroadcast_Mask">Mask</a> names which of the six values
+this message actually carries; the rest are absent from the wire and the receiver leaves its
+own copy alone. The three maxima move on an equip, a buff or a level and at no other time, so
+before the mask existed roughly forty per cent of every push was a number the observer had
+held since the spawn payload. This is the same redundancy the reconcile path solved for the
+same struct in <code>CharacterAttributeResourceStateSerializer.WriteDelta</code>.
 </p>
 </div>
 
@@ -165,7 +176,7 @@ nothing and a fight costs a handful of updates a second rather than thirty.
 
   <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_CharacterObjectID" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.CharacterObjectID">
   CharacterObjectID
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L32"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L62"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>NetworkObject id of the character these resources belong to.</p>
@@ -200,10 +211,10 @@ the handler is registered once per client and has to be told which character it 
 
   <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_Health" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.Health">
   Health
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L41"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L97"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Current health, in whole units.</p>
+  <div class="markdown level1 summary"><p>Current health, in whole units. Present when <a class="xref" href="FishMMO.Shared.CharacterResourcesMask.html#FishMMO_Shared_CharacterResourcesMask_Health">Health</a> is set.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -229,6 +240,11 @@ the handler is registered once per client and has to be told which character it 
 at whole-unit precision — the sender's change gate already compares at whole units, so
 nothing finer was ever visible — and FishNet packs an int to one or two bytes where a
 float is always four.</p>
+<p>
+The whole-unit form is also what makes the mask exact. The sender sets a bit when the
+ROUNDED value differs from the rounded value it last sent, which is precisely what the
+receiver is holding, so an omitted field can never drift.
+</p>
 </div>
 
 
@@ -237,10 +253,10 @@ float is always four.</p>
 
   <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_Mana" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.Mana">
   Mana
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L45"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L101"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Current mana, in whole units.</p>
+  <div class="markdown level1 summary"><p>Current mana, in whole units. Present when <a class="xref" href="FishMMO.Shared.CharacterResourcesMask.html#FishMMO_Shared_CharacterResourcesMask_Mana">Mana</a> is set.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -266,12 +282,59 @@ float is always four.</p>
 
 
 
-  <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_MaxHealth" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.MaxHealth">
-  MaxHealth
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L43"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_Mask" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.Mask">
+  Mask
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L83"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Maximum health.</p>
+  <div class="markdown level1 summary"><p>Which of the six values below are present on the wire; see <a class="xref" href="FishMMO.Shared.CharacterResourcesMask.html">CharacterResourcesMask</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public byte Mask</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_CharacterResourcesBroadcast_Mask_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+A field whose bit is clear is absent from the message entirely and its value in this
+struct is meaningless — the receiver must leave its own copy untouched rather than
+applying a default. Zero is a legal mask (a confirmation of nothing is never sent, but a
+corrupt or future-shaped stream can produce one) and means "apply nothing".
+</p>
+<p>
+<b>Every present field is an ABSOLUTE value, never a difference.</b> That is the whole
+reason a mask is safe on an unreliable channel: the message is self-describing for what
+it carries, so a receiver that missed the previous push still applies these fields
+exactly right. What a loss can cost is an omitted field staying at its old value, and
+<a class="xref" href="FishMMO.Shared.ObservedResourcePushScheduler.Decision.html#FishMMO_Shared_ObservedResourcePushScheduler_Decision_Confirm">Confirm</a> — which sets every bit and
+rides the reliable channel — is what bounds that.
+</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_MaxHealth" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.MaxHealth">
+  MaxHealth
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L99"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Maximum health. Present when <a class="xref" href="FishMMO.Shared.CharacterResourcesMask.html#FishMMO_Shared_CharacterResourcesMask_MaxHealth">MaxHealth</a> is set.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -299,10 +362,10 @@ float is always four.</p>
 
   <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_MaxMana" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.MaxMana">
   MaxMana
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L47"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L103"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Maximum mana.</p>
+  <div class="markdown level1 summary"><p>Maximum mana. Present when <a class="xref" href="FishMMO.Shared.CharacterResourcesMask.html#FishMMO_Shared_CharacterResourcesMask_MaxMana">MaxMana</a> is set.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -330,10 +393,10 @@ float is always four.</p>
 
   <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_MaxStamina" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.MaxStamina">
   MaxStamina
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L51"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L107"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Maximum stamina.</p>
+  <div class="markdown level1 summary"><p>Maximum stamina. Present when <a class="xref" href="FishMMO.Shared.CharacterResourcesMask.html#FishMMO_Shared_CharacterResourcesMask_MaxStamina">MaxStamina</a> is set.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -359,12 +422,56 @@ float is always four.</p>
 
 
 
-  <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_Stamina" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.Stamina">
-  Stamina
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L49"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_Sequence" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.Sequence">
+  Sequence
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L55"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Current stamina, in whole units.</p>
+  <div class="markdown level1 summary"><p>Monotonic per-character counter, incremented on every send.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public ushort Sequence</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint16">ushort</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_CharacterResourcesBroadcast_Sequence_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+The stream is unreliable, so it is also UNORDERED: two updates sent a few ticks apart
+can arrive the wrong way round, and the receiver applies whichever landed last. During a
+fight that means a health bar that jumps back up after a hit, and at the end of one it
+meant a corpse still showing health — the reorder is most likely exactly when updates
+are most frequent. The receiver drops anything not newer than what it already applied.
+</p>
+<p>
+Compared with wrapping arithmetic, so the counter may roll over freely. It is per
+character and reset with the rest of the observed state when a pooled object is reused.
+</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_CharacterResourcesBroadcast_Stamina" data-uid="FishMMO.Shared.CharacterResourcesBroadcast.Stamina">
+  Stamina
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/PredictionObserverBroadcasts.cs/#L105"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Current stamina, in whole units. Present when <a class="xref" href="FishMMO.Shared.CharacterResourcesMask.html#FishMMO_Shared_CharacterResourcesMask_Stamina">Stamina</a> is set.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 

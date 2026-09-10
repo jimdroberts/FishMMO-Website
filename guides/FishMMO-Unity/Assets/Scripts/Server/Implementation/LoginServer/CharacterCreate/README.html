@@ -90,7 +90,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/CharacterCreate/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p><strong>Short description:</strong> LoginServer subsystem that validates character creation requests, initializes starting data (attributes, factions, abilities, inventory, equipment), and persists new characters atomically via a transactional database pipeline with main-thread safety for Unity API access.</p>
+<p><strong>Short description:</strong> LoginServer subsystem that validates character creation requests, initializes starting data (attributes, factions, abilities, and the character's starting items), and persists new characters atomically via a transactional database pipeline with main-thread safety for Unity API access.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
 <li><a href="#overview">Overview</a></li>
@@ -111,7 +111,7 @@
 <p>The implementation uses a three-phase execution model:</p>
 <ul>
 <li><strong>Main thread (network handler):</strong> receives <code>CharacterCreateBroadcast</code>, performs fast validation (character name, account binding, race template, prefab/spawnable checks via Unity API), acquires the per-connection in-flight gate, and enqueues async work.</li>
-<li><strong>Async worker:</strong> validates immutable spawn/race data from <code>WorldSceneDetailsCache</code>, enforces the account character count limit, builds all DTOs (character, factions, abilities, inventory, equipment, attributes), creates the character row and all sub-entities inside a Unit of Work transaction, and commits atomically.</li>
+<li><strong>Async worker:</strong> validates immutable spawn/race data from <code>WorldSceneDetailsCache</code>, enforces the account character count limit, builds all DTOs (character, factions, abilities, attributes, and the starting items), creates the character row and all sub-entities inside a Unit of Work transaction, and commits atomically.</li>
 <li><strong>Main-thread queue:</strong> marshals all network responses (<code>Broadcast</code>, <code>Kick</code>) back to the Unity main thread via <code>ICharacterCreateSystemMainThreadQueueData</code>, drained each frame in <code>OnUpdate</code> with a bounded per-frame cap (<code>maxMainThreadResponsesPerFrame</code>).</li>
 </ul>
 <p>All Unity object access (templates, prefabs, <code>SpawnablePrefabs</code>) occurs on the main thread. Only database operations and DTO construction run asynchronously. Broadcast replies are marshalled back to the main thread via a thread-safe queue to guarantee FishNet/Unity API safety.</p>
@@ -165,11 +165,14 @@
 <li><strong>Attributes:</strong> from <code>raceTemplate.InitialAttributes.Attributes</code></li>
 <li><strong>Factions:</strong> from <code>raceTemplate.InitialFaction</code> (allied, neutral, hostile)</li>
 <li><strong>Abilities:</strong> global <code>StartingAbilities</code> + <code>raceTemplate.StartingAbilities</code></li>
-<li><strong>Inventory:</strong> global <code>StartingInventoryItems</code> + <code>raceTemplate.StartingInventoryItems</code></li>
-<li><strong>Equipment:</strong> global <code>StartingEquipment</code> + <code>raceTemplate.StartingEquipment</code> (with <code>ItemGenerator</code> seed generation)</li>
+<li><strong>Inventory:</strong> global <code>startingInventoryItemIDs</code> + <code>raceTemplate.StartingInventoryItems</code></li>
+<li><strong>Equipment:</strong> global <code>startingEquipmentIDs</code> + <code>raceTemplate.StartingEquipment</code> (with <code>ItemGenerator</code> seed generation)</li>
 </ul>
 </li>
+<li>One item table for both containers — <code>BuildStartingItems</code> and <code>BuildStartingEquipment</code> both produce <code>CharacterItemData</code> rows, tagged <code>ItemContainerType.Inventory</code> or <code>ItemContainerType.Equipment</code>, and both go through the single <code>ICharacterItemService.PersistAsync</code>. There is no separate inventory or equipment service.</li>
+<li>Starting rows are written with <code>id: 0</code> — the database issues the identity, because these are the character's first write — <code>version: 1</code>, and <code>amount: 1</code>. Equipment used to be written with <code>amount: 0</code>; <code>Item.Initialize</code> skips the stack component for amount 0, so a stackable starting item loaded unstacked.</li>
 <li>Atomic transactional persistence via <code>IUnitOfWorkService</code> — character row created first to obtain ID, then all sub-entities persisted and committed together</li>
+<li>Incomplete bulk writes fail the creation — each sub-entity persist is checked with <code>BulkWriteReporting.RequireCompleteAsync</code>, so a partially written starting inventory rolls the transaction back rather than handing the player a character missing items</li>
 <li>Database error mapping: <code>AlreadyExists</code> → <code>CharacterNameTaken</code>, <code>ValidationError</code> → <code>InvalidCharacterName</code></li>
 <li>Per-connection in-flight gate (<code>InFlightRequests</code>) preventing duplicate concurrent create operations</li>
 <li>Per-connection post-release cooldown (<code>createRequestCooldownMilliseconds</code>, default 2000 ms) preventing sequential spam</li>
@@ -220,9 +223,9 @@
 </ol>
 <h3 id="configuring-starting-data">Configuring Starting Data</h3>
 <ol>
-<li>Populate <code>Starting Abilities</code> with <code>AbilityTemplate</code> references for abilities all new characters should receive.</li>
-<li>Populate <code>Starting Inventory Items</code> with <code>BaseItemTemplate</code> references for default inventory contents.</li>
-<li>Populate <code>Starting Equipment</code> with <code>EquippableItemTemplate</code> references for default equipped gear.</li>
+<li>Populate <code>Starting Ability IDs</code> with <code>AbilityTemplate</code> references for abilities all new characters should receive. The field stores template IDs (<code>List&lt;int&gt;</code> with <code>[TemplateReference(typeof(AbilityTemplate))]</code>), not direct asset references.</li>
+<li>Populate <code>Starting Inventory Item IDs</code> with <code>BaseItemTemplate</code> references for default inventory contents.</li>
+<li>Populate <code>Starting Equipment IDs</code> with <code>EquippableItemTemplate</code> references for default equipped gear.</li>
 <li>Assign the <code>World Scene Details Cache</code> asset containing scene spawn point definitions.</li>
 <li>Race-specific starting data is configured on each <code>RaceTemplate</code> asset (attributes, factions, abilities, inventory, equipment).</li>
 </ol>
@@ -270,22 +273,22 @@
 <td>Cached world scene details used for validating spawn positions and initial character creation. Must be assigned.</td>
 </tr>
 <tr>
-<td><code>startingAbilities</code></td>
-<td><code>List&lt;AbilityTemplate&gt;</code></td>
+<td><code>startingAbilityIDs</code></td>
+<td><code>List&lt;int&gt;</code> (<code>[TemplateReference(typeof(AbilityTemplate))]</code>)</td>
 <td>empty</td>
-<td>Global ability templates granted to all new characters on creation.</td>
+<td>Global ability template IDs granted to all new characters on creation. Resolved with <code>AbilityTemplate.Get&lt;AbilityTemplate&gt;</code>; unresolvable IDs are skipped.</td>
 </tr>
 <tr>
-<td><code>startingInventoryItems</code></td>
-<td><code>List&lt;BaseItemTemplate&gt;</code></td>
+<td><code>startingInventoryItemIDs</code></td>
+<td><code>List&lt;int&gt;</code> (<code>[TemplateReference(typeof(BaseItemTemplate))]</code>)</td>
 <td>empty</td>
-<td>Global item templates added to all new characters' inventory on creation.</td>
+<td>Global item template IDs added to all new characters' inventory on creation.</td>
 </tr>
 <tr>
-<td><code>startingEquipment</code></td>
-<td><code>List&lt;EquippableItemTemplate&gt;</code></td>
+<td><code>startingEquipmentIDs</code></td>
+<td><code>List&lt;int&gt;</code> (<code>[TemplateReference(typeof(EquippableItemTemplate))]</code>)</td>
 <td>empty</td>
-<td>Global equipment templates equipped on all new characters at creation.</td>
+<td>Global equipment template IDs equipped on all new characters at creation.</td>
 </tr>
 <tr>
 <td><code>maxSceneFieldLength</code></td>
@@ -395,13 +398,14 @@
 </table>
 <h3 id="starting-data-composition">Starting Data Composition</h3>
 <p>Global starting templates from the system inspector are merged with race-specific templates from <code>RaceTemplate</code>:</p>
-<pre><code>Final Abilities   = system.StartingAbilities       + raceTemplate.StartingAbilities
-Final Inventory   = system.StartingInventoryItems   + raceTemplate.StartingInventoryItems
-Final Equipment   = system.StartingEquipment        + raceTemplate.StartingEquipment
+<pre><code>Final Abilities   = system.startingAbilityIDs       + raceTemplate.StartingAbilities
+Final Inventory   = system.startingInventoryItemIDs  + raceTemplate.StartingInventoryItems
+Final Equipment   = system.startingEquipmentIDs      + raceTemplate.StartingEquipment
 Final Attributes  = raceTemplate.InitialAttributes.Attributes
 Final Factions    = raceTemplate.InitialFaction (allied/neutral/hostile)
 </code></pre>
-<p>Equipment uses <code>ItemGenerator.Generate(1, template)</code> to produce a deterministic seed so item-derived stats can be reconstructed on character load.</p>
+<p>The system-level lists hold template IDs and the race-level lists hold template assets, so <code>BuildStartingAbilityEntries</code>, <code>BuildStartingInventoryEntries</code> and <code>BuildStartingEquipmentEntries</code> each have two overloads — one taking <code>List&lt;int&gt;</code>, one taking the typed template list — appending into the same prepared-entry list.</p>
+<p>Equipment uses <code>ItemGenerator.Generate(1, template)</code> to produce a deterministic seed so item-derived stats can be reconstructed on character load. Inventory rows are written with <code>seed: 0</code>.</p>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
 <thead>
@@ -485,7 +489,7 @@ Final Factions    = raceTemplate.InitialFaction (allied/neutral/hostile)
 <tr>
 <td>Sub-entity persist failure</td>
 <td>Returns <code>Error</code></td>
-<td>Logged and reported to client</td>
+<td><code>BulkWriteReporting.RequireCompleteAsync</code> rejects a short write; transaction rolled back</td>
 </tr>
 <tr>
 <td>Client disconnects mid-request</td>
@@ -503,9 +507,9 @@ Final Factions    = raceTemplate.InitialFaction (allied/neutral/hostile)
 <h3 id="high-level-overview">High-Level Overview</h3>
 <pre><code class="lang-mermaid">flowchart LR
     Client[Unity Client] --&gt;|CreateCharacter request| Sys[CharacterCreateSystem]
-    Sys --&gt;|validate name + archetype| Naming[NamingService]
-    Sys --&gt;|insert character| DB[(PostgreSQL Characters)]
-    Sys --&gt;|seed inventory + spawn| DB
+    Sys --&gt;|validate name, race, spawn| Val[Authentication.IsAllowedCharacterName&lt;br/&gt;RaceTemplate / WorldSceneDetailsCache]
+    Sys --&gt;|insert character| DB[(PostgreSQL characters)]
+    Sys --&gt;|seed items, abilities, attributes| DB
     Sys --&gt;|result| Client
 </code></pre>
 <pre><code>┌────────┐  CharacterCreateBroadcast   ┌──────────────────────────────────────┐
@@ -538,8 +542,8 @@ Final Factions    = raceTemplate.InitialFaction (allied/neutral/hostile)
                                     │  7. Create character row     │
                                     │  8. Persist sub-entities     │
                                     │     (factions, abilities,    │
-                                    │      inventory, equipment,   │
-                                    │      attributes)             │
+                                    │      attributes, and items   │
+                                    │      via ICharacterItemService)│
                                     │  9. Commit transaction       │
                                     └──────────────┬──────────────┘
                                                    │ TryEnqueueMainThread

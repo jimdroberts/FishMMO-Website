@@ -157,6 +157,7 @@
 <h2 id="features">Features</h2>
 <ul>
 <li>Open-world scene routing with preferred <code>SceneHandle</code> support (channel switching via <code>SceneChannelSystem</code>) and capacity-based fallback assignment using an <code>InstanceCapacityHeap</code></li>
+<li><strong>One population ceiling for both servers</strong> — <code>MaxClientsPerInstance</code> is <code>WorldSceneSettings.MaximumClientsPerScene</code> (200), the same constant the scene server clamps its admission cap to, so routing and admission cannot disagree about whether an instance has room</li>
 <li>Instance scene routing with status-aware handling: <code>Ready</code> scenes broadcast connect endpoints, <code>Pending</code>/<code>Loading</code> scenes re-queue, and unknown/terminal statuses fall back to world scene</li>
 <li>Bidirectional queue maps (<code>WaitingOpenWorldConnections</code> ↔ <code>OpenWorldConnectionScenes</code>, <code>WaitingInstanceConnections</code> ↔ <code>InstanceConnectionScenes</code>) enabling O(1) add/remove and fast cleanup on disconnect</li>
 <li>Authentication handoff via <code>WorldServerAuthenticator.OnClientAuthenticationResult</code> triggering the instance routing flow</li>
@@ -179,7 +180,7 @@
 <li><code>RunOnMainThreadAsync</code> returning <code>Task&lt;bool&gt;</code> with immediate false completion on enqueue failure, preventing async callers from hanging on unfulfilled <code>TaskCompletionSource</code></li>
 <li>Graceful shutdown: drains pending main-thread actions, clears all caches and trackers, unsubscribes events, and deletes world-scene DB rows for this world server with a 5-second timeout</li>
 <li>Async worker backpressure via <code>TryEnqueueAsyncWork</code> (rejects when queue unavailable/full, releases processing gate on failure)</li>
-<li><strong>De-duplicated scene requests</strong> — a new instance is asked for through <code>ISceneService.EnqueueIfUnderOutstandingLimitAsync</code>, which counts outstanding Pending/Loading rows and inserts in a single statement. The routing pass runs every cycle for as long as anyone is waiting, so an unconditional enqueue produced one request every <code>WaitQueueRateSeconds</code> throughout a zone's load — ten stacked copies of one zone for a twenty-second cold start. The limit is derived from how many instances the waiting population could actually fill, capped at <code>MaxOutstandingSceneLoads</code>, so a genuine surge still gets parallel loads</li>
+<li><strong>De-duplicated scene requests</strong> — a new instance is asked for through <code>ISceneService.EnqueueIfUnderOutstandingLimitAsync</code>, which counts outstanding Pending/Loading rows and inserts in a single statement. The routing pass runs every cycle for as long as anyone is waiting, so an unconditional enqueue produced one request every <code>WaitQueueRateSeconds</code> throughout a zone's load — ten stacked copies of one zone for a twenty-second cold start. The limit is derived from how many instances the waiting population could actually fill, capped at <code>MaxOutstandingSceneLoads</code>, so a genuine surge still gets parallel loads. The cost of getting it wrong is measured in minutes: an empty extra instance is not eligible for stale unload until <code>StaleSceneTimeout</code> (five minutes)</li>
 <li><strong>Bounded instance-queue fan-out</strong> — instance-queue connections are processed in batches of <code>InstanceRoutingBatchSize</code> rather than all at once, so one routing cycle cannot put thousands of concurrent database round trips in flight</li>
 <li><strong>Lock-aware routing</strong> — scene servers whose <code>locked</code> flag is set are skipped by open-world routing (<code>IsSceneServerRoutable</code>). Instance routing deliberately ignores the lock: a character bound to a dungeon can only go to the one server hosting it, so refusing there would evict them from their instance rather than drain them</li>
 <li><strong>Wait-clock hand-over</strong> — a connection released from the instance queue to the open-world queue restarts its expiry clock, because the instance wait is bounded by the scene row's age (<code>InstanceReadyGraceSeconds</code>, 180s) and already exceeds the open-world TTL (45s)</li>
@@ -331,8 +332,8 @@
 <tbody>
 <tr>
 <td><code>MaxClientsPerInstance</code></td>
-<td><code>500</code></td>
-<td>Hard cap on clients per scene instance; <code>GetMaxClients</code> clamps to <code>[1, MaxClientsPerInstance]</code></td>
+<td><code>WorldSceneSettings.MaximumClientsPerScene</code> (<code>200</code>)</td>
+<td>Hard cap on clients per scene instance; <code>GetMaxClients</code> clamps a scene's authored <code>MaxClients</code> to <code>[1, MaxClientsPerInstance]</code> and returns the cap when the scene is not in <code>worldSceneDetailsCache</code>. Deferred to the shared constant rather than declared here, because the scene server's own admission cap (<code>SceneChannelSystem.GetMaxClients</code>) reads the same value — a local number would let this server route players into a scene the scene server then refuses</td>
 </tr>
 <tr>
 <td><code>MAX_WAITING_QUEUE_SIZE</code></td>

@@ -121,7 +121,14 @@ with peers built after it. Deploy both ends together.</p>
 </blockquote>
 <p><strong>Protocol detection:</strong> The server auto-detects browser clients (HTTP/3 — first byte <code>0x00</code>) vs native clients (raw QUIC — any other first byte) on the initial peer stream. Both paths are handled transparently.</p>
 <h2 id="building">Building</h2>
-<p>CMake fetches msquic from source and links statically. Output goes directly to the Unity plugin directory (<code>../FishMMO-Unity/Assets/Plugins/FishNet/Plugins/WebTransport/Plugins/{platform}/</code>).</p>
+<p>Linux, macOS and <code>build_windows.ps1 -Static</code> configure CMake with
+<code>-DWT_STATIC_MSQUIC=ON</code>, which fetches msquic <code>v2.5.9</code> through <code>FetchContent</code> and
+links it — quictls included — into one self-contained library. The Windows
+default takes a different route: it compiles only the seven wrapper sources
+against the prebuilt <code>Microsoft.Native.Quic.MsQuic.OpenSSL</code> NuGet package and
+ships <code>msquic.dll</code> alongside the wrapper.</p>
+<p>Every path writes its output straight into the Unity plugin directory
+(<code>../FishMMO-Unity/Assets/Plugins/FishNet/Plugins/WebTransport/Plugins/{platform}/</code>).</p>
 <h3 id="linux">Linux</h3>
 <pre><code class="lang-bash"># Dependencies (Arch)
 sudo pacman -S cmake openssl gcc
@@ -134,13 +141,27 @@ sudo apt-get install cmake libssl-dev build-essential
 </code></pre>
 <p>Output: <code>libfishmmo_webtransport.so</code> in the Unity <code>linux_x86_64</code> plugin directory.</p>
 <h3 id="windows-native">Windows (native)</h3>
-<p>Build directly on Windows with Visual Studio 2022.</p>
-<pre><code class="lang-powershell"># Dependencies
-winget install Kitware.CMake
+<p><code>build_windows.ps1</code> is the entry point and has two paths. The default is the
+fast one: it forwards to <code>build_windows_nuget.ps1</code>, which downloads
+<code>Microsoft.Native.Quic.MsQuic.OpenSSL</code> 2.5.9 from nuget.org and drives <code>cl</code> /
+<code>link</code> over the seven wrapper sources directly — no CMake, no Perl, no quictls
+build. Intermediates live in <code>build_win_nuget/</code>, and <code>last_tls.txt</code> there
+records which flavour the DLL in the Unity folder was last linked against.</p>
+<pre><code class="lang-powershell"># Prerequisites: Visual Studio 2022+ with the C++ desktop workload and the
+# Windows 10 SDK. CMake is only needed for -Static:
+#   winget install Kitware.CMake
+#   winget install Ninja-build.Ninja
 
-# Build
-powershell -File build_windows.ps1
+powershell -File build_windows.ps1                 # NuGet msquic, OpenSSL — what a server needs
+powershell -File build_windows.ps1 -Static         # CMake + static msquic/quictls, one DLL
+powershell -File build_windows.ps1 -Static -Clean
+powershell -File build_windows.ps1 -Tls Schannel   # client-only, see &quot;TLS provider&quot; below
+
+powershell -File rebuild_only.ps1                  # incremental; reuses the recorded flavour
 </code></pre>
+<p><code>build_local.bat</code> and <code>rebuild_only.bat</code> are cmd.exe wrappers that forward their
+arguments to <code>build_windows.ps1</code> and <code>rebuild_only.ps1</code>. <code>-Static</code> never uses
+the NuGet package, so <code>-Tls</code> does not apply to it: it always builds quictls.</p>
 <h3 id="windows-cross-compile-from-linux">Windows (cross-compile from Linux)</h3>
 <p>Cross-compile from a Linux host using Zig. No Visual Studio required.</p>
 <pre><code class="lang-bash"># Dependencies (Arch)
@@ -153,7 +174,10 @@ sudo pacman -S zig
 # Build
 ./build_windows_cross.sh
 </code></pre>
-<p>The cross-compile script downloads the msquic NuGet package for the import library and runtime DLL, compiles with <code>zig c++ -target x86_64-windows-gnu</code>, and links via <code>lld-link --out-implib</code>.</p>
+<p>The cross-compile script downloads the same
+<code>Microsoft.Native.Quic.MsQuic.OpenSSL</code> 2.5.9 package (into
+<code>build_win/msquic-win-openssl/</code>), stubs out the SAL annotations <code>msquic.h</code>
+carries for MSVC, compiles each source with <code>zig c++ -target x86_64-windows-gnu</code>, and links the DLL with <code>zig c++ -shared -Wl,--out-implib</code>. <code>msquic.dll</code> is copied next to the output.</p>
 <p>Output (both methods): <code>fishmmo_webtransport.dll</code> + <code>msquic.dll</code> in the Unity <code>windows_x86_64</code> plugin directory.</p>
 <h3 id="macos">macOS</h3>
 <p>Must be built on a Mac — msquic's quictls dependency contains platform-specific assembly that cannot be cross-compiled.</p>
@@ -164,6 +188,105 @@ brew install cmake openssl@3
 ./build_macos.sh
 </code></pre>
 <p>Output: <code>libfishmmo_webtransport.dylib</code> in the Unity <code>mac_x86_64</code> plugin directory.</p>
+<h2 id="tls-provider">TLS provider</h2>
+<p>msquic ships in two TLS flavours and only one of them can host a server for this
+library.</p>
+<table>
+<thead>
+<tr>
+<th>Flavour</th>
+<th>NuGet package</th>
+<th>Certificates</th>
+<th>Usable as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenSSL (quictls)</td>
+<td><code>Microsoft.Native.Quic.MsQuic.OpenSSL</code></td>
+<td>PEM files on disk</td>
+<td>server <strong>and</strong> client</td>
+</tr>
+<tr>
+<td>Schannel</td>
+<td><code>Microsoft.Native.Quic.MsQuic.Schannel</code></td>
+<td>Windows certificate store only</td>
+<td>client only</td>
+</tr>
+</tbody>
+</table>
+<p>Schannel answers <code>QUIC_STATUS_NOT_SUPPORTED</code> to the PEM paths this API takes, so
+a server built that way never binds a port: <code>wt_server_start</code> returns
+<code>WT_ERR_TLS_BACKEND</code> (-8), and <code>ServerSocket.DescribeStartFailure</code> on the C# side
+turns that code into the rebuild command. OpenSSL is therefore the default
+everywhere — <code>build_windows.ps1</code>, <code>build_windows_nuget.ps1</code> and
+<code>build_windows_cross.sh</code> all select it, and <code>-Static</code>/Linux/macOS build quictls
+from source. <code>-Tls Schannel</code> is kept only as an escape hatch for client builds on
+hosts that must not carry a second TLS stack.</p>
+<p><code>wt_tls_provider()</code> reports what the loaded binary actually got: <code>&quot;openssl&quot;</code>,
+<code>&quot;schannel&quot;</code>, or <code>&quot;unknown&quot;</code> before <code>wt_init()</code>. The managed view is
+<code>WebTransportNative.TlsProvider</code>, logged once at initialisation.</p>
+<p>Certificates are never generated. <code>wt_server_create</code> takes a PEM certificate
+path, and <code>wt_server_start</code> fails with <code>WT_ERR_TLS_FAILED</code> when it is NULL,
+empty, or unreadable — msquic refuses <code>QUIC_CREDENTIAL_TYPE_NONE</code> for servers on
+every provider, and this library mints nothing self-signed.</p>
+<h2 id="abi-version">ABI version</h2>
+<p>Native binaries are not tracked, so the library that loads at runtime can be
+older than the C# calling it. That used to surface as an
+<code>EntryPointNotFoundException</code> from whichever P/Invoke happened to run first,
+which said nothing about the cause. Both sides now carry a version that must
+match:</p>
+<table>
+<thead>
+<tr>
+<th>Side</th>
+<th>Constant</th>
+<th>File</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Native</td>
+<td><code>WT_ABI_VERSION</code> = <strong>3</strong></td>
+<td><code>src/webtransport_api.h</code></td>
+</tr>
+<tr>
+<td>Managed</td>
+<td><code>WebTransportNative.ExpectedAbiVersion</code> = <strong>3</strong></td>
+<td><code>../FishMMO-Unity/Assets/Plugins/FishNet/Plugins/WebTransport/Native/WebTransportNative.cs</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>WebTransportNative.EnsureInitialized</code> calls <code>wt_abi_version()</code> — safe before
+<code>wt_init()</code>, it touches no msquic state — and refuses to continue on a mismatch,
+naming the rebuild step for the running platform
+(<code>WebTransportNative.RebuildHint</code>). A missing library and a library that predates
+the export itself are reported the same way.</p>
+<p>Bump both whenever an exported function is added, removed, or changes signature
+or semantics; <code>tests/check_abi_version.sh</code> greps the pair and fails on a
+mismatch.</p>
+<table>
+<thead>
+<tr>
+<th>ABI</th>
+<th>Surface</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>original surface up to <code>wt_server_set_allow_native_clients</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>+ wt_server_set_limits</code> (2026-09-07)</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>+ wt_abi_version</code>, <code>wt_tls_provider</code>, <code>WT_ERR_TLS_BACKEND</code> (2026-09-09)</td>
+</tr>
+</tbody>
+</table>
 <h2 id="api">API</h2>
 <p>See <a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-WebTransport/src/webtransport_api.h">src/webtransport_api.h</a> for the complete C API surface:</p>
 <table>
@@ -195,6 +318,10 @@ brew install cmake openssl@3
 <td>Disconnect a client</td>
 </tr>
 <tr>
+<td><code>wt_server_set_limits()</code></td>
+<td>Transport-level abuse limits, before start: per-IP connect interval and concurrent cap, half-open cap, per-connection inbound token bucket with flood kick, per-connection datagram-ring share, per-connection H3 stream-context cap (see below)</td>
+</tr>
+<tr>
 <td><code>wt_client_create()</code> / <code>wt_client_connect()</code> / <code>wt_client_disconnect()</code> / <code>wt_client_destroy()</code></td>
 <td>Client lifecycle</td>
 </tr>
@@ -207,12 +334,108 @@ brew install cmake openssl@3
 <td>Send to the server</td>
 </tr>
 <tr>
-<td><code>wt_error_string()</code></td>
-<td>Human-readable error message</td>
+<td><code>wt_server_set_expected_authority()</code> / <code>wt_server_set_allow_native_clients()</code></td>
+<td>Restrict the <code>:authority</code> a browser may CONNECT to; allow or refuse raw-QUIC peers</td>
+</tr>
+<tr>
+<td><code>wt_error_string()</code> / <code>wt_version()</code></td>
+<td>Human-readable error message / library version string</td>
+</tr>
+<tr>
+<td><code>wt_abi_version()</code></td>
+<td><code>WT_ABI_VERSION</code> of the loaded binary — callable before <code>wt_init()</code></td>
+</tr>
+<tr>
+<td><code>wt_tls_provider()</code></td>
+<td><code>&quot;openssl&quot;</code>, <code>&quot;schannel&quot;</code>, or <code>&quot;unknown&quot;</code> before <code>wt_init()</code></td>
 </tr>
 </tbody>
 </table>
-<p>All functions return <code>WT_OK</code> (0) on success or a negative error code.</p>
+<p>All functions return <code>WT_OK</code> (0) on success or a negative error code, from
+<code>WT_ERR_UNKNOWN</code> (-1) to <code>WT_ERR_TLS_BACKEND</code> (-8); <code>wt_error_string()</code> names
+them.</p>
+<h3 id="transport-level-limits">Transport-level limits</h3>
+<p>Every limit below is enforced inside the library, before a byte reaches the host application.
+Defaults apply unless <code>wt_server_set_limits()</code> is called before <code>wt_server_start()</code>; a negative
+argument keeps the default and <code>0</code> disables that limit.</p>
+<table>
+<thead>
+<tr>
+<th>Limit</th>
+<th>Default</th>
+<th>Scope</th>
+<th>On breach</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Connect interval</td>
+<td>100 ms</td>
+<td>per source IP</td>
+<td>QUIC refuse (<code>server_listener_cb</code>)</td>
+</tr>
+<tr>
+<td>Concurrent connections</td>
+<td>16</td>
+<td>per source IP</td>
+<td>QUIC refuse</td>
+</tr>
+<tr>
+<td>Half-open connections (slot held, no WebTransport session yet)</td>
+<td>512</td>
+<td>server</td>
+<td>QUIC refuse</td>
+</tr>
+<tr>
+<td>Inbound message rate (streams + datagrams)</td>
+<td>500/s, burst 1000</td>
+<td>per connection</td>
+<td>drop; after 200 consecutive refusals the poll thread disconnects the client</td>
+</tr>
+<tr>
+<td>Datagram-ring share</td>
+<td>64 of 1024 entries</td>
+<td>per connection</td>
+<td>drop that client's datagram only</td>
+</tr>
+<tr>
+<td>HTTP/3 stream contexts before the session is up</td>
+<td>64</td>
+<td>per connection</td>
+<td>abort the stream</td>
+</tr>
+<tr>
+<td>Bytes in flight to a peer that is not reading</td>
+<td>8 MB (<code>WT_MAX_TOTAL_SEND_BUF</code>)</td>
+<td>per connection</td>
+<td><code>wt_server_send_stream</code> returns <code>WT_ERR_BUFFER_FULL</code>; the host disconnects the slow client</td>
+</tr>
+</tbody>
+</table>
+<p>A native (raw-QUIC) client only becomes a session when its first stream byte arrives, so an idle
+native client counts as half-open until it sends; the H3 handshake deadline (15 s) still bounds it.</p>
+<p>The FishNet transport does not run on these defaults. <code>WebTransport.cs</code>
+serialises its own inbound budget — 200 messages/s, burst 400 — and
+<code>ServerSocket.StartConnection</code> passes it, together with its own
+<code>InboundOverflowKickThreshold</code> of 100, to <code>wt_server_set_limits</code> before
+<code>wt_server_start</code>, leaving the five connection-shaped limits — connect interval,
+per-IP cap, half-open cap, datagram-ring share, H3 stream contexts — at <code>-1</code>
+(native default). <code>WebTransport.SetInboundRateLimit()</code> and
+<code>WebTransport.SetNativeLimits()</code> change them from code. The same bucket is
+mirrored in managed code on the QUIC worker thread, so a flood is charged before
+any unmanaged copy as well as inside the library.</p>
+<h3 id="tests">Tests</h3>
+<p><code>tests/</code> is added to the build only with <code>-DWT_BUILD_TESTS=ON</code>; all three shipped
+build scripts pass <code>OFF</code>.</p>
+<pre><code class="lang-bash">cmake -B build -DWT_STATIC_MSQUIC=ON -DWT_BUILD_TESTS=ON &amp;&amp; cmake --build build
+
+bash tests/run_startup_e2e.sh build   # ABI, TLS provider, certificate-vs-backend failure; no certificates needed
+bash tests/run_limits_e2e.sh build    # the limits above on loopback: bucket, kick, both caps, a paced sender
+bash tests/check_abi_version.sh       # native WT_ABI_VERSION == C# ExpectedAbiVersion
+</code></pre>
+<p><code>run_limits_e2e.sh</code> mints a throwaway CA and a <code>localhost</code> leaf in a temp
+directory and hands it to the test through <code>SSL_CERT_FILE</code>, because the native
+client validates TLS strictly.</p>
 <h2 id="platform-support">Platform Support</h2>
 <table>
 <thead>
@@ -243,9 +466,11 @@ brew install cmake openssl@3
 <blockquote>
 <p><strong>⚠️ Deployment-time build required.</strong> Native binaries are <strong>not</strong> checked into the
 repository (they are gitignored). The C++ project must be compiled directly on each
-deployment server before starting the game server. Each platform's binary links
-against the locally-installed OpenSSL and msquic libraries — pre-built binaries
-from a different machine may have ABI incompatibilities.</p>
+deployment server before starting the game server. The Linux, macOS and
+<code>-Static</code> Windows builds compile msquic and quictls from source into the
+library, so the result is tied to the toolchain and C++ runtime of the machine
+that produced it; a binary copied from another machine may not load. The
+managed side refuses a mismatched binary up front — see <strong>ABI version</strong> above.</p>
 <p><strong>Pre-built binaries:</strong> There are none. No native binary for any platform is tracked —
 <code>FishMMO-Unity/.gitignore</code> excludes every platform subdirectory of the plugins folder
 (<code>/Assets/Plugins/FishNet/Plugins/WebTransport/Plugins/*/</code>), Linux included. Every
@@ -263,7 +488,7 @@ cd FishMMO-WebTransport &amp;&amp; ./build_linux.sh
 # Windows server — compile before first run
 powershell -File build_windows.ps1
 
-# macOS (client-only, no server support) — compile before first run
+# macOS — compile before first run
 ./build_macos.sh
 </code></pre>
 <p>The build outputs directly into the Unity plugin directory at
@@ -274,17 +499,18 @@ powershell -File build_windows.ps1
 and must be rebuilt per-deployment.</p>
 <h2 id="project-structure">Project Structure</h2>
 <pre><code>FishMMO-WebTransport/
-├── CMakeLists.txt              CMake project (fetches msquic via FetchContent)
+├── CMakeLists.txt              CMake project (FetchContent msquic v2.5.9, static by default)
 ├── build_linux.sh              Linux native build
-├── build_windows.ps1           Windows native build (PowerShell)
-├── build_windows_cross.sh      Windows cross-compile from Linux (Zig)
-├── build_windows_schannel.ps1  Windows build against Schannel / NuGet msquic
-├── build_local.bat             Windows convenience wrapper (Schannel, or -Static)
 ├── build_macos.sh              macOS native build
-├── rebuild_only.ps1            Recompile without re-fetching dependencies
+├── build_windows.ps1           Windows entry point — NuGet msquic by default, -Static for CMake
+├── build_windows_nuget.ps1     Windows build against the prebuilt msquic NuGet (-Tls OpenSSL|Schannel)
+├── build_windows_cross.sh      Windows cross-compile from Linux (Zig + the OpenSSL NuGet)
+├── build_local.bat             cmd.exe wrapper for build_windows.ps1
+├── rebuild_only.ps1            Incremental rebuild — prefers the NuGet tree, else the CMake cache
 ├── rebuild_only.bat            cmd.exe wrapper for rebuild_only.ps1
 ├── README.md
-└── src/                        C++ source (7 .cpp + 7 .h)
+├── src/                        C++ source (7 .cpp + 8 .h)
+└── tests/                      wt_limits_e2e, wt_startup_e2e, check_abi_version.sh (-DWT_BUILD_TESTS=ON)
 </code></pre>
 <h3 id="generated-not-tracked">Generated, not tracked</h3>
 <table>
@@ -300,8 +526,16 @@ and must be rebuilt per-deployment.</p>
 <td>root <code>.gitignore</code> — the general <code>[Bb]uild/</code> rule</td>
 </tr>
 <tr>
+<td><code>build_win_nuget/</code></td>
+<td>root <code>.gitignore</code> — an explicit entry; intermediates of <code>build_windows_nuget.ps1</code> (per-flavour msquic extraction, shared <code>obj/</code>, <code>last_tls.txt</code>)</td>
+</tr>
+<tr>
+<td><code>build_win/</code></td>
+<td>root <code>.gitignore</code> — an explicit entry; intermediates of <code>build_windows_cross.sh</code></td>
+</tr>
+<tr>
 <td><code>build_win_schannel/</code></td>
-<td>root <code>.gitignore</code> — an explicit entry; <code>[Bb]uild/</code> matches that exact directory name only, so it does not cover this one</td>
+<td>root <code>.gitignore</code> — an explicit entry; the pre-2026-09-09 name of <code>build_win_nuget/</code>, safe to delete</td>
 </tr>
 <tr>
 <td><code>openssl_cache.cmake</code></td>
@@ -309,8 +543,9 @@ and must be rebuilt per-deployment.</p>
 </tr>
 </tbody>
 </table>
-<p>If you add a build script that writes to a new intermediate directory, add a matching entry
-to the root <code>.gitignore</code> — only the exact name <code>build/</code> is covered by the general rule.</p>
+<p><code>[Bb]uild/</code> matches that exact directory name only, which is why every other
+intermediate directory needs a line of its own. If you add a build script that
+writes to a new one, add a matching entry to the root <code>.gitignore</code>.</p>
 
 </article>
 

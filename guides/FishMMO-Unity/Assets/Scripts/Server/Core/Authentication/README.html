@@ -209,7 +209,7 @@
 <li><strong>Connection IP cache TTL</strong> — <code>LastSeenCacheTracker&lt;int, string&gt;</code> with bounded sweep to prevent unbounded memory growth.</li>
 <li><strong>AccountManager backstop sweep</strong> — <code>ArrivalOrderTracker</code> with oldest-first traversal purges stale SRP/encryption state.</li>
 <li><strong>Max pending auth cap</strong> — <code>MaxPendingAuthConnections</code> (10,000) prevents memory exhaustion from half-open connection floods.</li>
-<li><strong>Bounded channel capacity</strong> — verify: 500, proof: 500, token: 500, account creation: 1000; all with <code>DropWrite</code> → <code>ServerBusy</code>.</li>
+<li><strong>Bounded channel capacity</strong> — verify: 500, proof: 500, token: 500; all with <code>DropWrite</code> → <code>ServerBusy</code>. Account creation does not use a channel: it hands work to <code>AsyncWorkerData</code>, whose admission cap is <code>maxOutstandingItems</code> (16,384, overridable with <code>AsyncWorkerMaxOutstandingItems</code>).</li>
 <li><strong>Time-sliced main-thread drain</strong> — <code>maxMainThreadActionsPerUpdate</code> (100) prevents frame spikes from queue bursts.</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
@@ -804,15 +804,13 @@ private async Task ProcessSrpVerifyAsync(
 <td><code>DropWrite</code> → <code>ServerBusy</code></td>
 <td>TokenServerAuthenticator</td>
 </tr>
-<tr>
-<td><code>AsyncWorkerData</code></td>
-<td>1000</td>
-<td>configurable</td>
-<td><code>DropWrite</code> → <code>ServerBusy</code></td>
-<td>AccountCreationSystem</td>
-</tr>
 </tbody>
 </table>
+<p><code>AsyncWorkerData</code> (used by <code>AccountCreationSystem</code>) is deliberately <strong>not</strong> in this table. It is
+not a channel and has no drop policy: a <code>SemaphoreSlim</code> gates concurrency, per-entity work is
+serialised through an <code>OrderedLane</code>, and <code>Enqueue</code> refuses once <code>maxOutstandingItems</code> (16,384,
+overridable with the <code>AsyncWorkerMaxOutstandingItems</code> config key) items are accepted but
+unfinished.</p>
 <h3 id="srp-request-lifecycle">SRP Request Lifecycle</h3>
 <pre><code>SrpVerifyRequestBroadcast arrives (network thread)
     │

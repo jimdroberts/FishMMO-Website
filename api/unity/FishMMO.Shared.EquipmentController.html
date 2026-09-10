@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class EquipmentController | FishMMO Documentation ">
       
-      <meta name="description" content="Controls the character&#39;s equipment slots, handling equip/unequip logic and network synchronization. Manages client-server broadcasts for equipment changes and slot management. Implements  at Order 93 so equipment state participates in the prediction pipeline. Equipment-driven attribute changes are reconciled alongside other predicted state, eliminating the broadcast/reconcile race on ExternalModifier. Three network paths feed this container and they must agree with one another: The spawn payload (/) — owner shaped for the owner, template+seed only for everyone else.The owner&#39;s acknowledgement broadcasts and reconcile snapshot, which can arrive in either order and are reconciled against each other by instance id (see  and the pending-request records)., sent by the server to the character&#39;s observers after every successful equip/unequip, applied by .">
+      <meta name="description" content="Controls the character&#39;s equipment slots, handling equip/unequip logic and network synchronization. Implements  at Order 93 so equipment participates in the prediction pipeline: an owner&#39;s equip or unequip is INPUT, carried by , applied by both the owner and the server inside the replicate body for that tick, and confirmed by the reconcile. Equipment-driven attribute changes therefore land on the same tick on both peers, and the attribute reconcile (Order 95) never has a socket to correct that the replay would not also have re-applied. Three network paths feed this container and they must agree with one another: The spawn payload (/) — owner shaped for the owner, template+seed only for everyone else.The owner&#39;s replicate input and reconcile snapshot: the input moves items, the snapshot says which instance sits in each socket, and  settles any disagreement by MOVING the real instance, never by cloning it. A reconcile that predates a request restores the earlier state and the replay re-applies the request., sent by the server to the character&#39;s observers after every successful equip/unequip, applied by .">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_EquipmentController" data-uid="FishMMO.Shared.EquipmentController" class="text-break">
-Class EquipmentController  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L32"><i class="bi bi-code-slash"></i></a>
+Class EquipmentController  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L36"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,16 +97,19 @@ Class EquipmentController  <a class="header-action link-secondary" title="View s
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Controls the character's equipment slots, handling equip/unequip logic and network synchronization.
-Manages client-server broadcasts for equipment changes and slot management.</p>
-<p>Implements <a class="xref" href="FishMMO.Shared.IPredictableController.html">IPredictableController</a> at Order 93 so equipment state participates
-in the prediction pipeline. Equipment-driven attribute changes are reconciled alongside
-other predicted state, eliminating the broadcast/reconcile race on <code>ExternalModifier</code>.</p>
+  <div class="markdown summary"><p>Controls the character's equipment slots, handling equip/unequip logic and network synchronization.</p>
+<p>Implements <a class="xref" href="FishMMO.Shared.IPredictableController.html">IPredictableController</a> at Order 93 so equipment participates in the
+prediction pipeline: an owner's equip or unequip is INPUT, carried by
+<a class="xref" href="FishMMO.Shared.CharacterReplicateData.html#FishMMO_Shared_CharacterReplicateData_EquipmentRequest">EquipmentRequest</a>, applied by both the owner and the
+server inside the replicate body for that tick, and confirmed by the reconcile. Equipment-driven
+attribute changes therefore land on the same tick on both peers, and the attribute reconcile
+(Order 95) never has a socket to correct that the replay would not also have re-applied.</p>
 <p>Three network paths feed this container and they must agree with one another:</p>
 <ul><li>The spawn payload (<a class="xref" href="FishMMO.Shared.EquipmentController.html#FishMMO_Shared_EquipmentController_WritePayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Writer_">WritePayload(NetworkConnection, Writer)</a>/<a class="xref" href="FishMMO.Shared.EquipmentController.html#FishMMO_Shared_EquipmentController_ReadPayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Reader_">ReadPayload(NetworkConnection, Reader)</a>) — owner
-shaped for the owner, template+seed only for everyone else.</li><li>The owner's acknowledgement broadcasts and reconcile snapshot, which can arrive in
-either order and are reconciled against each other by instance id (see
-<a class="xref" href="FishMMO.Shared.EquipmentReconcileEntry.html">RestoreFromReconcile(EquipmentReconcileEntry[])</a> and the pending-request records).</li><li><a class="xref" href="FishMMO.Shared.EquipmentObservedSlotBroadcast.html">EquipmentObservedSlotBroadcast</a>, sent by the server to the character's
+shaped for the owner, template+seed only for everyone else.</li><li>The owner's replicate input and reconcile snapshot: the input moves items, the
+snapshot says which instance sits in each socket, and <a class="xref" href="FishMMO.Shared.EquipmentReconcileEntry.html">RestoreFromReconcile(EquipmentReconcileEntry[], uint)</a>
+settles any disagreement by MOVING the real instance, never by cloning it. A reconcile that
+predates a request restores the earlier state and the replay re-applies the request.</li><li><a class="xref" href="FishMMO.Shared.EquipmentObservedSlotBroadcast.html">EquipmentObservedSlotBroadcast</a>, sent by the server to the character's
 observers after every successful equip/unequip, applied by <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">ApplyObservedSlot(int, int, int)</a>.</li></ul>
 </div>
   <div class="markdown conceptual"></div>
@@ -916,6 +919,48 @@ observers after every successful equip/unequip, applied by <a class="xref" href=
 
 
 
+  <h2 class="section" id="fields">Fields
+</h2>
+
+
+
+  <h3 id="FishMMO_Shared_EquipmentController_ServerRequestValidator" data-uid="FishMMO.Shared.EquipmentController.ServerRequestValidator">
+  ServerRequestValidator
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L70"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Server-side gate consulted before a replicated request is applied: is this character
+allowed to act at all, and may it reach the named container right now?</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static Func&lt;ICharacter, InventoryType, bool&gt; ServerRequestValidator</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.func-3">Func</a>&lt;<a class="xref" href="FishMMO.Shared.Core.ICharacter.html">ICharacter</a>, <a class="xref" href="FishMMO.Shared.InventoryType.html">InventoryType</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_EquipmentController_ServerRequestValidator_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Installed by the server's inventory system. It answers the two questions this shared
+class cannot — &quot;can the character act&quot; is a server-side validation rule set, and &quot;is a
+banker in range&quot; needs the scene object registry. Null on every other peer, and null on
+the server means no gate, which is the permissive default a test harness expects.</p>
+</div>
+
+
+
+
   <h2 class="section" id="properties">Properties
 </h2>
 
@@ -924,7 +969,7 @@ observers after every successful equip/unequip, applied by <a class="xref" href=
 
   <h3 id="FishMMO_Shared_EquipmentController_OnEquipTriggers" data-uid="FishMMO.Shared.EquipmentController.OnEquipTriggers">
   OnEquipTriggers
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L47"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L56"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Triggers invoked when this character equips an item. EventData: EquipItemEventData.</p>
@@ -956,7 +1001,7 @@ observers after every successful equip/unequip, applied by <a class="xref" href=
 
   <h3 id="FishMMO_Shared_EquipmentController_OnUnequipTriggers" data-uid="FishMMO.Shared.EquipmentController.OnUnequipTriggers">
   OnUnequipTriggers
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L49"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L58"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Triggers invoked when this character unequips an item. EventData: EquipItemEventData.</p>
@@ -988,7 +1033,7 @@ observers after every successful equip/unequip, applied by <a class="xref" href=
 
   <h3 id="FishMMO_Shared_EquipmentController_Order" data-uid="FishMMO.Shared.EquipmentController.Order">
   Order
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L67"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L88"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Execution order in the unified prediction pipeline.
@@ -1035,7 +1080,7 @@ settled, so an item equipped on the reconciled tick counts twice. See the remark
 
   <h3 id="FishMMO_Shared_EquipmentController_Activate_System_Int32_" data-uid="FishMMO.Shared.EquipmentController.Activate(System.Int32)">
   Activate(int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1240"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1504"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Activates the item in the specified equipment slot, typically triggering its use effect.</p>
@@ -1064,24 +1109,33 @@ settled, so an item equipped on the reconciled tick counts twice. See the remark
 
 
 
-  <a id="FishMMO_Shared_EquipmentController_ClearPendingRequest_" data-uid="FishMMO.Shared.EquipmentController.ClearPendingRequest*"></a>
+  <a id="FishMMO_Shared_EquipmentController_ApplyUnequipDestination_" data-uid="FishMMO.Shared.EquipmentController.ApplyUnequipDestination*"></a>
 
-  <h3 id="FishMMO_Shared_EquipmentController_ClearPendingRequest_FishMMO_Shared_ItemSlot_" data-uid="FishMMO.Shared.EquipmentController.ClearPendingRequest(FishMMO.Shared.ItemSlot)">
-  ClearPendingRequest(ItemSlot)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L649"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Shared_EquipmentController_ApplyUnequipDestination_System_Int64_FishMMO_Shared_InventoryType_System_Int32_" data-uid="FishMMO.Shared.EquipmentController.ApplyUnequipDestination(System.Int64,FishMMO.Shared.InventoryType,System.Int32)">
+  ApplyUnequipDestination(long, InventoryType, int)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L716"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"></div>
+  <div class="markdown level1 summary"><p>Moves an unequipped item to the slot the server put it in, if this peer has it anywhere
+else. Owner only; a no-op when the item is already there.</p>
+</div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void ClearPendingRequest(ItemSlot slot)</code></pre>
+    <pre><code class="lang-csharp hljs">public void ApplyUnequipDestination(long itemID, InventoryType container, int slot)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>slot</code> <a class="xref" href="FishMMO.Shared.ItemSlot.html">ItemSlot</a></dt>
-    <dd></dd>
+    <dt><code>itemID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>Identity of the item that was unequipped.</p>
+</dd>
+    <dt><code>container</code> <a class="xref" href="FishMMO.Shared.InventoryType.html">InventoryType</a></dt>
+    <dd><p>The container the server placed it in.</p>
+</dd>
+    <dt><code>slot</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The slot within that container.</p>
+</dd>
   </dl>
 
 
@@ -1099,7 +1153,7 @@ settled, so an item equipped on the reconciled tick counts twice. See the remark
 
   <h3 id="FishMMO_Shared_EquipmentController_Equip_FishMMO_Shared_Item_System_Int32_FishMMO_Shared_Core_IItemContainer_FishMMO_Shared_ItemSlot_" data-uid="FishMMO.Shared.EquipmentController.Equip(FishMMO.Shared.Item,System.Int32,FishMMO.Shared.Core.IItemContainer,FishMMO.Shared.ItemSlot)">
   Equip(Item, int, IItemContainer, ItemSlot)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1254"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1517"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Equips the specified item into the given equipment slot, handling swaps and unequips as needed.</p>
@@ -1139,76 +1193,12 @@ settled, so an item equipped on the reconciled tick counts twice. See the remark
 
 
 
-
-
-
-
-  <a id="FishMMO_Shared_EquipmentController_NotifyEquipRequested_" data-uid="FishMMO.Shared.EquipmentController.NotifyEquipRequested*"></a>
-
-  <h3 id="FishMMO_Shared_EquipmentController_NotifyEquipRequested_FishMMO_Shared_Item_System_Int32_FishMMO_Shared_InventoryType_FishMMO_Shared_ItemSlot_" data-uid="FishMMO.Shared.EquipmentController.NotifyEquipRequested(FishMMO.Shared.Item,System.Int32,FishMMO.Shared.InventoryType,FishMMO.Shared.ItemSlot)">
-  NotifyEquipRequested(Item, int, InventoryType, ItemSlot)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L618"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"></div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void NotifyEquipRequested(Item item, int inventoryIndex, InventoryType fromInventory, ItemSlot toSlot)</code></pre>
-  </div>
-
-  <h4 class="section">Parameters</h4>
-  <dl class="parameters">
-    <dt><code>item</code> <a class="xref" href="FishMMO.Shared.Item.html">Item</a></dt>
-    <dd></dd>
-    <dt><code>inventoryIndex</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd></dd>
-    <dt><code>fromInventory</code> <a class="xref" href="FishMMO.Shared.InventoryType.html">InventoryType</a></dt>
-    <dd></dd>
-    <dt><code>toSlot</code> <a class="xref" href="FishMMO.Shared.ItemSlot.html">ItemSlot</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
-
-
-
-
-
-
-
-
-  <a id="FishMMO_Shared_EquipmentController_NotifyUnequipRequested_" data-uid="FishMMO.Shared.EquipmentController.NotifyUnequipRequested*"></a>
-
-  <h3 id="FishMMO_Shared_EquipmentController_NotifyUnequipRequested_FishMMO_Shared_ItemSlot_FishMMO_Shared_InventoryType_" data-uid="FishMMO.Shared.EquipmentController.NotifyUnequipRequested(FishMMO.Shared.ItemSlot,FishMMO.Shared.InventoryType)">
-  NotifyUnequipRequested(ItemSlot, InventoryType)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L634"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"></div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void NotifyUnequipRequested(ItemSlot slot, InventoryType toInventory)</code></pre>
-  </div>
-
-  <h4 class="section">Parameters</h4>
-  <dl class="parameters">
-    <dt><code>slot</code> <a class="xref" href="FishMMO.Shared.ItemSlot.html">ItemSlot</a></dt>
-    <dd></dd>
-    <dt><code>toInventory</code> <a class="xref" href="FishMMO.Shared.InventoryType.html">InventoryType</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
-
-
-
-
+  <h4 class="section" id="FishMMO_Shared_EquipmentController_Equip_FishMMO_Shared_Item_System_Int32_FishMMO_Shared_Core_IItemContainer_FishMMO_Shared_ItemSlot__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Applies immediately on whichever peer calls it. Server-side paths that are not the
+owner's predicted request — ECA actions, for instance — call this directly; the owner
+learns of the change through the reconcile. The owner's own requests must go through
+<a class="xref" href="FishMMO.Shared.Core.IEquipmentController.html#FishMMO_Shared_Core_IEquipmentController_RequestEquip_FishMMO_Shared_Item_System_Int32_FishMMO_Shared_InventoryType_FishMMO_Shared_ItemSlot_">RequestEquip(Item, int, InventoryType, ItemSlot)</a> instead, so they run inside the replicate tick.</p>
+</div>
 
 
 
@@ -1217,7 +1207,7 @@ settled, so an item equipped on the reconciled tick counts twice. See the remark
 
   <h3 id="FishMMO_Shared_EquipmentController_OnAwake" data-uid="FishMMO.Shared.EquipmentController.OnAwake">
   OnAwake()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L662"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L962"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called before InitializeOnce, character will not be set yet. Override for early setup.</p>
@@ -1244,7 +1234,7 @@ settled, so an item equipped on the reconciled tick counts twice. See the remark
 
   <h3 id="FishMMO_Shared_EquipmentController_OnCreateReconcile_FishMMO_Shared_CharacterReconcileData__" data-uid="FishMMO.Shared.EquipmentController.OnCreateReconcile(FishMMO.Shared.CharacterReconcileData@)">
   OnCreateReconcile(ref CharacterReconcileData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L133"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L310"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Writes this controller's authoritative state into the reconcile data (server only).
@@ -1277,7 +1267,7 @@ Called once per tick after <a class="xref" href="FishMMO.Shared.IPredictableCont
 
   <h3 id="FishMMO_Shared_EquipmentController_OnReconcile_FishMMO_Shared_CharacterReconcileData_FishNet_Transporting_Channel_" data-uid="FishMMO.Shared.EquipmentController.OnReconcile(FishMMO.Shared.CharacterReconcileData,FishNet.Transporting.Channel)">
   OnReconcile(CharacterReconcileData, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L143"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L320"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Restores this controller's state from the server's authoritative reconcile data.</p>
@@ -1311,7 +1301,7 @@ Called once per tick after <a class="xref" href="FishMMO.Shared.IPredictableCont
 
   <h3 id="FishMMO_Shared_EquipmentController_OnReplicate_FishMMO_Shared_CharacterReplicateData__FishNet_Object_Prediction_ReplicateState_FishNet_Transporting_Channel_" data-uid="FishMMO.Shared.EquipmentController.OnReplicate(FishMMO.Shared.CharacterReplicateData@,FishNet.Object.Prediction.ReplicateState,FishNet.Transporting.Channel)">
   OnReplicate(ref CharacterReplicateData, ReplicateState, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L126"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L175"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Executes this controller's simulation for the current tick.
@@ -1348,7 +1338,7 @@ May modify <code class="paramref">input</code> for observer prediction.</p>
 
   <h3 id="FishMMO_Shared_EquipmentController_OnStartCharacter" data-uid="FishMMO.Shared.EquipmentController.OnStartCharacter">
   OnStartCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1138"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1473"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called after Character.OnStartClient. Use this for local client initialization.</p>
@@ -1375,7 +1365,7 @@ May modify <code class="paramref">input</code> for observer prediction.</p>
 
   <h3 id="FishMMO_Shared_EquipmentController_OnStartNetwork" data-uid="FishMMO.Shared.EquipmentController.OnStartNetwork">
   OnStartNetwork()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L728"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1039"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when the network has initialized this object. May be called for server or client but will only be called once.
@@ -1404,7 +1394,7 @@ When as client only the method will run before OnStartClient.</p>
 
   <h3 id="FishMMO_Shared_EquipmentController_OnStopCharacter" data-uid="FishMMO.Shared.EquipmentController.OnStopCharacter">
   OnStopCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1153"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1487"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called right before Character.OnStopClient. Use this for local client cleanup.</p>
@@ -1431,7 +1421,7 @@ When as client only the method will run before OnStartClient.</p>
 
   <h3 id="FishMMO_Shared_EquipmentController_PopulateInput_FishMMO_Shared_CharacterReplicateData__" data-uid="FishMMO.Shared.EquipmentController.PopulateInput(FishMMO.Shared.CharacterReplicateData@)">
   PopulateInput(ref CharacterReplicateData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L120"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L152"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Populates this controller's portion of the unified input data (owner only).
@@ -1464,7 +1454,7 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
 
   <h3 id="FishMMO_Shared_EquipmentController_ReadPayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.EquipmentController.ReadPayload(FishNet.Connection.NetworkConnection,FishNet.Serializing.Reader)">
   ReadPayload(NetworkConnection, Reader)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L761"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1072"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called before network start callbacks, but after the object is initialized with network values. This may be used to read information from predicted spawning, or simply have values set before initialization without depending on SyncTypes.</p>
@@ -1494,14 +1484,114 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
 
 
 
+  <a id="FishMMO_Shared_EquipmentController_RequestEquip_" data-uid="FishMMO.Shared.EquipmentController.RequestEquip*"></a>
+
+  <h3 id="FishMMO_Shared_EquipmentController_RequestEquip_FishMMO_Shared_Item_System_Int32_FishMMO_Shared_InventoryType_FishMMO_Shared_ItemSlot_" data-uid="FishMMO.Shared.EquipmentController.RequestEquip(FishMMO.Shared.Item,System.Int32,FishMMO.Shared.InventoryType,FishMMO.Shared.ItemSlot)">
+  RequestEquip(Item, int, InventoryType, ItemSlot)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L885"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Queues an equip to be applied on the owner's next replicate tick.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool RequestEquip(Item item, int sourceIndex, InventoryType fromContainer, ItemSlot socket)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>item</code> <a class="xref" href="FishMMO.Shared.Item.html">Item</a></dt>
+    <dd><p>The item to equip, as the caller currently sees it.</p>
+</dd>
+    <dt><code>sourceIndex</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>Its index in <code class="paramref">fromContainer</code>.</p>
+</dd>
+    <dt><code>fromContainer</code> <a class="xref" href="FishMMO.Shared.InventoryType.html">InventoryType</a></dt>
+    <dd><p>The container it is in.</p>
+</dd>
+    <dt><code>socket</code> <a class="xref" href="FishMMO.Shared.ItemSlot.html">ItemSlot</a></dt>
+    <dd><p>The equipment socket it is going to.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True when the request was queued.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_EquipmentController_RequestEquip_FishMMO_Shared_Item_System_Int32_FishMMO_Shared_InventoryType_FishMMO_Shared_ItemSlot__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Owner only. Validates what can be validated locally — the item is where the request says,
+it fits the socket, it has a database identity, neither slot is locked — and refuses
+without queueing when it cannot. One request is held at a time; a second call before the
+first has ridden a replicate replaces it, and the displaced request is reported through
+<a class="xref" href="FishMMO.Shared.Core.IEquipmentController.html#FishMMO_Shared_Core_IEquipmentController_OnRequestResolved">OnRequestResolved</a> as not applied.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Shared_EquipmentController_RequestUnequip_" data-uid="FishMMO.Shared.EquipmentController.RequestUnequip*"></a>
+
+  <h3 id="FishMMO_Shared_EquipmentController_RequestUnequip_FishMMO_Shared_ItemSlot_FishMMO_Shared_InventoryType_" data-uid="FishMMO.Shared.EquipmentController.RequestUnequip(FishMMO.Shared.ItemSlot,FishMMO.Shared.InventoryType)">
+  RequestUnequip(ItemSlot, InventoryType)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L922"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Queues an unequip to be applied on the owner's next replicate tick.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool RequestUnequip(ItemSlot socket, InventoryType toContainer)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>socket</code> <a class="xref" href="FishMMO.Shared.ItemSlot.html">ItemSlot</a></dt>
+    <dd><p>The equipment socket being emptied.</p>
+</dd>
+    <dt><code>toContainer</code> <a class="xref" href="FishMMO.Shared.InventoryType.html">InventoryType</a></dt>
+    <dd><p>The container the item should land in.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True when the request was queued.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_EquipmentController_RequestUnequip_FishMMO_Shared_ItemSlot_FishMMO_Shared_InventoryType__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>See <a class="xref" href="FishMMO.Shared.Core.IEquipmentController.html#FishMMO_Shared_Core_IEquipmentController_RequestEquip_FishMMO_Shared_Item_System_Int32_FishMMO_Shared_InventoryType_FishMMO_Shared_ItemSlot_">RequestEquip(Item, int, InventoryType, ItemSlot)</a>.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_EquipmentController_ResetState_" data-uid="FishMMO.Shared.EquipmentController.ResetState*"></a>
 
   <h3 id="FishMMO_Shared_EquipmentController_ResetState_System_Boolean_" data-uid="FishMMO.Shared.EquipmentController.ResetState(System.Boolean)">
   ResetState(bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L695"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1003"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Resets this NetworkBehaviour so that it may be added to an object pool.</p>
+  <div class="markdown level1 summary"><p>Drops the per-spawn container state before the object returns to the pool.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -1512,7 +1602,8 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>asServer</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
-    <dd></dd>
+    <dd><p>True if called on the server.</p>
+</dd>
   </dl>
 
 
@@ -1522,6 +1613,28 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
 
 
 
+  <h4 class="section" id="FishMMO_Shared_EquipmentController_ResetState_System_Boolean__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+<b>The locks are the reason this exists.</b> A slot is locked for the duration of an
+operation — a consumable activation, an equip round trip — and unlocked when that
+operation resolves. A despawn mid-flight resolves nothing, so the lock was still set
+when the object went into the pool, and <code>OnDestroying</code> was the only thing that
+cleared it: a path a pooled object never takes. The next character to occupy the slot
+inherited a permanently locked inventory slot, which
+<a class="xref" href="FishMMO.Shared.ItemContainer.html#FishMMO_Shared_ItemContainer_IsSlotLocked_System_Int32_">IsSlotLocked(int)</a> makes unswappable, unremovable and untransferable for
+the rest of that character's session, with nothing in the UI to explain it.
+</p>
+<p>
+The subscriber lists go with them. Both events are held by client panels bound to the
+character that is being torn down; leaving them attached to a recycled container would
+drive the previous occupant's UI from the next occupant's slot writes.
+</p>
+<p>
+Items are deliberately NOT cleared here. Each concrete container clears its own in its
+<code>ResetState</code>, and <code>EquipmentController</code> has to run work either side of that
+call — see its override for why the order there cannot be inverted.
+</p>
+</div>
 
 
 
@@ -1530,7 +1643,7 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
 
   <h3 id="FishMMO_Shared_EquipmentController_Unequip_FishMMO_Shared_Core_IItemContainer_System_Byte_System_Collections_Generic_List_FishMMO_Shared_Item___" data-uid="FishMMO.Shared.EquipmentController.Unequip(FishMMO.Shared.Core.IItemContainer,System.Byte,System.Collections.Generic.List{FishMMO.Shared.Item}@)">
   Unequip(IItemContainer, byte, out List&lt;Item&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1370"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1640"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unequips the item from the specified slot and adds it to the given container (e.g., inventory or bank).</p>
@@ -1567,6 +1680,9 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
 
 
 
+  <h4 class="section" id="FishMMO_Shared_EquipmentController_Unequip_FishMMO_Shared_Core_IItemContainer_System_Byte_System_Collections_Generic_List_FishMMO_Shared_Item____remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>See <a class="xref" href="FishMMO.Shared.Core.IEquipmentController.html#FishMMO_Shared_Core_IEquipmentController_Equip_FishMMO_Shared_Item_System_Int32_FishMMO_Shared_Core_IItemContainer_FishMMO_Shared_ItemSlot_">Equip(Item, int, IItemContainer, ItemSlot)</a> for when to call this directly.</p>
+</div>
 
 
 
@@ -1575,7 +1691,7 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
 
   <h3 id="FishMMO_Shared_EquipmentController_WritePayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Writer_" data-uid="FishMMO.Shared.EquipmentController.WritePayload(FishNet.Connection.NetworkConnection,FishNet.Serializing.Writer)">
   WritePayload(NetworkConnection, Writer)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L897"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L1201"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when writing a spawn. This may be used to deliver information for predicted spawning, or simply have values set before initialization without depending on SyncTypes.</p>
@@ -1612,7 +1728,7 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
 
   <h3 id="FishMMO_Shared_EquipmentController_OnItemEquipped" data-uid="FishMMO.Shared.EquipmentController.OnItemEquipped">
   OnItemEquipped
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L39"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fired after an item is successfully equipped. Subscribers receive the item and the slot.</p>
@@ -1643,7 +1759,7 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
 
   <h3 id="FishMMO_Shared_EquipmentController_OnItemUnequipped" data-uid="FishMMO.Shared.EquipmentController.OnItemUnequipped">
   OnItemUnequipped
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L37"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L41"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fired after an item is successfully unequipped. Subscribers receive the item and the slot.</p>
@@ -1662,6 +1778,77 @@ Called once per tick before <a class="xref" href="FishMMO.Shared.IPredictableCon
   <h4 class="section">Event Type</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action-2">Action</a>&lt;<a class="xref" href="FishMMO.Shared.Item.html">Item</a>, <a class="xref" href="FishMMO.Shared.ItemSlot.html">ItemSlot</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_EquipmentController_OnRequestResolved" data-uid="FishMMO.Shared.EquipmentController.OnRequestResolved">
+  OnRequestResolved
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L43"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Fired on the owner when a queued request has run in the replicate body, whether or not
+it was applied. Arguments: the kind, the socket, the container the request named, the
+container index (or -1 for an unequip), and whether the move happened.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public event Action&lt;EquipmentRequestKind, ItemSlot, InventoryType, int, bool&gt; OnRequestResolved</code></pre>
+  </div>
+
+
+
+
+
+
+  <h4 class="section">Event Type</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action-5">Action</a>&lt;<a class="xref" href="FishMMO.Shared.Core.EquipmentRequestKind.html">EquipmentRequestKind</a>, <a class="xref" href="FishMMO.Shared.ItemSlot.html">ItemSlot</a>, <a class="xref" href="FishMMO.Shared.InventoryType.html">InventoryType</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+  <h4 class="section" id="FishMMO_Shared_EquipmentController_OnRequestResolved_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>This is how a panel that marked two slots as waiting learns that nothing will change
+them. A refusal here is LOCAL — the item was no longer where the request said, or the
+socket did not fit it. A refusal by the SERVER is not reported through this event at
+all: it arrives as a reconcile that puts the item back, which updates the slots directly.</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Shared_EquipmentController_OnServerEquipmentChanged" data-uid="FishMMO.Shared.EquipmentController.OnServerEquipmentChanged">
+  OnServerEquipmentChanged
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Equipment/EquipmentController.cs/#L45"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Fired on the server after any equip or unequip has been applied to this controller,
+from whichever path applied it. The persistence layer is the intended subscriber.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public event Action&lt;IEquipmentController, EquipmentChange&gt; OnServerEquipmentChanged</code></pre>
+  </div>
+
+
+
+
+
+
+  <h4 class="section">Event Type</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.action-2">Action</a>&lt;<a class="xref" href="FishMMO.Shared.Core.IEquipmentController.html">IEquipmentController</a>, <a class="xref" href="FishMMO.Shared.Core.EquipmentChange.html">EquipmentChange</a>&gt;</dt>
     <dd></dd>
   </dl>
 

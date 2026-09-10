@@ -160,6 +160,7 @@
 <li>TTL-based caches (<code>CharacterNameByIdCache</code>, <code>GuildNameByIdCache</code>, <code>CharacterIdByNameCache</code>, <code>CharacterNameByNameCache</code>) with configurable expiry and bounded sweep</li>
 <li>Negative-result cache (<code>CharacterMissingByNameCache</code>) prevents repeated DB lookups for nonexistent names</li>
 <li>Per-connection request debounce via configurable <code>requestDebounceMilliseconds</code></li>
+<li>Both directions require a loaded requester before any lookup work: the forward character-name branch rejects a requester whose <code>SceneName</code> is empty, and the reverse path rejects one that is not <code>IsFlagged(CharacterFlags.IsLoaded)</code> — without it the reverse lookup was a name-enumeration oracle any authenticated connection could drive at the debounce rate before it had finished spawning</li>
 <li>Concurrent in-flight deduplication per lookup key with <code>MaxInFlightLookups</code> cap (5 000)</li>
 <li>Async database lookups queued via <code>TryEnqueueAsyncWork</code> with backpressure (rejects when queue is unavailable/full, logs warning)</li>
 <li>Per-system main-thread queue isolation via <code>NamingSystemMainThreadQueueData</code> with configurable drain cap per frame</li>
@@ -309,6 +310,7 @@
 <li>Resolves <code>INamingSystemRuntimeData</code> and <code>INamingSystemMappingData</code>.</li>
 <li><strong>Character name:</strong>
 <ul>
+<li>Require the requester to be a spawned <code>IPlayerCharacter</code> with a non-empty <code>SceneName</code>; otherwise return (blocks cross-server name harvesting).</li>
 <li>Check local <code>ICharacterMappingData&lt;NetworkConnection&gt;.CharactersByID</code>; if found, upsert cache and reply immediately.</li>
 <li>Else check <code>CharacterNameByIdCache</code>; if hit, reply immediately.</li>
 <li>Else enqueue async DB lookup (<code>FetchCharacterNameAsync</code>) with in-flight deduplication.</li>
@@ -325,9 +327,10 @@
 <p><code>OnServerReverseNamingBroadcastReceived(conn, msg, channel)</code>:</p>
 <ol>
 <li>Validates connection and spawned player object.</li>
+<li>Requires the requester to be an <code>IPlayerCharacter</code> flagged <code>CharacterFlags.IsLoaded</code>; otherwise returns before the debounce is even consulted.</li>
 <li>Checks per-connection request debounce.</li>
-<li>Rejects null/empty names with immediate not-found response.</li>
-<li>Rejects oversized names (exceeding <code>Authentication.CharacterNameMaxLength</code>).</li>
+<li>Rejects null/whitespace names with immediate not-found response.</li>
+<li>Rejects oversized names (exceeding <code>Authentication.CharacterNameMaxLength</code>) silently, with no reply.</li>
 <li>Normalizes input to lowercase invariant.</li>
 <li><strong>Character name:</strong>
 <ul>
@@ -403,6 +406,10 @@
 <td>Send rapid consecutive naming requests from the same connection; confirm excess requests are dropped</td>
 </tr>
 <tr>
+<td>Loaded-requester gate</td>
+<td>Send <code>ReverseNamingBroadcast</code> from a connection whose character is not yet flagged <code>IsLoaded</code>; confirm no lookup and no reply</td>
+</tr>
+<tr>
 <td>In-flight deduplication</td>
 <td>Send duplicate forward lookups for the same ID concurrently; confirm only one DB query is issued</td>
 </tr>
@@ -427,11 +434,15 @@
 <h2 id="flow-diagram">Flow Diagram</h2>
 <h3 id="high-level-overview">High-Level Overview</h3>
 <pre><code class="lang-mermaid">flowchart LR
-    Caller[Character/Guild/Pet create] --&gt; Sys[NamingSystem]
-    Sys --&gt;|profanity + length + chars| Rules[Validation rules]
-    Sys --&gt;|uniqueness query| DB[(PostgreSQL)]
-    Rules --&gt; Sys
-    Sys --&gt;|approve / reject| Caller
+    Client[Client] --&gt;|NamingBroadcast / ReverseNamingBroadcast| Sys[NamingSystem]
+    Sys --&gt;|loaded requester + debounce| Gate[Ingress checks]
+    Gate --&gt; Local[ICharacterMappingData]
+    Local --&gt;|miss| Cache[TTL caches]
+    Cache --&gt;|miss| Async[TryEnqueueAsyncWork]
+    Async --&gt; DB[(PostgreSQL)]
+    DB --&gt; Queue[NamingSystemMainThreadQueueData]
+    Queue --&gt; Sys
+    Sys --&gt;|reply on same broadcast type| Client
 </code></pre>
 <h3 id="forward-naming-id--name">Forward Naming (ID → Name)</h3>
 <pre><code>OnServerNamingBroadcastReceived(conn, msg, channel)
@@ -441,6 +452,7 @@
 ├─ 3. Resolve INamingSystemRuntimeData + INamingSystemMappingData
 │
 ├─ CharacterName:
+│  ├─ 3a. Require requester IPlayerCharacter with non-empty SceneName
 │  ├─ 4a. Check local CharactersByID mapping
 │  │      └── Hit → upsert cache, SendNamingBroadcast (immediate)
 │  ├─ 4b. Check CharacterNameByIdCache
@@ -460,8 +472,9 @@
 <pre><code>OnServerReverseNamingBroadcastReceived(conn, msg, channel)
 │
 ├─ 1. Validate connection + spawned object
+├─ 1b. Require requester IPlayerCharacter flagged CharacterFlags.IsLoaded
 ├─ 2. Check per-connection request debounce
-├─ 3. Reject null/empty name → SendReverseNamingBroadcast(id=0, empty)
+├─ 3. Reject null/whitespace name → SendReverseNamingBroadcast(id=0, empty)
 ├─ 4. Reject oversized name (&gt; CharacterNameMaxLength)
 ├─ 5. Normalize name to lowercase invariant
 │

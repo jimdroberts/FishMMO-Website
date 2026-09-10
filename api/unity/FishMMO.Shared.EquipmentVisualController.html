@@ -186,9 +186,6 @@ Public API and interface implementations exist unconditionally for server compil
       <span class="xref">NetworkBehaviour.OnValidate()</span>
     </div>
     <div>
-      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">NetworkBehaviour.ResetState(bool)</a>
-    </div>
-    <div>
       <span class="xref">NetworkBehaviour.IsBehaviourReconciling</span>
     </div>
     <div>
@@ -860,7 +857,7 @@ Public API and interface implementations exist unconditionally for server compil
 
   <h3 id="FishMMO_Shared_EquipmentVisualController_OnDestroying" data-uid="FishMMO.Shared.EquipmentVisualController.OnDestroying">
   OnDestroying()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Appearance/EquipmentVisualController.cs/#L117"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Appearance/EquipmentVisualController.cs/#L105"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Destroys the equipment root GameObject and clears the skeleton bone cache.</p>
@@ -887,7 +884,7 @@ Public API and interface implementations exist unconditionally for server compil
 
   <h3 id="FishMMO_Shared_EquipmentVisualController_OnModelReady" data-uid="FishMMO.Shared.EquipmentVisualController.OnModelReady">
   OnModelReady()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Appearance/EquipmentVisualController.cs/#L134"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Appearance/EquipmentVisualController.cs/#L148"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when the character model finishes loading. Re-discovers skeleton and refreshes equipment.</p>
@@ -968,7 +965,7 @@ Public API and interface implementations exist unconditionally for server compil
 
   <h3 id="FishMMO_Shared_EquipmentVisualController_RefreshAllEquipment" data-uid="FishMMO.Shared.EquipmentVisualController.RefreshAllEquipment">
   RefreshAllEquipment()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Appearance/EquipmentVisualController.cs/#L145"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Appearance/EquipmentVisualController.cs/#L159"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Re-equips all items from the current equipment state. Used after model load or spawn.</p>
@@ -987,6 +984,58 @@ Public API and interface implementations exist unconditionally for server compil
 
 
 
+
+
+
+
+  <a id="FishMMO_Shared_EquipmentVisualController_ResetState_" data-uid="FishMMO.Shared.EquipmentVisualController.ResetState*"></a>
+
+  <h3 id="FishMMO_Shared_EquipmentVisualController_ResetState_System_Boolean_" data-uid="FishMMO.Shared.EquipmentVisualController.ResetState(System.Boolean)">
+  ResetState(bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Appearance/EquipmentVisualController.cs/#L136"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Releases every equipment visual before the object returns to the pool.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void ResetState(bool asServer)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>asServer</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True if called on the server.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_EquipmentVisualController_ResetState_System_Boolean__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+<b>Neither existing teardown covers a pooled despawn.</b> <a class="xref" href="FishMMO.Shared.EquipmentVisualController.html#FishMMO_Shared_EquipmentVisualController_OnDestroying">OnDestroying()</a> is
+the destroy path, which a pooled object never takes, and
+<a class="xref" href="FishMMO.Shared.EquipmentVisualController.html#FishMMO_Shared_EquipmentVisualController_OnStopCharacter">OnStopCharacter()</a> is dispatched by <code>PlayerCharacter.OnStopClient</code>
+only when <code>IsOwner</code> — so an object recycled for a different character kept the
+previous one's loaded prefabs. Each of those holds an Addressables handle and, for
+weapons, an instantiated GameObject parented under a mesh root that is about to be
+destroyed: a leak that grows by one handle per equipped slot per reuse and never
+returns.
+</p>
+<p>
+The generation counter is bumped as part of releasing. An equip whose Addressables
+load is still in flight completes into a callback that tests
+<code>EquipGeneration</code> to reject stale results, and without a bump here that test
+passes — so a load started by the previous occupant would attach its mesh to the next
+one, arriving out of nowhere some frames after the new character spawned.
+</p>
+</div>
 
 
 

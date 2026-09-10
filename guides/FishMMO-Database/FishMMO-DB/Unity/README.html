@@ -110,7 +110,16 @@
 <li><a href="#see-also">See Also</a></li>
 </ul>
 <h2 id="description">Description</h2>
-<p><code>DatabaseHealthService</code> is a Unity MonoBehaviour wrapper around the <code>FishMMO.Database.Npgsql.Monitoring</code> stack. Drop it into a headless server scene, hand it an initialized <code>Database</code> instance, and it will periodically poll connectivity, sample the connection pool, log aggregated performance metrics, and raise <code>UnityEvent</code>/C# events that can be wired into alerting systems (Slack, PagerDuty, Discord webhook, etc.). All thresholds and intervals are configurable from the Unity Inspector.</p>
+<blockquote>
+<p><strong>Status: reference implementation, not compiled.</strong> <code>Unity/DatabaseHealthService.cs</code> is a
+complete, reviewed MonoBehaviour that is <strong>entirely inside a comment block</strong>. FishMMO-DB targets
+.NET Standard 2.1 and cannot reference <code>UnityEngine.dll</code>, so nothing in this file is built by any
+configuration today, and no scene contains the component. To use it, copy the file into the Unity
+project (the header suggests <code>Assets/Scripts/Server/Implementation/DatabaseHealthService.cs</code>),
+remove the enclosing comment block, and reference the FishMMO-Database assembly from the server
+asmdef. Everything below describes the code as written, not something currently running.</p>
+</blockquote>
+<p><code>DatabaseHealthService</code> is a Unity MonoBehaviour wrapper around the <code>FishMMO.Database.Npgsql.Monitoring</code> stack. Once moved into the Unity project it is dropped into a headless server scene and handed an initialized <code>Database</code> instance, after which it periodically polls connectivity, samples the connection pool, refreshes aggregated performance metrics, and raises plain C# <code>event Action&lt;T&gt;</code> callbacks that can be wired into alerting systems (Slack, PagerDuty, Discord webhook, etc.). All thresholds and intervals are configurable from the Unity Inspector. The health monitoring itself lives in the library and is reachable without Unity via <code>IDatabase.HealthMonitor</code> and <code>IDatabase.MetricsTracker</code>.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
 <thead>
@@ -162,16 +171,16 @@
         │                 ├── Health/DatabaseHealthMonitor
         │                 ├── Metrics/DatabaseMetricsTracker
         │                 └── Diagnostics/QueryPerformanceTracker
-        └── Inspector-driven coroutines:
-              ├── HealthCheckLoop      (every healthCheckInterval)
-              ├── PoolMonitorLoop      (every poolCheckInterval)
-              └── MetricsLogLoop       (every metricsLogInterval)
+        └── Inspector-driven InvokeRepeating calls (Unity main thread, no coroutines):
+              ├── PerformHealthCheck  (initialHealthCheckDelay, then healthCheckInterval)
+              ├── CheckPoolHealth     (poolCheckInterval / 2, then poolCheckInterval)
+              └── RefreshMetrics      (every metricsRefreshInterval)
 </code></pre>
 <h2 id="features">Features</h2>
 <p>✅ <strong>Automatic Health Checks</strong> - Periodic connectivity and response time monitoring<br>
 ✅ <strong>Connection Pool Monitoring</strong> - Open-connection utilization and exhaustion tracking<br>
 ✅ <strong>Query Performance Tracking</strong> - Slow query detection and metrics collection<br>
-✅ <strong>Configurable Alerts</strong> - Console warnings/errors based on severity<br>
+✅ <strong>Configurable Thresholds</strong> - Pool warning/critical utilization levels drive the status and events<br>
 ✅ <strong>Inspector Integration</strong> - Real-time status display in Unity Editor<br>
 ✅ <strong>Event System</strong> - Subscribe to health/pool/slow query events<br>
 ✅ <strong>Context Menu Commands</strong> - Manual health checks via Unity Editor</p>
@@ -216,7 +225,7 @@ public class ServerManager : MonoBehaviour
 <ul>
 <li><strong>Health Check Interval</strong>: How often to check database connectivity (default: 30s)</li>
 <li><strong>Pool Check Interval</strong>: How often to check connection pool (default: 15s)</li>
-<li><strong>Metrics Log Interval</strong>: How often to log performance metrics (default: 60s)</li>
+<li><strong>Metrics Refresh Interval</strong>: How often to refresh the metrics summary (default: 60s)</li>
 <li><strong>Alert Thresholds</strong>: Warning/critical levels for open-connection utilization (default: 70%/85%)</li>
 </ul>
 <h2 id="configuration">Configuration</h2>
@@ -236,16 +245,52 @@ public class ServerManager : MonoBehaviour
 </ul>
 <p><strong>Metrics Configuration</strong></p>
 <ul>
-<li><code>enableMetricsLogging</code>: Toggle automatic metrics logging</li>
-<li><code>metricsLogInterval</code>: Seconds between metrics logs (60s default)</li>
+<li><code>enableMetricsRefresh</code>: Toggle the periodic metrics refresh</li>
+<li><code>metricsRefreshInterval</code>: Seconds between refreshes (60s default)</li>
 </ul>
-<p><strong>Alerting Configuration</strong></p>
-<ul>
-<li><code>enableAlerts</code>: Toggle console alerts for critical issues</li>
-<li><code>enableSlowQueryLogging</code>: Toggle slow query logging</li>
-<li><code>slowQueryThresholdMs</code>: Milliseconds threshold for slow queries (1000ms default)</li>
-</ul>
+<p>There are no alerting fields on the component. It logs nothing except one warning when a manual
+check is attempted before <code>Initialize</code>; alerting is the subscriber's job, and the slow query
+threshold belongs to <code>QueryPerformanceTracking</code> in <code>appsettings.json</code>.</p>
 <h2 id="events">Events</h2>
+<p>Seven plain C# events, all <code>Action&lt;T&gt;</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Payload</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnHealthCheckCompleted</code></td>
+<td><code>HealthCheckResult</code> — every check</td>
+</tr>
+<tr>
+<td><code>OnHealthStatusChanged</code></td>
+<td><code>HealthCheckResult</code> — only when the status changes</td>
+</tr>
+<tr>
+<td><code>OnPoolHealthChecked</code></td>
+<td><code>PoolHealthResult</code> — every pool sample</td>
+</tr>
+<tr>
+<td><code>OnPoolStatusChanged</code></td>
+<td><code>PoolHealthResult</code> — only when the status changes</td>
+</tr>
+<tr>
+<td><code>OnSlowQueryDetected</code></td>
+<td><code>SlowQueryEventArgs</code></td>
+</tr>
+<tr>
+<td><code>OnMetricsSummaryUpdated</code></td>
+<td><code>MetricsSummary</code></td>
+</tr>
+<tr>
+<td><code>OnMonitoringError</code></td>
+<td><code>Exception</code></td>
+</tr>
+</tbody>
+</table>
 <p>Subscribe to events for external monitoring systems:</p>
 <pre><code class="lang-csharp">healthService.OnHealthStatusChanged += (result) =&gt;
 {
@@ -279,10 +324,11 @@ healthService.ManualHealthCheck();
 // Check pool health
 healthService.ManualPoolCheck();
 
-// Log current metrics
-healthService.ManualMetricsLog();
+// Refresh the cached metrics summary (and raise OnMetricsSummaryUpdated)
+healthService.ManualMetricsRefresh();
 
-// Get formatted health report
+// Read the current status, or a formatted report
+HealthStatus status = healthService.GetCurrentHealthStatus();
 string report = healthService.GetHealthReport();
 Debug.Log(report);
 
@@ -392,7 +438,7 @@ public class GameServerManager : MonoBehaviour
 <ul>
 <li><strong>Health checks</strong> perform a lightweight <code>SELECT 1</code> query - minimal overhead</li>
 <li><strong>Pool checks</strong> are in-memory operations - no database query</li>
-<li><strong>Metrics logging</strong> aggregates cached data - no performance impact</li>
+<li><strong>Metrics refresh</strong> aggregates cached data - no performance impact</li>
 <li>Safe for frequent monitoring (15-30 second intervals)</li>
 <li>All operations run on Unity's main thread (no async/await needed)</li>
 </ul>
@@ -406,7 +452,8 @@ public class GameServerManager : MonoBehaviour
 <ul>
 <li>Verify <code>enableHealthChecks</code> is checked in Inspector</li>
 <li>Check that the GameObject is active</li>
-<li>Look for &quot;Monitoring started&quot; log message</li>
+<li>Check <code>IsMonitoring</code> — <code>StartMonitoring</code> returns silently if <code>IsInitialized</code> is false, and the
+component logs nothing when it starts</li>
 </ul>
 <p><strong>Pool Always Shows &quot;Unknown&quot;</strong></p>
 <ul>
@@ -437,9 +484,9 @@ public class GameServerManager : MonoBehaviour
     Start[Scene loads] --&gt; Add[AddComponent DatabaseHealthService]
     Add --&gt; Init[&quot;Initialize(database)&quot;]
     Init --&gt; Start3[Start coroutines]
-    Start3 --&gt; Health[HealthCheckLoop]
-    Start3 --&gt; Pool[PoolMonitorLoop]
-    Start3 --&gt; Metrics[MetricsLogLoop]
+    Start3 --&gt; Health[&quot;InvokeRepeating PerformHealthCheck&quot;]
+    Start3 --&gt; Pool[&quot;InvokeRepeating CheckPoolHealth&quot;]
+    Start3 --&gt; Metrics[&quot;InvokeRepeating RefreshMetrics&quot;]
 
     Health --&gt;|SELECT 1| DB[(PostgreSQL)]
     DB --&gt;|ok/fail + ms| Result[HealthCheckResult]
@@ -447,13 +494,13 @@ public class GameServerManager : MonoBehaviour
 
     Pool --&gt;|read counters| CPM[ConnectionPoolMetrics]
     CPM --&gt; Util{Utilization}
-    Util --&gt;|&quot;greater than warn&quot;| Warn[Console warning]
-    Util --&gt;|&quot;greater than critical&quot;| Crit[Console error]
+    Util --&gt;|&quot;greater than poolWarningThreshold&quot;| Warn[Status: Warning]
+    Util --&gt;|&quot;greater than poolCriticalThreshold&quot;| Crit[Status: Critical]
     Util --&gt; Evt2[OnPoolStatusChanged]
 
     Metrics --&gt;|read tracker| QPT[QueryPerformanceTracker]
     QPT --&gt;|slow query| Evt3[OnSlowQueryDetected]
-    QPT --&gt;|summary| Log[Console summary]
+    QPT --&gt;|summary| Sum[OnMetricsSummaryUpdated]
 
     Evt1 --&gt; Ext[External alerting&lt;br/&gt;Slack / PagerDuty / Discord]
     Evt2 --&gt; Ext

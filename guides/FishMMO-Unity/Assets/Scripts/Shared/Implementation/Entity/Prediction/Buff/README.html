@@ -100,10 +100,17 @@
 <li><a href="#installation--build">Installation / Build</a></li>
 <li><a href="#quick-start-guides">Quick Start Guides</a></li>
 <li><a href="#configuration">Configuration</a></li>
-<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#usage-examples">Usage Examples</a>
+<ul>
+<li><a href="#network-synchronization">Network Synchronization</a></li>
+<li><a href="#observedbuffentry-the-observers-view">ObservedBuffEntry (the observer's view)</a></li>
+<li><a href="#predicted-cross-character-buffs">Predicted cross-character buffs</a></li>
+</ul>
+</li>
 <li><a href="#operational-checks">Operational Checks</a></li>
 <li><a href="#flow-diagram">Flow Diagram</a></li>
 <li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#block-and-deflect">Block and Deflect</a></li>
 <li><a href="#license">License</a></li>
 </ul>
 <h2 id="overview">Overview</h2>
@@ -153,7 +160,9 @@
 <li><strong>FishNet prediction support</strong> — <code>BuffController</code> implements <code>IPredictableController</code> (Order=85) with Replicate/Reconcile via <code>BuffReconcileEntry[]</code></li>
 <li><strong>Permanent buffs</strong> — <code>IsPermanent</code> flag keeps buffs from expiring and protects them from mass-removal operations</li>
 <li><strong>Buff/debuff distinction</strong> — Unified pipeline with <code>IsDebuff</code> flag for categorization, events, and UI</li>
-<li><strong>Five template types</strong> — <code>AttributeBuffTemplate</code>, <code>AttributeTickBuffTemplate</code>, <code>CompositeBuffTemplate</code>, <code>ResourceTickBuffTemplate</code>, <code>StateBuffTemplate</code></li>
+<li><strong>Seven template types</strong> — <code>AttributeBuffTemplate</code>, <code>AttributeTickBuffTemplate</code>, <code>CompositeBuffTemplate</code>, <code>ResourceTickBuffTemplate</code>, <code>StateBuffTemplate</code>, <code>DamageNegationBuffTemplate</code>, <code>DeflectBuffTemplate</code></li>
+<li><strong>Spendable charges</strong> — <code>BaseBuffTemplate.InitialCharges</code> and <code>Buff.RemainingCharges</code>, in whatever unit the template means (damage points for an absorb shield, deflections for a guard); reconciled, refilled on re-apply</li>
+<li><strong>Observer buff strips with real timers</strong> — <code>ObservedBuffEntry</code> carries stacks and seconds remaining in a seven-byte wire form over <code>CharacterBuffsBroadcast</code>, delta or full set</li>
 <li><strong>Static events</strong> — <code>OnAddBuff</code>, <code>OnRemoveBuff</code>, <code>OnAddDebuff</code>, <code>OnRemoveDebuff</code>, <code>OnBuffTick</code> for UI and other systems</li>
 <li><strong>Database persistence</strong> — Buffs are serialized/deserialized via payload methods for save/load</li>
 </ul>
@@ -175,40 +184,55 @@
 <pre><code class="lang-csharp">// Get the target's BuffController
 IBuffController buffController = target.GetComponent&lt;BuffController&gt;();
 
-// Apply a buff template (handles stacking, FX, events)
-// Determine application tick. Prefer a TickEventData from trigger EventData when available,
-// otherwise fall back to the character's local tick.
-uint tick = target.GetLocalTick();
-// if (eventData != null &amp;&amp; eventData.TryGet(out TickEventData td)) tick = td.Tick;
+// The PREDICTED entry point. The tick must already be in the replicate-input domain, which is
+// why it is a PredictionTick and not a raw uint — take it from the trigger's TickEventData.
+buffController.Apply(myBuffTemplate, tickEventData.Tick, caster);
 
-buffController.Apply(myBuffTemplate, tick);
+// The AUTHORITATIVE entry point, for server code holding a server tick. It maps the tick into
+// the character's replicate domain through ResolveAuthoritativeTick first.
+buffController.ApplyAuthoritative(myBuffTemplate, serverTick, caster);
 </code></pre>
+<p>The two entry points are not interchangeable. <code>Apply</code> marks the application as <em>predicted by this
+peer</em>; on a peer that does not simulate this character's buffs that entry is provisional and is
+dropped unless the server names it (see <a href="#predicted-cross-character-buffs">Predicted cross-character buffs</a>).
+<code>ApplyAuthoritative</code> confirms.</p>
 <p><strong>Removing a buff:</strong></p>
 <pre><code class="lang-csharp">// Remove a specific buff by template ID
 buffController.Remove(buffTemplateID);
 
 // Remove all non-permanent buffs
-buffController.RemoveAll(ignoreInvokeRemove: false);
+buffController.RemoveAll(ignoreInvokeRemove: false, includePermanent: false, preserveFX: false);
 
 // Remove a random buff (with inclusion flags)
 buffController.RemoveRandom(rng, includeBuffs: true, includeDebuffs: true);
 </code></pre>
-<p><code>RemoveAll(ignoreInvokeRemove)</code> iterates a snapshot copy, skipping <code>IsPermanent</code> buffs.</p>
+<p><code>RemoveAll(ignoreInvokeRemove, includePermanent, preserveFX)</code> iterates a snapshot copy; it skips
+<code>IsPermanent</code> buffs unless <code>includePermanent</code> is set, and <code>preserveFX</code> keeps the FX instances alive
+across a removal that is going to be immediately re-populated (a model reload, a reconcile restore).</p>
 <p><code>RemoveRandom(rng, includeBuffs, includeDebuffs)</code> attempts up to 10 random selections, skipping permanent buffs and checking buff/debuff inclusion flags.</p>
 <p><strong>Creating a new buff template type:</strong></p>
 <ol>
 <li>Create a new class extending <code>BaseBuffTemplate</code> in <code>Template/Types/</code>.</li>
 <li>Add a <code>[CreateAssetMenu]</code> attribute for Unity's asset creation menu.</li>
-<li>Implement the five abstract methods:
+<li>Implement the two abstract methods:
 <ul>
 <li><code>OnApply(Buff buff, ICharacter target)</code> — Initial application effect.</li>
 <li><code>OnRemove(Buff buff, ICharacter target)</code> — Cleanup when the buff is fully removed.</li>
-<li><code>OnApplyStack(Buff buff, ICharacter target)</code> — Effect when a stack is added.</li>
-<li><code>OnRemoveStack(Buff buff, ICharacter target)</code> — Effect when a stack is removed.</li>
-<li><code>OnTick(Buff buff, ICharacter target)</code> — Periodic effect each tick interval.</li>
 </ul>
 </li>
-<li>Optionally override <code>SecondaryTooltip(Utf16ValueStringBuilder)</code> for custom tooltip content.</li>
+<li>Optionally override the three virtual hooks:
+<ul>
+<li><code>OnApplyStack(Buff buff, ICharacter target)</code> — defaults to <code>OnApply</code>.</li>
+<li><code>OnRemoveStack(Buff buff, ICharacter target)</code> — defaults to <code>OnRemove</code>.</li>
+<li><code>OnTick(Buff buff, ICharacter target)</code> — defaults to firing <code>OnTickEvents</code> through
+<code>InvokeTickEvents</code>. <strong>A derived class that adds periodic behaviour must call
+<code>base.OnTick(buff, target)</code></strong>, or the buff's authored tick events are silently dropped for
+that template type.</li>
+<li><code>InitialCharges</code> — a virtual property (default 0) rather than a serialized field, so a
+template derives its charge pool from what it already authors.</li>
+</ul>
+</li>
+<li>Optionally override <code>SecondaryTooltip(TooltipContent)</code> for custom tooltip content.</li>
 <li>Optionally override <code>OnApplyFX(Buff, ICharacter)</code> (returns the instance) and <code>OnRemoveFX(GameObject, ICharacter)</code> for custom visual effects. <code>OnApplyFX</code> is also called with a <strong>null buff</strong> for an observed buff, because observers hold no <code>Buff</code> instance for another character.</li>
 </ol>
 <p><strong>Important</strong>: Ensure <code>OnApply</code>/<code>OnRemove</code> and <code>OnApplyStack</code>/<code>OnRemoveStack</code> are symmetric — every effect applied must be fully reversed on removal to avoid modifier leaks.</p>
@@ -349,6 +373,14 @@ call is the only one whose value survives.</p>
 <td><code>StateBuffTemplate</code></td>
 <td>Applies a character state flag on apply, removes it on removal. No tick effect.</td>
 </tr>
+<tr>
+<td><code>DamageNegationBuffTemplate</code></td>
+<td>Absorbs, reduces or negates incoming damage, and may raise a <code>ShieldVolume</code>. See <a href="#block-and-deflect">Block and Deflect</a>.</td>
+</tr>
+<tr>
+<td><code>DeflectBuffTemplate</code></td>
+<td>Turns an incoming ability object away — rejected, not mitigated. See <a href="#block-and-deflect">Block and Deflect</a>.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="damage-and-heal-over-time">Damage and heal over time</h3>
@@ -434,7 +466,7 @@ tick fires again on each pass; <code>Buff.IsReplaying</code> is true during thos
 <h3 id="external-integration-points">External Integration Points</h3>
 <p>The buff system is consumed by and interacts with:</p>
 <ul>
-<li><strong>Ability System</strong> — Abilities apply buffs/debuffs to targets via <code>BuffController.Apply(template, currentTick)</code> (prefer passing <code>TickEventData.Tick</code> from triggers or <code>ICharacter.LocalTick</code> as a fallback).</li>
+<li><strong>Ability System</strong> — Abilities apply buffs/debuffs to targets through <code>ApplyBuffAction</code>, which calls <code>BuffController.Apply(template, PredictionTick, caster)</code> with the tick from the trigger's <code>TickEventData</code>. Server code holding a server tick uses <code>ApplyAuthoritative(template, serverTick, caster)</code> instead.</li>
 <li><strong>CharacterAttribute System</strong> — <code>AttributeBuffTemplate</code> states attribute contributions through the attributed ledger (<code>SetSource</code> / <code>ClearSourceGroup</code>) on the <code>ExternalModifier</code> layer.</li>
 <li><strong>CharacterDamageController</strong> — <code>RemoveAll()</code> is called on kill to clear all non-permanent buffs.</li>
 <li><strong>Item System</strong> — Items may apply buffs on use or equip.</li>
@@ -448,18 +480,94 @@ tick fires again on each pass; <code>Buff.IsReplaying</code> is true during thos
 </ul>
 <h2 id="usage-examples">Usage Examples</h2>
 <h3 id="network-synchronization">Network Synchronization</h3>
-<p>Buff state is <strong>fully reconcile-driven</strong> and reaches owner and observers
-through FishNet Prediction V2 state forwarding. There are no per-buff
-add/remove broadcasts. Each authoritative tick, <code>BuffController</code> writes
-its current set of <code>BuffReconcileEntry</code> records into
-<code>CharacterReconcileData.Buffs</code>, and <code>CharacterReconcileDataDeltaSerializer</code>
-ships only the entries that changed (index-delta with a packed
-<code>(deltaFlag | count)</code> 16-bit header — see <code>BuffReconcileEntry.WriteArrayDelta</code>).</p>
-<p>On the receiving side, <code>BuffController.OnReconcile</code> calls
-<code>RestoreFromReconcile(rd.Buffs)</code> which performs an incremental Add/Remove
-patch against the local cached snapshot, then fires queued
-<code>OnAddBuff</code>/<code>OnAddDebuff</code>/<code>OnRemoveBuff</code>/<code>OnRemoveDebuff</code> events <em>after</em>
-the patch loop completes so observers never see a half-restored set.</p>
+<p>Owner and observers are on <strong>two different paths</strong>, and they carry different information.</p>
+<p><strong>The owner: reconcile.</strong> Each authoritative tick <code>BuffController</code> writes its current set of
+<code>BuffReconcileEntry</code> records into <code>CharacterReconcileData.Buffs</code>, and
+<code>CharacterReconcileDataDeltaSerializer</code> ships only the entries that changed (index-delta with a
+packed <code>(deltaFlag | count)</code> 16-bit header — see <code>BuffReconcileEntry.WriteArrayDelta</code>).
+<code>BuffController.OnReconcile</code> calls <code>RestoreFromReconcile(rd.Buffs, reconcileTick)</code>, which performs
+an incremental Add/Remove patch against the local cached snapshot, then fires queued
+<code>OnAddBuff</code>/<code>OnAddDebuff</code>/<code>OnRemoveBuff</code>/<code>OnRemoveDebuff</code> events <em>after</em> the patch loop completes
+so nothing ever sees a half-restored set.</p>
+<p><strong>Observers: <code>CharacterBuffsBroadcast</code>.</strong> State forwarding is off (<code>ObserverSyncMode</code>), so an
+observer never receives another character's replicate/reconcile stream and cannot be given
+simulation state. It is sent a display-only strip of <code>ObservedBuffEntry</code> instead, scoped to the
+character's observers and <strong>excluding the owner</strong> via
+<code>ObserverBroadcastScope.BroadcastToObserversExceptOwner</code>, reliably — a dropped buff list leaves a
+stale strip until the next change, with no self-correcting replacement. The message is a delta
+(<code>Buffs</code> changed + <code>Removed</code> ids) or a full set (<code>IsFullSet</code>).</p>
+<p><code>BroadcastObservedBuffs</code> also applies the strip <strong>locally on the sender</strong>, with the full list
+rather than the delta: a broadcast is never delivered back to its sender, and server-side code
+reads <code>ObservedBuffs</code> as a complete list (<code>PartySystem</code> does).</p>
+<p>The owner is excluded because it already holds the same state twice — as the reconcile array every
+tick, and as the full simulation block of the spawn payload — and the observed strip is the
+<strong>lossy</strong> copy, so the owner must not prefer it. <code>RefreshObservedBuffsLocally</code> fills the owner's
+own <code>ObservedBuffs</code> from its own simulation for zero bytes, because the target frame reads that
+list uniformly, including when the local player targets themselves.</p>
+<p>Late joiners are served by <code>WritePayload</code>, not by an <code>OnSpawnServer</code> push. FishNet raises both from
+one event, so sending a full strip on spawn <em>and</em> writing it into the payload sent the whole list
+twice to every observer entering range. The payload copy is the one kept: it is length-framed,
+ordered with the rest of the character's state, and cannot arrive before the object it describes.
+<code>LateJoinerReplayTests</code> pins that pair.</p>
+<h4 id="observedbuffentry-the-observers-view">ObservedBuffEntry (the observer's view)</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Wire</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TemplateID</code></td>
+<td><code>int</code></td>
+<td>sent</td>
+</tr>
+<tr>
+<td><code>Stacks</code></td>
+<td><code>int</code></td>
+<td>sent as a byte; counts <strong>above</strong> the base application, so 0 means one application and the cap is <code>MaxStacks - 1</code></td>
+</tr>
+<tr>
+<td><code>RemainingSeconds</code></td>
+<td><code>float</code></td>
+<td>sent as deciseconds in a <code>ushort</code> (<code>MaxEncodableSeconds</code> = 6553.5 s); 0 for a permanent buff</td>
+</tr>
+<tr>
+<td><code>TotalSeconds</code></td>
+<td><code>float</code></td>
+<td><strong>not sent</strong> — resolved from <code>BaseBuffTemplate.Duration</code> on receipt, since it is authored content the receiver already holds</td>
+</tr>
+</tbody>
+</table>
+<p>Seven bytes on the wire. Duration travels as <strong>seconds remaining at send time</strong>, not as an absolute
+tick, because the receiving client's tick domain is its own; the observer counts down locally from
+receipt and drifts by the one-way latency, which is not worth a tick-domain translation for a bar a
+few pixels tall.</p>
+<p><code>StructurallyEquals</code> deliberately excludes <code>RemainingSeconds</code> — it moves every tick on every buff,
+so including it would mark the whole list changed every tick and collapse the delta into a full
+resend. The one case ordinary countdown cannot cover is a buff <strong>renewed</strong> since the observer was
+last told, which would otherwise run out locally and be deleted while the character still holds it;
+<code>ObservedBuffWillLapse</code> catches exactly that and answers with a full set.</p>
+<p><code>ObservedBuffStatement</code> carries the provenance of a strip — <code>WholeStrip</code> (every entry is the
+server's word, and any template it does not name the server has stated the <em>absence</em> of) versus
+<code>Delta</code> (only the changed entries and removed ids are stated; everything else in the merged strip
+came out of the receiver's own container). Conflating those cost a defect on each side of the wire:
+a delta confirmed predicted buffs the server had refused, and it disarmed <code>ObservedBuffWillLapse</code>
+for the rest of a buff's life.</p>
+<h4 id="predicted-cross-character-buffs">Predicted cross-character buffs</h4>
+<p>The caster's client tracks a buff on <strong>another</strong> character the moment its own ECA predicts it. If
+the server refuses that apply — the target died on the server's tick — no correction arrives on its
+own, because the observed-buff delta is computed against a server baseline that never contained the
+entry. A finite phantom at least ran out its local countdown; a permanent template's phantom icon
+and FX survived indefinitely.</p>
+<p>So a predicted entry is <strong>provisional</strong>. Any server message that names the template confirms it;
+one that goes unnamed past <code>PredictedBuffConfirmationSeconds</code> (3 s, recorded in <em>this</em> controller's
+observer domain so no cross-domain tick comparison happens) is removed by the observer tick sweep,
+the same way an observed buff that ran out locally is. The window errs long for the same reason
+<code>PredictedCombatEvents.ConfirmationWindowSeconds</code> does: dropping a buff the server did apply merely
+re-adds it on the next push, which flickers — worse than a phantom lingering a moment longer.</p>
 <h4 id="payload-serialization-persistence--db">Payload Serialization (Persistence / DB)</h4>
 <p>For non-prediction code paths (DB save/load, character export) the
 controller still exposes <code>WritePayload</code> / <code>ReadPayload</code>:</p>
@@ -482,7 +590,7 @@ reconcile exclusively.</p>
 <tbody>
 <tr>
 <td>Buff applies correctly</td>
-<td>Apply a buff template via <code>BuffController.Apply(template, currentTick)</code> (prefer <code>TickEventData.Tick</code> or <code>ICharacter.LocalTick</code>)</td>
+<td>Apply a buff template via <code>BuffController.Apply(template, tickEventData.Tick, caster)</code></td>
 <td>Buff appears in controller dictionary; <code>OnAddBuff</code>/<code>OnAddDebuff</code> event fires</td>
 </tr>
 <tr>
@@ -518,7 +626,12 @@ reconcile exclusively.</p>
 <tr>
 <td>Network sync (observer)</td>
 <td>Apply buff on server with nearby observers</td>
-<td>Buff appears on observers through FishNet Prediction V2 state forwarding (same reconcile path as owner)</td>
+<td>Buff appears on observers as an <code>ObservedBuffEntry</code> in <code>CharacterBuffsBroadcast</code> (delta, or full set when <code>ObservedBuffWillLapse</code>) — never through the reconcile</td>
+</tr>
+<tr>
+<td>Predicted cross-character buff</td>
+<td>Predict a buff on another character the server then refuses</td>
+<td>The entry is dropped ~3 s later by the observer tick sweep; a server message naming the template confirms it instead</td>
 </tr>
 <tr>
 <td>DB persistence</td>
@@ -565,12 +678,17 @@ reconcile exclusively.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>Apply(BaseBuffTemplate, uint currentTick)</code></td>
-<td>Gameplay trigger (ability, item, region)</td>
-<td>Creates a new <code>Buff</code>, calls <code>buff.Apply(Character)</code>, handles stacking + FX</td>
+<td><code>Apply(BaseBuffTemplate, PredictionTick, ICharacter caster = null)</code></td>
+<td>Gameplay trigger (ability, item, region), predicted</td>
+<td>Creates a new <code>Buff</code>, calls <code>buff.Apply(Character)</code>, handles stacking + FX. Marks the entry predicted-by-this-peer</td>
 </tr>
 <tr>
-<td><code>Apply(Buff buff)</code></td>
+<td><code>ApplyAuthoritative(BaseBuffTemplate, uint serverTick, ICharacter caster = null)</code></td>
+<td>Server code holding a server tick</td>
+<td>Maps the tick into the character's replicate domain through <code>ResolveAuthoritativeTick</code>, then applies. Confirms any predicted entry for that template</td>
+</tr>
+<tr>
+<td><code>Apply(Buff buff, bool suppressFX = false)</code></td>
 <td>DB load / network payload (<code>ReadPayload</code>)</td>
 <td>Receives pre-constructed <code>Buff</code> with existing <code>Stacks</code>, calls <code>buff.Apply(Character)</code> + re-applies stack modifiers without incrementing <code>Stacks</code></td>
 </tr>
@@ -732,6 +850,21 @@ mismatched pair cannot drift the sheet the way the previous additive <code>AddMo
 <td><code>int</code></td>
 <td>Current stack count</td>
 </tr>
+<tr>
+<td><code>TickCount</code></td>
+<td><code>int</code></td>
+<td>Ticks remaining for periodic effects</td>
+</tr>
+<tr>
+<td><code>CumulativeTickMultiplier</code></td>
+<td><code>int</code></td>
+<td>Running sum of <code>(1 + Stacks)</code> over every tick that has fired, so rollback replay and post-reconcile removal reverse exactly the cumulative modifier applied</td>
+</tr>
+<tr>
+<td><code>RemainingCharges</code></td>
+<td><code>int</code></td>
+<td>What is left of a spendable buff. Reconciled because the two peers move it independently: the server <strong>spends</strong> it as hits land, the owner <strong>refills</strong> it every time a channelled block re-applies. Left out, the owner's shield read full for the whole channel while the server's was already empty</td>
+</tr>
 </tbody>
 </table>
 <p>Array delta serialization uses index-based compression: unchanged entries are skipped, only modified/added/removed entries are transmitted.</p>
@@ -742,9 +875,12 @@ Both <code>Buff</code> constructors coerce a non-positive <code>tickDelta</code>
 <h2 id="project-structure">Project Structure</h2>
 <h3 id="directory-structure">Directory Structure</h3>
 <pre><code>Buff/
-├── Buff.cs                        # Runtime buff instance (tick-based timing, stacks, template ref)
-├── BuffController.cs              # Per-entity controller (CharacterBehaviour, IBuffController, IPredictableController Order=85)
-├── BuffReconcileEntry.cs          # Reconcile snapshot entry + index-delta array serialization (WriteArrayDelta/ReadArrayDelta)
+├── Buff.cs                        # Runtime buff instance (tick-based timing, stacks, charges, caster snapshot)
+├── BuffController.cs              # Per-entity controller (CharacterBehaviour, IBuffController, IPredictableController Order=85, IModelReadyHandler)
+├── BuffReconcileEntry.cs          # Owner reconcile entry + index-delta array serialization (WriteArrayDelta/ReadArrayDelta)
+├── ObservedBuffEntry.cs           # Display-only observer entry (7-byte wire) + ObservedBuffStatement provenance
+├── DamageMitigation.cs            # The block/absorb/deflect resolution combat consults when a hit lands
+├── ShieldVolume.cs                # Authored shape (Sphere/Box/Capsule) tested in the character's OWN space
 └── Template/
     ├── BaseBuffTemplate.cs            # Abstract ScriptableObject base for all buff templates
     ├── BuffAttributeTemplate.cs       # Serializable attribute+value pair for template configuration
@@ -756,7 +892,9 @@ Both <code>Buff</code> constructors coerce a non-positive <code>tickDelta</code>
         ├── AttributeTickBuffTemplate.cs   # Grants attributes on apply + periodic attribute modification on tick
         ├── CompositeBuffTemplate.cs       # Composes multiple BaseBuffTemplate children, delegating all hooks
         ├── ResourceTickBuffTemplate.cs    # Periodic resource attribute modification (regen/drain over time)
-        └── StateBuffTemplate.cs           # Applies a character state flag on apply, removes on removal
+        ├── StateBuffTemplate.cs           # Applies a character state flag on apply, removes on removal
+        ├── DamageNegationBuffTemplate.cs  # Block: Absorb / Reduce / Immune, plus an optional ShieldVolume
+        └── DeflectBuffTemplate.cs         # Deflect: turns an incoming ability object away
 </code></pre>
 <h4 id="related-files-outside-this-directory">Related Files (Outside This Directory)</h4>
 <pre><code>Shared/Implementation/Entity/Prediction/Buff/BuffReconcileEntry.cs   # Reconcile snapshot entry + index-delta array serialization
@@ -775,7 +913,9 @@ Shared/Implementation/Entity/BaseCharacter.cs                        # Client-si
     ├── AttributeTickBuffTemplate      # Concrete: Attributes on apply + periodic attribute ticks
     ├── CompositeBuffTemplate          # Concrete: Composes multiple child templates
     ├── ResourceTickBuffTemplate       # Concrete: Periodic resource modification (regen/drain)
-    └── StateBuffTemplate              # Concrete: Applies/removes a character state flag
+    ├── StateBuffTemplate              # Concrete: Applies/removes a character state flag
+    ├── DamageNegationBuffTemplate     # Concrete: Block — absorbs, reduces or negates incoming damage
+    └── DeflectBuffTemplate            # Concrete: Deflect — turns an incoming ability object away
 </code></pre>
 <h4 id="controllers-networkbehaviour">Controllers (NetworkBehaviour)</h4>
 <pre><code>CharacterBehaviour
@@ -784,6 +924,141 @@ Shared/Implementation/Entity/BaseCharacter.cs                        # Client-si
 <h4 id="configuration-types">Configuration Types</h4>
 <pre><code>BuffAttributeTemplate              # [Serializable] class: Value + CharacterAttributeTemplate reference
 </code></pre>
+<h2 id="block-and-deflect">Block and Deflect</h2>
+<p>Blocking and deflecting are <strong>buffs</strong>, not a subsystem. Nothing in the ability system knows what a
+shield is: an ability applies a mitigation buff to its caster through the ordinary ECA
+<code>ApplyBuffAction</code>, and combat consults that buff when a hit is being resolved. That means every
+block and deflect variant is authored, not coded.</p>
+<h3 id="the-two-templates">The two templates</h3>
+<table>
+<thead>
+<tr>
+<th>Template</th>
+<th>What it does</th>
+<th>When it is consulted</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DamageNegationBuffTemplate</code></td>
+<td>Takes damage off an incoming hit (<code>Absorb</code> / <code>Reduce</code> / <code>Immune</code>), and optionally raises a physical <code>ShieldVolume</code> that stops ability objects outright.</td>
+<td><code>CharacterDamageController.Damage</code> for mitigation; <code>AbilityObject.ApplyHit</code> and <code>AbilityApplyHitscanAction</code> for the volume</td>
+</tr>
+<tr>
+<td><code>DeflectBuffTemplate</code></td>
+<td>Turns an incoming ability object away — the hit is rejected, not mitigated.</td>
+<td><code>AbilityObject.ApplyHit</code>, before the hit is accepted</td>
+</tr>
+</tbody>
+</table>
+<p>Both honour a facing arc, measured through <code>TargetOrdering.IsWithinCone</code> — the same test the cone
+selector uses — so a shield held forward stops the sword in front and not the arrow in the back.
+Set <code>RequiresFacing</code> false (or the angle to 360) for an omnidirectional barrier.</p>
+<h3 id="the-shield-volume">The shield volume</h3>
+<p>An arc says nothing about height or reach: a buckler and a tower shield cover identical cones, and a
+shot at ankle height counts as &quot;in front&quot; of a shield held at the chest. <code>DamageNegationBuffTemplate</code>
+therefore also carries a <strong><code>ShieldVolume</code></strong> — a real shape with real dimensions (<code>Sphere</code>, <code>Box</code> or
+<code>Capsule</code>, plus <code>LocalCenter</code>, <code>Radius</code>/<code>Size</code>/<code>Height</code>).</p>
+<p>An ability object whose impact lands <strong>inside</strong> the volume never touched the character: it is
+destroyed outright and deals nothing, whatever <code>Mode</code> says. The arc and the mode still govern damage
+that genuinely reaches you — melee, damage over time, splash — none of which has a meaningful impact
+point on a shield. The two settings answer different questions on one template.</p>
+<p><strong>The volume is authored in the character's own space, and that is what makes it correct.</strong> Ability
+hits are dispatched <em>after</em> the lag-compensation scope has closed, so a world-space volume read at
+that moment would sit where the defender is now while the impact point came from where the defender
+was — metres apart at 200 ms, blocking phantom hits and missing real ones. A local point against a
+local volume has no such disagreement to have, because the body carried its own frame with it.
+<code>AbilitySweepHit.LocalPoint</code> and <code>LagCompensatedQuery.CompensatedHit.LocalPoint</code> are captured inside
+the scope for exactly this.</p>
+<p>It gates both shapes of attack: a travelling projectile through <code>AbilityObject.ApplyHit</code>, and a
+hitscan ray through <code>AbilityApplyHitscanAction</code>, where a covered victim stops the shot for everyone
+behind them too.</p>
+<h3 id="sweeping-the-shield-outward-shieldinterceptaction">Sweeping the shield outward (<code>ShieldInterceptAction</code>)</h3>
+<p>The gate above stops anything that would have struck you. It cannot stop what was going to <em>miss</em> —
+and a tower shield held out to the side should still sweep an arrow out of the air, and a fireball
+should die on the shield face rather than reaching your chest.</p>
+<p><code>ShieldInterceptAction</code> is the outward-looking half: wire it to the block ability's <code>OnSpawn</code> (a
+channel re-spawns each tick, so that fires once per tick) and it overlaps the shield volume and
+destroys the ability objects it catches. Leave its own <code>Volume.Shape</code> at <code>None</code> and it sweeps
+whatever volumes the character's active block buffs already define, so the dimensions are authored
+once, on the buff.</p>
+<p>Two properties worth knowing:</p>
+<ul>
+<li><strong>It cannot change whether damage lands.</strong> Both halves read the same authored volume, so anything
+it catches would have been gated anyway had it gone on to strike. It is an accelerator, not the
+mechanism.</li>
+<li><strong>It runs after in-flight objects have already ticked.</strong> Every <code>AbilityObject</code> subscribes to
+<code>TimeManager.OnTick</code> at spawn, so an object already in the air moves and resolves its own sweep
+first. A fast projectile can reach the body on the same tick this would have caught it — which is
+harmless precisely because the gate is what decides the outcome.</li>
+</ul>
+<p>It may be predicted by the blocking client, unlike most hit resolution, because neither side of the
+test is interpolated: an ability object's position is a closed form every peer computes identically,
+and the blocker's own position is the one thing its client predicts and reconciles.</p>
+<p>Both spend <code>Buff.RemainingCharges</code>, one counter whose <strong>unit belongs to the template</strong>: damage points
+for an absorb shield, deflections for a guard. It is predicted state and rides
+<code>BuffReconcileEntry.RemainingCharges</code>, because the two peers move it independently: the server spends
+it as hits land, and the owner refills it every tick a channelled block re-applies its buff. It is deliberately <strong>not</strong> sent to observers —
+how much more you have to hit through is not information the game otherwise gives.</p>
+<h3 id="authoring-a-channelled-shield-hold-to-block">Authoring a channelled shield (hold to block)</h3>
+<ol>
+<li><strong>Buff asset</strong> — <code>FishMMO/Character/Buff/Damage Negation Buff</code>.
+<ul>
+<li><code>Mode = Reduce</code> (partial block) or <code>Immune</code> (full block) — this governs melee and splash.</li>
+<li><code>Amount</code> = percent for <code>Reduce</code>.</li>
+<li><code>Shield.Shape = Box</code>, <code>Size = (1.2, 1.4, 0.2)</code>, <code>LocalCenter = (0, 1.1, 0.75)</code> — the physical
+shield that stops projectiles. <code>VolumeBlockCost = 0</code> so holding the block does not wear it down.</li>
+<li><code>Duration</code> ≈ 2–3 ticks. Short on purpose: the channel re-applies it every tick, and it lapses
+shortly after the button is released. <code>MaxStacks = 1</code>.</li>
+<li><code>RequiresFacing = true</code>, <code>FacingAngleDegrees = 120</code>.</li>
+</ul>
+</li>
+<li><strong>Ability event</strong> — an <code>AbilityOnSpawnEvent</code> whose trigger has
+<code>TargetSelector = InitiatorTargetSelector</code> and one <code>ApplyBuffAction</code> naming the buff above.</li>
+<li><strong>Ability template</strong> — give it the project's <code>ChanneledTemplate</code> event so it spawns one object per
+tick while held, <code>AbilitySpawnTarget = Spawner</code> (or <code>PointBlank</code>), and an <code>AbilityObjectPrefab</code>
+that is the shield visual with <code>LifeTime</code> of about one tick. <code>ActivationTime</code> may be 0;
+<code>ApplyChannelActivationFloor</code> raises a held channel to at least one tick for you.</li>
+<li><strong>Optional</strong> — add a <code>ShieldInterceptAction</code> to the same <code>OnSpawn</code> trigger, leaving its <code>Volume</code>
+at <code>None</code> so it sweeps the buff's volume. This is what makes a projectile visibly die on the
+shield and lets a wide shield catch shots that would have gone past.</li>
+</ol>
+<p>The shield exists for as long as the button is down because the buff is refreshed every tick, and
+<code>BuffController</code> re-fills <code>RemainingCharges</code> on every re-apply — so a held block does not run out of
+pool part-way through the channel.</p>
+<h3 id="authoring-a-consumable-barrier-absorbs-n-damage">Authoring a consumable barrier (absorbs N damage)</h3>
+<p>Same buff asset with <code>Mode = Absorb</code>, <code>Amount = 500</code>, and a real <code>Duration</code>. Apply it from any
+ability, on-hit event or trigger through <code>ApplyBuffAction</code>. It disappears the moment the pool reaches
+zero — <code>DamageMitigation</code> removes it through <code>IBuffController.Remove</code>, so the strip, the FX and the
+observer push all hear about it exactly as they would for an expiry.</p>
+<h3 id="authoring-a-deflect-window-timed-parry">Authoring a deflect window (timed parry)</h3>
+<ol>
+<li><strong>Buff asset</strong> — <code>FishMMO/Character/Buff/Deflect Buff</code>.
+<ul>
+<li><code>DeflectAngleDegrees = 120</code>.</li>
+<li><code>MaxDeflections = 0</code> for a window that turns away everything arriving while it is up, or <code>1</code>
+for a single-use guard consumed by the first thing it stops.</li>
+<li><code>Duration</code> = the parry window, a few ticks.</li>
+</ul>
+</li>
+<li>Apply it exactly as above — an <code>AbilityOnSpawnEvent</code> with <code>InitiatorTargetSelector</code> and
+<code>ApplyBuffAction</code> — from an instant ability whose object prefab plays the deflect animation.</li>
+</ol>
+<p>A deflected object is never treated as having hit: no OnHit events, no hit count spent, no damage.
+It leaves along the incoming heading mirrored about the impact normal, and the defender is added to
+its hit set so the two cannot re-resolve against each other every tick.</p>
+<h3 id="how-the-three-peers-stay-in-step">How the three peers stay in step</h3>
+<ul>
+<li>The <strong>server</strong> decides both, inside the rewind scope that resolved the hit.</li>
+<li>The <strong>caster's own client</strong> resolves its own hits, so it deflects and blocks identically — except
+for an <code>Absorb</code> pool, whose remainder it cannot see; it may over-predict damage there and the
+server's resource push corrects it on the next tick, the same bound every predicted number has.</li>
+<li><strong>Observers</strong> decide neither. A deflection reaches them as one bit on
+<code>AbilityObjectHitBroadcast</code>, and they recompute the new heading from the <code>Normal</code> already in that
+message — so the trajectory matches without the buff's timing having to.</li>
+</ul>
+<p>Charges are spent only where <code>IBuffController.SimulatesBuffEffects</code> is true, so no peer drains a
+pool it does not own.</p>
 <h2 id="license">License</h2>
 <p>This project is subject to the FishMMO project license.</p>
 

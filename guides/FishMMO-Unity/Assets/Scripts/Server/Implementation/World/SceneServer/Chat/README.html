@@ -90,7 +90,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Chat/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p><strong>Short description:</strong> SceneServer authority for player messaging across World, Region, Say, Party, Guild, Tell, Trade, System, and Discord channels, with token-bucket anti-spam, lock-free incoming queue, batch DB persistence, and outbound broadcast batching for 50,000-user scalability.</p>
+<p><strong>Short description:</strong> SceneServer authority for player messaging across World, Region, Say, Party, Guild, Team, Tell, Trade, System, and Discord channels, with token-bucket anti-spam, lock-free incoming queue, batch DB persistence, and outbound broadcast batching for 50,000-user scalability.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
 <li><a href="#overview">Overview</a></li>
@@ -107,7 +107,7 @@
 <li><a href="#license">License</a></li>
 </ul>
 <h2 id="overview">Overview</h2>
-<p>The Chat system is the SceneServer authority for player messaging across World, Region, Say, Party, Guild, Tell, Trade, System, and Discord channels. It validates inbound client chat, enforces rate/spam limits, routes channel-specific broadcasts, and persists eligible messages through asynchronous database operations. Every persisted message carries the exact UTC timestamp captured at the network receive boundary for legal audit and subpoena compliance.</p>
+<p>The Chat system is the SceneServer authority for player messaging across World, Region, Say, Party, Guild, Team, Tell, Trade, System, and Discord channels. It validates inbound client chat, enforces rate/spam limits, routes channel-specific broadcasts, and persists eligible messages through asynchronous database operations. Every persisted message carries the exact UTC timestamp captured at the network receive boundary for legal audit and subpoena compliance.</p>
 <p>The implementation uses a split execution model:</p>
 <ul>
 <li><strong>Main thread:</strong> network callback enqueue, lock-free queue drain, validation, command parsing, channel routing, broadcast dispatch, outbound buffer flush, and main-thread queue drain.</li>
@@ -165,7 +165,7 @@
 </table>
 <h2 id="features">Features</h2>
 <ul>
-<li>Nine chat channels: World, Region, Say, Party, Guild, Tell, Trade, System, Discord</li>
+<li>Ten chat channels: World, Region, Say, Party, Guild, Team, Tell, Trade, System, Discord</li>
 <li>Lock-free incoming chat queue (<code>ConcurrentQueue</code>) decoupling network callbacks from main-thread processing with configurable per-frame drain budget</li>
 <li>DoS protection via hard cap on incoming queue size; sender kicked when exceeded. Messages from a connection with no spawned character are dropped rather than kicked — that state is a routine scene-transfer race, not an exploit</li>
 <li>Token bucket anti-spam with configurable burst capacity (<code>chatTokenBucketCapacity</code>) and refill rate (<code>chatTokenRefillRate</code>)</li>
@@ -176,7 +176,9 @@
 <li><strong>Per-command access levels</strong> — commands are registered with a minimum <code>AccessLevel</code>, enforced in <code>ChatHelper.TryParseCommand</code> against the character's own level as loaded from its database row. A command the sender may not run is <em>consumed</em>, not rejected: it is neither executed nor echoed to a channel, and the response is indistinguishable from an unknown command, so command names cannot be probed. Every refusal is reported through <code>ChatHelper.OnCommandRefused</code> and logged with the character and account that tried it</li>
 <li><strong>Authoritative sender resolution</strong> — the sender is taken from <code>ICharacterMappingData.ConnectionCharacters</code> (populated by the character load pipeline from the database) rather than from <code>conn.FirstObject</code>, so a command's authorisation can never be decided from a network-deserialised payload</li>
 <li>Post-prepend length enforcement capped at <code>maxMessageLength + MaxChannelIdPrefixLength</code> (22 chars)</li>
-<li>Synchronous immediate channels: Region (scene-scoped broadcast), Say (observer-scoped broadcast)</li>
+<li>Synchronous immediate channels: Region (scene-scoped broadcast), Say (observer-scoped broadcast), Team (arena-team-scoped broadcast)</li>
+<li>Say is scoped by the sender's observer set and nothing else. That set is already range-limited by the player distance condition, so an observer of the speaker is by construction close enough to hear them; re-deriving earshot from positions would be a second copy of a radius the interest system already applies, and the two would drift the moment either was retuned</li>
+<li>Arena team channel: Team (<code>/team</code>, <code>/tm</code>) — resolved locally from <code>ArenaTeamRegistry</code> by scene handle and character ID, delivered only to characters seated on the same side of the same match, and never persisted</li>
 <li>Synchronous outbound-batched channels: World and Trade (buffered per-world, flushed periodically)</li>
 <li>Async membership channels: Party and Guild (async DB member fetch, main-thread marshal, async-path persistence)</li>
 <li>Async target resolution channel: Tell (async character lookup, self-tell short-circuit, offline detection, relay confirmation)</li>
@@ -214,7 +216,7 @@
 </li>
 <li>On initialize, <code>ChatSystem</code> builds the channel → handler command map, initializes <code>ChatHelper</code>, registers the <code>ChatBroadcast</code> network handler, and registers three periodic callbacks (message pump, persist flush, outbound broadcast flush).</li>
 <li>On deinitialize, it flushes remaining outbound buffers, signals shutdown, flushes the persist queue synchronously, drains the incoming chat queue and main-thread queue, unregisters the broadcast handler, and unregisters all periodic callbacks.</li>
-<li>Clients send a <code>ChatBroadcast</code> with text prefixed by a channel command (e.g., <code>/s</code>, <code>/w</code>, <code>/p</code>, <code>/g</code>, <code>/t</code>, <code>/tr</code>). The server validates, rate-limits, parses the command, routes to the channel handler, and broadcasts results.</li>
+<li>Clients send a <code>ChatBroadcast</code> with text prefixed by a channel command (e.g., <code>/s</code>, <code>/w</code>, <code>/p</code>, <code>/g</code>, <code>/t</code>, <code>/tr</code>, <code>/team</code>). The server validates, rate-limits, parses the command, routes to the channel handler, and broadcasts results.</li>
 <li>Text beginning with a registered <strong>slash command</strong> (<code>/leaveinstance</code>, <code>/gi</code>, <code>/pi</code>, <code>/admin</code>, …) is dispatched to that command instead and never reaches a channel. <code>ChatHelper.GetCommandAndTrim</code> returns the command <em>with</em> its leading slash, which is how every registration is keyed.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
@@ -368,6 +370,11 @@
 <td>Immediate broadcast to sender observers</td>
 </tr>
 <tr>
+<td><code>ChatChannel.Team</code></td>
+<td><code>OnTeamChat</code></td>
+<td>Immediate broadcast to the sender's arena teammates in the same scene</td>
+</tr>
+<tr>
 <td><code>ChatChannel.System</code></td>
 <td><code>OnSendSystemMessage</code></td>
 <td>Server-to-client only (not in command map)</td>
@@ -464,6 +471,16 @@
 <li>Broadcasts to all observer connections.</li>
 <li>Returns <code>false</code> (not persisted).</li>
 </ul>
+<h3 id="team-chat-arena-scoped">Team Chat (Arena-Scoped)</h3>
+<p><code>OnTeamChat(sender, msg)</code> (declared in <code>ChatSystem.ArenaChat.cs</code>):</p>
+<ul>
+<li>Reads the sender's scene handle and asks <code>ArenaTeamRegistry.GetTeam(sceneHandle, sender.ID)</code> for its team index.</li>
+<li>A negative team index means the sender is not seated in an arena match; a <code>ChatChannel.System</code> reply (&quot;You are not on an arena team.&quot;) goes back to the sender and nothing is relayed. The sender is told, not silently dropped.</li>
+<li>Otherwise iterates <code>ICharacterMappingData&lt;NetworkConnection&gt;.ConnectionCharacters</code>, keeping only characters with an active owner, the same scene handle, and the same registry team index.</li>
+<li>Sends a <code>ChatBroadcast</code> with <code>Channel = ChatChannel.Team</code> and <code>SenderID = sender.ID</code> reliably to each survivor.</li>
+<li>Local and synchronous: every seat of a match is connected to the scene server hosting its instance, so there is no other server to reach and no database to go through. The roster comes from what the arena match coordinator (<code>InteractableSystem.ArenaMatch.cs</code>) published into <code>ArenaTeamRegistry</code>.</li>
+<li>Returns <code>false</code> (never persisted — the channel exists only for the duration of a match, and a chat history query has no team to resolve it against afterwards).</li>
+</ul>
 <h3 id="party--guild-chat-async-membership">Party / Guild Chat (Async Membership)</h3>
 <p><code>OnPartyChat(sender, msg)</code> / <code>OnGuildChat(sender, msg)</code>:</p>
 <ul>
@@ -541,7 +558,7 @@
 </tr>
 <tr>
 <td>Channel command map built</td>
-<td>Confirm all seven channel handlers (World, Region, Party, Guild, Tell, Trade, Say) are present in <code>ChannelCommandMap</code></td>
+<td>Confirm all eight channel handlers (World, Region, Party, Guild, Tell, Trade, Say, Team) are present in <code>ChannelCommandMap</code></td>
 </tr>
 <tr>
 <td>Broadcast handler registered</td>
@@ -570,6 +587,14 @@
 <tr>
 <td>Guild chat</td>
 <td>Send a <code>/g</code> message while in a guild; confirm all guild members receive the broadcast</td>
+</tr>
+<tr>
+<td>Team chat</td>
+<td>Send a <code>/team</code> message while seated in an arena match; confirm only same-side teammates in that scene receive it, and that nothing is written to the chat table</td>
+</tr>
+<tr>
+<td>Team chat outside an arena</td>
+<td>Send <code>/team</code> while not in a match; confirm the sender receives the System-channel &quot;You are not on an arena team.&quot; reply</td>
 </tr>
 <tr>
 <td>Tell chat</td>
@@ -775,6 +800,7 @@ OnDeinitialize → FlushPersistQueueSync
 <h3 id="directory-structure">Directory Structure</h3>
 <pre><code>Chat/
 ├── ChatSystem.cs                      # Main chat orchestration, parsing, routing, persistence dispatch, incoming queue drain, batch flush
+├── ChatSystem.ArenaChat.cs             # Partial: Team (arena team) channel handler
 ├── ChatSystem.GroupChat.cs             # Partial: Party and Guild async channel handlers
 ├── ChatSystem.LocalChat.cs             # Partial: Region (scene-scoped) and Say (observer-scoped) broadcast handlers
 ├── ChatSystem.TellChat.cs              # Partial: Tell (private whisper) async target resolution handler
@@ -792,6 +818,7 @@ OnDeinitialize → FlushPersistQueueSync
 <h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
 <pre><code>ServerBehaviour
 └── ChatSystem : IChatSystem (partial class)
+       ├── ChatSystem.ArenaChat.cs      # OnTeamChat
        ├── ChatSystem.GroupChat.cs      # OnPartyChat, OnGuildChat + async handlers
        ├── ChatSystem.LocalChat.cs      # OnRegionChat, OnSayChat
        ├── ChatSystem.TellChat.cs       # OnTellChat + async handler

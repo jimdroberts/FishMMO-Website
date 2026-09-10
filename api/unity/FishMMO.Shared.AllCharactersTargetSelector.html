@@ -133,6 +133,12 @@ public class AllCharactersTargetSelector : TargetSelector</code></pre>
       <a class="xref" href="FishMMO.Shared.TargetSelector.html#FishMMO_Shared_TargetSelector_IsAuthoritativePeer_FishMMO_Shared_Core_EventData_">TargetSelector.IsAuthoritativePeer(EventData)</a>
     </div>
     <div>
+      <a class="xref" href="FishMMO.Shared.TargetSelector.html#FishMMO_Shared_TargetSelector_ResolvesTargetsLocally_FishMMO_Shared_Core_EventData_">TargetSelector.ResolvesTargetsLocally(EventData)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Shared.TargetSelector.html#FishMMO_Shared_TargetSelector_ResolvesSelectionsLocally_FishMMO_Shared_Core_EventData_">TargetSelector.ResolvesSelectionsLocally(EventData)</a>
+    </div>
+    <div>
       <a class="xref" href="FishMMO.Shared.TargetSelector.html#FishMMO_Shared_TargetSelector_GatherRewound_FishMMO_Shared_Core_EventData_UnityEngine_GameObject_System_Collections_Generic_List_UnityEngine_GameObject__FishMMO_Shared_TargetSelector_GatherTargets_">TargetSelector.GatherRewound(EventData, GameObject, List&lt;GameObject&gt;, TargetSelector.GatherTargets)</a>
     </div>
     <div>
@@ -248,7 +254,7 @@ public bool IncludeUnspawned</code></pre>
 
   <h3 id="FishMMO_Shared_AllCharactersTargetSelector_SelectTargets_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.AllCharactersTargetSelector.SelectTargets(FishMMO.Shared.Core.EventData)">
   SelectTargets(EventData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/AllCharactersTargetSelector.cs/#L57"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Target/AllCharactersTargetSelector.cs/#L67"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns all GameObjects in the context's scene that have a component implementing <a class="xref" href="FishMMO.Shared.Core.ICharacter.html">ICharacter</a>.</p>
@@ -281,9 +287,19 @@ public bool IncludeUnspawned</code></pre>
 
   <h4 class="section" id="FishMMO_Shared_AllCharactersTargetSelector_SelectTargets_FishMMO_Shared_Core_EventData__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>
-<b>Server only.</b> This feeds gameplay — it is the fan-out behind "everyone in the zone"
-effects — so it resolves where those effects are authoritative, for the same reason the
-physics selectors do.
+<b>Server only, and the one spatial-family selector that stayed that way</b> when the
+rest were opened up for client-side prediction. The others ask "which bodies are inside
+this volume", a question the caster's client can answer for itself because its live world
+is the same world the server rewinds to. This one asks "who is in the ZONE", and a client
+simply does not hold that set: observer streaming gives it only the characters currently
+spawned for that viewer, so predicting here would not be a boundary mispick but a
+systematic under-selection — every culled character silently missing from an effect that
+is defined as hitting everyone. It is also the only selector that pays a full-scene
+component scan, which does not belong on a player's machine once per tick.
+</p>
+<p>
+The consequence is honest and deliberate: a zone-wide effect has no predicted feedback and
+lands when the server says so. See <a class="xref" href="FishMMO.Shared.TargetSelector.html#FishMMO_Shared_TargetSelector_ResolvesTargetsLocally_FishMMO_Shared_Core_EventData_">ResolvesTargetsLocally(EventData)</a>.
 </p>
 <p>
 <b>Ordered.</b> <code>FindObjectsByType</code> is called with <code>FindObjectsSortMode.None</code>,

@@ -90,7 +90,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Interactable/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p><strong>Short description:</strong> A server-authoritative, template-driven framework for interactive world objects in FishMMO, providing fourteen concrete interactable types from banking to teleporters.</p>
+<p><strong>Short description:</strong> A server-authoritative, template-driven framework for interactive world objects in FishMMO, providing twenty concrete interactable types from banking to arena boards.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
 <li><a href="#overview">Overview</a></li>
@@ -107,7 +107,7 @@
 <li><a href="#license">License</a></li>
 </ul>
 <h2 id="overview">Overview</h2>
-<p>The Interactable system is a server-authoritative, template-driven framework for interactive world objects in FishMMO. It provides an abstract <code>Interactable</code> base class (NetworkBehaviour + ISpawnable) that handles range checking, rate limiting, network payloads, scene-object registration, and UI title rendering. Fourteen concrete subclasses extend this base to implement specific gameplay interactions: banking, ability crafting, shrines, capture points, containers (chests), dialogue NPCs, dungeon entrances, gathering nodes, lore objects, mailboxes, merchants, switches, teleporters, and world items.</p>
+<p>The Interactable system is a server-authoritative, template-driven framework for interactive world objects in FishMMO. It provides an abstract <code>Interactable</code> base class (NetworkBehaviour + ISpawnable) that handles range checking, rate limiting, the scene-object spawn payload, scene-object registration, and the overhead title plate. Twenty concrete subclasses extend this base: banking, ability crafting, arena boards and arena objectives, bindstones, capture points, containers (chests), dialogue NPCs, dungeon entrances, gathering nodes, lore objects, mailboxes, merchants, plot foundations, quest givers, shrines, switches, teleporters, waypoints and world items.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
 <thead>
@@ -142,17 +142,18 @@
 <h2 id="features">Features</h2>
 <ul>
 <li>Abstract <code>Interactable</code> base class with range checking, rate limiting, and network payload handling</li>
-<li>Fourteen concrete interactable types: AbilityCrafter, Banker, Bindstone, CapturePoint, Container, DialogueInteractable, DungeonEntrance, GatheringNode, LoreObject, Mailbox, Merchant, Shrine, Switch, Teleporter, WorldItem</li>
+<li>Twenty concrete interactable types: AbilityCrafter, ArenaBoard, ArenaObjective, Banker, Bindstone, CapturePoint, Container, DialogueInteractable, DungeonEntrance, GatheringNode, LoreObject, Mailbox, Merchant, PlotFoundation, QuestInteractable, Shrine, Switch, Teleporter, Waypoint, WorldItem</li>
 <li>Server-authoritative validation with <code>sqrMagnitude</code>-based range checks (no square root)</li>
 <li>Template-driven configuration via ScriptableObjects per interactable type</li>
-<li>Scene-object registration and deterministic naming via <code>SceneObjectNamer</code></li>
+<li>Scene-object registration and generated naming via <code>SceneObjectNamer</code> (name generator, seeded per spawn; 5 bytes on the wire)</li>
 <li>Object pooling support through <code>ISpawnable</code> and <code>ObjectSpawner</code> integration</li>
-<li>Client-side floating title/name label rendering with customizable color</li>
+<li>Client-side overhead title rendering with customizable colour, written onto a <code>Nameplate</code> (<code>EnsureNameplate</code> builds one on demand for an object that has none — a crate does not carry a plate prefab, a banker does)</li>
+<li>Arena queueing and arena objectives (<code>ArenaBoard</code>, <code>ArenaObjective</code>) and claimable housing land (<code>PlotFoundation</code>)</li>
 <li>Achievement integration on most interactable types</li>
 <li>Dialogue tree system with branching nodes, conditions, and actions</li>
 <li>PvP/PvE capture point objectives with state tracking (Neutral, Capturing, Captured, Contested)</li>
 <li>Gathering nodes with weighted drop tables, limited uses, and gather timers</li>
-<li>Merchant tab system supporting abilities, ability events, and items</li>
+<li>Merchant tab system supporting premade abilities, ability templates, ability events, and items</li>
 </ul>
 <h2 id="interaction-behaviour-is-eca-triggers">Interaction Behaviour Is ECA Triggers</h2>
 <p><code>Banker</code>, <code>Merchant</code>, <code>Bindstone</code>, <code>Teleporter</code> and the rest are <strong>data holders</strong>. None of them
@@ -209,6 +210,16 @@ reports it across every prefab and scene in the project.</p>
 <td>every Teleporter</td>
 </tr>
 <tr>
+<td><code>Waypoint Interact</code></td>
+<td><code>UnlockWaypointAction</code> (stop on failure), <code>AchievementIncrementAction</code> (Waypoints Discovered)</td>
+<td>Waypoint prefab</td>
+</tr>
+<tr>
+<td><code>Waypoint Travel</code></td>
+<td><code>AchievementIncrementAction</code> (Fast Travels)</td>
+<td>Waypoint prefab, <code>OnTravelTriggers</code></td>
+</tr>
+<tr>
 <td><code>World Item Pickup</code></td>
 <td><code>PickupWorldItemAction</code></td>
 <td>Small World Item</td>
@@ -232,6 +243,98 @@ a dead merchant cannot open its shop.</p>
 <p><code>CanInteract</code> is a pure question. Spending the character's interact rate limit is a separate,
 explicit call to <code>TryConsumeInteractRateLimit</code>, because three different callers ask the question and
 only the interaction path should pay for it.</p>
+<h3 id="what-travels-in-the-spawn-payload">What travels in the spawn payload</h3>
+<p>Only the scene-object <code>ID</code>, for most types. <code>Container</code> and <code>GatheringNode</code> both used to write
+their state into the payload of every spawn, to every connection that began observing them, and
+neither was ever refreshed afterwards:</p>
+<ul>
+<li><strong><code>Container</code></strong> wrote a presence bit plus a template ID and a stack amount per filled slot. No
+client read it — the chest window is driven by <code>ContainerOpenBroadcast</code>, sent to the interacting
+player on open and re-sent after every take — so it was pure cost, and it told every client in
+range what was inside every container in the world without anybody opening one. <code>Items</code> is
+server state and there is no <code>WritePayload</code>/<code>ReadPayload</code> override left on the class.</li>
+<li><strong><code>GatheringNode</code></strong> wrote <code>RemainingUses</code>. The only client use was a <code>&gt; 0</code> test whose answer is
+implied by the node still existing (<code>GatheringNodeAction</code> despawns it at zero). The charge half
+of the rule is now <code>GatheringNode.AllowsGathering(remainingUses, chargesAreAuthoritative)</code> — a
+peer that does not own the count does not get to answer with it, so a client stops consulting a
+number frozen at spawn while the server's refusal stays authoritative.</li>
+<li><strong><code>WorldItem</code></strong> is the one that gained a field: it writes the template ID, the stack amount and
+a generation <code>Seed</code>, all <code>Unpacked</code> (a template ID is a full-range 32-bit hash and a seed is
+full entropy, so FishNet's signed-packed form would spend five bytes where unpacked spends
+four). <code>ItemSpawnableSettings</code> rolls the seed at spawn; without it every generated ground drop
+of a template rolled identical attributes from <code>RNG(0)</code> and a different set after a relog.
+<code>ResetState</code> clears the seed as well as the stack, so a pooled drop cannot inherit the previous
+occupant's roll.</li>
+</ul>
+<p>Payload framing matters here: FishNet packs every <code>NetworkBehaviour</code>'s spawn payload into one
+unframed buffer, so a reader that consumes the wrong number of bytes desynchronises every
+behaviour after it.</p>
+<h3 id="titles-are-rows-on-an-overhead-nameplate">Titles are rows on an overhead nameplate</h3>
+<p><code>Interactable.Awake</code> writes the name and title onto whatever plate the object already has
+(<code>ResolveAuthoredNameplate</code>) — for a banker or a merchant that is the character's own plate, so the
+title stacks under the generated name instead of fighting it for the anchor. An object with no
+authored plate (a crate, a harvest node) gets one built by <code>EnsureNameplate</code> at the moment the
+target frame needs it, rather than a <code>GameObject</code> per crate in the zone up front.</p>
+<h2 id="waypoints">Waypoints</h2>
+<p>A <code>Waypoint</code> is a discoverable fast-travel point (issue #237). It is an ordinary interactable
+whose identity is the pair (scene name, <code>WaypointIndex</code>): the index is authored on the component,
+must be unique within its scene, and <strong>must never change once the scene ships</strong> — it is the bit
+position stored in the character's unlock record (<code>WaypointController</code>, <code>character_waypoints</code>).
+The world scene details cache rebuild reports duplicates and out-of-range indices.</p>
+<ul>
+<li><strong>Discovery.</strong> Interacting runs the <code>Waypoint Interact</code> trigger: <code>UnlockWaypointAction</code> sets the
+bit through <code>IWaypointController.Unlock</code>, which raises <code>OnWaypointUnlocked</code>; the server's
+interactable system merges the page into the database and tells the owner. The action is
+abortable and authored with <em>Stop Chain On Failure</em>, so the achievement after it counts each
+waypoint once. Interacting with an already-discovered waypoint asks the owner's client to open
+the world map on it instead.</li>
+<li><strong>Travel.</strong> Requested from the world map (<code>WaypointTravelRequestBroadcast</code>), never by
+interaction. <code>InteractableSystem.Waypoint.cs</code> checks the scene the map showed against the
+character's current scene, resolves the live object through <code>WaypointRegistry</code>, and calls
+<code>WaypointTravel.TryTravel</code>, whose rules (<code>Decide</code>) are: can act → not in combat → same scene
+instance → discovered → the waypoint's authored <code>TravelConditions</code> pass. Refusals are reported
+with a <code>WaypointTravelRefusalReason</code>. Arrival runs <code>OnTravelTriggers</code> (<code>Waypoint Travel</code>).</li>
+<li><strong>Other ECA pieces.</strong> <code>GrantWaypointAction</code> (unlock by scene name + index, for rewards),
+<code>TeleportToWaypointAction</code> (move to a waypoint in the current scene; can relax discovery,
+conditions and combat), <code>WaypointUnlockedCondition</code>.</li>
+<li><strong>Map.</strong> A waypoint is drawn from the character's own record, not from a <code>MapMarker</code> — do not
+put one on the object; <code>MapMarkerFilter</code> drops the waypoint type on purpose. Undiscovered
+waypoints are invisible regardless of fog.</li>
+<li><strong>Not yet.</strong> Cross-scene travel: the request and the actions refuse a scene other than the
+character's current one until the world-map system lands. The storage and wire already carry
+the scene name so that step needs no schema change.</li>
+</ul>
+<h2 id="plot-foundations">Plot foundations</h2>
+<p>A <code>PlotFoundation</code> is a claimable area of land authored into a scene by a designer. The component
+carries only the plot's identity and its price — <code>PlotKey</code> (unique within the scene, case and
+surrounding whitespace ignored), <code>Price</code>, <code>Dimensions</code> (X by Z metres, default <code>DefaultSize</code> 16)
+and <code>Height</code> (default <code>DefaultHeight</code> 12, floored at <code>MinimumExtent</code>). Who owns it, and whether it
+can be claimed at all, is resolved by the server against the database and pushed back.</p>
+<ul>
+<li><strong>Discovery, not sweeping.</strong> Foundations announce themselves to <code>PlotFoundation.Registry</code>, which
+groups them by the scene manager's <strong>handle</strong>, not by scene name: a scene server may host scenes
+for several world servers at once and each world's copy is its own land with its own owners. The
+handle is process-local and is never persisted or sent anywhere.</li>
+<li><code>Registry.OnSceneGainedFoundations</code> fires when a foundation joins a scene that had none, so the
+housing system can register land that arrived in an additively-loaded scene.</li>
+<li><code>Registry.OnClaimRequested</code> is an event rather than a direct call, because claiming needs the
+database and shared code cannot reference the server behaviour that owns it. On a client, or a
+server with housing off, nothing is listening and the request is dropped.</li>
+<li><strong>Edit-time validation only.</strong> Plots are placed by designers and never at runtime, which is what
+removes the need for runtime overlap tests — and also means edit time is the only chance to catch
+a bad layout. <code>FishMMO &gt; Housing &gt; Validate Plots In Open Scenes</code> (<code>PlotFoundationValidator</code>)
+reports duplicate keys and overlapping plots, on demand and again on scene save. Both faults are
+silent at runtime: a duplicate key resolves two foundations onto one database row, and overlapping
+plots let two owners build into the same space.</li>
+</ul>
+<h2 id="arenas">Arenas</h2>
+<p><code>ArenaBoard</code> is where a player queues: a prefab with the component and an interaction whose action
+is <code>SendArenaBoardBroadcastAction</code>. It offers exactly the <code>ArenaTemplate</code>s listed on it and the
+server refuses a queue request for anything else.</p>
+<p><code>ArenaObjective</code> is a flag stand or a control point placed in an arena scene, interacted with
+through <code>InteractWithArenaObjectiveAction</code>. <code>ObjectiveKind</code> picks which; a Capture the Flag arena
+needs one flag stand per team with <code>FlagTeam</code> set (0-based), a King of the Hill arena one or more
+control points. The title defaults to <code>Team N Flag</code> or <code>Control Point</code> unless <code>DisplayName</code> is set.</p>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
 <li><strong>Unity 6.3 LTS</strong></li>
@@ -245,7 +348,7 @@ only the interaction path should pay for it.</p>
 <li><strong>Create a new interactable</strong> — Add one of the concrete interactable components (e.g., <code>Merchant</code>, <code>GatheringNode</code>, <code>Container</code>) to a GameObject in a scene.</li>
 <li><strong>Assign a template</strong> — For template-driven types, create the matching ScriptableObject (e.g., <code>MerchantTemplate</code>, <code>GatheringNodeTemplate</code>) and assign it to the component's <code>Template</code> field.</li>
 <li><strong>Set interaction range</strong> — Adjust the <code>InteractionRange</code> field on the component (default: 3.5 units).</li>
-<li><strong>Ensure SceneObjectNamer</strong> — Types like <code>AbilityCrafter</code>, <code>Banker</code>, <code>Merchant</code>, and <code>Container</code> require <code>SceneObjectNamer</code> (added automatically via <code>[RequireComponent]</code>).</li>
+<li><strong>Ensure SceneObjectNamer</strong> — Types like <code>AbilityCrafter</code>, <code>Banker</code>, <code>Merchant</code>, and <code>Container</code> require <code>SceneObjectNamer</code> (added automatically via <code>[RequireComponent]</code>). With default settings it names the object from its <code>FactionController</code> race; set a Race Override, a Biome, or another mode (City / Dungeon / Point of Interest / Item) on the component for anything else.</li>
 <li><strong>Server registration</strong> — On the server, the interactable registers itself in <code>Awake()</code> via <code>SceneObject.Register()</code>. On the client, registration happens in <code>ReadPayload()</code> after receiving the object's <code>ID</code>.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
@@ -306,7 +409,7 @@ only the interaction path should pay for it.</p>
 <td><code>Title</code></td>
 <td><code>string</code></td>
 <td><code>&quot;Interactable&quot;</code></td>
-<td>UI display title</td>
+<td>Overhead plate title row</td>
 </tr>
 <tr>
 <td><code>TitleColor</code></td>
@@ -432,7 +535,8 @@ only the interaction path should pay for it.</p>
 </tbody>
 </table>
 <h3 id="merchanttemplate">MerchantTemplate</h3>
-<p><strong>MerchantTemplate</strong> (ScriptableObject): lists of <code>AbilityTemplate</code>, <code>AbilityEvent</code>, and <code>BaseItemTemplate</code> references, organized by <code>MerchantTabType</code>.</p>
+<p><strong>MerchantTemplate</strong> (ScriptableObject): lists of <code>AbilityTemplate</code>, <code>AbilityEvent</code>, <code>BaseItemTemplate</code> and <code>PremadeAbilityTemplate</code> references, organized by <code>MerchantTabType</code>.</p>
+<p>Two of those lists sell abilities, and they sell different things. <code>Abilities</code> sells <strong>templates</strong>: the buyer learns the template and must still take it to an Ability Crafter, choose its effects, and craft a usable ability. <code>PremadeAbilities</code> sells <strong>finished abilities</strong>: each <code>PremadeAbilityTemplate</code> names a base <code>AbilityTemplate</code>, the events to bake in, an optional type override and the merchant's own price, and the buyer receives the crafted <code>Ability</code> straight into their usable set. A premade recipe is held to the crafting rules (<code>PremadeAbilityTemplate.Validate</code>: at most <code>AdditionalEventSlots</code> events, at most one type override) on both the inspector and the server, so a premade ability is never something a player could not have built. The UI labels the two tabs &quot;Templates&quot; and &quot;Abilities&quot; respectively, and says under each what a purchase from it needs next — the silence there was issue #247.</p>
 <h3 id="shrinetemplate">ShrineTemplate</h3>
 <table>
 <thead>
@@ -600,6 +704,16 @@ only the interaction path should pay for it.</p>
 <td>—</td>
 </tr>
 <tr>
+<td>ArenaBoard</td>
+<td>Queue for arenas. Offers only the <code>ArenaTemplate</code>s listed on it; the server refuses any other</td>
+<td>—</td>
+</tr>
+<tr>
+<td>ArenaObjective</td>
+<td>Flag stand or control point placed in an arena scene (<code>ArenaObjectiveKind</code>, <code>FlagTeam</code>)</td>
+<td>—</td>
+</tr>
+<tr>
 <td>Banker</td>
 <td>Opens the bank storage UI. <code>[RequireComponent(typeof(SceneObjectNamer))]</code></td>
 <td>—</td>
@@ -650,6 +764,11 @@ only the interaction path should pay for it.</p>
 <td><code>MerchantTemplate</code></td>
 </tr>
 <tr>
+<td>PlotFoundation</td>
+<td>Claimable area of land for housing. <code>[RequireComponent(typeof(SceneObjectNamer))]</code></td>
+<td>—</td>
+</tr>
+<tr>
 <td>QuestInteractable</td>
 <td>Quest giver / turn-in NPC</td>
 <td>—</td>
@@ -670,6 +789,11 @@ only the interaction path should pay for it.</p>
 <td>—</td>
 </tr>
 <tr>
+<td>Waypoint</td>
+<td>Discoverable fast-travel point, identified by (scene, <code>WaypointIndex</code>)</td>
+<td>—</td>
+</tr>
+<tr>
 <td>WorldItem</td>
 <td>Dropped item with <code>BaseItemTemplate</code> + custom network payload</td>
 <td>—</td>
@@ -680,8 +804,9 @@ only the interaction path should pay for it.</p>
 <ul>
 <li><strong>SceneObjectNamer</strong>: Required component on <code>AbilityCrafter</code>, <code>Banker</code>, <code>CapturePoint</code>, <code>Container</code>, <code>Merchant</code>, and others. Generates deterministic scene-unique names for network-safe identification.</li>
 <li><strong>AchievementTemplate</strong>: Most interactable types expose an <code>AchievementTemplate</code> field to increment progress on interaction.</li>
-<li><strong>Title / TitleColor</strong>: Every subclass overrides <code>Title</code> and <code>TitleColor</code> to customize the floating name label rendered via the <code>ICharacter.CharacterGuildLabel</code> on the client.</li>
+<li><strong>Title / TitleColor</strong>: Every subclass overrides <code>Title</code> and <code>TitleColor</code> to customize the row written onto the object's overhead <code>Nameplate</code> on the client.</li>
 <li><strong>SceneObject Registration</strong>: Server-side registration happens in <code>Awake()</code>; client-side registration happens in <code>ReadPayload()</code> after receiving the object's <code>ID</code> from the server.</li>
+<li><strong>Name normalisation</strong>: <code>Awake</code> runs <code>TeleporterKey.Normalize</code> on the GameObject name in <strong>every</strong> process, not just the client. The name is a server-side lookup key — a cross-scene teleport resolves against the GameObject name the world scene details cache was baked with, and the bake never sees Unity's <code>(Clone)</code> suffix — so stripping it only under <code>!UNITY_SERVER</code> made a prefab-spawned teleporter resolve in the editor and miss in a server build.</li>
 </ul>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
@@ -769,12 +894,19 @@ only the interaction path should pay for it.</p>
 <pre><code>Interactable/
 ├── IInteractable.cs                    # Shared interface (ISceneObject + interaction API)
 ├── Interactable.cs                     # Abstract NetworkBehaviour base class (IInteractable, ISpawnable)
+├── InteractableResolver.cs             # The one rule for &quot;which interactable did the player mean&quot;
 ├── AbilityCrafter.cs                   # Ability crafting station interactable
+├── ArenaBoard.cs                       # Arena queue board (list of ArenaTemplate)
+├── ArenaObjective.cs                   # Flag stand / control point in an arena scene
 ├── Banker.cs                           # Banking access interactable
 ├── Bindstone.cs                        # Respawn bind-point interactable
 ├── DungeonEntrance.cs                  # Dungeon portal interactable
+├── PlotFoundation.cs                   # Claimable housing land, plus its per-scene Registry
 ├── Teleporter.cs                       # Teleporter interactable (target Transform)
-├── WorldItem.cs                        # Dropped item in the world (BaseItemTemplate + custom payload)
+├── Waypoint.cs                         # Discoverable fast-travel point (scene, WaypointIndex)
+├── WorldItem.cs                        # Dropped item in the world (template + stack + roll seed)
+├── Editor/
+│   └── PlotFoundationValidator.cs      # Duplicate plot keys and overlapping plots in the open scenes
 ├── CapturePoint/
 │   ├── CapturePoint.cs                 # PvP/PvE objective capture interactable
 │   ├── CapturePointTemplate.cs         # ScriptableObject: PointValue, InteractionsToCapture
@@ -801,9 +933,10 @@ only the interaction path should pay for it.</p>
 │   └── Mailbox.cs                      # Mail access interactable
 ├── Merchant/
 │   ├── Merchant.cs                     # Buy/sell merchant interactable
-│   ├── MerchantTabType.cs              # Enum: None, Ability, AbilityEvent, Item
+│   ├── MerchantTabType.cs              # Enum: None, Ability, AbilityEvent, Item, PremadeAbility
 │   └── Template/
-│       └── MerchantTemplate.cs         # ScriptableObject: Abilities, AbilityEvents, Items
+│       ├── MerchantTemplate.cs         # ScriptableObject: Abilities, AbilityEvents, Items, PremadeAbilities
+│       └── PremadeAbilityTemplate.cs   # ScriptableObject: a finished ability recipe with its own price
 ├── Quest/
 │   └── QuestInteractable.cs            # Quest giver / turn-in interactable
 ├── Shrine/
@@ -811,13 +944,17 @@ only the interaction path should pay for it.</p>
 │   └── ShrineTemplate.cs              # ScriptableObject: heal amounts, buff reference
 └── Switch/
     ├── Switch.cs                       # Toggle/trigger switch interactable
-    └── ISwitchTarget.cs                # Interface for objects activated by switches
+    ├── ISwitchTarget.cs                # Interface for objects activated by switches
+    ├── SwitchTargetMover.cs            # Switch target that moves a transform
+    └── SwitchTargetObject.cs           # Switch target that enables/disables a GameObject
 </code></pre>
 <h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
 <h4 id="interactable-types">Interactable Types</h4>
 <pre><code>NetworkBehaviour
 └── Interactable (abstract) : IInteractable, ISpawnable
     ├── AbilityCrafter     : IAbilityCrafter
+    ├── ArenaBoard         : IArenaBoard
+    ├── ArenaObjective     : IArenaObjective
     ├── Banker             : IBanker
     ├── Bindstone          : IBindstone
     ├── CapturePoint       : ICapturePoint
@@ -828,10 +965,12 @@ only the interaction path should pay for it.</p>
     ├── LoreObject         : ILoreObject
     ├── Mailbox            : IMailbox
     ├── Merchant           : IMerchant
+    ├── PlotFoundation     : IPlotFoundation
     ├── QuestInteractable  : IQuestInteractable
     ├── Shrine             : IShrine
     ├── Switch             : ISwitch
     ├── Teleporter         : ITeleporter
+    ├── Waypoint           : IWaypoint
     └── WorldItem          : IWorldItem
 </code></pre>
 <h4 id="templates-scriptableobjects">Templates (ScriptableObjects)</h4>
@@ -852,10 +991,11 @@ only the interaction path should pay for it.</p>
 └── Contested  = 3
 
 MerchantTabType : byte
-├── None         = 0
-├── Ability      = 1
-├── AbilityEvent = 2
-└── Item         = 3
+├── None           = 0
+├── Ability        = 1   (ability TEMPLATES — crafted at an Ability Crafter)
+├── AbilityEvent   = 2
+├── Item           = 3
+└── PremadeAbility = 4   (finished abilities — usable as bought)
 </code></pre>
 <h3 id="related-files">Related Files</h3>
 <pre><code>Shared/Core/Entity/Interactable/                # 16 core interfaces (IAbilityCrafter, IBanker, etc.)

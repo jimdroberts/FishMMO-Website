@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_AbilityObserverBroadcastSerializers" data-uid="FishMMO.Shared.AbilityObserverBroadcastSerializers" class="text-break">
-Class AbilityObserverBroadcastSerializers  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L46"><i class="bi bi-code-slash"></i></a>
+Class AbilityObserverBroadcastSerializers  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L50"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -173,8 +173,11 @@ offset, with a full width fallback for the case where the two domains are genuin
 (a client that has just resynchronised, or an unset tick).
 </li></ul>
 <p>
-The mode and the two shape flags share one byte. Everything else uses FishNet's packed
-encoding, which is already variable width for the ids.
+The mode and the two shape flags share one byte. Object ids and ticks travel through
+FishNet's packed encoding, which is genuinely variable width for them. The FULL-ENTROPY
+fields do not: the packed 32-bit form is a seven-bit-per-byte varint, so a value that uses
+the whole range costs FIVE bytes where unpacked costs four. The seed and the packed aim
+word are therefore written unpacked, each noted at the point it happens.
 </p>
 <p>
 Discovered by FishNet's codegen through the <code>Write*</code>/<code>Read*</code> naming convention and
@@ -190,7 +193,7 @@ applied across assemblies because the struct carries <code>[UseGlobalCustomSeria
 
   <h3 id="FishMMO_Shared_AbilityObserverBroadcastSerializers_MAX_LEARNED_EVENTS" data-uid="FishMMO.Shared.AbilityObserverBroadcastSerializers.MAX_LEARNED_EVENTS">
   MAX_LEARNED_EVENTS
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L197"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L209"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Hard cap on the crafted event ids carried by one
@@ -233,7 +236,7 @@ arbitrarily large array before the stream runs out.</p>
 
   <h3 id="FishMMO_Shared_AbilityObserverBroadcastSerializers_ReadAbilityActivatedBroadcast_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.AbilityObserverBroadcastSerializers.ReadAbilityActivatedBroadcast(FishNet.Serializing.Reader)">
   ReadAbilityActivatedBroadcast(Reader)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L141"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L153"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Reads an <a class="xref" href="FishMMO.Shared.AbilityActivatedBroadcast.html">AbilityActivatedBroadcast</a> written by the method above.</p>
@@ -276,7 +279,7 @@ and only reads the fields that mode carries.</p>
 
   <h3 id="FishMMO_Shared_AbilityObserverBroadcastSerializers_ReadAbilityLearnedObserverBroadcast_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.AbilityObserverBroadcastSerializers.ReadAbilityLearnedObserverBroadcast(FishNet.Serializing.Reader)">
   ReadAbilityLearnedObserverBroadcast(Reader)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L225"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L264"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Reads an <a class="xref" href="FishMMO.Shared.AbilityLearnedObserverBroadcast.html">AbilityLearnedObserverBroadcast</a> written by the method above.</p>
@@ -305,6 +308,16 @@ and only reads the fields that mode carries.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Shared_AbilityObserverBroadcastSerializers_ReadAbilityLearnedObserverBroadcast_FishNet_Serializing_Reader__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>An over-large count is DISCARDED, not clamped. Clamping used to read
+<a class="xref" href="FishMMO.Shared.AbilityObserverBroadcastSerializers.html#FishMMO_Shared_AbilityObserverBroadcastSerializers_MAX_LEARNED_EVENTS">MAX_LEARNED_EVENTS</a> ids and leave the rest of the declared ones in the
+stream — and FishNet does not reposition the reader after a broadcast handler runs
+(<code>ClientManager.ParseBroadcast</code> uses the length prefix only to SKIP a key it has no
+handler for), so every byte left behind misaligned whatever shared the datagram. See
+<code>CharacterBuffsBroadcastSerializer.ReadCharacterBuffsBroadcast</code>, which spells the
+same trap out at length. The discard is returned with an unresolvable caster id so the
+handler drops it outright rather than filing an events-less ability.</p>
+</div>
 
 
 
@@ -313,7 +326,7 @@ and only reads the fields that mode carries.</p>
 
   <h3 id="FishMMO_Shared_AbilityObserverBroadcastSerializers_WriteAbilityActivatedBroadcast_FishNet_Serializing_Writer_FishMMO_Shared_AbilityActivatedBroadcast_" data-uid="FishMMO.Shared.AbilityObserverBroadcastSerializers.WriteAbilityActivatedBroadcast(FishNet.Serializing.Writer,FishMMO.Shared.AbilityActivatedBroadcast)">
   WriteAbilityActivatedBroadcast(Writer, AbilityActivatedBroadcast)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L72"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L76"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Writes an <a class="xref" href="FishMMO.Shared.AbilityActivatedBroadcast.html">AbilityActivatedBroadcast</a> in its mode-shaped form.</p>
@@ -347,7 +360,7 @@ and only reads the fields that mode carries.</p>
 
   <h3 id="FishMMO_Shared_AbilityObserverBroadcastSerializers_WriteAbilityLearnedObserverBroadcast_FishNet_Serializing_Writer_FishMMO_Shared_AbilityLearnedObserverBroadcast_" data-uid="FishMMO.Shared.AbilityObserverBroadcastSerializers.WriteAbilityLearnedObserverBroadcast(FishNet.Serializing.Writer,FishMMO.Shared.AbilityLearnedObserverBroadcast)">
   WriteAbilityLearnedObserverBroadcast(Writer, AbilityLearnedObserverBroadcast)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L205"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/Prediction/AbilityObserverBroadcastSerializers.cs/#L232"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Writes an <a class="xref" href="FishMMO.Shared.AbilityLearnedObserverBroadcast.html">AbilityLearnedObserverBroadcast</a>.</p>
@@ -374,9 +387,24 @@ and only reads the fields that mode carries.</p>
 
 
   <h4 class="section" id="FishMMO_Shared_AbilityObserverBroadcastSerializers_WriteAbilityLearnedObserverBroadcast_FishNet_Serializing_Writer_FishMMO_Shared_AbilityLearnedObserverBroadcast__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Hand written for the event-id count: FishNet's generated array serializer writes a
-four-byte length and a null sentinel, where this message's count never exceeds
-<a class="xref" href="FishMMO.Shared.AbilityObserverBroadcastSerializers.html#FishMMO_Shared_AbilityObserverBroadcastSerializers_MAX_LEARNED_EVENTS">MAX_LEARNED_EVENTS</a> and a null list is simply an empty one.</p>
+  <div class="markdown level1 remarks"><p>
+Hand written for two things the generated array serializer cannot do: bound the count
+against a malformed message before an array is allocated for it, and treat a null list
+as an empty one rather than spending a sentinel on it.
+</p>
+<p>
+It is <b>not</b> written for the length prefix, and a remark here used to claim it was —
+that FishNet's generated array serializer "writes a four-byte length". It does not:
+<code>Writer.WriteArray</code> writes the count with <code>WriteSignedPackedWhole</code>, which is one
+byte for any count this message can carry. The single byte below matches that; the reasons
+above are what earn the hand-written form.
+</p>
+<p>
+The template id and every event id are unpacked. Both are
+<code>(typeName + assetName).GetDeterministicHashCode()</code> values that occupy the whole
+32-bit range, so FishNet's signed-packed form spends five bytes where four suffice — the
+same trade <a class="xref" href="FishMMO.Shared.ObservedBuffEntry.html#FishMMO_Shared_ObservedBuffEntry_WriteTo_FishNet_Serializing_Writer_">WriteTo(Writer)</a> makes.
+</p>
 </div>
 
 

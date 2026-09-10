@@ -114,6 +114,7 @@
 <li>Builds <code>IServerConfiguration</code>, <code>IServerEvents</code>, <code>ICoreServer</code>, and <code>INetworkManagerWrapper</code>.</li>
 <li>Fetches the external IP address asynchronously.</li>
 <li>Once the IP is available, initialises the core server, database orchestrator, address provider, authenticator, account manager, runtime data containers (auto-discovered via <code>RequiresDataContainerAttribute</code>), and server behaviours.</li>
+<li>Starts <code>VerifyDatabaseSchema</code> concurrently with behaviour initialization and joins it just before the transport opens: pending migrations abort startup, a check that could not run is only a warning.</li>
 <li>Disables KCC auto-simulation and starts the FishNet server.</li>
 </ol>
 <p>During runtime, <code>LateUpdate</code> drives two loops: the behaviour update loop (snapshot-safe against registration mutations) and the periodic callback system (enumeration-complete-before-invoke pattern). Shutdown is idempotent and tears down subsystems in reverse order.</p>
@@ -133,22 +134,143 @@
 </tr>
 <tr>
 <td><strong>Authentication</strong></td>
-<td>Server authenticator hierarchy — base, SRP (<code>ServerAuthenticator</code>), and token (<code>TokenServerAuthenticator</code>).</td>
+<td>Server authenticator hierarchy — base, SRP (<code>ServerAuthenticator</code>), and token (<code>TokenServerAuthenticator</code>), plus <code>AccountVerificationPolicy</code> and <code>SigningKeyKekProvider</code>.</td>
 </tr>
 <tr>
 <td><strong>RuntimeData</strong></td>
 <td>Shared runtime data containers, factory, and registry for mutable per-system state.</td>
 </tr>
 <tr>
+<td><strong>Smtp</strong></td>
+<td><code>SmtpService</code> (<code>ISmtpService</code>) — outbound mail for account verification/recovery, configured from server config with <code>FISHMMO_SMTP_*</code> environment overrides.</td>
+</tr>
+<tr>
+<td><strong>KickRequest</strong></td>
+<td><code>KickRequestSystem</code> — cross-server kick propagation. Lives at the root of <code>Implementation/</code>, not under <code>World/</code>.</td>
+</tr>
+<tr>
 <td><strong>LoginServer</strong></td>
-<td>Login-server-specific systems: account creation, character create/select, server select, and the login server lifecycle.</td>
+<td>Login-server-specific systems: account creation, character create/select, server select, the login server lifecycle, and <code>LoginQueueSystem</code> (FIFO admission queue when auth capacity is saturated).</td>
 </tr>
 <tr>
 <td><strong>World</strong></td>
-<td>World and scene server systems organised into <code>WorldServer/</code>, <code>SceneServer/</code>, and <code>KickRequest/</code>.</td>
+<td>World and scene server systems organised into <code>WorldServer/</code> and <code>SceneServer/</code>.</td>
 </tr>
 </tbody>
 </table>
+<h3 id="scene-server-system-inventory">Scene-Server System Inventory</h3>
+<p>Everything under <code>World/SceneServer/</code>. All are <code>ServerBehaviour</code> ScriptableObject assets except
+the two noted otherwise. Each has its own README with the detail; this table is the index.</p>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scene server lifecycle</td>
+<td><code>SceneServerSystem</code> (+ <code>.AdminCommands</code>, <code>.ServerControl</code> partials)</td>
+<td>Scene load/unload, instance placement via <code>SceneServerPlacementPolicy</code>.</td>
+</tr>
+<tr>
+<td>Character</td>
+<td><code>CharacterSystem</code> (+ <code>.Connection</code>, <code>.Loading</code>, <code>.Saving</code>, <code>.Social</code>, <code>.Instance</code>, <code>.CombatLogout</code> partials)</td>
+<td>Spawn/despawn, persistence, combat-logout.</td>
+</tr>
+<tr>
+<td>Character inventory</td>
+<td><code>CharacterInventorySystem</code></td>
+<td>Inventory/equipment/bank/bag operations and the exchange funnel.</td>
+</tr>
+<tr>
+<td>Interactable</td>
+<td><code>InteractableSystem</code> (+ 11 partials)</td>
+<td>Merchants, containers, dialogue, mailbox, corpses, ability crafting, waypoints — <strong>and arenas and the group/dungeon finders</strong> (see below).</td>
+</tr>
+<tr>
+<td>Chat</td>
+<td><code>ChatSystem</code> (+ <code>.LocalChat</code>, <code>.WorldChat</code>, <code>.TellChat</code>, <code>.GroupChat</code>, <code>.ArenaChat</code> partials)</td>
+<td></td>
+</tr>
+<tr>
+<td>Guild</td>
+<td><code>GuildSystem</code> (+ <code>.Authority</code>, <code>.Ranks</code>, <code>.Recruitment</code> partials)</td>
+<td>Rank ladder, authority checks, invites/applications.</td>
+</tr>
+<tr>
+<td>Party</td>
+<td><code>PartySystem</code></td>
+<td>Membership, plus <code>PartyCombatMeterData</code> server-side meters.</td>
+</tr>
+<tr>
+<td>Friend</td>
+<td><code>FriendSystem</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Trade</td>
+<td><code>TradeSystem</code> (+ <code>.Handlers</code>, <code>.Commit</code> partials)</td>
+<td>Player-to-player trade; commits through <code>ICharacterInventorySystem.TryRunExchange</code>, which enqueues <code>CharacterInventorySystem.RunExchangeAsync</code>.</td>
+</tr>
+<tr>
+<td>Housing</td>
+<td><code>HousingSystem</code> (+ <code>.Access</code>, <code>.Building</code>, <code>.Network</code>, <code>.Plots</code>, <code>.Sync</code>, <code>.Tax</code>, <code>.Vault</code> partials)</td>
+<td><strong>Server-only, and off by default</strong> (see below).</td>
+</tr>
+<tr>
+<td>Quest</td>
+<td><code>QuestSystem</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Achievement</td>
+<td><code>AchievementSystem</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Pet</td>
+<td><code>PetSystem</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Hotkey</td>
+<td><code>HotkeySystem</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Naming</td>
+<td><code>NamingSystem</code></td>
+<td>Name resolution/caching for IDs the client has not seen.</td>
+</tr>
+<tr>
+<td>Scene channel</td>
+<td><code>SceneChannelSystem</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Waypoint</td>
+<td><code>WaypointPersistence</code>, <code>WaypointSceneAudit</code> (static helpers, not behaviours)</td>
+<td>Discovered-waypoint pages, OR-merged; the audit compares live <code>WaypointRegistry</code> indices against baked <code>WorldSceneDetails.Waypoints</code> once per loaded scene.</td>
+</tr>
+<tr>
+<td>Scene-server auth</td>
+<td><code>SceneServerAuthenticator</code></td>
+<td>Not a behaviour — a <code>TokenServerAuthenticator</code> subclass attached to the <code>NetworkManager</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Arenas and the group/dungeon finder are not separate systems.</strong> They are partials of
+<code>InteractableSystem</code>: <code>InteractableSystem.Arena.cs</code>, <code>InteractableSystem.ArenaMatch.cs</code>,
+<code>InteractableSystem.GroupFinder.cs</code> and <code>InteractableSystem.DungeonFinder.cs</code>. There is no
+<code>ArenaSystem</code> or <code>GroupFinderSystem</code> type. Arenas do have a client UI (<code>Client/GUI/World/Arena/</code>).</p>
+<p><strong>Housing ships disabled and has no client UI.</strong> <code>HousingSystem.ownershipMode</code> defaults to
+<code>HousingOwnershipMode.Neither</code>, so <code>IsHousingEnabled</code> is false and <code>InitializeOnce</code> returns
+early — a stock server runs no housing at all. There is no housing UI anywhere under
+<code>Assets/Scripts/Client/</code>; the system is server-side plumbing (plots, building, taxes, vaults,
+access lists) with no way for a player to reach it yet.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
 <thead>
@@ -211,6 +333,11 @@
 <li><strong>Auto-discovered runtime data containers</strong> — behaviours declare <code>[RequiresDataContainer(typeof(T))]</code>; the server discovers, deduplicates, priority-sorts, and creates containers automatically.</li>
 <li><strong>Generic component registries</strong> — <code>ServerComponentRegistry&lt;TNet, TConn, TComponent&gt;</code> registers components under concrete type and all <code>IServerComponent</code>-derived interfaces for dependency lookup.</li>
 <li><strong>Network abstraction</strong> — <code>INetworkManagerWrapper</code> / <code>FishNetNetworkWrapper</code> decouple the server from FishNet internals, exposing start/stop, transport config, broadcast registration, and authenticator attachment.</li>
+<li><strong>Per-connection broadcast budget</strong> — <code>FishNetNetworkWrapper.RegisterBroadcast&lt;T&gt;</code> wraps every handler in a token-bucket admission check (<code>AdmitBroadcast</code>) before dispatch. FishNet drains all pending packets each frame on the main thread and has no per-connection message-rate limit of its own, so this is the transport-agnostic backstop: <code>BroadcastMaxMessagesPerSecond</code> (default 100) with <code>BroadcastMessageBurst</code> (default 200); a connection that keeps sending past an empty bucket is kicked with <code>KickReason.ExploitExcessiveData</code> after 200 overflows. The wrapper delegate is remembered in <code>broadcastWrappers</code> so <code>UnregisterBroadcast</code> hands FishNet the same instance it registered.</li>
+<li><strong>Transport-level inbound limits</strong> — WebTransport gets <code>SetInboundRateLimit(TransportMaxInboundMessagesPerSecond, TransportInboundMessageBurst)</code> enforced on the socket receive thread, and <code>SetNativeLimits(...)</code> for connection-level caps applied inside the native library before the QUIC handshake (<code>TransportConnectIntervalMs</code>, <code>TransportMaxConnectionsPerIP</code>, <code>TransportMaxHalfOpenConnections</code>, <code>TransportMaxQueuedDatagramsPerConnection</code>, <code>TransportMaxH3StreamsPerConnection</code>; <code>-1</code> keeps the library default, <code>0</code> disables). Applied to both the standalone and Multipass-child transports.</li>
+<li><strong>Startup schema verification</strong> — <code>VerifyDatabaseSchema</code> runs concurrently with behaviour initialization and joins just before the transport opens. Pending migrations are fatal; a check that could not run at all is only a warning (unverified, not known-bad). It verifies <em>applied migrations only</em> — an entity changed with no migration generated for it leaves nothing pending and passes (issue #162).</li>
+<li><strong>Login admission queue</strong> — <code>LoginQueueSystem</code> holds a FIFO of connections arriving at auth capacity (<code>ArrivalOrderTracker&lt;NetworkConnection&gt;</code>), keeps them connected at the QUIC layer, and pushes <code>LoginQueuePositionBroadcast</code> on a server-controlled interval. Update rate and admission rate are server-authoritative (<code>LoginQueueUpdateRateSeconds</code>, <code>LoginQueueAdmissionRatePerSecond</code>); clients cannot ask for faster updates.</li>
+<li><strong>Bounded sync-over-async, shutdown only</strong> — <code>UnitySyncOverAsync</code> is the one sanctioned way to block on a <code>Task</code> from <code>OnDestroy</code>/<code>OnApplicationQuit</code>, where nothing can yield. Startup must not use it: any <code>await</code> in the call chain that captures Unity's <code>SynchronizationContext</code> can never resume while the main thread sits in <code>GetResult()</code>, and the transport would never bind.</li>
 <li><strong>Periodic callback system</strong> — <code>IPeriodicUpdateSystem</code> with register/unregister/update-interval; enumeration-safe dispatch; callbacks receive their registered interval, not frame delta.</li>
 <li><strong>Main-thread queue helper</strong> — generic <code>MainThreadQueueHelper.Drain&lt;T&gt;</code> / <code>TryEnqueue&lt;T&gt;</code> for marshalling async work back to Unity's main thread.</li>
 <li><strong>Address resolution</strong> — <code>ServerAddressProvider</code> resolves IPv4/IPv6 bind addresses from the transport layer with optional overrides.</li>
@@ -218,7 +345,7 @@
 <li><strong>Server launcher</strong> — <code>ServerLauncher</code> loads Addressable scenes by command-line argument (<code>LOGIN</code>, <code>WORLD</code>, <code>SCENE</code>) or a configurable boot list.</li>
 <li><strong>Window title updater</strong> — <code>ServerWindowTitleUpdater</code> periodically sets the OS process/console title with transport type, connection state, and client count (Windows, Linux, macOS).</li>
 <li><strong>Dual account manager strategy</strong> — <code>SrpAccountManager</code> for SRP-authenticated login servers; <code>TokenAccountManager</code> for token-authenticated world/scene servers.</li>
-<li><strong>Dual authenticator strategy</strong> — <code>ServerAuthenticator</code> (SRP) and <code>TokenServerAuthenticator</code> selected at startup based on scene type.</li>
+<li><strong>Dual authenticator strategy</strong> — <code>ServerAuthenticator</code> (SRP, login server) and <code>TokenServerAuthenticator</code> selected at startup based on scene type; the world and scene servers use its subclasses <code>WorldServerAuthenticator</code> and <code>SceneServerAuthenticator</code>.</li>
 <li><strong>Idempotent shutdown</strong> — <code>PerformShutdown</code> runs once via <code>hasShutdown</code> flag, cleaning up behaviours, containers, authenticator workers, network, database, and core server in reverse order.</li>
 <li><strong>KCC integration</strong> — <code>KinematicCharacterSystem.AutoSimulation</code> set to <code>false</code> for deterministic server-driven simulation.</li>
 <li><strong>Snapshot-safe behaviour dispatch</strong> — behaviour list is snapshotted before <code>OnLateUpdate</code> dispatch to prevent <code>InvalidOperationException</code> if behaviours register or unregister during update.</li>
@@ -318,8 +445,38 @@ after an await.</li>
 </tr>
 <tr>
 <td>Transport settings</td>
-<td><code>IServerConfiguration</code> / <code>appsettings.json</code></td>
+<td><code>IServerConfiguration</code>, backed by <code>LoginServer.cfg</code> / <code>WorldServer.cfg</code> / <code>SceneServer.cfg</code></td>
 <td>Bind address, port, max clients applied via <code>ApplyTransportConfiguration</code></td>
+</tr>
+<tr>
+<td><code>EnableIPv6</code> / <code>IPv6Address</code></td>
+<td>Server <code>.cfg</code></td>
+<td>Dual-stack bind on the same port</td>
+</tr>
+<tr>
+<td><code>BroadcastMaxMessagesPerSecond</code> / <code>BroadcastMessageBurst</code></td>
+<td>Server <code>.cfg</code></td>
+<td>Transport-agnostic per-connection broadcast budget (defaults 100 / 200). <code>0</code> disables</td>
+</tr>
+<tr>
+<td><code>TransportMaxInboundMessagesPerSecond</code> / <code>TransportInboundMessageBurst</code></td>
+<td>Server <code>.cfg</code></td>
+<td>WebTransport receive-thread budget (defaults 200 / 400)</td>
+</tr>
+<tr>
+<td><code>TransportConnectIntervalMs</code>, <code>TransportMaxConnectionsPerIP</code>, <code>TransportMaxHalfOpenConnections</code>, <code>TransportMaxQueuedDatagramsPerConnection</code>, <code>TransportMaxH3StreamsPerConnection</code></td>
+<td>Server <code>.cfg</code></td>
+<td>Native WebTransport connection limits applied pre-handshake. <code>-1</code> = library default, <code>0</code> = disabled</td>
+</tr>
+<tr>
+<td><code>LoginQueueUpdateRateSeconds</code> / <code>LoginQueueAdmissionRatePerSecond</code></td>
+<td>Server <code>.cfg</code></td>
+<td><code>LoginQueueSystem</code> position-broadcast interval and admission smoothing</td>
+</tr>
+<tr>
+<td><code>FISHMMO_SMTP_HOST</code>, <code>FISHMMO_SMTP_PORT</code>, …</td>
+<td>Environment</td>
+<td>Override the configured SMTP settings for container/orchestration deployments</td>
 </tr>
 </tbody>
 </table>
@@ -410,9 +567,24 @@ if (Server.DataContainerRegistry.TryGet&lt;MyRuntimeData&gt;(out var data))
 <td>Log: <code>&quot;Auto-created RuntimeDataContainer: ...&quot;</code> for each type</td>
 </tr>
 <tr>
+<td>Schema verified</td>
+<td><code>VerifyDatabaseSchema</code> join before transport start</td>
+<td>No pending-migration abort; at worst a warning that the check could not run</td>
+</tr>
+<tr>
 <td>Network listening</td>
 <td><code>ServerManager_OnServerConnectionState</code></td>
 <td>Log: <code>&quot;Local: ... Remote: ... - Started&quot;</code></td>
+</tr>
+<tr>
+<td>Broadcast budget active</td>
+<td>Flood a connection past <code>BroadcastMaxMessagesPerSecond</code></td>
+<td>Log: <code>&quot;... exceeded the broadcast budget ...&quot;</code> then a <code>KickReason.ExploitExcessiveData</code> kick</td>
+</tr>
+<tr>
+<td>Waypoint authoring drift</td>
+<td>Scene-server scene load</td>
+<td><code>WaypointSceneAudit</code> logs any live-only / baked-only waypoint indices; agreement logs nothing to fix</td>
 </tr>
 <tr>
 <td>Window title updated</td>
@@ -471,6 +643,7 @@ if (Server.DataContainerRegistry.TryGet&lt;MyRuntimeData&gt;(out var data))
 │   ├─ Discover + create RuntimeDataContainers (priority-sorted)      │
 │   ├─ Register + initialise data containers                          │
 │   ├─ Register + initialise ServerBehaviours                         │
+│   ├─ Join VerifyDatabaseSchema (pending migrations = fatal)         │
 │   ├─ KCC AutoSimulation = false                                     │
 │   └─ NetworkWrapper.StartServer()                                   │
 │                                                                     │
@@ -490,22 +663,27 @@ if (Server.DataContainerRegistry.TryGet&lt;MyRuntimeData&gt;(out var data))
 └─────────────────────────────────────────────────────────────────────┘
           │                    │                     │
           ▼                    ▼                     ▼
-   ┌─────────────┐   ┌────────────────┐   ┌────────────────┐
-   │ LoginServer  │   │  WorldServer   │   │  SceneServer   │
-   │  Scene       │   │   Scene        │   │   Scene        │
-   │              │   │                │   │                │
-   │ Systems:     │   │ Systems:       │   │ Systems:       │
-   │ · Login      │   │ · WorldServer  │   │ · SceneServer  │
-   │ · AcctCreate │   │ · WorldScene   │   │ · Achievement  │
-   │ · CharCreate │   │ · Auth         │   │ · Character    │
-   │ · CharSelect │   │ · KickRequest  │   │ · Inventory    │
-   │ · ServerSel  │   │                │   │ · Chat/Guild   │
-   └─────────────┘   └────────────────┘   │ · Party/Friend │
-                                           │ · Pet/Hotkey   │
-                                           │ · Interactable │
-                                           │ · Naming       │
-                                           │ · SceneChannel │
-                                           └────────────────┘
+   ┌──────────────┐  ┌────────────────┐  ┌──────────────────────┐
+   │ LoginServer  │  │  WorldServer   │  │     SceneServer      │
+   │  Scene       │  │   Scene        │  │      Scene           │
+   │              │  │                │  │                      │
+   │ Systems:     │  │ Systems:       │  │ Systems:             │
+   │ · Login      │  │ · WorldServer  │  │ · SceneServer        │
+   │ · LoginQueue │  │ · WorldScene   │  │ · Character          │
+   │ · AcctCreate │  │ · Auth         │  │ · CharacterInventory │
+   │ · CharCreate │  │                │  │ · Interactable       │
+   │ · CharSelect │  └────────────────┘  │    (+ Arena,         │
+   │ · ServerSel  │                      │     Group/Dungeon    │
+   └──────────────┘                      │     Finder partials) │
+                                         │ · Chat / Guild       │
+   KickRequestSystem polls the database  │ · Party / Friend     │
+   for kick rows and disconnects the     │ · Trade              │
+   matching accounts. It lives at        │ · Quest / Achievement│
+   Implementation/KickRequest/.          │ · Pet / Hotkey       │
+                                         │ · Naming             │
+                                         │ · SceneChannel       │
+                                         │ · Housing (disabled) │
+                                         └──────────────────────┘
 </code></pre>
 <h2 id="project-structure">Project Structure</h2>
 <pre><code>Implementation/
@@ -514,13 +692,14 @@ if (Server.DataContainerRegistry.TryGet&lt;MyRuntimeData&gt;(out var data))
 ├── ServerBehaviour.cs                           # Base class for server-side behaviours (ScriptableObject)
 ├── ServerBehaviourRegistry.cs                   # Behaviour registration/initialisation orchestration
 ├── ServerComponentRegistry.cs                   # Generic component registry base class
-├── FishNetNetworkWrapper.cs                     # FishNet adapter implementing INetworkManagerWrapper
+├── FishNetNetworkWrapper.cs                     # FishNet adapter + broadcast budget + transport limits
 ├── INetworkManagerWrapper.cs                    # Network abstraction interface
 ├── MainThreadQueueHelper.cs                     # Static helper for main-thread queue drain/enqueue
+├── UnitySyncOverAsync.cs                        # Bounded, deadlock-safe blocking wait (shutdown paths only)
 ├── ServerAddressProvider.cs                     # Local/public server address resolution
 ├── PeriodicCallbackData.cs                      # Periodic callback timing state with cached name
 ├── PhysicsTicker.cs                             # Physics tick integration via FishNet TimeManager
-├── ServerLauncher.cs                            # Bootstrap: CLI args → Addressable scene loading
+├── ServerLauncher.cs                            # Bootstrap: CLI args -&gt; Addressable scene loading
 ├── ServerWindowTitleUpdater.cs                  # OS-native window/process title updater
 ├── ServerWindowTitleUpdaterRuntimeData.cs       # Runtime state for window title updater
 │
@@ -533,7 +712,12 @@ if (Server.DataContainerRegistry.TryGet&lt;MyRuntimeData&gt;(out var data))
 │   ├── IServerAuthenticator.cs                  #   Authenticator interface
 │   ├── BaseServerAuthenticator.cs               #   Shared authenticator base class
 │   ├── ServerAuthenticator.cs                   #   SRP authenticator (login server)
-│   └── TokenServerAuthenticator.cs              #   Token authenticator (world/scene)
+│   ├── TokenServerAuthenticator.cs              #   Token authenticator (world/scene)
+│   ├── AccountVerificationPolicy.cs             #   Whether an unverified account may log in
+│   └── SigningKeyKekProvider.cs                 #   Key-encryption-key source for token signing keys
+│
+├── Smtp/                                        # Outbound mail
+│   └── SmtpService.cs                           #   ISmtpService over System.Net.Mail
 │
 ├── RuntimeData/                                 # Shared runtime data container framework
 │   ├── RuntimeDataContainer.cs                  #   Base class for runtime data containers
@@ -543,58 +727,57 @@ if (Server.DataContainerRegistry.TryGet&lt;MyRuntimeData&gt;(out var data))
 │   ├── MainThreadQueueData.cs                   #   Base for main-thread queue data containers
 │   └── SystemMainThreadQueueData.cs             #   System-level main-thread queue data
 │
+├── KickRequest/                                 # Cross-server kick request handling
+│   ├── KickRequestSystem.cs
+│   ├── KickRequestSystemMainThreadQueueData.cs
+│   └── KickRequestSystemQueueData.cs
+│
 ├── LoginServer/                                 # Login-server-specific systems
+│   ├── LoginQueueSystem.cs                      #   FIFO admission queue at auth capacity
 │   ├── AccountCreation/                         #   Account creation workflow
 │   │   ├── AccountCreationSystem.cs
 │   │   ├── AccountCreationSystemMainThreadQueueData.cs
 │   │   ├── AccountCreationSystemMappingData.cs
-│   │   └── AccountCreationSystemRuntimeData.cs
+│   │   ├── AccountCreationSystemRuntimeData.cs
+│   │   └── IAccountCreationPuzzleProvider.cs
 │   ├── CharacterCreate/                         #   Character creation workflow
-│   │   ├── CharacterCreateSystem.cs
-│   │   ├── CharacterCreateSystemMainThreadQueueData.cs
-│   │   └── CharacterCreateSystemRuntimeData.cs
 │   ├── CharacterSelect/                         #   Character selection workflow
-│   │   ├── CharacterSelectSystem.cs
-│   │   ├── CharacterSelectSystemMainThreadQueueData.cs
-│   │   └── CharacterSelectSystemRuntimeData.cs
 │   ├── LoginServer/                             #   Login server lifecycle
-│   │   ├── LoginServerSystem.cs
-│   │   └── LoginServerRuntimeData.cs
 │   └── ServerSelect/                            #   Server selection workflow
-│       ├── ServerSelectSystem.cs
-│       ├── ServerSelectSystemMainThreadQueueData.cs
-│       └── ServerSelectSystemRuntimeData.cs
 │
 └── World/                                       # World and scene server systems
-    ├── KickRequest/                             #   Player kick request handling
-    │   ├── KickRequestSystem.cs
-    │   ├── KickRequestSystemMainThreadQueueData.cs
-    │   └── KickRequestSystemQueueData.cs
-    ├── LoginServer/                             #   Login-server-facing world systems
-    │   └── ServerSelect/
     ├── SceneServer/                             #   Scene-server-specific systems
-    │   ├── Achievement/                         #     Achievement tracking
-    │   ├── Authentication/                      #     Scene-server authentication
-    │   ├── Character/                           #     Character state management
-    │   ├── CharacterInventory/                  #     Inventory operations
-    │   ├── Chat/                                #     Chat messaging
-    │   ├── Friend/                              #     Friend list management
-    │   ├── Guild/                               #     Guild systems
-    │   ├── Hotkey/                              #     Hotkey configuration
-    │   ├── Interactable/                        #     Interactable objects
-    │   ├── Naming/                              #     Entity naming
-    │   ├── Party/                               #     Party systems
-    │   ├── Pet/                                 #     Pet systems
-    │   ├── SceneChannel/                        #     Scene channel management
+    │   ├── Achievement/                         #     AchievementSystem
+    │   ├── Authentication/                      #     SceneServerAuthenticator
+    │   ├── Character/                           #     CharacterSystem + 6 partials
+    │   ├── CharacterInventory/                  #     CharacterInventorySystem, ItemContainerMapping
+    │   ├── Chat/                                #     ChatSystem + Local/World/Tell/Group/Arena partials
+    │   ├── Friend/                              #     FriendSystem
+    │   ├── Guild/                               #     GuildSystem + Authority/Ranks/Recruitment, GuildAuthority
+    │   ├── Hotkey/                              #     HotkeySystem
+    │   ├── Housing/                             #     HousingSystem + 7 partials (off by default, no client UI)
+    │   ├── Interactable/                        #     InteractableSystem + 11 partials
+    │   │                                        #       (Merchant, Container, Dialogue, Mailbox, Corpse,
+    │   │                                        #        AbilityCraft, Waypoint, Arena, ArenaMatch,
+    │   │                                        #        GroupFinder, DungeonFinder)
+    │   ├── Naming/                              #     NamingSystem
+    │   ├── Party/                               #     PartySystem, PartyCombatMeterData
+    │   ├── Pet/                                 #     PetSystem
+    │   ├── Quest/                               #     QuestSystem
+    │   ├── SceneChannel/                        #     SceneChannelSystem
+    │   ├── Trade/                               #     TradeSystem + Handlers/Commit, TradeSession, TradeExchange
+    │   ├── Waypoint/                            #     WaypointPersistence, WaypointSceneAudit (static helpers)
     │   └── SceneServer/                         #     Scene server lifecycle
     │       ├── SceneServerSystem.cs
+    │       ├── SceneServerSystem.AdminCommands.cs
+    │       ├── SceneServerSystem.ServerControl.cs
+    │       ├── SceneServerPlacementPolicy.cs
     │       ├── SceneServerRuntimeData.cs
     │       ├── SceneServerSystemMainThreadQueueData.cs
     │       ├── SceneInstanceDetails.cs
     │       └── SceneInstanceMappingData.cs
     └── WorldServer/                             #   World-server-specific systems
-        ├── Authentication/                      #     World-server authentication
-        │   └── WorldServerAuthenticator.cs
+        ├── Authentication/                      #     WorldServerAuthenticator.cs
         ├── WorldScene/                          #     World scene management
         │   ├── WorldSceneSystem.cs
         │   ├── WorldSceneSystemRuntimeData.cs
@@ -611,20 +794,24 @@ if (Server.DataContainerRegistry.TryGet&lt;MyRuntimeData&gt;(out var data))
 ScriptableObject
 └── ServerBehaviour : IServerBehaviour&lt;INetworkManagerWrapper, ServerManager, NetworkConnection, IServerBehaviour&gt;
     ├── LoginServerSystem
+    ├── LoginQueueSystem
     ├── AccountCreationSystem
     ├── CharacterCreateSystem
     ├── CharacterSelectSystem
     ├── ServerSelectSystem
     ├── WorldServerSystem
     ├── WorldSceneSystem
-    ├── SceneServerSystem
+    ├── SceneServerSystem            (partial: .AdminCommands, .ServerControl)
     ├── KickRequestSystem
     ├── ServerWindowTitleUpdater
-    └── (scene-server systems: Achievement, Character, Chat, Guild, etc.)
+    └── (scene-server systems: CharacterSystem, CharacterInventorySystem, InteractableSystem,
+         ChatSystem, GuildSystem, PartySystem, FriendSystem, TradeSystem, HousingSystem,
+         QuestSystem, AchievementSystem, PetSystem, HotkeySystem, NamingSystem,
+         SceneChannelSystem — several of them `partial`)
 
 RuntimeDataContainer : IRuntimeDataContainer
 ├── LoginServerRuntimeData
-├── AccountCreationSystemRuntimeData
+├── AccountCreationSystemRuntimeData / ...MappingData
 ├── CharacterCreateSystemRuntimeData
 ├── CharacterSelectSystemRuntimeData
 ├── ServerSelectSystemRuntimeData
@@ -633,6 +820,12 @@ RuntimeDataContainer : IRuntimeDataContainer
 ├── SceneServerRuntimeData
 ├── ServerWindowTitleUpdaterRuntimeData
 ├── KickRequestSystemQueueData
+├── PartyCombatMeterData
+├── CharacterSystemRuntimeData / CharacterMappingData
+├── GuildSystemRuntimeData / GuildCharacterMappingData
+├── PartySystemRuntimeData / PartyCharacterMappingData
+├── NamingSystemRuntimeData / NamingSystemMappingData
+├── SceneInstanceMappingData / WorldSceneMappingData
 └── *SystemMainThreadQueueData variants
 
 INetworkManagerWrapper
@@ -646,10 +839,21 @@ IServerAuthenticator
 └── BaseServerAuthenticator
     ├── ServerAuthenticator        (SRP — login server)
     └── TokenServerAuthenticator   (token — world/scene servers)
+        ├── WorldServerAuthenticator
+        └── SceneServerAuthenticator
 
 ServerComponentRegistry&lt;TNet, TConn, TComponent&gt;
 ├── ServerBehaviourRegistry  : IServerBehaviourRegistry&lt;...&gt;
 └── RuntimeDataContainerRegistry
+
+Static helpers (no base type)
+├── WaypointPersistence     — dirty-page collection + OR merge, shared by unlock and save paths
+├── WaypointSceneAudit      — live vs. baked waypoint index comparison
+├── ItemContainerMapping    — the one cast between InventoryType and ItemContainerType
+│                            (pinned numerically identical by ItemContainerTypeParityTests)
+├── SceneServerPlacementPolicy
+├── MainThreadQueueHelper
+└── UnitySyncOverAsync
 </code></pre>
 <h2 id="license">License</h2>
 <p>This module is part of the FishMMO project and is distributed under the FishMMO project license. See the repository root for full license terms.</p>

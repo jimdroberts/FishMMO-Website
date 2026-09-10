@@ -111,7 +111,7 @@
 <blockquote>
 <p>Note: See the Detailed File-Level Topology in the parent <code>Prediction/README.md</code> (<code>../../README.md#detailed-file-level-topology</code>) for a file-level call/serialization topology and per-file interactions.</p>
 </blockquote>
-<p><code>CooldownController</code> implements <code>IPredictableController</code> (Order=90), running after <code>BuffController</code> (80) and before <code>CharacterAttributeController</code> (95) in the unified prediction pipeline driven by <code>CharacterPredictionController</code>. On each tick, it calls <code>ExpireElapsed()</code> to remove finished cooldowns. Reconcile snapshots use <code>CooldownReconcileEntry[]</code> arrays with index-delta compression for bandwidth-efficient network synchronization.</p>
+<p><code>CooldownController</code> implements <code>IPredictableController</code> (Order=90), running after <code>KCCPlayer</code> (80) and <code>BuffController</code> (85) and before <code>CharacterAttributeController</code> (95) and <code>AbilityController</code> (100) in the unified prediction pipeline driven by <code>CharacterPredictionController</code>. On each tick, it calls <code>ExpireElapsed()</code> to remove finished cooldowns. Reconcile snapshots use <code>CooldownReconcileEntry[]</code> arrays with index-delta compression for bandwidth-efficient network synchronization.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
 <thead>
@@ -372,15 +372,35 @@ cooldownController.AddCooldown(abilityID, cd);
 </tr>
 <tr>
 <td><code>OnReconcile</code></td>
-<td>Calls <code>RestoreFromReconcile(entries)</code> to replace all cooldowns with server state</td>
+<td>Returns immediately unless this peer is the owner or the object is forwarded (<code>ObserverSyncMode.ObserversConsumeReconcile</code>); otherwise calls <code>RestoreFromReconcile(entries)</code> to replace all cooldowns with server state</td>
 </tr>
 </tbody>
 </table>
+<h4 id="cooldowns-are-owner-state-on-both-paths">Cooldowns are owner state, on both paths</h4>
+<p>The owner always reconciles — this is the authority for its own cooldown simulation and the
+correction that removes a cooldown it mispredicted. A non-owner reconciles only a <strong>forwarded</strong>
+object, because that is the only mode in which it runs the ability simulation at all. With
+forwarding off an observer never receives this reconcile, so the guard states the contract rather
+than defending against a message that cannot arrive.</p>
+<p>The spawn payload had already decided the same fact:
+<code>AbilityController.WritePayload</code> calls <code>cooldownController.Write(writer, includeEntries: isOwner)</code>,
+and a non-owner connection receives the <strong>same framed block with a zero count</strong> — <code>IsOnCooldown</code> is
+consulted only inside the caster's own replicate, which observers do not run for peers, and the one
+case where an observer does run it (forwarded mode) is served by the absolute reconcile FishNet
+sends on the tick an observer is added. Keeping the block framed leaves <code>Read()</code> unchanged. Without
+the reconcile guard the two paths disagreed about the same fact the moment forwarding was switched
+on.</p>
+<p>The <code>ICooldownController</code> static events are gated on <code>IsLocalOwner</code> inside
+<code>RestoreFromReconcile</code> as well as at <code>AddCooldown</code>/<code>ExpireElapsed</code>, because reconcile
+deserialisation also runs for objects the local player does not own and these events drive the
+local player's hotkey bar.</p>
 <h3 id="network-serialization">Network Serialization</h3>
 <h4 id="payload-full-state">Payload (Full State)</h4>
 <p>Used by <code>ReadPayload</code>/<code>WritePayload</code> for initial character spawn:</p>
 <ul>
-<li><strong>Write</strong>: <code>int count</code>, then per cooldown: <code>long abilityID</code>, <code>uint startTick</code>, <code>uint durationTicks</code></li>
+<li><strong>Write</strong>: <code>uint currentDomainTick</code>, a 4-byte block length, then <code>int count</code> and per cooldown
+<code>long abilityID</code>, <code>uint startTick</code>, <code>uint durationTicks</code>. <code>Write(writer, includeEntries: false)</code>
+writes the same framed block with a count of zero for a non-owner connection</li>
 <li><strong>Read</strong>: Reads entries and discards any already expired relative to <code>currentTick</code></li>
 </ul>
 <h4 id="delta-serialization-reconcile">Delta Serialization (Reconcile)</h4>

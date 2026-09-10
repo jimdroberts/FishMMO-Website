@@ -90,7 +90,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/CharacterInventory/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p><strong>Short description:</strong> SceneServer authority for item movement across player inventory, equipment, and bank containers, validating incoming client broadcasts, applying runtime container mutations, persisting state through async database services, and echoing successful operations back to the originating client.</p>
+<p><strong>Short description:</strong> SceneServer authority for item movement across player inventory, equipment, and bank containers, validating incoming client broadcasts, applying runtime container mutations, and persisting every logical operation as a single all-or-nothing database transaction that is gated on the character's session ownership, with a periodic authoritative snapshot as the backstop and an explicit failure broadcast back to the originating client.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
 <li><a href="#overview">Overview</a></li>
@@ -107,16 +107,29 @@
 <li><a href="#license">License</a></li>
 </ul>
 <h2 id="overview">Overview</h2>
-<p>The Character Inventory system is the SceneServer authority for item movement across player inventory, equipment, and bank containers. It validates incoming client broadcasts, applies runtime container mutations, persists resulting state through database services, and echoes successful operations back to the originating client.</p>
+<p>The Character Inventory system is the SceneServer authority for item movement across player inventory, equipment, and bank containers. It validates incoming client broadcasts, applies runtime container mutations, persists the resulting state, and echoes successful operations back to the originating client — or tells the client explicitly when the operation did not happen.</p>
 <blockquote>
-<p><strong>Note:</strong> <code>EquipmentController</code> is now part of the prediction pipeline (<code>IPredictableController</code> at Order 93). Equipment state is reconciled via <code>CharacterReconcileData</code>. The broadcast path (<code>EquipmentEquipItemBroadcast</code>/<code>EquipmentUnequipItemBroadcast</code>) handles client→server requests and echoes; attribute application is handled by the reconcile path. The legacy <code>EquipmentSetItemBroadcast</code> and <code>EquipmentSetMultipleItemsBroadcast</code> have been removed.</p>
+<p><strong>Note:</strong> <code>EquipmentController</code> is part of the prediction pipeline. Equip and unequip are not broadcasts: they ride the owner's replicate input (<code>CharacterReplicateData.EquipmentRequest</code>) and are applied inside the replicate tick on both peers. This system installs <code>EquipmentController.ServerRequestValidator</code> as the server-side gate and persists the result through <code>IEquipmentController.OnServerEquipmentChanged</code>, subscribed per character on <code>OnSpawnCharacter</code>. The only equipment broadcast left is <code>EquipmentUnequipItemBroadcast</code>, sent server → owner to name the slot the item landed in.</p>
 </blockquote>
+<h3 id="one-table-one-row-per-item">One table, one row per item</h3>
+<p>The three slot-keyed tables behind <code>ICharacterInventoryService</code>, <code>ICharacterEquipmentService</code> and <code>ICharacterBankService</code> are gone. There is now one <code>character_item</code> table behind one <code>ICharacterItemService</code>, keyed by the item's own identity; <code>container</code> and <code>slot</code> are ordinary mutable columns. That single change is why most of this file looks different from its previous version:</p>
+<ul>
+<li><strong>A move is an UPDATE, not a delete plus an insert.</strong> Under the per-slot schema, moving an item between two inventory slots, into an equipment socket, or out to the bank vacated a row that had to be deleted separately — often from a different table. Those call sites no longer exist. The only deletes left name items that genuinely ceased to exist.</li>
+<li><strong><code>Item.ID</code> is a real identity.</strong> Previously an item that moved slots became a different row, two items through one slot shared a row, and three tables' independent sequences handed the same number to three different items.</li>
+<li><strong>An item written for the first time has no id.</strong> <code>CharacterItemData.ID == 0</code> means &quot;never written&quot;; the database mints one and reports it back, and the runtime item's slot stays locked until that identity write-back lands.</li>
+</ul>
+<p><code>InventoryType</code> (gameplay) and <code>ItemContainerType</code> (persistence) exist as two enums because the database assembly cannot reference the Unity shared assembly. They are numerically identical by contract, pinned by <code>ItemContainerTypeParityTests</code>, and every cast goes through <code>ItemContainerMapping.ToContainerType</code> / <code>ToInventoryType</code> so that contract has one place to be re-checked.</p>
+<h3 id="the-memory--database-invariant">The memory / database invariant</h3>
+<p><strong>The in-memory containers are authoritative. The database is a replica that must converge to them. Memory is never rolled back by the persistence layer.</strong> Handlers mutate the containers synchronously on the main thread and only then capture an <code>ItemWriteBatch</code> for the worker. Both alternatives were rejected: mutating memory only after the commit would hold every item operation open across a database round trip while the replicated <code>SyncObject</code> slots stayed mutable, and restoring a captured pre-image on failure replays stale state over slots the player may have used since — the repair becomes the bug.</p>
+<p>So when a transaction rolls back, the database is left exactly as it was and memory has moved on. That divergence is resolved in memory's favour by <code>ItemWriteJournal.RequestReconcile</code>, which schedules an immediate authoritative snapshot. A rolled-back batch is deliberately <strong>not</strong> retried; the reconcile snapshot supersedes it and is always at least as current.</p>
+<p>The honest residual: if the process dies between the memory mutation and the commit, the operation is lost and the item is where it was before the player moved it. A lost action, never a lost or duplicated item.</p>
 <p>The system is designed to keep item state deterministic by:</p>
 <ul>
 <li>Executing container mutations on the main thread.</li>
-<li>Building DTO snapshots immediately after mutation.</li>
-<li>Enqueueing persistence work through the centralized async worker.</li>
-<li>Using optimistic concurrency versions on item and attribute records.</li>
+<li>Capturing an immutable DTO batch — never live <code>Item</code> references — immediately after mutation.</li>
+<li>Committing everything one logical operation touches in a single transaction, behind an ownership row lock.</li>
+<li>Ordering batches by a main-thread capture sequence, so a stale write cannot undo a newer one.</li>
+<li>Enqueueing persistence through the centralized async worker keyed by <code>characterID</code>, which the worker processes FIFO.</li>
 </ul>
 <p>A per-connection ingress guard provides debounce, global rate limiting, and in-flight tracking to prevent duplicate or rapid-fire mutation requests. Stale guard entries are swept periodically via <code>OnUpdate</code>.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
@@ -158,35 +171,36 @@
 </table>
 <h2 id="features">Features</h2>
 <ul>
-<li>Server-authoritative inventory, equipment, and bank item management</li>
-<li>Same-container slot swaps via <code>SwapItemSlots</code> with affected-item tracking</li>
-<li>Cross-container item moves/swaps between inventory, equipment, and bank with atomic rollback on failure</li>
-<li>Inventory item removal with async database slot deletion</li>
-<li>Equipment equip from inventory or bank with attribute persistence</li>
-<li>Equipment unequip to inventory or bank with attribute persistence</li>
-<li>Bank item removal with banker proximity validation</li>
-<li>Bank slot swaps (within bank, or between bank and inventory) with banker proximity validation</li>
+<li>Server-authoritative inventory, equipment, and bank item management over a single <code>character_item</code> table</li>
+<li>Atomic <code>ItemWriteBatch</code> persistence: every item row, item delete and attribute row one logical operation touches commits or rolls back together</li>
+<li>Session-ownership gate inside the same transaction (<code>ICharacterSessionOwnershipService.AssertOwnershipAsync</code>), quoting the ownership triple held when the mutation happened rather than when the write ran</li>
+<li>Capture-sequence ordering via <code>ItemWriteJournal</code>, which refuses a batch superseded by a later-captured write that already committed</li>
+<li>Periodic authoritative item snapshot of every resident character (<code>ICharacterItemService.SaveSnapshotAsync</code>) — prune plus ungated upsert of all three containers in one transaction</li>
+<li>Reconcile queue: a batch that never reached the database schedules an immediate repair snapshot with per-character backoff (<code>MaxReconcileBackoff</code> 30 s)</li>
+<li>Database-assigned item identities written back on the main thread (<code>ApplyAssignedIdentities</code>), with the destination slot locked until they land</li>
+<li>Same-container slot swaps via <code>SwapContainerItems</code>, reporting both affected items and any vacated slot</li>
+<li>Cross-container item moves/swaps between inventory, equipment, and bank with rollback of both containers on failure</li>
+<li>Stack split (<code>InventorySplitItemBroadcast</code>, <code>BankSplitItemBroadcast</code>) and stack merge, the pair that lets a player move any quantity anywhere (issue #198)</li>
+<li>Bulk upsert for identified rows as one statement, so the two halves of a swap never transiently share a <code>(character, container, slot)</code> key</li>
+<li>Two-party item exchange (<code>TryRunExchange</code>) with row locks taken first, then the memory apply, then the write, then the commit — this is what trade rides</li>
+<li>Explicit client failure notification (<code>ItemOperationFailedBroadcast</code>) sent from each handler's <code>finally</code>, so a refused request never leaves a stale slot or a stuck pending lock on screen</li>
+<li>Server-side item hooks for ECA actions: <code>ServerItemHooks.GrantInventoryItem</code>, <code>ServerItemHooks.InventoryChanged</code></li>
+<li>Consumable persistence via <code>IAbilityController.OnConsumableItemChanged</code>, so a potion drunk inside a replicate tick is recorded immediately rather than only by the next snapshot</li>
 <li>Per-operation ingress debounce via configurable <code>ingressDebounceMilliseconds</code></li>
 <li>Global per-connection rate limit (<code>GlobalPerConnectionRateMilliseconds</code> = 15 ms) across all inventory operations</li>
 <li>Bounded ingress guard sweep with configurable interval, TTL, and max removals per pass</li>
-<li>In-flight guard keys prevent concurrent processing of the same operation for the same connection</li>
-<li>Slot bounds validation before any container mutation</li>
-<li>Equipment slot enum validation (<code>ItemSlot</code>) before equip/unequip</li>
+<li>Slot bounds validation and <code>CharacterStateValidation.CanAct</code> before any container mutation</li>
 <li>Banker scene object validation: existence check, scene match, interaction range, and banker type confirmation</li>
-<li>Optimistic concurrency via <code>Version</code> increments on all item and attribute DTOs</li>
-<li>Async persistence via <code>TryEnqueueAsyncWork</code> with per-character ordered processing (<code>entityKey = characterID</code>)</li>
-<li>Backpressure handling: persistence enqueue returns <code>false</code> when queue is unavailable or full, with logged warnings</li>
-<li>Equipment/attribute coupling: equip and unequip operations persist both item movement and character attribute snapshots</li>
-<li>Cross-container swap rollback: if an exception occurs during a cross-container move, both containers are restored to their original state</li>
+<li>Backpressure handling: when <code>AsyncWorkerData</code> refuses admission (its outstanding-work cap), <code>EnqueuePersistence</code> still runs the work on the thread pool as a fallback and the client is told <code>ServerBusy</code> (&quot;outcome unknown&quot;), not that the operation failed</li>
 <li><code>CreateAssetMenu</code> integration for ScriptableObject creation in the Unity Editor</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
 <li><strong>Unity 6.3 LTS</strong></li>
 <li><strong>FishNetworking</strong> — networking framework</li>
-<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>ICharacterInventorySystem</code>, <code>ICharacterInventorySystemRuntimeData</code>, <code>IngressGuard</code>, <code>AsyncWorkerData</code>, broadcast types, and container interfaces</li>
-<li><strong>FishMMO Shared</strong> — provides <code>IPlayerCharacter</code>, <code>IInventoryController</code>, <code>IEquipmentController</code>, <code>IBankController</code>, <code>ICharacterAttributeController</code>, <code>IItemContainer</code>, <code>Item</code>, <code>ItemSlot</code>, <code>InventoryType</code>, <code>ISceneObject</code>, <code>IInteractable</code>, <code>Banker</code></li>
-<li><strong>FishMMO Database</strong> — provides <code>ICharacterItemService</code>, <code>ICharacterAttributeService</code>, and DTO types (<code>CharacterItemData</code>, <code>CharacterAttributeData</code>)</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>ICharacterInventorySystem</code>, <code>ICharacterInventorySystemRuntimeData</code>, <code>ICharacterInventorySystemMainThreadQueueData</code>, <code>ItemExchangeLeg</code>, <code>IngressGuard</code>, <code>AsyncWorkerData</code>, <code>ICharacterSystem</code>, <code>ICharacterMappingData</code>, and <code>CharacterSessionInfo</code></li>
+<li><strong>FishMMO Shared</strong> — provides <code>IPlayerCharacter</code>, <code>IInventoryController</code>, <code>IEquipmentController</code>, <code>IBankController</code>, <code>IAbilityController</code>, <code>IItemContainer</code>, <code>Item</code>, <code>ItemStackTransfer</code>, <code>ServerItemHooks</code>, <code>RemovedItemRecord</code>, <code>ItemSlot</code>, <code>InventoryType</code>, <code>CharacterStateValidation</code>, <code>ISceneObject</code>, <code>IInteractable</code>, <code>Banker</code>, and the broadcast types (<code>InventoryRemoveItemBroadcast</code>, <code>InventorySwapItemSlotsBroadcast</code>, <code>InventorySplitItemBroadcast</code>, <code>BankRemoveItemBroadcast</code>, <code>BankSwapItemSlotsBroadcast</code>, <code>BankSplitItemBroadcast</code>, <code>EquipmentUnequipItemBroadcast</code>, <code>ItemOperationFailedBroadcast</code>)</li>
+<li><strong>FishMMO Database</strong> — provides <code>ICharacterItemService</code>, <code>ICharacterAttributeService</code>, <code>ICharacterSessionOwnershipService</code>, <code>IUnitOfWorkService</code>, <code>ItemContainerType</code>, <code>CharacterItemIdAssignment</code>, <code>CharacterSessionLeaseData</code>, <code>BulkWriteResult</code>, and DTO types (<code>CharacterItemData</code>, <code>CharacterAttributeData</code>)</li>
 </ul>
 <h2 id="installation--build">Installation / Build</h2>
 <p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
@@ -197,6 +211,7 @@
 <li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
 <ul>
 <li><code>CharacterInventorySystemRuntimeData</code> → <code>ICharacterInventorySystemRuntimeData</code></li>
+<li><code>CharacterInventorySystemMainThreadQueueData</code> → <code>ICharacterInventorySystemMainThreadQueueData</code></li>
 <li><code>AsyncWorkerData</code> (shared async work queue)</li>
 </ul>
 </li>
@@ -204,11 +219,12 @@
 <ul>
 <li><code>ICharacterItemService</code></li>
 <li><code>ICharacterAttributeService</code></li>
+<li><code>ICharacterSessionOwnershipService</code> and <code>IUnitOfWorkService</code> (resolved per batch on the worker)</li>
 </ul>
 </li>
-<li>On initialize, <code>CharacterInventorySystem</code> validates all dependencies and registers broadcast handlers for inventory, equipment, and bank operations.</li>
-<li>On deinitialize, it unregisters all broadcast handlers and clears the ingress guard.</li>
-<li>Clients send the appropriate broadcast (e.g., <code>InventorySwapItemSlotsBroadcast</code>, <code>EquipmentEquipItemBroadcast</code>) and receive the same broadcast back on success.</li>
+<li>On initialize, <code>CharacterInventorySystem</code> validates its dependencies, registers the inventory and bank broadcast handlers, subscribes <code>ICharacterSystem.OnSpawnCharacter</code> / <code>OnDespawnCharacter</code>, and installs <code>EquipmentController.ServerRequestValidator</code> and the <code>ServerItemHooks</code> delegates.</li>
+<li>On deinitialize, it unregisters the broadcast handlers, unsubscribes the character hooks, clears the delegates it installed (only if they are still its own), clears the ingress guard, and clears the <code>ItemWriteJournal</code> — a stale watermark carried into a re-initialize would silently suppress the new run's first writes.</li>
+<li>Clients send the appropriate broadcast (e.g., <code>InventorySwapItemSlotsBroadcast</code>) and receive the same broadcast back on success, or an <code>ItemOperationFailedBroadcast</code> naming the operation, a coarse reason and the slots to resync.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
 <h3 id="inspector-parameters">Inspector Parameters</h3>
@@ -246,6 +262,12 @@
 <td>128</td>
 <td>Maximum stale ingress guard entries removed per sweep</td>
 </tr>
+<tr>
+<td><code>itemSnapshotIntervalSeconds</code></td>
+<td>float</td>
+<td>60.0</td>
+<td>Seconds between full inventory/bank/equipment snapshots of every resident character</td>
+</tr>
 </tbody>
 </table>
 <h3 id="internal-constants">Internal Constants</h3>
@@ -262,6 +284,21 @@
 <td><code>GlobalPerConnectionRateMilliseconds</code></td>
 <td>15</td>
 <td>Global per-connection rate limit in milliseconds across all inventory operations</td>
+</tr>
+<tr>
+<td><code>maxIdentityWriteBacksPerFrame</code></td>
+<td>64</td>
+<td>Ceiling on queued identity write-backs drained per frame. One action per batch that created items, so this is back-pressure rather than a rate that is reached</td>
+</tr>
+<tr>
+<td><code>DepartedWatermarkRetention</code></td>
+<td>10 min</td>
+<td>How long a departed character's journal watermarks are kept before the snapshot sweep prunes them</td>
+</tr>
+<tr>
+<td><code>ItemWriteJournal.MaxReconcileBackoff</code></td>
+<td>30 s</td>
+<td>Longest wait between repair snapshots for one character</td>
 </tr>
 </tbody>
 </table>
@@ -291,9 +328,14 @@
 <td><code>ingressSweepMaxRemovals</code></td>
 <td>1</td>
 </tr>
+<tr>
+<td><code>itemSnapshotIntervalSeconds</code></td>
+<td>5.0</td>
+</tr>
 </tbody>
 </table>
 <h3 id="ingress-operation-codes">Ingress Operation Codes</h3>
+<p>The server-side <code>IngressOperation</code> codes are an implementation detail; <code>ItemOperationType</code>, the enum on the wire, mirrors them so the client can name the operation that failed.</p>
 <table>
 <thead>
 <tr>
@@ -333,8 +375,52 @@
 <td>6</td>
 <td>Swap bank slots (or cross-container with inventory)</td>
 </tr>
+<tr>
+<td><code>InventorySplit</code></td>
+<td>7</td>
+<td>Split part of a stack into an inventory slot</td>
+</tr>
+<tr>
+<td><code>BankSplit</code></td>
+<td>8</td>
+<td>Split part of a stack into a bank slot</td>
+</tr>
 </tbody>
 </table>
+<h3 id="client-failure-reasons">Client Failure Reasons</h3>
+<p><code>ItemOperationFailureReason</code>, carried by <code>ItemOperationFailedBroadcast</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Unknown</code></td>
+<td>0</td>
+<td>Unclassified</td>
+</tr>
+<tr>
+<td><code>Rejected</code></td>
+<td>1</td>
+<td>Validation refused the request; nothing changed</td>
+</tr>
+<tr>
+<td><code>Throttled</code></td>
+<td>2</td>
+<td>Ingress debounce or in-flight guard refused it</td>
+</tr>
+<tr>
+<td><code>ServerBusy</code></td>
+<td>3</td>
+<td>The async worker refused admission; the work runs on the thread-pool fallback, so the <strong>outcome is unknown</strong> rather than failed</td>
+</tr>
+</tbody>
+</table>
+<p>The message carries no item identity — only the operation, the reason, and the slot indices the client itself sent. It is an instruction to resync those slots, never a source of truth about them.</p>
 <h3 id="threading-model">Threading Model</h3>
 <table>
 <thead>
@@ -346,11 +432,11 @@
 <tbody>
 <tr>
 <td>Main thread</td>
-<td>Request validation, ingress guard checks, container mutations, DTO building, broadcast dispatch, ingress guard sweep</td>
+<td>Request validation, ingress guard checks, container mutations, batch capture (<code>BeginItemBatch</code>, <code>CaptureSnapshotBatch</code>, <code>CaptureExchangeOnMainThread</code>), sequence allocation, broadcast dispatch, identity write-back, slot lock/unlock, ingress guard sweep, snapshot sweep, reconcile drain</td>
 </tr>
 <tr>
 <td>Async worker</td>
-<td>Database persistence and deletion (<code>PersistInventoryItemsAsync</code>, <code>PersistBankItemsAsync</code>, <code>PersistEquipmentItemAsync</code>, <code>PersistAttributesAsync</code>, <code>DeleteInventorySlotAsync</code>, <code>DeleteBankSlotAsync</code>, <code>DeleteEquipmentSlotAsync</code>)</td>
+<td><code>ApplyItemBatchAsync</code> and <code>RunExchangeAsync</code> — unit of work, ownership assertion, <code>ICharacterItemService.SaveSnapshotAsync</code> / <code>PersistAsync</code> / <code>PersistManyAsync</code> / <code>DeleteItemAsync</code>, and <code>ICharacterAttributeService</code> upserts</td>
 </tr>
 </tbody>
 </table>
@@ -374,17 +460,12 @@
 <tr>
 <td><code>InventorySwapItemSlotsBroadcast</code></td>
 <td><code>OnServerInventorySwapItemSlotsBroadcastReceived</code></td>
-<td>Swap inventory slots or move bank → inventory</td>
+<td>Swap inventory slots, merge stacks, or move bank → inventory</td>
 </tr>
 <tr>
-<td><code>EquipmentEquipItemBroadcast</code></td>
-<td><code>OnServerEquipmentEquipItemBroadcastReceived</code></td>
-<td>Equip item from inventory or bank</td>
-</tr>
-<tr>
-<td><code>EquipmentUnequipItemBroadcast</code></td>
-<td><code>OnServerEquipmentUnequipItemBroadcastReceived</code></td>
-<td>Unequip item to inventory or bank</td>
+<td><code>InventorySplitItemBroadcast</code></td>
+<td><code>OnServerInventorySplitItemBroadcastReceived</code></td>
+<td>Split part of a stack into an inventory slot</td>
 </tr>
 <tr>
 <td><code>BankRemoveItemBroadcast</code></td>
@@ -394,7 +475,53 @@
 <tr>
 <td><code>BankSwapItemSlotsBroadcast</code></td>
 <td><code>OnServerBankSwapItemSlotsBroadcastReceived</code></td>
-<td>Swap bank slots or move inventory → bank</td>
+<td>Swap bank slots, merge stacks, or move inventory → bank</td>
+</tr>
+<tr>
+<td><code>BankSplitItemBroadcast</code></td>
+<td><code>OnServerBankSplitItemBroadcastReceived</code></td>
+<td>Split part of a stack into a bank slot</td>
+</tr>
+</tbody>
+</table>
+<p>There are <strong>no equipment broadcast handlers</strong>. Outbound, the system sends <code>EquipmentUnequipItemBroadcast</code> (server → owner) and <code>ItemOperationFailedBroadcast</code>.</p>
+<h3 id="server-side-surface">Server-Side Surface</h3>
+<p><code>ICharacterInventorySystem</code> is what the rest of the server uses to touch items:</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TryGrantItem(character, item, container)</code></td>
+<td>Places a granted item, locks its slot until the database mints an identity, and broadcasts it to the owner with id 0 so the client shows it as pending</td>
+</tr>
+<tr>
+<td><code>TryPersistGrantedItems(character, modifiedItems, container, operation)</code></td>
+<td>Persists a set of items an external system placed</td>
+</tr>
+<tr>
+<td><code>PersistInventoryChanges(character, changed, removed)</code></td>
+<td>One batch of row updates plus real deletes; the target of <code>ServerItemHooks.InventoryChanged</code></td>
+</tr>
+<tr>
+<td><code>CaptureDespawnFlush(character, lease)</code></td>
+<td>Captures the logout snapshot <strong>while the character is still resident</strong> and returns the work as a <code>Func&lt;Task&gt;</code>. <code>CharacterSystem</code> awaits it before releasing the session, so it is ordered against the hand-off rather than racing it on another lane</td>
+</tr>
+<tr>
+<td><code>TryRunExchange(first, second, applyOnMainThread, onFinished, operation)</code></td>
+<td>Two-party exchange; trade rides this</td>
+</tr>
+<tr>
+<td><code>NotifyInventorySlots(character, set, emptied)</code></td>
+<td>Tells the owner what a set of slots now holds</td>
+</tr>
+<tr>
+<td><code>SwapContainerItems(...)</code></td>
+<td>Same-container and cross-container swap primitives</td>
 </tr>
 </tbody>
 </table>
@@ -402,106 +529,51 @@
 <p><code>OnServerInventoryRemoveItemBroadcastReceived(conn, msg, channel)</code>:</p>
 <ol>
 <li>Validates connection and spawned player object.</li>
-<li>Acquires ingress guard for <code>InventoryRemove</code>.</li>
-<li>Validates character exists and is not teleporting.</li>
-<li>Resolves <code>IInventoryController</code>.</li>
+<li>Acquires ingress guard for <code>InventoryRemove</code>; a refusal sends <code>Throttled</code> — the client holds a pending lock on the slot and with no reply would hold it forever.</li>
+<li>Validates the character, <code>CharacterStateValidation.CanAct</code>, and <code>IInventoryController</code>.</li>
 <li>Validates slot bounds via <code>IsValidSlot(msg.Slot)</code>.</li>
-<li>Calls <code>RemoveItem(msg.Slot)</code> on the inventory controller.</li>
-<li>Increments item <code>Version</code> and enqueues async <code>DeleteInventorySlotAsync</code>.</li>
-<li>Broadcasts success back to client.</li>
+<li>Calls <code>RemoveItem(msg.Slot)</code>.</li>
+<li>Increments <code>item.Version</code> and captures a batch holding one <code>ItemDelete</code> addressed by item id — a real destruction, not a vacated hole.</li>
+<li>Broadcasts the original message back on success; otherwise <code>ServerBusy</code>.</li>
+<li>In <code>finally</code>: releases the guard and, if success was never set, sends <code>ItemOperationFailedBroadcast</code>. Success is set at exactly one line, so every validation return — including ones a later edit adds — falls through to the notification.</li>
 </ol>
 <h3 id="inventory-swap-path">Inventory Swap Path</h3>
 <p><code>OnServerInventorySwapItemSlotsBroadcastReceived(conn, msg, channel)</code>:</p>
 <ol>
 <li>Validates connection, spawned player, character, and <code>IInventoryController</code>.</li>
 <li>Acquires ingress guard for <code>InventorySwap</code>.</li>
-<li>Switches on <code>msg.FromInventory</code>:
+<li>Attempts <code>TryMergeStacks</code> first: a drop onto a matching, non-full stack is a merge, not a swap.</li>
+<li>Otherwise switches on <code>msg.FromInventory</code>:
 <ul>
-<li><strong>Inventory → Inventory:</strong> Validates both slot bounds, calls <code>SwapContainerItems(inventoryController, from, to)</code>, persists affected items.</li>
-<li><strong>Bank → Inventory:</strong> Validates banker scene object, validates slot bounds, calls <code>SwapContainerItems(bankController, inventoryController, from, to)</code>, persists bank items, deletes vacated bank slots, persists inventory items.</li>
-<li><strong>Equipment → Inventory:</strong> Not handled (no-op).</li>
+<li><strong>Inventory → Inventory:</strong> validates both slot bounds, calls <code>SwapContainerItems(inventoryController, from, to, …)</code>, writes both rows in one batch.</li>
+<li><strong>Bank → Inventory:</strong> validates the banker scene object, validates slot bounds, calls the cross-container <code>SwapContainerItems</code>, and writes every affected row of both containers in one batch. No vacated-slot deletes: a move updates the item's own row.</li>
+<li><strong>Equipment → Inventory:</strong> not handled (no-op).</li>
 </ul>
 </li>
-<li>Broadcasts success back to client.</li>
+<li>Broadcasts success back to the client, or reports the failure from <code>finally</code>.</li>
 </ol>
-<h3 id="equipment-equip-path">Equipment Equip Path</h3>
-<p><code>OnServerEquipmentEquipItemBroadcastReceived(conn, msg, channel)</code>:</p>
-<ol>
-<li>Validates connection, spawned player, character, and <code>IEquipmentController</code>.</li>
-<li>Acquires ingress guard for <code>EquipmentEquip</code>.</li>
-<li>Validates <code>msg.Slot</code> is a defined <code>ItemSlot</code> enum value.</li>
-<li>Switches on <code>msg.FromInventory</code>:
+<p>A swap is refused outright when either slot is locked (<code>IsSlotLocked</code>) — an item awaiting its database identity must not move.</p>
+<h3 id="stack-split-and-merge-issue-198">Stack Split and Merge (issue #198)</h3>
+<p>Split is a new operation rather than a variation on swap: every other item message moves or exchanges whole slots and none changes an amount. The rules — at least one, less than the stack holds, onto an empty slot or a matching stack with room, both slots unlocked — live in <code>ItemStackTransfer.TrySplit</code>, which refuses before writing anything, so a refused split leaves the original stack untouched. Both halves travel in one batch, so the database either shows the split or shows the stack as it was. The split half has no identity until its row lands: its slot is locked, the set-slot message goes out with id 0, and <code>ApplyAssignedIdentities</code> unlocks and re-sends it.</p>
+<p>Merge is the inverse, handled inside the swap handlers by <code>TryMergeStacks</code> (<code>ItemStackTransfer.CanMergeInto</code> / <code>TryMerge</code>). It is <strong>not</strong> echoed as a swap — the client applies an echoed swap by exchanging two slots, which is the wrong thing for a merge — so the outcome goes out as a set-slot for the receiving stack plus either a set-slot or a remove for the donor. Those go out whether or not the batch queued normally: the containers have already changed and the client must be told what they now hold.</p>
+<p>The banker must be in range whenever either end of a split is a bank slot.</p>
+<h3 id="equipment-predicted">Equipment (predicted)</h3>
+<p>Equip and unequip have no broadcast handlers. The owner queues a request on its <code>EquipmentController</code> (<code>RequestEquip</code> / <code>RequestUnequip</code>), the request rides the next <code>CharacterReplicateData</code>, and <code>EquipmentController.OnReplicate</code> applies it on the owner and the server on the same tick. On the server the controller first asks <code>EquipmentController.ServerRequestValidator</code> — installed by this system as <code>ValidateEquipmentRequest</code>: <code>CharacterStateValidation.CanAct</code> plus banker range when the container is the bank — and a refusal leaves the socket unchanged, with the owner corrected by the next reconcile.</p>
+<p><code>Equipment_OnServerEquipmentChanged</code> then writes <strong>one</strong> batch: the socket row, the container row on the other side of the move, and the attribute rows the change altered. Half of that landing — the item equipped with none of its stats, or the stats without the item — is a state nothing else in the server knows how to repair. An unequip needs no equipment delete: the item that left the socket is written with its new container, which moves its row.</p>
+<p>For an unequip the owner is also sent <code>EquipmentUnequipItemBroadcast</code> naming the item, the socket, and the container and slot it landed in. The owner chose a slot too, from its own copy of the container, and the two can differ by a grant that landed on one side first; the owner then moves the item by identity.</p>
+<h3 id="item-exchange-tryrunexchange">Item Exchange (<code>TryRunExchange</code>)</h3>
+<p>The two-party path trade rides. <code>RunExchangeAsync</code> runs on a worker with two hops to the main thread, and the ordering is the whole design: take the row locks, <strong>then</strong> apply to memory on the main thread, <strong>then</strong> write, <strong>then</strong> commit. The lane key is the lower of the two character ids, so two exchanges between the same pair queue behind each other; ordering against every other write for either character is the row locks' job, not the lane's.</p>
+<p><code>PostMainThreadAsync</code> waits out a full main-thread queue rather than dropping the action — an exchange that cannot reach the main thread cannot finish, and a finish that never arrives leaves a trade window open with its slots locked. Every exit path finishes on the main thread exactly once, and <code>FinishExchangeOnMainThread</code> releases the slot locks the run took.</p>
+<h3 id="periodic-item-snapshot">Periodic Item Snapshot</h3>
+<p><code>SnapshotAllResidentCharacterItems</code> runs every <code>itemSnapshotIntervalSeconds</code> and writes a full snapshot for every resident character, plus any lingering combat-logout bodies (<code>CollectLingeringCharacters</code>).</p>
+<p>Before it existed, the incremental writes were the <em>only</em> record of a character's items — neither the periodic character save nor the logout save touched inventory, bank or equipment — so an incremental write that was silently rejected was permanent loss at the next login rather than a glitch. The snapshot downgrades every such failure to something that survives at most one interval.</p>
+<p>It cannot duplicate anything: <code>SaveSnapshotAsync</code> deletes every row for the character in the containers it names and re-inserts them in one transaction, so it writes exactly the set of items the server believes in, and running it twice is idempotent. Deleting first is also what makes it immune to the <code>(character_id, container, slot)</code> unique index — two items swapping slots have no intermediate state in which both hold the same one.</p>
+<p>Three details are load-bearing:</p>
 <ul>
-<li><strong>Inventory → Equipment:</strong> Validates slot bounds, retrieves item, calls <code>equipmentController.Equip(...)</code>. If replacing an existing equipped item, persists the swapped-back inventory item; otherwise deletes the vacated inventory slot. Persists the new equipment slot and character attributes.</li>
-<li><strong>Bank → Equipment:</strong> Validates banker scene object, validates slot bounds, follows same logic as inventory equip but against the bank controller.</li>
-<li><strong>Equipment → Equipment:</strong> Not handled (returns).</li>
+<li><strong>It names the containers it read.</strong> A character missing one of its three controllers leaves that container's rows alone rather than having them pruned on the strength of a list nobody built. Listing a container with none of its items is the legitimate way to say &quot;this container is empty&quot;, which is why an empty snapshot still has to run.</li>
+<li><strong>Its upsert is not version-gated.</strong> Version gating is the mechanism that makes an incremental write disappear, and this is the backstop for exactly that. Ordering is preserved instead by the capture sequence (<code>TryClaimSequence</code> refuses a snapshot once any later-captured write has committed) and by the per-character FIFO worker lane.</li>
+<li><strong>One instance in two slots is reported, not written.</strong> A duplicated in-memory instance would fail the primary key on every attempt; the snapshot keeps the first row, drops the rest, and logs at Error naming it an upstream duplication bug.</li>
 </ul>
-</li>
-<li>Broadcasts success back to client.</li>
-</ol>
-<h3 id="equipment-unequip-path">Equipment Unequip Path</h3>
-<p><code>OnServerEquipmentUnequipItemBroadcastReceived(conn, msg, channel)</code>:</p>
-<ol>
-<li>Validates connection, spawned player, character, and <code>IEquipmentController</code>.</li>
-<li>Acquires ingress guard for <code>EquipmentUnequip</code>.</li>
-<li>Validates <code>msg.Slot</code> is a defined <code>ItemSlot</code> enum value.</li>
-<li>Switches on <code>msg.ToInventory</code>:
-<ul>
-<li><strong>Equipment → Inventory:</strong> Retrieves equipped item, calls <code>equipmentController.Unequip(inventoryController, ...)</code>, persists modified inventory slots, deletes old equipment slot, persists character attributes.</li>
-<li><strong>Equipment → Bank:</strong> Validates banker scene object, follows same logic as inventory unequip but against the bank controller.</li>
-<li><strong>Equipment → Equipment:</strong> Not handled (no-op).</li>
-</ul>
-</li>
-<li>Broadcasts success back to client.</li>
-</ol>
-<h3 id="bank-remove-path">Bank Remove Path</h3>
-<p><code>OnServerBankRemoveItemBroadcastReceived(conn, msg, channel)</code>:</p>
-<ol>
-<li>Validates connection, spawned player, character, and <code>IBankController</code>.</li>
-<li>Acquires ingress guard for <code>BankRemove</code>.</li>
-<li>Validates banker scene object via <code>ValidateBankerSceneObject</code>.</li>
-<li>Validates slot bounds via <code>IsValidSlot(msg.Slot)</code>.</li>
-<li>Calls <code>RemoveItem(msg.Slot)</code> on the bank controller.</li>
-<li>Increments item <code>Version</code> and enqueues async <code>DeleteBankSlotAsync</code>.</li>
-<li>Broadcasts success back to client.</li>
-</ol>
-<h3 id="bank-swap-path">Bank Swap Path</h3>
-<p><code>OnServerBankSwapItemSlotsBroadcastReceived(conn, msg, channel)</code>:</p>
-<ol>
-<li>Validates connection, spawned player, character, and <code>IBankController</code>.</li>
-<li>Acquires ingress guard for <code>BankSwap</code>.</li>
-<li>Validates banker scene object.</li>
-<li>Switches on <code>msg.FromInventory</code>:
-<ul>
-<li><strong>Inventory → Bank:</strong> Validates both slot bounds, calls <code>SwapContainerItems(inventoryController, bankController, from, to)</code>, persists inventory items, deletes vacated inventory slots, persists bank items.</li>
-<li><strong>Bank → Bank:</strong> Validates both slot bounds, calls <code>SwapContainerItems(bankController, from, to)</code>, persists affected bank items.</li>
-<li><strong>Equipment → Bank:</strong> Not handled (no-op).</li>
-</ul>
-</li>
-<li>Broadcasts success back to client.</li>
-</ol>
-<h3 id="public-swap-methods">Public Swap Methods</h3>
-<table>
-<thead>
-<tr>
-<th>Method</th>
-<th>Parameters</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>SwapContainerItems</code></td>
-<td><code>(IItemContainer container, int fromIndex, int toIndex, out List&lt;Item&gt; affectedItems)</code></td>
-<td>Same-container swap; returns affected items</td>
-</tr>
-<tr>
-<td><code>SwapContainerItems</code></td>
-<td><code>(IItemContainer from, IItemContainer to, int fromIndex, int toIndex, out List&lt;Item&gt; affectedFromItems, out List&lt;long&gt; deletedFromSlots, out List&lt;Item&gt; affectedToItems)</code></td>
-<td>Cross-container swap with rollback; returns affected items and deleted slot indices</td>
-</tr>
-</tbody>
-</table>
 <h3 id="banker-validation">Banker Validation</h3>
 <p><code>ValidateBankerSceneObject(sceneObjectID, character)</code> performs four checks:</p>
 <ol>
@@ -512,11 +584,14 @@
 </ol>
 <h3 id="failure-semantics">Failure Semantics</h3>
 <ul>
-<li>Validation failures: no state change, no broadcast.</li>
-<li>Mutation success: client receives the original success broadcast payload.</li>
-<li>Cross-container swap exceptions: both containers are rolled back to their original state.</li>
-<li>Persistence enqueue/service failures: logged for operational visibility.</li>
-<li>Runtime state remains authoritative in-memory; persistence failures are observable through logs and should be monitored operationally.</li>
+<li>Validation failures: no state change, and an <code>ItemOperationFailedBroadcast</code> with <code>Rejected</code> from the handler's <code>finally</code>.</li>
+<li>Ingress refusal: <code>Throttled</code>.</li>
+<li>Enqueue refusal: the work still runs on the thread-pool fallback, so the client is told <code>ServerBusy</code> — outcome unknown, not failed.</li>
+<li>Mutation success: the client receives the original success broadcast payload (or, for a merge, set-slot/remove messages).</li>
+<li>Database rollback: memory is <strong>not</strong> rolled back; <code>RequestReconcile</code> schedules a repair snapshot with backoff, and the rolled-back batch is never retried.</li>
+<li>Ownership refusal (<code>AssertOwnershipAsync</code> fails): deliberately <strong>not</strong> reconciled. Another server is authoritative for that character; rewriting this server's copy over its state is the duplication the guard exists to prevent.</li>
+<li>Superseded batches are skipped with a debug log naming the operation, character and sequence.</li>
+<li>Cross-container swap exceptions: both containers are rolled back in memory before anything is captured.</li>
 </ul>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
@@ -533,91 +608,119 @@
 </tr>
 <tr>
 <td>Data containers available</td>
-<td>Verify <code>ICharacterInventorySystemRuntimeData</code> and <code>AsyncWorkerData</code> resolve from <code>DataContainerRegistry</code></td>
+<td>Verify <code>ICharacterInventorySystemRuntimeData</code>, <code>ICharacterInventorySystemMainThreadQueueData</code> and <code>AsyncWorkerData</code> resolve from <code>DataContainerRegistry</code></td>
 </tr>
 <tr>
 <td>Database services available</td>
-<td>Verify <code>ICharacterItemService</code>, and <code>ICharacterAttributeService</code> resolve from <code>Server.Database.ServiceRegistry</code></td>
+<td>Verify <code>ICharacterItemService</code> and <code>ICharacterAttributeService</code> resolve from <code>Server.Database.ServiceRegistry</code></td>
 </tr>
 <tr>
 <td>Inventory remove</td>
-<td>Remove an inventory item; confirm client receives <code>InventoryRemoveItemBroadcast</code> back and slot is deleted from database</td>
+<td>Remove an inventory item; confirm the client receives <code>InventoryRemoveItemBroadcast</code> back and the item's row is deleted by id</td>
 </tr>
 <tr>
 <td>Inventory swap (same container)</td>
-<td>Swap two inventory slots; confirm client receives <code>InventorySwapItemSlotsBroadcast</code> back and both slots are persisted</td>
+<td>Swap two inventory slots; confirm the client receives <code>InventorySwapItemSlotsBroadcast</code> back and both rows are updated in one statement</td>
 </tr>
 <tr>
 <td>Bank → inventory swap</td>
-<td>Swap a bank item to inventory while near a banker; confirm both containers updated and persisted</td>
+<td>Swap a bank item to inventory while near a banker; confirm both containers updated and the item's row shows the new container and slot</td>
 </tr>
 <tr>
 <td>Inventory → bank swap</td>
-<td>Swap an inventory item to bank while near a banker; confirm both containers updated and persisted</td>
+<td>Swap an inventory item to bank while near a banker; confirm the same</td>
+</tr>
+<tr>
+<td>Stack merge</td>
+<td>Drop a stack onto a matching, non-full stack; confirm set-slot messages (not a swap echo) and that the donor is removed when emptied</td>
+</tr>
+<tr>
+<td>Stack split</td>
+<td>Split part of a stack; confirm both halves persist in one batch and the new half's slot unlocks when its identity write-back arrives</td>
 </tr>
 <tr>
 <td>Equip from inventory</td>
-<td>Equip an item from inventory; confirm equipment slot persisted, inventory slot deleted or swapped, and attributes persisted</td>
+<td>Equip an item; confirm the socket row, the vacated container row and the attribute rows all land in one transaction</td>
 </tr>
 <tr>
 <td>Equip from bank</td>
-<td>Equip an item from bank while near a banker; confirm equipment slot persisted, bank slot deleted or swapped, and attributes persisted</td>
+<td>Equip from bank while near a banker; confirm the same, and that the request is refused when the banker is out of range</td>
 </tr>
 <tr>
-<td>Unequip to inventory</td>
-<td>Unequip an item to inventory; confirm inventory slots persisted, equipment slot deleted, and attributes persisted</td>
+<td>Unequip</td>
+<td>Unequip an item; confirm <code>EquipmentUnequipItemBroadcast</code> names the slot it landed in and the item's row moves container</td>
 </tr>
 <tr>
-<td>Unequip to bank</td>
-<td>Unequip an item to bank while near a banker; confirm bank slots persisted, equipment slot deleted, and attributes persisted</td>
+<td>Consumable use</td>
+<td>Use a consumable; confirm a reduced stack is a row update and a destroyed one is a delete by item id</td>
 </tr>
 <tr>
 <td>Bank remove</td>
-<td>Remove a bank item while near a banker; confirm client receives <code>BankRemoveItemBroadcast</code> back and slot is deleted from database</td>
-</tr>
-<tr>
-<td>Bank swap (same container)</td>
-<td>Swap two bank slots while near a banker; confirm client receives <code>BankSwapItemSlotsBroadcast</code> back and both slots are persisted</td>
+<td>Remove a bank item while near a banker; confirm the client receives <code>BankRemoveItemBroadcast</code> back</td>
 </tr>
 <tr>
 <td>Banker validation failure</td>
-<td>Attempt a bank operation without a valid banker in range; confirm request is silently dropped</td>
+<td>Attempt a bank operation without a valid banker in range; confirm <code>ItemOperationFailedBroadcast</code> with <code>Rejected</code></td>
 </tr>
 <tr>
 <td>Slot bounds validation</td>
-<td>Send a broadcast with an out-of-bounds slot index; confirm request is silently dropped</td>
+<td>Send a broadcast with an out-of-bounds slot index; confirm <code>Rejected</code></td>
 </tr>
 <tr>
-<td>Equipment slot validation</td>
-<td>Send an equip broadcast with an undefined <code>ItemSlot</code> value; confirm request is silently dropped</td>
+<td>Locked slot</td>
+<td>Attempt to swap a slot whose item is awaiting its database identity; confirm the request is refused</td>
 </tr>
 <tr>
-<td>Teleporting rejection</td>
-<td>Attempt any inventory operation while character is teleporting; confirm request is silently dropped</td>
+<td>CanAct rejection</td>
+<td>Attempt any inventory operation while the character cannot act; confirm <code>Rejected</code></td>
 </tr>
 <tr>
 <td>Ingress debounce</td>
-<td>Send rapid consecutive requests from the same connection for the same operation; confirm excess requests are dropped</td>
+<td>Send rapid consecutive requests for the same operation; confirm excess requests return <code>Throttled</code></td>
 </tr>
 <tr>
 <td>Global rate limit</td>
-<td>Send different operations faster than 15 ms apart from the same connection; confirm excess requests are dropped</td>
+<td>Send different operations faster than 15 ms apart from the same connection; confirm <code>Throttled</code></td>
 </tr>
 <tr>
 <td>Ingress guard sweep</td>
-<td>Wait for sweep interval; confirm stale guard entries are removed without errors</td>
+<td>Wait for the sweep interval; confirm stale guard entries are removed without errors</td>
 </tr>
 <tr>
-<td>Cross-container rollback</td>
-<td>Trigger an exception during a cross-container swap (e.g., corrupted container); confirm both containers revert to original state</td>
+<td>Periodic snapshot</td>
+<td>Wait <code>itemSnapshotIntervalSeconds</code>; confirm every resident character's three containers are written in one transaction and orphan rows are pruned</td>
+</tr>
+<tr>
+<td>Snapshot prune</td>
+<td>Empty a character's bank, wait for a snapshot; confirm the bank rows are removed rather than lingering</td>
+</tr>
+<tr>
+<td>Reconcile after rollback</td>
+<td>Force a batch to fail at the database; confirm memory is unchanged and a repair snapshot follows with backoff</td>
+</tr>
+<tr>
+<td>Ownership refusal</td>
+<td>Let another server claim the character mid-write; confirm the batch is refused, logged, and <strong>not</strong> reconciled</td>
+</tr>
+<tr>
+<td>Identity write-back</td>
+<td>Grant an item; confirm the client first sees id 0 with the slot locked, then the slot unlocks and re-sends with the assigned id</td>
+</tr>
+<tr>
+<td>Logout flush ordering</td>
+<td>Disconnect a character; confirm <code>CaptureDespawnFlush</code> runs before the session release, not on a separate lane</td>
+</tr>
+<tr>
+<td>Exchange</td>
+<td>Run a trade; confirm row locks precede the memory apply and the finish runs on the main thread exactly once</td>
 </tr>
 <tr>
 <td>Persistence backpressure</td>
-<td>Saturate the async work queue; confirm new persistence tasks are rejected and a warning is logged</td>
+<td>Saturate the async work queue; confirm the client receives <code>ServerBusy</code> and the work still completes on the fallback</td>
 </tr>
 <tr>
 <td>Deinitialize cleanup</td>
-<td>Trigger deinitialize; confirm broadcast handlers are unregistered and ingress guard is cleared</td>
+<td>Trigger deinitialize; confirm handlers are unregistered, the installed delegates cleared, the ingress guard cleared and the write journal cleared</td>
 </tr>
 </tbody>
 </table>
@@ -626,144 +729,128 @@
 <pre><code class="lang-mermaid">flowchart LR
     Client[Unity Client] --&gt;|inventory ops| Sys[CharacterInventorySystem]
     Sys --&gt;|validate| Items[Item registry]
-    Sys --&gt;|persist| DB[(PostgreSQL Inventory)]
-    Sys --&gt;|broadcast| Client
-    Sys --&gt;|equip changes| Char[CharacterSystem]
+    Sys --&gt;|one transaction| DB[(PostgreSQL character_item)]
+    Sys --&gt;|echo / failure| Client
+    Char[CharacterSystem] --&gt;|spawn / despawn| Sys
+    Equip[EquipmentController replicate] --&gt;|OnServerEquipmentChanged| Sys
+</code></pre>
+<h3 id="batch-lifecycle">Batch Lifecycle</h3>
+<pre><code>Main thread                                  Async worker
+────────────                                 ────────────
+mutate containers
+BeginItemBatch(characterID, operation)
+  ├─ ResolveSessionLease → ownership triple
+  ├─ ItemWriteJournal.NextSequence
+  └─ add item writes / deletes / attributes
+EnqueueItemBatch → EnqueuePersistence(characterID)
+                                             ApplyItemBatchAsync(batch)
+                                             ├─ ShouldApply (cheap pre-test)
+                                             ├─ IUnitOfWorkService.BeginAsync
+                                             ├─ AssertOwnershipAsync (row lock)
+                                             │    └─ refused → rollback, NO reconcile
+                                             ├─ TryClaimSequence (under the lock)
+                                             ├─ ApplyBatchStepsAsync
+                                             │    ├─ snapshot → SaveSnapshotAsync
+                                             │    └─ incremental → DeleteItemAsync,
+                                             │         bulk upsert (identified),
+                                             │         PersistAsync (unidentified → new ids)
+                                             ├─ attribute upserts
+                                             ├─ CommitAsync
+                                             │    └─ failure → RequestReconcile
+                                             └─ TryEnqueueMainThread
+main thread: ApplyAssignedIdentities
+  └─ write ids onto live Items, unlock slots, re-broadcast
 </code></pre>
 <h3 id="inventory-remove">Inventory Remove</h3>
 <pre><code>OnServerInventoryRemoveItemBroadcastReceived(conn, msg, channel)
 │
 ├─ 1. Validate connection + spawned object
-├─ 2. Acquire ingress guard (InventoryRemove)
-├─ 3. Validate character exists + not teleporting
-├─ 4. Resolve IInventoryController
-├─ 5. Validate slot bounds
-├─ 6. RemoveItem(msg.Slot)
-├─ 7. Version++ → TryEnqueueAsyncWork(DeleteInventorySlotAsync)
-└─ 8. Broadcast success to client
+├─ 2. Acquire ingress guard (InventoryRemove) → refused: Throttled
+├─ 3. Validate character + CanAct + IInventoryController
+├─ 4. Validate slot bounds
+├─ 5. RemoveItem(msg.Slot)
+├─ 6. Version++ → BeginItemBatch → AddItemDelete(item.ID, version)
+├─ 7. EnqueueItemBatch → echo msg, or SendServerBusy
+└─ finally: EndIngressGuard + ItemOperationFailedBroadcast if not succeeded
 </code></pre>
-<h3 id="inventory-swap-with-cross-container-support">Inventory Swap (with cross-container support)</h3>
+<h3 id="inventory-swap-merge-same-container-cross-container">Inventory Swap (merge, same-container, cross-container)</h3>
 <pre><code>OnServerInventorySwapItemSlotsBroadcastReceived(conn, msg, channel)
 │
 ├─ 1. Validate connection + spawned object
 ├─ 2. Acquire ingress guard (InventorySwap)
-├─ 3. Validate character + IInventoryController
+├─ 3. Validate character + CanAct + IInventoryController
+├─ 4. TryMergeStacks → handled: set-slot / remove messages, done
 │
 ├─ FromInventory = Inventory:
-│  ├─ 4a. Validate both slot bounds
-│  ├─ 5a. SwapContainerItems(inventory, from, to)
-│  ├─ 6a. BuildInventoryItemDataList → TryEnqueueAsyncWork(PersistInventoryItemsAsync)
-│  └─ 7a. Broadcast success
+│  ├─ Validate both slot bounds + slots unlocked
+│  ├─ SwapContainerItems(inventory, from, to)
+│  ├─ One batch: both rows
+│  └─ Echo msg
 │
 ├─ FromInventory = Bank:
-│  ├─ 4b. Resolve IBankController
-│  ├─ 5b. ValidateBankerSceneObject
-│  ├─ 6b. Validate slot bounds
-│  ├─ 7b. SwapContainerItems(bank → inventory)
-│  ├─ 8b. Persist bank items / delete vacated bank slots / persist inventory items
-│  └─ 9b. Broadcast success
+│  ├─ Resolve IBankController + ValidateBankerSceneObject
+│  ├─ Validate slot bounds
+│  ├─ SwapContainerItems(bank → inventory)
+│  ├─ One batch: every affected row of both containers (no vacated-slot deletes)
+│  └─ Echo msg
 │
-└─ FromInventory = Equipment: no-op
+├─ FromInventory = Equipment: no-op
+└─ finally: EndIngressGuard + ItemOperationFailedBroadcast if not succeeded
 </code></pre>
-<h3 id="equipment-equip">Equipment Equip</h3>
-<pre><code>OnServerEquipmentEquipItemBroadcastReceived(conn, msg, channel)
-│
-├─ 1. Validate connection + spawned object
-├─ 2. Acquire ingress guard (EquipmentEquip)
-├─ 3. Validate character + IEquipmentController
-├─ 4. Validate ItemSlot enum
-│
-├─ FromInventory = Inventory:
-│  ├─ 5a. Resolve IInventoryController + validate slot + get item
-│  ├─ 6a. equipmentController.Equip(...)
-│  ├─ 7a. Persist swapped-back inventory item OR delete vacated inventory slot
-│  ├─ 8a. Persist equipment slot
-│  ├─ 9a. BuildAttributeDataList → PersistAttributesAsync
-│  └─ 10a. Broadcast success
-│
-├─ FromInventory = Bank:
-│  ├─ 5b. Resolve IBankController + ValidateBankerSceneObject
-│  ├─ 6b. Validate slot + get item
-│  ├─ 7b. equipmentController.Equip(...)
-│  ├─ 8b. Persist swapped-back bank item OR delete vacated bank slot
-│  ├─ 9b. Persist equipment slot
-│  ├─ 10b. BuildAttributeDataList → PersistAttributesAsync
-│  └─ 11b. Broadcast success
-│
-└─ FromInventory = Equipment: returns
+<h3 id="stack-split">Stack Split</h3>
+<pre><code>OnServerInventorySplitItemBroadcastReceived / OnServerBankSplitItemBroadcastReceived
+└─ HandleSplitRequest(conn, ingress, operation, fromInventory, from, toInventory, to, amount)
+   │
+   ├─ 1. Validate connection + spawned object + ingress guard
+   ├─ 2. Banker in range if either end is a bank slot
+   ├─ 3. ItemStackTransfer.TrySplit (refuses before writing anything)
+   ├─ 4. LockSlot(to) — the new half has no identity yet
+   ├─ 5. One batch: both halves
+   ├─ 6. Set-slot messages (new half with ID 0, shown pending)
+   └─ finally: EndIngressGuard + ItemOperationFailedBroadcast if not succeeded
 </code></pre>
-<h3 id="equipment-unequip">Equipment Unequip</h3>
-<pre><code>OnServerEquipmentUnequipItemBroadcastReceived(conn, msg, channel)
-│
-├─ 1. Validate connection + spawned object
-├─ 2. Acquire ingress guard (EquipmentUnequip)
-├─ 3. Validate character + IEquipmentController
-├─ 4. Validate ItemSlot enum
-│
-├─ ToInventory = Inventory:
-│  ├─ 5a. Resolve IInventoryController + get equipped item
-│  ├─ 6a. equipmentController.Unequip(inventoryController, ...)
-│  ├─ 7a. Persist modified inventory slots
-│  ├─ 8a. Delete old equipment slot
-│  ├─ 9a. BuildAttributeDataList → PersistAttributesAsync
-│  └─ 10a. Broadcast success
-│
-├─ ToInventory = Bank:
-│  ├─ 5b. Resolve IBankController + ValidateBankerSceneObject
-│  ├─ 6b. Get equipped item
-│  ├─ 7b. equipmentController.Unequip(bankController, ...)
-│  ├─ 8b. Persist modified bank slots
-│  ├─ 9b. Delete old equipment slot
-│  ├─ 10b. BuildAttributeDataList → PersistAttributesAsync
-│  └─ 11b. Broadcast success
-│
-└─ ToInventory = Equipment: no-op
+<h3 id="equipment-no-handler">Equipment (no handler)</h3>
+<pre><code>owner: EquipmentController.RequestEquip / RequestUnequip
+   └─ rides CharacterReplicateData.EquipmentRequest
+        └─ EquipmentController.OnReplicate (owner + server, same tick)
+             ├─ server: ServerRequestValidator → ValidateEquipmentRequest
+             │            (CanAct + banker range for InventoryType.Bank)
+             └─ server: OnServerEquipmentChanged
+                  └─ Equipment_OnServerEquipmentChanged
+                       ├─ ONE batch: socket row + other-side row + attribute rows
+                       └─ unequip: EquipmentUnequipItemBroadcast (server → owner)
 </code></pre>
-<h3 id="bank-remove">Bank Remove</h3>
-<pre><code>OnServerBankRemoveItemBroadcastReceived(conn, msg, channel)
-│
-├─ 1. Validate connection + spawned object
-├─ 2. Acquire ingress guard (BankRemove)
-├─ 3. Validate character exists + not teleporting
-├─ 4. Resolve IBankController
-├─ 5. ValidateBankerSceneObject
-├─ 6. Validate slot bounds
-├─ 7. RemoveItem(msg.Slot)
-├─ 8. Version++ → TryEnqueueAsyncWork(DeleteBankSlotAsync)
-└─ 9. Broadcast success to client
+<h3 id="item-exchange">Item Exchange</h3>
+<pre><code>TryRunExchange(first, second, applyOnMainThread, onFinished, operation)
+└─ EnqueuePersistence(lane = min(firstID, secondID)) → RunExchangeAsync
+   │
+   ├─ Resolve IUnitOfWorkService + ICharacterSessionOwnershipService
+   ├─ Take row locks for both characters
+   ├─ PostMainThreadAsync → CaptureExchangeOnMainThread
+   │    ├─ Apply() mutates both characters' containers
+   │    └─ CaptureExchangeLeg per side → ItemWriteBatch[] + slot locks + ledger
+   ├─ Write both legs inside the transaction
+   ├─ CommitAsync
+   └─ PostMainThreadAsync → FinishExchangeOnMainThread(committed, applied)
+        └─ release exchange slot locks, invoke OnFinished exactly once
 </code></pre>
-<h3 id="bank-swap-with-cross-container-support">Bank Swap (with cross-container support)</h3>
-<pre><code>OnServerBankSwapItemSlotsBroadcastReceived(conn, msg, channel)
-│
-├─ 1. Validate connection + spawned object
-├─ 2. Acquire ingress guard (BankSwap)
-├─ 3. Validate character + IBankController
-├─ 4. ValidateBankerSceneObject
-│
-├─ FromInventory = Inventory:
-│  ├─ 5a. Resolve IInventoryController + validate both slot bounds
-│  ├─ 6a. SwapContainerItems(inventory → bank)
-│  ├─ 7a. Persist inventory items / delete vacated inventory slots / persist bank items
-│  └─ 8a. Broadcast success
-│
-├─ FromInventory = Bank:
-│  ├─ 5b. Validate both slot bounds
-│  ├─ 6b. SwapContainerItems(bank, from, to)
-│  ├─ 7b. BuildBankItemDataList → TryEnqueueAsyncWork(PersistBankItemsAsync)
-│  └─ 8b. Broadcast success
-│
-└─ FromInventory = Equipment: no-op
-</code></pre>
-<h3 id="ingress-guard-sweep-onupdate">Ingress Guard Sweep (OnUpdate)</h3>
+<h3 id="periodic-snapshot--sweeps-onupdate">Periodic Snapshot + Sweeps (OnUpdate)</h3>
 <pre><code>OnUpdate(deltaTime)
 │
-└─ Resolve ICharacterInventorySystemRuntimeData
-   └─ IngressGuard.Sweep(ingressSweepIntervalSeconds, ingressEntryTtlSeconds, ingressSweepMaxRemovals)
+├─ IngressGuard.Sweep(ingressSweepIntervalSeconds, ingressEntryTtlSeconds, ingressSweepMaxRemovals)
+├─ itemSnapshotTimer elapsed:
+│    ├─ SnapshotAllResidentCharacterItems
+│    │    └─ per character: CaptureSnapshotBatch (all three containers, one sequence,
+│    │         one transaction, containers it read named explicitly)
+│    └─ itemWriteJournal.PruneDeparted(DepartedWatermarkRetention)
+├─ DrainReconcileRequests → repair snapshots for characters whose write rolled back
+└─ DrainMainThreadQueue&lt;ICharacterInventorySystemMainThreadQueueData&gt;(maxIdentityWriteBacksPerFrame)
 </code></pre>
 <h3 id="cross-container-swap-internal">Cross-Container Swap (internal)</h3>
 <pre><code>SwapContainerItems(from, to, fromIndex, toIndex)
 │
 ├─ Same container? → SwapItemSlots(fromIndex, toIndex)
+├─ Either slot locked? → refuse
 │
 ├─ Get source item from 'from' container
 │  ├─ Destination occupied:
@@ -771,7 +858,7 @@
 │  │  └─ Track as affectedFromItem
 │  └─ Destination empty:
 │     ├─ Clear source → from.SetItemSlot(null, fromIndex)
-│     └─ Track as deletedFromSlot
+│     └─ Track as vacated slot (no database delete — the item's row simply moves)
 │
 ├─ Place source item in destination → to.SetItemSlot(fromItem, toIndex)
 │  └─ Track as affectedToItem
@@ -781,15 +868,21 @@
 <h2 id="project-structure">Project Structure</h2>
 <h3 id="directory-structure">Directory Structure</h3>
 <pre><code>CharacterInventory/
-├── CharacterInventorySystem.cs              # SceneServer implementation: broadcast handlers, validation,
-│                                            #   container mutations, DTO building, async persistence orchestration
-├── CharacterInventorySystemRuntimeData.cs   # Runtime data container for ingress guard state
+├── CharacterInventorySystem.cs                    # SceneServer implementation: broadcast handlers, validation,
+│                                                  #   container mutations, ItemWriteBatch/ItemWriteJournal,
+│                                                  #   exchange, snapshot, identity write-back
+├── CharacterInventorySystemRuntimeData.cs         # Runtime data container for ingress guard state
+├── CharacterInventorySystemMainThreadQueueData.cs # Per-system main-thread queue (identity write-backs,
+│                                                  #   exchange hops)
+├── ItemContainerMapping.cs                        # InventoryType ↔ ItemContainerType casts, in one place
 └── README.md
 </code></pre>
 <h3 id="related-core-contracts">Related Core Contracts</h3>
 <ul>
 <li><code>Server/Core/World/SceneServer/CharacterInventory/ICharacterInventorySystem.cs</code></li>
 <li><code>Server/Core/World/SceneServer/CharacterInventory/ICharacterInventorySystemRuntimeData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/CharacterInventory/ICharacterInventorySystemMainThreadQueueData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/CharacterInventory/ItemExchangeLeg.cs</code></li>
 </ul>
 <h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
 <pre><code>ServerBehaviour
@@ -797,18 +890,21 @@
 
 RuntimeDataContainer
 └── CharacterInventorySystemRuntimeData : ICharacterInventorySystemRuntimeData
+
+SystemMainThreadQueueData
+└── CharacterInventorySystemMainThreadQueueData : ICharacterInventorySystemMainThreadQueueData
 </code></pre>
 <h3 id="dto-types-used">DTO Types Used</h3>
-<pre><code>CharacterItemData   ← inventory item persistence
-CharacterItemData        ← bank item persistence
-CharacterItemData   ← equipment item persistence
-CharacterAttributeData   ← character attribute persistence
+<pre><code>CharacterItemData          ← one row per item, in any container (character_item)
+CharacterAttributeData     ← character attribute persistence
+CharacterSessionLeaseData  ← the ownership triple a batch is written under
+CharacterItemIdAssignment  ← identity the database minted for a row written without one
 </code></pre>
 <h3 id="database-services">Database Services</h3>
-<pre><code>ICharacterItemService   ← PersistAsync / DeleteAsync for inventory slots
-ICharacterItemService        ← PersistAsync / DeleteAsync for bank slots
-ICharacterItemService   ← PersistAsync / DeleteAsync for equipment slots
-ICharacterAttributeService   ← PersistAsync for character attributes
+<pre><code>ICharacterItemService              ← PersistAsync / PersistManyAsync / DeleteItemAsync / SaveSnapshotAsync
+ICharacterAttributeService         ← attribute upserts that ride the same transaction
+ICharacterSessionOwnershipService  ← AssertOwnershipAsync, inside the transaction, on a row lock
+IUnitOfWorkService                 ← the transaction each batch and exchange commits in
 </code></pre>
 <h2 id="license">License</h2>
 <p>This project is subject to the FishMMO project license.</p>

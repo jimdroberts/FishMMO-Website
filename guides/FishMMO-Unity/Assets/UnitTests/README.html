@@ -90,36 +90,72 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/UnitTests/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p>EditMode unit tests for FishMMO. The assembly now covers three broad areas, all of
-them running without a NetworkManager, a physics simulation, or a live server —
-roughly <strong>1,080 cases in about 25 seconds</strong>:</p>
+<p>The FishMMO test suite. <strong>221 fixtures / ~2,100 test methods</strong> live here, split across two
+assemblies:</p>
+<ul>
+<li><strong><code>FishMMO.UnitTests</code></strong> — 216 EditMode fixtures, all running without a NetworkManager, a
+physics simulation, or a live server.</li>
+<li><strong><code>FishMMO.UnitTests.PlayMode</code></strong> — 5 fixtures that drive the simulation harness in
+<code>Assets/TestHarness/</code> under a real player loop and a real FishNet server.</li>
+</ul>
 <table>
 <thead>
 <tr>
 <th>Area</th>
 <th>Folder</th>
+<th>Fixtures</th>
 <th>What it covers</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Authentication</strong></td>
-<td>root (<code>LoginTests.cs</code>, <code>SecurityTests.cs</code>, …)</td>
-<td>SRP-6a + X25519 ECDH handshake, TOTP, account locking, kick requests, rate limiting</td>
-</tr>
-<tr>
 <td><strong>Prediction &amp; combat</strong></td>
-<td><code>Prediction/</code> (76 files)</td>
-<td>The unified prediction pipeline, delta serialization, lag compensation, the attribute ledger, buffs, cooldowns, abilities, observer sync, bandwidth budgets</td>
+<td><code>Prediction/</code></td>
+<td>95</td>
+<td>The unified prediction pipeline, delta serialization, lag compensation, the attribute ledger, buffs, cooldowns, abilities, observer sync/culling, bandwidth budgets</td>
 </tr>
 <tr>
-<td><strong>Gameplay systems</strong></td>
-<td><code>AI/</code>, <code>Currency/</code>, <code>Map/</code>, <code>Server/</code>, root</td>
-<td>AI states and target selection, currency, world map projection, item stack conservation, chat sanitisation, character grounding</td>
+<td><strong>Gameplay, UI, content</strong></td>
+<td>root</td>
+<td>75</td>
+<td>Auth, UI Toolkit panels, items/trade/merchant, abilities, guild/group/arena, naming &amp; races, world map, nameplates, prefab authoring</td>
+</tr>
+<tr>
+<td><strong>NPC AI</strong></td>
+<td><code>AI/</code></td>
+<td>27</td>
+<td>Combat decisions, personalities, kiting, threat, pets, NavMesh bake agreement, spawners, AI LOD</td>
+</tr>
+<tr>
+<td><strong>Housing</strong></td>
+<td><code>Housing/</code></td>
+<td>10</td>
+<td>Plot identity, ownership, access, placement, lifecycle, tax and vault fees</td>
+</tr>
+<tr>
+<td><strong>PlayMode sims</strong></td>
+<td><code>PlayMode/</code></td>
+<td>5</td>
+<td>The four simulation scenes plus an <code>Update</code>-dispatch cost probe</td>
+</tr>
+<tr>
+<td><strong>Currency / Map</strong></td>
+<td><code>Currency/</code>, <code>Map/</code></td>
+<td>4</td>
+<td>Spend/grant paths, the persisted ledger numbering, map projection and the explored readout</td>
+</tr>
+<tr>
+<td><strong>Persistence, servers, travel</strong></td>
+<td><code>Persistence/</code>, <code>Server/</code>, <code>Teleport/</code>, <code>Waypoint/</code>, <code>NPC/</code></td>
+<td>5</td>
+<td>The 2026-09-07 persistence audit invariants, scene-server placement, teleporter keys, waypoint unlock bits, the dashboard NPC designer</td>
 </tr>
 </tbody>
 </table>
-<p><code>PlayMode/</code> holds the small number of tests that genuinely need a running player loop.</p>
+<p>The suite is a <strong>regression ledger</strong> as much as a test suite: a large share of the
+<code>Prediction/</code> fixtures are named after the audit that found the defect
+(<code>CombatAudit20260831Round3Tests</code>, <code>PredictionAuditRegressionTests</code>,
+<code>AuditFollowUpFixTests</code>) and each test names the defect it pins.</p>
 <h3 id="the-authentication-harness">The authentication harness</h3>
 <p>Pairs <code>ClientAuthenticatorCore</code> and <code>SrpAuthenticatorCore&lt;TConnection&gt;</code> from the
 <code>FishMMO-Auth</code> DLLs in-process and routes all <code>Send*</code> / <code>Broadcast*</code> calls
@@ -135,16 +171,33 @@ recurring pattern rather than an accident:</p>
 <code>TargetOrdering.*</code>. These exist so a rule can be exercised against production
 rather than re-implemented in a test — a re-implementation only ever proves the
 test agrees with itself.</li>
-<li><strong><code>internal</code> + <code>InternalsVisibleTo(&quot;FishMMO.UnitTests&quot;)</code></strong> (<code>Shared/AssemblyInfo.cs</code>)
-for test seams that should not be public API.</li>
+<li><strong><code>internal</code> + <code>InternalsVisibleTo</code></strong> (<code>Scripts/Shared/AssemblyInfo.cs</code>) for test seams that
+should not be public API. Two assemblies are named there: <code>FishMMO.UnitTests</code> and
+<code>FishMMO.TestHarness</code>.</li>
 <li><strong><code>ScriptableObject.CreateInstance</code> + <code>AddToCache</code>/<code>RemoveFromCache</code></strong> to stand up
 templates without assets. Remember that a <code>CreateInstance</code> template leaves
-collection fields null where an authored asset would serialise them empty.</li>
+collection fields null where an authored asset would serialise them empty, and that a
+template's <code>ID</code> is 0 until it is cached.</li>
 <li><strong><code>AddComponent</code> + an explicit <code>OnAwake()</code></strong>, since Unity's own callbacks do not run
 for a bare <code>AddComponent</code> in edit mode.</li>
+<li><strong><code>Harness/StubCharacter</code></strong> — a minimal <code>ICharacter</code> for exercising one
+<code>CharacterBehaviour</code> without a networked character. Only the behaviour lookup, the flags
+and registration are implemented; everything else throws deliberately.</li>
 <li><strong>Reflection</strong>, but only for genuinely private mechanism (<code>CharacterPositionHistory.Record</code>,
 <code>BuffController.ApplyObservedBuffs</code>).</li>
 </ul>
+<h3 id="the-ui-toolkit-pattern">The UI Toolkit pattern</h3>
+<p>Panel fixtures (<code>MerchantPanelTests</code>, <code>TradePanelTests</code>, <code>AbilitiesPanelTests</code>,
+<code>EquipmentPanelLayoutTests</code>, <code>ColorPickerTests</code>, <code>ScrollbarThemeTests</code>,
+<code>Map/ExploredReadoutTests</code>, <code>NameGeneratorWindowTests</code>) mount the real panel on a real
+<code>UIDocument</code>: clone <code>Assets/UI Toolkit/PanelSettings.asset</code>, set <code>visualTreeAsset</code> to the
+panel's UXML, <code>AddComponent</code> the panel class, then call its <code>OnStarting()</code> directly — Unity's
+own callbacks never fire in edit mode. There is no shared helper; each fixture builds its own
+so the setup stays legible next to the assertions.</p>
+<p>Two traps that have already been paid for: hiding a panel disables its <code>UIDocument</code> and
+discards the tree, so a re-<code>Show()</code> must be followed by re-querying elements; and a
+<code>suppress</code> flag wrapped around <code>.value =</code> is inert inside a dispatch — use
+<code>SetValueWithoutNotify</code>.</p>
 <p><strong>Prefer a behavioural assertion to a source-text one.</strong> Several fixtures used to grep the
 source for a literal spelling; those break on any refactor while proving less than the
 consequence does. Where a property has no behavioural expression at all — &quot;this number is
@@ -159,6 +212,7 @@ assertion is the right tool, and should say why it is one.</p>
 <li><a href="#configuration">Configuration</a></li>
 <li><a href="#running">Running</a></li>
 <li><a href="#layout">Layout</a></li>
+<li><a href="#playmode-tests-and-the-simulation-harness">PlayMode tests and the simulation harness</a></li>
 <li><a href="#test-inventory">Test inventory</a></li>
 <li><a href="#state-machine-driven-by-each-login-test">State machine driven by each login test</a></li>
 <li><a href="#inmemoryaccountstore-api"><code>InMemoryAccountStore</code> API</a></li>
@@ -182,42 +236,62 @@ assertion is the right tool, and should say why it is one.</p>
 <td>Run via Test Runner (EditMode) or <code>FishMMO / Unit Tests</code> menu.</td>
 </tr>
 <tr>
-<td>CI (Unity batch mode)</td>
+<td>Unity batch mode (headless)</td>
 <td>Supported</td>
-<td><code>-runTests -testPlatform EditMode -testCategory FishMMO.UnitTests</code>.</td>
+<td><code>-runTests -testPlatform EditMode</code>; see <a href="#running">Running</a>.</td>
 </tr>
 <tr>
 <td>Player builds</td>
 <td>Not applicable</td>
-<td>EditMode tests are excluded from player builds.</td>
+<td>Both assemblies carry the <code>UNITY_INCLUDE_TESTS</code> define constraint.</td>
 </tr>
 </tbody>
 </table>
 <p>Requirements: Unity 6.3 LTS, the <code>FishMMO-Auth</code> DLLs present in <code>Assets/Dependencies/</code>, and the Unity Test Framework package.</p>
+<p><code>FishMMO.UnitTests.asmdef</code> is <code>&quot;includePlatforms&quot;: [&quot;Editor&quot;]</code> with
+<code>&quot;defineConstraints&quot;: [&quot;UNITY_INCLUDE_TESTS&quot;, &quot;!UNITY_SERVER&quot;]</code> — the <code>!UNITY_SERVER</code>
+constraint is there because the assembly references <code>FishMMO.Client</code>, which is itself
+<code>!UNITY_SERVER</code> constrained. It also sets <code>&quot;overrideReferences&quot;: true</code>, so <strong>a new test
+that touches an assembly not already in the <code>references</code> list will compile under
+<code>dotnet build</code> and then fail Unity compilation with CS0246</strong> — add the reference to the
+asmdef, not just to the generated csproj.</p>
+<p><code>PlayMode/FishMMO.UnitTests.PlayMode.asmdef</code> has <code>&quot;includePlatforms&quot;: []</code> (all platforms);
+an Editor-only asmdef would be classified EditMode and the PlayMode runner would silently
+report <code>total=0</code>.</p>
 <h2 id="architecture">Architecture</h2>
 <pre><code>Assets/UnitTests/
 ├── FishMMO.UnitTests.asmdef                  # EditMode-only assembly definition
-├── UnitTestMenu.cs                           # FishMMO / Unit Tests menu items
+├── UnitTestMenu.cs                           # FishMMO / Unit Tests menu items + auth DLL provenance report
 ├── TestAssemblySetup.cs                      # [SetUpFixture] — initialises FishMMO.Logging.Log
 ├── Harness/
 │   ├── AuthTestHarness.cs                    # Pairs ClientAuthenticatorCore + SrpAuthenticatorCore in-process
 │   ├── TestClientCore.cs                     # ClientAuthenticatorCore subclass (payload capture + interceptors)
-│   ├── TestServerCore.cs                     # SrpAuthenticatorCore&lt;int&gt; subclass (routes broadcasts to the client)
+│   ├── TestServerCore.cs                     # SrpAuthenticatorCore&lt;int&gt; subclass (broadcast routing, AddressResolver)
 │   ├── InMemoryAccountStore.cs               # IAccountStore double (no DB)
+│   ├── StubCharacter.cs                      # Minimal ICharacter for single-behaviour tests
 │   ├── AuthTestTrace.cs                      # Trace gateway (AuthTestTrace.Verbose)
 │   └── LogAssert.cs                          # NUnit assertion wrappers that log pass/fail
-├── LoginTests.cs                             # Happy / unhappy login paths
-├── RegisterTests.cs                          # Client-side registration validation
-├── TokenLoginTests.cs                        # Token-based authentication
-├── SecurityTests.cs                          # Adversarial SRP / handshake / input validation
-├── AttackAndFailureScenariosTests.cs         # Brute-force, ban, 2FA, online-check
-├── ServerAuthenticatorIntegrationTests.cs    # End-to-end SRP → token integration
-├── RateLimiterTests.cs                       # Per-IP handshake rate limiting
-├── Prediction/                               # Prediction / reconcile serializer tests (non-auth)
+├── AI/                          (27)         # NPC brains, threat, pets, NavMesh, spawners
+├── Currency/                     (2)         # Spend/grant path + persisted ledger numbering
+├── Housing/                     (10)         # Plot identity, access, placement, lifecycle, fees
+├── Map/                          (2)         # Map projection, explored readout
+├── NPC/                          (1)         # Dashboard NPC designer / NPCPrefabFactory
+├── Persistence/                  (1)         # 2026-09-07 persistence audit invariants
+├── Prediction/                  (95)         # Prediction, combat, observers, bandwidth
+├── Server/                       (1)         # Scene-server placement policy
+├── Teleport/                     (1)         # Teleporter key + live-vs-baked waypoints
+├── Waypoint/                     (1)         # Waypoint unlock bit set, travel truth table
+├── PlayMode/                     (5)         # Simulation-scene tests + Update dispatch cost
+│   └── FishMMO.UnitTests.PlayMode.asmdef
+├── *.cs                         (75)         # Auth, UI panels, items, abilities, social, content
 └── README.md                                 # This document
 </code></pre>
-<p>Tests do not touch PostgreSQL, FishNet, sockets, or any singleton state — each
-test instantiates a fresh harness and account store.</p>
+<p>EditMode tests do not touch PostgreSQL, FishNet, sockets, or any singleton state — each
+test instantiates a fresh harness and account store. The asset-scanning fixtures
+(<code>PrefabNetworkAuthoringTests</code>, <code>RegionAssetIntegrityTests</code>, <code>AI/NavMeshSceneBakeTests</code>,
+<code>AI/AILodAssignmentTests</code>, <code>WorldMapDefinitionTests</code>) read on-disk YAML or the asset
+database instead, so they see what is actually shipped rather than what a loaded asset
+reports.</p>
 <h2 id="key-components">Key Components</h2>
 <table>
 <thead>
@@ -229,7 +303,7 @@ test instantiates a fresh harness and account store.</p>
 <tbody>
 <tr>
 <td><code>AuthTestHarness</code></td>
-<td>Constructs a paired client / server authenticator, wires <code>Send*</code> and <code>Broadcast*</code> to direct in-process calls, drives the test scenario.</td>
+<td>Constructs a paired client / server authenticator, wires <code>Send*</code> and <code>Broadcast*</code> to direct in-process calls, drives the test scenario. Exposes <code>Client</code>, <code>Server</code>, <code>Store</code>.</td>
 </tr>
 <tr>
 <td><code>InMemoryAccountStore</code></td>
@@ -237,11 +311,19 @@ test instantiates a fresh harness and account store.</p>
 </tr>
 <tr>
 <td><code>TestServerCore</code></td>
-<td><code>SrpAuthenticatorCore&lt;int&gt;</code> subclass — FishNet's <code>NetworkConnection</code> is replaced by a plain <code>int</code> connection ID so the server authenticator can talk to a virtual client.</td>
+<td><code>SrpAuthenticatorCore&lt;int&gt;</code> subclass — FishNet's <code>NetworkConnection</code> is replaced by a plain <code>int</code> connection ID so the server authenticator can talk to a virtual client. <code>AddressResolver</code> fakes the source IP; <code>ConnectionEpoch</code> counts attempts.</td>
 </tr>
 <tr>
-<td>Test classes</td>
-<td>Cover login, TOTP, handshake, and kick scenarios — see <a href="#test-inventory">Test inventory</a>.</td>
+<td><code>TestClientCore</code></td>
+<td><code>ClientAuthenticatorCore</code> subclass — captures every encrypted payload, exposes <code>SetToken</code>, <code>AttemptLogin</code>, <code>AttemptTokenLogin</code>, <code>ReconnectAs</code>, and the <code>SrpProofInterceptor</code> / <code>SrpVerifyInterceptor</code> tamper hooks.</td>
+</tr>
+<tr>
+<td><code>StubCharacter</code></td>
+<td>Minimal <code>ICharacter</code> — behaviour lookup, flags, registration. Every other member throws so a test that wanders off says so.</td>
+</tr>
+<tr>
+<td><code>LagCompensationTick.ClaimOverride</code></td>
+<td>The one production accommodation for the simulation harness: an <code>internal static</code> hook, null in production, consulted before the owner/AI gates so a sim can carry synthetic 0–500 ms latency claims through the real rewind path.</td>
 </tr>
 </tbody>
 </table>
@@ -279,11 +361,34 @@ the static <code>AuthTestTrace.Verbose</code> flag for the run.</p>
 <td><code>FishMMO / Unit Tests / Run All EditMode Tests (Verbose)</code></td>
 <td>Runs all tests with per-step trace logging</td>
 </tr>
+<tr>
+<td><code>FishMMO / Unit Tests / Print Auth Assembly Identities</code></td>
+<td>Prints each auth type's assembly name, version and on-disk location — proves the tests loaded the DLLs from <code>Assets/Dependencies/</code> rather than falling back to local sources</td>
+</tr>
 </tbody>
 </table>
+<p>A direct run through the menu goes through <code>TestRunnerApi</code> with a
+<code>Filter { testMode = EditMode, assemblyNames = [&quot;FishMMO.UnitTests&quot;] }</code> and logs
+<code>▶ / ✓ / ✗</code> lines plus a pass/fail summary to the Unity console.</p>
+<h3 id="headless">Headless</h3>
+<pre><code>&lt;editor&gt; -batchmode -projectPath &quot;$PWD&quot; \
+         -runTests -testPlatform EditMode \
+         -testResults &lt;abs&gt;.xml -logFile &lt;abs&gt;.log
+</code></pre>
+<ul>
+<li>Wrap in <code>xvfb-run -a -s &quot;-screen 0 1600x1000x24&quot;</code> on Linux — with no X display, anything
+reaching Unity's input backend crashes with SIGSEGV.</li>
+<li><code>-testFilter</code> takes a semicolon-separated list of fully qualified fixture names:
+<code>-testFilter &quot;FishMMO.UnitTests.LoginTests;FishMMO.UnitTests.SecurityTests&quot;</code>.</li>
+<li><strong>There are no <code>[Category]</code> attributes anywhere in the suite</strong>, so <code>-testCategory</code> selects
+nothing. Filter by assembly or by fixture name.</li>
+<li><strong>Trust the results XML, not the exit code.</strong> Batch mode runs no script at all when any
+assembly fails to compile, and it intermittently aborts at startup with
+<code>SDL leaked 2 allocations</code> before running anything. Verify the XML exists.</li>
+</ul>
 <hr>
 <h2 id="layout">Layout</h2>
-<h3 id="test-files">Test files</h3>
+<h3 id="authentication-fixtures-root">Authentication fixtures (root)</h3>
 <table>
 <thead>
 <tr>
@@ -295,8 +400,8 @@ the static <code>AuthTestTrace.Verbose</code> flag for the run.</p>
 <tbody>
 <tr>
 <td><code>LoginTests.cs</code></td>
-<td>6</td>
-<td>Full client↔server SRP login flow</td>
+<td>9</td>
+<td>Full client↔server SRP login flow, per-account lockout, stale-token fallback</td>
 </tr>
 <tr>
 <td><code>RegisterTests.cs</code></td>
@@ -310,7 +415,7 @@ the static <code>AuthTestTrace.Verbose</code> flag for the run.</p>
 </tr>
 <tr>
 <td><code>SecurityTests.cs</code></td>
-<td>19 methods (25+ cases)</td>
+<td>19 methods (~29 cases)</td>
 <td>Adversarial SRP, handshake attacks, ZK, input validation</td>
 </tr>
 <tr>
@@ -329,13 +434,78 @@ the static <code>AuthTestTrace.Verbose</code> flag for the run.</p>
 <td>Per-source-IP handshake burst / sustained-flood throttling</td>
 </tr>
 <tr>
+<td><code>ConnectionTokenKeyRefreshTests.cs</code></td>
+<td>7</td>
+<td>When a connection-token key refresh counts as a change (so a poll stops logging a Warning every time)</td>
+</tr>
+<tr>
 <td><code>TestAssemblySetup.cs</code></td>
 <td>—</td>
 <td><code>[SetUpFixture]</code> — initialises <code>FishMMO.Logging.Log</code> once for the assembly</td>
 </tr>
 </tbody>
 </table>
-<h3 id="prediction--combat-fixtures-prediction">Prediction &amp; combat fixtures (<code>Prediction/</code>)</h3>
+<h3 id="gameplay-ui-and-content-fixtures-root">Gameplay, UI and content fixtures (root)</h3>
+<p>The remaining root fixtures, by theme. Each one's <code>&lt;summary&gt;</code> states the invariant it pins.</p>
+<table>
+<thead>
+<tr>
+<th>Theme</th>
+<th>Representative fixtures</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Items, trade, merchants</td>
+<td><code>ItemStackConservationTests</code>, <code>ItemStackSplitMergeTests</code>, <code>ItemAttributeRollTests</code>, <code>ItemGrantAccountingTests</code>, <code>ItemWriteSequenceTests</code>, <code>QuickTransferTests</code>, <code>TradeSessionTests</code>, <code>TradeExchangeTests</code>, <code>TradePanelTests</code>, <code>MerchantPurchaseResultTests</code>, <code>MerchantSingleQuantityTests</code>, <code>BankCapacityReadoutTests</code>, <code>ConsumableTemplateTests</code></td>
+</tr>
+<tr>
+<td>Equipment</td>
+<td><code>PredictedEquipmentTests</code>, <code>UnequipDestinationTests</code>, <code>UnequipSlotAgreementTests</code>, <code>EquipmentPanelLayoutTests</code></td>
+</tr>
+<tr>
+<td>Abilities</td>
+<td><code>AbilityAuthoringContractTests</code>, <code>AbilityCompositionTests</code>, <code>AbilityCraftResultTests</code>, <code>AbilitySelfHitTests</code>, <code>StartingAbilityTests</code>, <code>KnownAbilityPersistenceTests</code>, <code>HostileNpcAbilityTests</code>, <code>AbilitiesPanelTests</code></td>
+</tr>
+<tr>
+<td>NPCs &amp; death</td>
+<td><code>NpcTargetControllerTests</code>, <code>NpcCombatEdgeCaseTests</code>, <code>DeathResetTests</code></td>
+</tr>
+<tr>
+<td>Social systems</td>
+<td><code>GuildCreationFeeTests</code>, <code>GuildRankEditTests</code>, <code>GuildRankInsertTests</code>, <code>GroupFinderRulesTests</code>, <code>ArenaRulesTests</code></td>
+</tr>
+<tr>
+<td>Naming &amp; content data</td>
+<td><code>NameGenerationTemplateTests</code>, <code>NameGeneratorWindowTests</code>, <code>TitleGenerationTests</code>, <code>RaceCatalogTests</code>, <code>BiomeSystemTests</code>, <code>SceneObjectNamerTests</code></td>
+</tr>
+<tr>
+<td>World &amp; scenes</td>
+<td><code>WorldMapDefinitionTests</code>, <code>WorldSceneDetailsCacheBuilderTests</code>, <code>WorldLabelProjectionOrderTests</code>, <code>CharacterGroundingLayerTests</code></td>
+</tr>
+<tr>
+<td>Nameplates</td>
+<td><code>NameplateModelTests</code>, <code>NameplateOptionsTests</code>, <code>NameplateVisibilityTests</code></td>
+</tr>
+<tr>
+<td>Options &amp; UI chrome</td>
+<td><code>CrosshairSettingsTests</code>, <code>CameraSettingsTests</code>, <code>AudioChannelRoutingTests</code>, <code>AnisotropicFilteringTests</code>, <code>AntialiasingSettingTests</code>, <code>KeyBindingDisplayNameTests</code>, <code>OptionsRowLayoutTests</code>, <code>CloseButtonConsistencyTests</code>, <code>TextInputHeightTests</code>, <code>ScrollbarThemeTests</code>, <code>ColorPickerTests</code>, <code>ChatScrollBehaviourTests</code>, <code>InteractPanelInventoryTests</code>, <code>PinnedTargetRulesTests</code></td>
+</tr>
+<tr>
+<td>Chat &amp; models</td>
+<td><code>ChatSanitizerTests</code>, <code>BodyRegionDiscoveryTests</code></td>
+</tr>
+<tr>
+<td>Prefab authoring</td>
+<td><code>PrefabNetworkObjectBindingTests</code>, <code>NetworkBehaviourOwnerRebindTests</code></td>
+</tr>
+<tr>
+<td>Observer shaping</td>
+<td><code>ObserverPayloadShapingTests</code>, <code>CastVisibilityTests</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="prediction--combat-fixtures-prediction-95-files">Prediction &amp; combat fixtures (<code>Prediction/</code>, 95 files)</h3>
 <p>Too many to list individually; these are the ones that pin a <strong>whole invariant</strong> rather than a
 single method, and are the right place to start reading:</p>
 <table>
@@ -347,16 +517,24 @@ single method, and are the right place to start reading:</p>
 </thead>
 <tbody>
 <tr>
+<td><code>PredictionSystemMapTests.cs</code></td>
+<td>An enforced map of what is predicted, what is interpolated, and what rides a broadcast</td>
+</tr>
+<tr>
 <td><code>PredictionAuditRegressionTests.cs</code></td>
 <td>The 2026-08-28 audit's 35 defects across three rounds</td>
 </tr>
 <tr>
-<td><code>CombatAuditRoundTwoTests.cs</code>, <code>CombatAuditFollowUpTests.cs</code>, <code>CombatAudit20260830Tests.cs</code></td>
-<td>The 2026-08-29 and 2026-08-30 combat audits</td>
+<td><code>CombatAuditRoundTwoTests.cs</code>, <code>CombatAuditFollowUpTests.cs</code>, <code>CombatAudit20260830Tests.cs</code>, <code>CombatAudit20260830FixTests.cs</code></td>
+<td>The 2026-08-29 and 2026-08-30 combat audits and the fixes applied after them</td>
 </tr>
 <tr>
-<td><code>CombatAudit20260830FixTests.cs</code></td>
-<td>The post-audit fixes: shared ability-object resolution, the observer equip path, exclusion-inside-the-cap, total ray ordering, per-character chain-break reporting, shared buffer growth, reproducible heal targeting</td>
+<td><code>CombatAudit20260831Tests.cs</code>, <code>CombatAudit20260831Round3Tests.cs</code>, <code>CombatAudit20260831RecommendedFixTests.cs</code></td>
+<td>The 2026-08-31 audit, its round 3, and the ten recommendations the follow-up session implemented</td>
+</tr>
+<tr>
+<td><code>AuditFollowUpFixTests.cs</code>, <code>RiskRemediationTests.cs</code>, <code>RegressionHistoryTests.cs</code></td>
+<td>Remaining audit follow-ups and the historical broadcast-path divergence</td>
 </tr>
 <tr>
 <td><code>LagCompensationClosedLoopTests.cs</code></td>
@@ -371,32 +549,64 @@ single method, and are the right place to start reading:</p>
 <td>The attributed-modifier ledger: residual arithmetic, contributor release, exact stack inverses</td>
 </tr>
 <tr>
-<td><code>ReconcileDeltaChainTests.cs</code>, <code>DeltaSerializerStreamAlignmentTests.cs</code></td>
+<td><code>ReconcileDeltaChainTests.cs</code>, <code>DeltaSerializerStreamAlignmentTests.cs</code>, <code>ReplicateDeltaPacketTests.cs</code></td>
 <td>The delta chain's loss detection and framing</td>
+</tr>
+<tr>
+<td><code>DeltaSerializerRegistrationTests.cs</code></td>
+<td>Fails the build when a prediction type has no delta serializer — the condition FishNet used to report at runtime</td>
 </tr>
 <tr>
 <td><code>ObserverSynchronizationProofTests.cs</code>, <code>AbilityObserverReproductionTests.cs</code>, <code>LateJoinerReplayTests.cs</code></td>
 <td>That a late joiner reconstructs what a continuous observer holds</td>
 </tr>
 <tr>
-<td><code>TargetSelectorBodyIdentityTests.cs</code>, <code>SpatialQueryGrowLoopTests.cs</code>, <code>OverlapHitRootResolutionTests.cs</code></td>
-<td>Hit-root resolution, per-body dedupe, grow-on-full</td>
+<td><code>ObserverStreamingPolicyTests.cs</code>, <code>ObserverCullingAuditTests.cs</code>, <code>ObserverInterestBoundaryTests.cs</code>, <code>ObserverSendShapingTests.cs</code></td>
+<td>Per-observer relevance, LOD intervals, density-scaled range, and the 2026-09-08 culling audit's outcome</td>
 </tr>
 <tr>
-<td><code>PredictionQuantizationTests.cs</code>, <code>RotationPrecisionTests.cs</code>, <code>AimDirectionTests.cs</code></td>
-<td>That <code>Encode</code>/<code>Decode</code> round trips are fixed points</td>
+<td><code>ObservedBuffBaselineTests.cs</code>, <code>ObservedBuffDeltaTests.cs</code>, <code>ObservedBuffSimulationTests.cs</code></td>
+<td>The observed-buff contract: what the server may re-baseline, and that an observed peer counts its own durations down without applying effects</td>
 </tr>
 <tr>
-<td><code>PredictionBandwidthBenchmarkTests.cs</code>, <code>ObserverChannelCostTests.cs</code>, <code>BandwidthCompositionTests.cs</code></td>
-<td>Per-peer byte budgets, so a new field's cost is visible when it lands</td>
+<td><code>TargetSelectorBodyIdentityTests.cs</code>, <code>SpatialQueryGrowLoopTests.cs</code>, <code>OverlapHitRootResolutionTests.cs</code>, <code>EcaDeterminismTests.cs</code></td>
+<td>Hit-root resolution, per-body dedupe, grow-on-full, broadphase-order independence</td>
 </tr>
 <tr>
-<td><code>PrefabNetworkAuthoringTests.cs</code>, <code>RegionAssetIntegrityTests.cs</code></td>
-<td>That the shipped prefabs and assets still match what the code expects</td>
+<td><code>PredictedSelectionTests.cs</code>, <code>PredictedCombatEventTests.cs</code>, <code>PredictedAbilityStateHistoryTests.cs</code></td>
+<td>Selection is not authority; the predict/confirm/reject cycle for numbers the caster draws itself</td>
+</tr>
+<tr>
+<td><code>PredictionQuantizationTests.cs</code>, <code>RotationPrecisionTests.cs</code>, <code>AimDirectionTests.cs</code>, <code>NetworkTransformPrecisionTests.cs</code></td>
+<td>That <code>Encode</code>/<code>Decode</code> round trips are fixed points, and the 24-bit position packing</td>
+</tr>
+<tr>
+<td><code>PlatformCatchUpTests.cs</code>, <code>PlatformRiderSmoothingTests.cs</code>, <code>KCCPlatformDeltaChainTests.cs</code></td>
+<td>The moving-platform contract after issue #228: deterministic step, carried riders, matched tick smoothing</td>
+</tr>
+<tr>
+<td><code>NetworkTransformDistanceLodTests.cs</code>, <code>NetworkTransformLodBufferTests.cs</code></td>
+<td>Band selection with hysteresis, and that the interpolation buffer bridges the send interval</td>
+</tr>
+<tr>
+<td><code>PredictionBandwidthBenchmarkTests.cs</code>, <code>ObserverChannelCostTests.cs</code>, <code>BandwidthCompositionTests.cs</code>, <code>PayloadFieldCostTests.cs</code>, <code>PredictionModeBandwidthMapTests.cs</code>, <code>ScaleProjectionTests.cs</code>, <code>PredictionCostBenchmarkTests.cs</code></td>
+<td>Per-peer byte budgets, per-field costs and CPU/allocation cost, so a new field's cost is visible when it lands</td>
+</tr>
+<tr>
+<td><code>PrefabNetworkAuthoringTests.cs</code>, <code>RegionAssetIntegrityTests.cs</code>, <code>InterestManagementWiringTests.cs</code>, <code>CharacterHealthAuthoringTests.cs</code></td>
+<td>That the shipped prefabs, scenes and assets still match what the code expects</td>
+</tr>
+<tr>
+<td><code>ResourceRegenerationTests.cs</code>, <code>RegenReplicateTickSeedTests.cs</code></td>
+<td>The regen cadence and consumption lockout, and the empty-queue tick seed that killed regen on every relog</td>
+</tr>
+<tr>
+<td><code>InteractionRegressionTests.cs</code></td>
+<td>The NPC interaction chain end to end, after a live &quot;can't interact with NPCs&quot; report whose cause was invisible in every log</td>
 </tr>
 </tbody>
 </table>
-<p>Several fixtures are <strong>measurement</strong> rather than assertion: they <code>TestContext.WriteLine</code> a
+<p>Several fixtures are <strong>measurement</strong> rather than assertion: 38 files <code>TestContext.WriteLine</code> a
 <code>MEASURE …</code> line so a bandwidth or cost regression is legible in the run log even when it stays
 inside its budget.</p>
 <h3 id="harness-files-harness">Harness files (<code>Harness/</code>)</h3>
@@ -414,15 +624,19 @@ inside its budget.</p>
 </tr>
 <tr>
 <td><code>TestServerCore.cs</code></td>
-<td><code>SrpAuthenticatorCore&lt;int&gt;</code> subclass — routes broadcasts to the client; adds ban-check via <code>TryLoginAsync</code></td>
+<td><code>SrpAuthenticatorCore&lt;int&gt;</code> subclass — routes broadcasts to the client; adds ban-check via <code>TryLoginAsync</code>; <code>AddressResolver</code> fakes the source IP; <code>BeginNewConnection</code> tells the core the previous connection ended</td>
 </tr>
 <tr>
 <td><code>TestClientCore.cs</code></td>
-<td><code>ClientAuthenticatorCore</code> subclass — captures payloads; exposes <code>SetToken</code>, <code>AttemptLogin</code>, <code>AttemptTokenLogin</code>, <code>SrpProofInterceptor</code>, <code>SrpVerifyInterceptor</code></td>
+<td><code>ClientAuthenticatorCore</code> subclass — captures payloads; exposes <code>SetToken</code>, <code>AttemptLogin</code>, <code>AttemptTokenLogin</code>, <code>ResetForNextAttempt</code>, <code>ReconnectAs</code>, <code>SrpProofInterceptor</code>, <code>SrpVerifyInterceptor</code></td>
 </tr>
 <tr>
 <td><code>InMemoryAccountStore.cs</code></td>
 <td>Concurrent in-memory account DB + token store</td>
+</tr>
+<tr>
+<td><code>StubCharacter.cs</code></td>
+<td>Minimal <code>ICharacter</code> for single-behaviour tests</td>
 </tr>
 <tr>
 <td><code>AuthTestTrace.cs</code></td>
@@ -434,6 +648,56 @@ inside its budget.</p>
 </tr>
 </tbody>
 </table>
+<hr>
+<h2 id="playmode-tests-and-the-simulation-harness">PlayMode tests and the simulation harness</h2>
+<p><code>PlayMode/</code> mirrors the four self-running simulation scenes in <code>Assets/Scenes/Test/</code>, which
+are generated from <code>Assets/TestHarness/</code> by <code>FishMMO / Test Scenes / Generate All</code>
+(headless: <code>-executeMethod FishMMO.TestHarness.Editor.TestSceneGenerator.GenerateAll</code>). Each
+PlayMode fixture asserts exactly what the scene's PASS banner shows, so a green run here and a
+green banner in the editor are the same fact.</p>
+<table>
+<thead>
+<tr>
+<th>Fixture</th>
+<th>Scene</th>
+<th>What it drives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PlatformSimPlayModeTests</code></td>
+<td><code>PlatformSim.unity</code></td>
+<td>Twin-world prediction/rollback with real motors and <code>KCCPlatform.Step</code>: identity at RTT 0, zero edge-replay divergences at every RTT, ≥1 ferry crossing per leg, <code>CarrySlips</code> 0</td>
+</tr>
+<tr>
+<td><code>CombatSimPlayModeTests</code></td>
+<td><code>CombatSim.unity</code></td>
+<td>Zero-client real server: NPC fighters cast the whole mock roster through the production pipeline, and a 500 ms synthetic claim per caster drives the real lag-compensation resolver via <code>LagCompensationTick.ClaimOverride</code></td>
+</tr>
+<tr>
+<td><code>InteractableSimPlayModeTests</code></td>
+<td><code>InteractableSim.unity</code></td>
+<td>The server interact chain step-for-step (<code>CanAct</code> → registry + liveness → <code>InteractableResolver</code> → <code>CanInteract</code> → rate limit → <code>ExecuteOnInteract</code>) against known-answer probes</td>
+</tr>
+<tr>
+<td><code>RegionSimPlayModeTests</code></td>
+<td><code>RegionSim.unity</code></td>
+<td>Real <code>Region</code> components with real <code>NetworkTrigger</code> colliders: enter/exit pairing, nested ownership handoff, ledger symmetry</td>
+</tr>
+<tr>
+<td><code>UpdateDispatchCostTests</code></td>
+<td>—</td>
+<td>Prices Unity's per-<code>MonoBehaviour</code> <code>Update</code> dispatch, so the choice between an interval gate and a central scheduler is settled with numbers</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>InteractableSim</code> half lives in its own <code>FishMMO.TestHarness.Server</code> asmdef, because
+referencing <code>FishMMO.Server</code> from the main harness asmdef would break client-platform
+compilation. <code>FishMMO.UnitTests.PlayMode</code> references both harness assemblies and nothing else.</p>
+<p><strong>Cleanup in <code>[UnityTearDown]</code>, never <code>try</code>/<code>finally</code>.</strong> An unhandled error log fails a
+<code>[UnityTest]</code> by <em>abandoning</em> its iterator at the next yield, so <code>finally</code> never runs; the
+leaked harness then logs into every later test and its <code>NetworkManager</code> makes FishNet destroy
+the next sim's manager as a duplicate.</p>
 <hr>
 <h2 id="test-inventory">Test inventory</h2>
 <h3 id="logintestscs"><code>LoginTests.cs</code></h3>
@@ -469,8 +733,25 @@ inside its budget.</p>
 <td><code>Login_SameCredentials_CaseSensitivePassword_Rejected</code></td>
 <td><code>InvalidUsernameOrPassword</code> (SRP does not normalize case)</td>
 </tr>
+<tr>
+<td><code>Login_DistributedPasswordGuessing_LocksTheAccountOut</code></td>
+<td>Wrong passwords from distinct source IPs lock the account; the <em>correct</em> password is then refused too</td>
+</tr>
+<tr>
+<td><code>Login_CorrectPasswordBeforeThreshold_ClearsTheFailureCount</code></td>
+<td>A success below the threshold resets the counter</td>
+</tr>
+<tr>
+<td><code>Login_WithStaleTokenHeld_AuthenticatesWithCredentials</code></td>
+<td>A held stale token does not block credential login</td>
+</tr>
 </tbody>
 </table>
+<p>The lockout tests bypass the per-IP debounce with
+<code>h.Server.AddressResolver = _ =&gt; $&quot;203.0.113.{(h.Server.ConnectionEpoch % 251) + 1}&quot;</code> — keyed
+on the <em>attempt</em>, not the call, because <code>GetConnectionAddress</code> is consulted twice per
+handshake (bind the cookie, then verify the echo) and a per-call counter breaks cookie
+verification.</p>
 <h3 id="registertestscs"><code>RegisterTests.cs</code></h3>
 <table>
 <thead>
@@ -637,6 +918,10 @@ inside its budget.</p>
 <td>Lengths 0, 31, 33, 64 → disconnected; no cookie issued</td>
 </tr>
 <tr>
+<td><code>Security_ZeroFilledX25519PublicKey_IsRejected</code></td>
+<td>An all-zero X25519 public key (small-subgroup / zero-shared-secret attempt) → rejected</td>
+</tr>
+<tr>
 <td><code>Security_ForgedCookieOnPhase2Handshake_IsRejected</code></td>
 <td>Random/never-issued cookie → disconnected; no server-handshake sent</td>
 </tr>
@@ -681,6 +966,10 @@ inside its budget.</p>
 <tr>
 <td><code>Security_TamperedSrpVerifyCiphertext_IsRejected</code></td>
 <td>Bit-flipped SrpVerify ciphertext → rejected</td>
+</tr>
+<tr>
+<td><code>Security_TamperedServerProof_M2_ClientDoesNotAccept</code></td>
+<td>Tampered server M2 (via <code>TestServerCore.SrpSuccessInterceptor</code>) → the client refuses to accept the session</td>
 </tr>
 </tbody>
 </table>
@@ -765,6 +1054,29 @@ inside its budget.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="ratelimitertestscs"><code>RateLimiterTests.cs</code></h3>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Handshake_BurstOfSimultaneousLoginsFromOneIp_AllComplete</code></td>
+<td>A legitimate burst from one IP is not throttled away</td>
+</tr>
+<tr>
+<td><code>Handshake_SustainedFloodFromOneIp_IsThrottledBeyondBurst</code></td>
+<td>Sustained flood past the burst allowance is refused</td>
+</tr>
+<tr>
+<td><code>Handshake_DistinctSourceIps_AreNotGroupedUnderOneKey</code></td>
+<td>Distinct IPs get distinct buckets</td>
+</tr>
+</tbody>
+</table>
 <hr>
 <h2 id="state-machine-driven-by-each-login-test">State machine driven by each login test</h2>
 <ol>
@@ -799,6 +1111,9 @@ ClientAuthenticationResult ValidateToken(string token)
 
 // Inspection
 bool    ContainsAccount(string username)
+bool    IsOnline(string username)
+bool    HasPendingKick(string username)
+string? GetTotpSecret(string username)
 string? GetLastTokenHash(string username)
 void    PersistTokenHash(string username, string hash, int expirationMinutes)
 </code></pre>
@@ -826,12 +1141,21 @@ ClientAuthenticationResult result = await h.Client.AttemptTokenLogin(token);
     return tampered;   // return null to drop the message entirely
 };
 </code></pre>
+<p>For a non-auth behaviour that only needs an <code>ICharacter</code>:</p>
+<pre><code class="lang-csharp">StubCharacter character = new StubCharacter { Behaviour = someController };
+</code></pre>
+<p>When adding a fixture, add its <code>.cs</code> to the asmdef's assembly (automatic — it is folder
+scoped) but check that every assembly it references is in
+<code>FishMMO.UnitTests.asmdef</code>'s <code>references</code> list; <code>overrideReferences</code> is <code>true</code>, so an
+unreferenced assembly is a Unity-only CS0246 that <code>dotnet build</code> will not catch.</p>
 <hr>
 <h2 id="known-limitations">Known limitations</h2>
 <ul>
 <li><strong>Account creation is not exercised server-side.</strong> <code>SrpAuthenticatorCore</code> does not handle <code>CreateAccount</code> broadcasts — that logic lives in the Unity-side <code>AccountCreationSystem</code>. <code>RegisterTests</code> therefore stops after asserting the client emitted a well-formed encrypted <code>CreateAccount</code> payload.</li>
 <li><strong>Token auth bypasses real decryption.</strong> <code>TestClientCore.SendTokenAuth</code> validates the pending token string directly against <code>InMemoryAccountStore.ValidateToken</code> rather than decrypting it with the session key. This exercises token-state logic without needing a full <code>TokenAuthenticatorCore</code> worker setup.</li>
-<li><strong>Single connection per harness.</strong> <code>AuthTestHarness</code> uses a fixed connection ID (<code>1</code>). Consecutive <code>AttemptLogin</code> / <code>AttemptTokenLogin</code> calls on the same harness will fail if the previous attempt left the server's <code>SrpAccountManager</code> in a non-<code>None</code> state (e.g. after a disconnect). Use a fresh <code>AuthTestHarness</code> per attempt when testing failure-recovery sequences.</li>
+<li><strong>A harness has no transport, so a connection never &quot;ends&quot; by itself.</strong> <code>AttemptLogin</code> / <code>AttemptTokenLogin</code> call <code>ResetForNextAttempt</code>, which calls <code>TestServerCore.BeginNewConnection</code> to tell the core the previous connection is gone — without it, a refused attempt leaves <code>disconnected</code> latched (so the next refusal is answered with silence) and a successful one leaves the core holding authenticated state (so the next handshake is ignored as a replay). Use <code>ReconnectAs(newConnectionId)</code> when a test needs the server to see a genuinely different connection while keeping the capture lists for cross-session comparison.</li>
+<li><strong>PlayMode tests need a display.</strong> Under <code>-batchmode -nographics</code> with no X server, the Linux input backend segfaults; run them under <code>xvfb-run</code>.</li>
+<li><strong>A <code>CreateInstance</code> template is not an authored asset.</strong> Collection fields are null where a serialised asset would have an empty list, and <code>ID</code> is 0 until <code>AddToCache</code> runs.</li>
 </ul>
 <h2 id="flow-diagram">Flow Diagram</h2>
 <pre><code class="lang-mermaid">flowchart LR

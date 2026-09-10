@@ -107,7 +107,7 @@
 <li><a href="#license">License</a></li>
 </ul>
 <h2 id="overview">Overview</h2>
-<p>The Scene Channel system is a scene-server subsystem that provides channel selection for open-world scenes. Channels are multiple instances of the same scene on the same world server, potentially hosted across different scene servers. The system aggregates all available instances via database queries (<code>ISceneService.FetchAvailableAsync</code>, <code>ISceneServerService.FetchAsync</code>) and exposes a channel list to the client. It also handles same-server or cross-server channel switching by updating the character's <code>SceneHandle</code> and disconnecting the client for world-server re-route.</p>
+<p>The Scene Channel system is a scene-server subsystem that provides channel selection for open-world scenes. Channels are multiple instances of the same scene on the same world server, potentially hosted across different scene servers. The system aggregates all available instances via database queries (<code>ISceneService.FetchAvailableAsync</code>, <code>ISceneServerService.FetchAsync</code>) and exposes a channel list to the client. The scene-server lookup is a liveness probe only: its answer (the hosting process's port) never leaves the server, because a switch is never a direct dial and a port list would map which scene server hosts which instance. It also handles same-server or cross-server channel switching by updating the character's <code>SceneHandle</code> and disconnecting the client for world-server re-route.</p>
 <p>The implementation uses a split execution model:</p>
 <ul>
 <li><strong>Main thread:</strong> request validation, ingress guard checks, cooldown enforcement, network broadcasts, and character state mutations.</li>
@@ -155,7 +155,7 @@
 <h2 id="features">Features</h2>
 <ul>
 <li>Channel listing aggregating all available open-world scene instances across scene servers on the same world server via database queries</li>
-<li>Automatic initial channel list dispatch when a character loads into an open-world scene (<code>OnAfterLoadCharacter</code>)</li>
+<li>Opt-in initial channel list dispatch when a character loads into an open-world scene (<code>sendChannelListOnCharacterLoad</code>, off by default; <code>OnAfterLoadCharacter</code> is only subscribed when it is on)</li>
 <li>Explicit channel list refresh via <code>RequestSceneChannelListBroadcast</code> from the client</li>
 <li>Channel switching with database validation of target handle existence, <code>OpenWorld</code> scene type, and capacity</li>
 <li>Ordered hand-off through <code>ICharacterSystem.BeginChannelTransfer</code>: departure announced, then rebind, save, session release, disconnect</li>
@@ -167,13 +167,13 @@
 <li>Hard cap on cooldown dictionary size (<code>maxCooldownEntries</code>) rejecting new entries when saturated</li>
 <li>Periodic cleanup of expired cooldown entries with bounded removal per sweep</li>
 <li>Immediate cooldown entry removal on client disconnect</li>
-<li>Write-through TTL cache for scene-instance query results (<code>AvailableSceneCache</code>, keyed by scene name with <code>OrdinalIgnoreCase</code> comparer)</li>
-<li>Write-through TTL cache for scene-server address results (<code>SceneServerAddressCache</code>, keyed by scene server ID)</li>
+<li>Write-through TTL cache for scene-instance query results (<code>AvailableSceneCache</code>, keyed by <code>worldServerID|sceneName</code> via <code>BuildAvailableSceneCacheKey</code> with an <code>OrdinalIgnoreCase</code> comparer — the scene name alone collided between world servers sharing a scene server)</li>
+<li>Write-through TTL cache for scene-server ports (<code>SceneServerAddressCache</code>, <code>TimedCache&lt;long, ushort&gt;</code> keyed by scene server ID)</li>
 <li>Cache invalidation on fetch failure to prevent routing to dead scene servers</li>
 <li>Periodic expired-cache sweep piggybacking on the cooldown cleanup cycle</li>
 <li>Async worker backpressure via <code>TryEnqueueIngressWork</code> (rejects when queue unavailable/full)</li>
 <li>Per-system main-thread queue isolation with configurable drain cap per frame</li>
-<li>Instanced scene rejection for both channel listing and switching</li>
+<li>Instanced scene rejection for both channel listing and switching; the listing answers an instanced character with an empty list from behind the ingress guard rather than an unlimited reliable reply per message</li>
 <li>Graceful failure semantics: invalid requests fail closed with no mutation; capacity/type checks enforced before state changes; async failures logged without blocking main thread</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
@@ -204,7 +204,7 @@
 <li>Verify that <code>ISceneServerSystem&lt;NetworkConnection&gt;</code> is registered in <code>BehaviourRegistry</code> (used for <code>WorldSceneDetailsCache.MaxClients</code> lookups).</li>
 <li>Verify that <code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code> is registered in <code>BehaviourRegistry</code> for character load event subscriptions.</li>
 <li>Verify that <code>ISceneService</code> and <code>ISceneServerService</code> are available in <code>Database.ServiceRegistry</code>.</li>
-<li>On initialize, <code>SceneChannelSystem</code> registers broadcast handlers for <code>RequestSceneChannelListBroadcast</code> and <code>SceneChannelSelectBroadcast</code> (both require authentication), subscribes to <code>OnAfterLoadCharacter</code> for initial channel list dispatch, subscribes to connection events for cooldown cleanup, and clamps all serialized fields.</li>
+<li>On initialize, <code>SceneChannelSystem</code> registers broadcast handlers for <code>RequestSceneChannelListBroadcast</code> and <code>SceneChannelSelectBroadcast</code> (both require authentication), subscribes to <code>OnAfterLoadCharacter</code> only when <code>sendChannelListOnCharacterLoad</code> is enabled, subscribes to connection events for cooldown cleanup, and clamps all serialized fields.</li>
 <li>On deinitialize, it drains the remaining main-thread queue, clears both caches, unregisters broadcast handlers, unsubscribes character and connection callbacks.</li>
 <li>Clients send <code>RequestSceneChannelListBroadcast</code> to refresh the channel list or <code>SceneChannelSelectBroadcast</code> to switch channels; the server validates, queries the database, and replies with a <code>SceneChannelListBroadcast</code> or disconnects the client for world-server re-route.</li>
 </ol>
@@ -284,7 +284,13 @@
 <td><code>sceneServerCacheTtlSeconds</code></td>
 <td>float</td>
 <td>10.0</td>
-<td>TTL for cached scene-server address results; 0 disables caching</td>
+<td>TTL for cached scene-server ports; 0 disables caching</td>
+</tr>
+<tr>
+<td><code>sendChannelListOnCharacterLoad</code></td>
+<td>bool</td>
+<td>false</td>
+<td>Push an unsolicited channel list to every client as its character loads; off because the client asks when the picker opens and the list is stale within seconds</td>
 </tr>
 </tbody>
 </table>
@@ -400,7 +406,7 @@
 <tbody>
 <tr>
 <td><code>AvailableSceneCache</code></td>
-<td>scene name (<code>string</code>)</td>
+<td><code>worldServerID\|sceneName</code> (<code>string</code>)</td>
 <td><code>IReadOnlyList&lt;SceneData&gt;</code></td>
 <td>5 s</td>
 <td><code>OrdinalIgnoreCase</code></td>
@@ -408,7 +414,7 @@
 <tr>
 <td><code>SceneServerAddressCache</code></td>
 <td>scene server ID (<code>long</code>)</td>
-<td><code>(string Address, ushort Port)</code></td>
+<td><code>ushort</code> (port, server-side only)</td>
 <td>10 s</td>
 <td>default</td>
 </tr>
@@ -418,7 +424,7 @@
 <ul>
 <li>On hit (within TTL): returns cached value, skips database query.</li>
 <li>On miss or TTL expired: queries database, stores result in cache.</li>
-<li>On fetch failure (<code>SceneServerAddressCache</code>): invalidates stale entry so subsequent calls re-fetch immediately.</li>
+<li>On fetch failure (<code>SceneServerAddressCache</code>): invalidates the stale entry so subsequent calls re-fetch immediately, and the channel is left out of the list — a scene row outlives the process that served it, so a failed lookup is what keeps a dead instance out.</li>
 <li>Expired entries are swept periodically during the cooldown cleanup cycle (max 64 scanned, 32 removed per sweep per cache).</li>
 </ul>
 <h2 id="usage-examples">Usage Examples</h2>
@@ -450,36 +456,36 @@
 </tbody>
 </table>
 <p>Both inbound broadcast handlers require authentication (<code>requireAuthentication = true</code>).</p>
-<h3 id="channel-list-automatic-on-load">Channel List (Automatic on Load)</h3>
-<p><code>OnCharacterLoaded(conn, character)</code> — fired by <code>ICharacterSystem.OnAfterLoadCharacter</code>:</p>
+<h3 id="channel-list-opt-in-on-load">Channel List (Opt-in on Load)</h3>
+<p><code>OnCharacterLoaded(conn, character)</code> — fired by <code>ICharacterSystem.OnAfterLoadCharacter</code>, and only subscribed when <code>sendChannelListOnCharacterLoad</code> is enabled:</p>
 <ol>
-<li>Returns immediately if the character is in an instanced scene.</li>
+<li>Returns immediately if the connection is null/inactive (a lingering combat-logout body is reattached through the same load path and has no connection) or the character is in an instanced scene.</li>
 <li>Acquires ingress guard (<code>RequestList</code>).</li>
-<li>Captures <code>sceneName</code>, <code>worldServerID</code>, and <code>characterID</code>.</li>
+<li>Captures <code>sceneName</code>, <code>worldServerID</code>, <code>characterID</code>, and <code>SceneHandle</code>.</li>
 <li>Validates <code>sceneName</code> is not null/empty.</li>
-<li>Resolves <code>maxClients</code> from <code>WorldSceneDetailsCache</code> (fallback: 500).</li>
-<li>Enqueues <code>FetchAndSendChannelListAsync</code> via <code>TryEnqueueIngressWork</code>.</li>
+<li>Resolves <code>maxClients</code> from <code>WorldSceneDetailsCache</code> (fallback: <code>WorldSceneSettings.MaximumClientsPerScene</code>, 200).</li>
+<li>Enqueues <code>FetchAndSendChannelListAsync</code> via <code>TryEnqueueIngressWork</code>; a rejected enqueue releases the guard and answers <code>SendServerBusy</code>.</li>
 </ol>
 <h3 id="channel-list-explicit-request">Channel List (Explicit Request)</h3>
 <p><code>OnRequestChannelList(conn, msg, channel)</code> — handles <code>RequestSceneChannelListBroadcast</code>:</p>
 <ol>
 <li>Validates connection is active and has a spawned object.</li>
 <li>Looks up the character from <code>ICharacterMappingData&lt;NetworkConnection&gt;</code>.</li>
-<li>Rejects if character is in an instanced scene.</li>
-<li>Acquires ingress guard (<code>RequestList</code>).</li>
-<li>Captures <code>sceneName</code>, <code>worldServerID</code>, and <code>characterID</code>.</li>
+<li>Acquires ingress guard (<code>RequestList</code>) — <strong>before</strong> the instanced-scene branch, which is otherwise an unbounded reliable reply per message.</li>
+<li>If the character is in an instanced scene: release the guard and answer with an empty list carrying <code>InstanceSceneHandle</code>.</li>
+<li>Captures <code>sceneName</code>, <code>worldServerID</code>, <code>characterID</code>, and <code>SceneHandle</code>.</li>
 <li>Validates <code>sceneName</code> is not null/empty.</li>
-<li>Resolves <code>maxClients</code> from <code>WorldSceneDetailsCache</code> (fallback: 500).</li>
-<li>Enqueues <code>FetchAndSendChannelListAsync</code> via <code>TryEnqueueIngressWork</code>.</li>
+<li>Resolves <code>maxClients</code> from <code>WorldSceneDetailsCache</code> (fallback: <code>WorldSceneSettings.MaximumClientsPerScene</code>, 200).</li>
+<li>Enqueues <code>FetchAndSendChannelListAsync</code> via <code>TryEnqueueIngressWork</code>; a rejected enqueue releases the guard and answers <code>SendServerBusy</code>.</li>
 </ol>
 <h3 id="fetchandsendchannellistasync">FetchAndSendChannelListAsync</h3>
 <ol>
 <li>Validates <code>Database.ServiceRegistry</code>, <code>ISceneService</code>, <code>ISceneServerService</code>, and <code>SceneChannelSystemRuntimeData</code>.</li>
 <li>Fetches available scene instances (cache-aware via <code>FetchAvailableScenesAsync</code>).</li>
 <li>Filters to <code>SceneType.OpenWorld</code> only.</li>
-<li>For each scene instance, resolves the scene server's address (cache-aware via <code>FetchSceneServerAddressAsync</code>).</li>
-<li>Builds <code>List&lt;ChannelAddress&gt;</code> with <code>Address</code>, <code>Port</code>, <code>SceneHandle</code>, <code>SceneName</code>, and <code>CharacterCount</code>.</li>
-<li>Marshals <code>SceneChannelListBroadcast</code> to the main thread for transmission.</li>
+<li>For each scene instance, resolves the hosting scene server's port (cache-aware via <code>FetchSceneServerAddressAsync</code>) purely to prove the process is alive; an instance whose lookup fails is dropped from the list.</li>
+<li>Builds <code>List&lt;ChannelAddress&gt;</code> with <code>SceneHandle</code> (the <code>scenes.id</code> row), <code>SceneName</code>, and <code>CharacterCount</code>. <code>ChannelAddress</code> carries no address or port field: the resolved port stays server-side.</li>
+<li>Marshals <code>SceneChannelListBroadcast</code> (<code>Addresses</code> array plus <code>CurrentSceneHandle</code>) to the main thread for transmission — from a <code>finally</code>, so every failure path above still answers, with an empty list.</li>
 </ol>
 <h3 id="channel-switch">Channel Switch</h3>
 <p><code>OnChannelSelect(conn, msg, channel)</code> — handles <code>SceneChannelSelectBroadcast</code>:</p>
@@ -512,6 +518,7 @@
 </li>
 <li><code>BeginChannelTransfer</code> raises <code>OnDisconnect</code> <strong>while <code>SceneHandle</code> still names the instance being left</strong> (that event is what debits scene population), then rebinds <code>SceneHandle</code>, saves, releases the session claim, and drops the connection. Doing it in that order is the point of the method: debiting after the rebind charged the <em>destination</em> instance — often one this server does not host — and left the source permanently over-populated.</li>
 <li><code>BuildCharacterData</code> captures the updated <code>SceneHandle</code> so the character is persisted with the target channel.</li>
+<li>Any failure after the claim is taken — inactive connection, character no longer mapped, <code>CanActOrMove</code> refusal, <code>BeginChannelTransfer</code> returning false, or a rejected main-thread enqueue — puts the claim back via <code>ReleaseChannelSwitchClaim</code>, so a player is never charged the cooldown for a switch they did not get.</li>
 <li>The client auto-reconnects to the world server, which routes through <code>ProcessOpenWorldQueueAsync</code> to the scene server hosting the target channel.</li>
 </ol>
 <blockquote>
@@ -555,11 +562,15 @@
 </tr>
 <tr>
 <td>Initial channel list on load</td>
-<td>Load a character into an open-world scene; confirm <code>SceneChannelListBroadcast</code> is sent automatically with available channels</td>
+<td>Enable <code>sendChannelListOnCharacterLoad</code>, load a character into an open-world scene, and confirm <code>SceneChannelListBroadcast</code> is sent unprompted; with the flag off (the default) confirm nothing is sent until the client asks</td>
 </tr>
 <tr>
 <td>Instanced scene rejection (load)</td>
 <td>Load a character into an instanced scene; confirm no channel list is sent</td>
+</tr>
+<tr>
+<td>Channel list carries no ports</td>
+<td>Inspect a <code>SceneChannelListBroadcast</code>; confirm each <code>ChannelAddress</code> has only <code>SceneHandle</code>, <code>SceneName</code>, and <code>CharacterCount</code></td>
 </tr>
 <tr>
 <td>Explicit channel list request</td>
@@ -635,7 +646,7 @@
 </tr>
 <tr>
 <td>World scene details fallback</td>
-<td>Remove scene from <code>WorldSceneDetailsCache</code>; confirm <code>maxClients</code> falls back to 500</td>
+<td>Remove scene from <code>WorldSceneDetailsCache</code>; confirm <code>maxClients</code> falls back to <code>WorldSceneSettings.MaximumClientsPerScene</code> (200), the same ceiling the world server routes against</td>
 </tr>
 <tr>
 <td>Deinitialize cleanup</td>
@@ -646,32 +657,36 @@
 <h2 id="flow-diagram">Flow Diagram</h2>
 <h3 id="high-level-overview">High-Level Overview</h3>
 <pre><code class="lang-mermaid">flowchart LR
-    Scene[SceneServer] --&gt; SCS[SceneChannelSystem]
-    SCS --&gt;|register channels| Registry[Channel Registry]
-    Client[Unity Client] --&gt;|join channel| SCS
-    SCS --&gt;|broadcast events| Client
-    SCS --&gt;|world events| World[WorldServer]
+    Client[Unity Client] --&gt;|RequestSceneChannelListBroadcast| SCS[SceneChannelSystem]
+    SCS --&gt;|FetchAvailableAsync / FetchAsync| DB[(PostgreSQL)]
+    SCS --&gt;|SceneChannelListBroadcast| Client
+    Client --&gt;|SceneChannelSelectBroadcast| SCS
+    SCS --&gt;|BeginChannelTransfer| CS[CharacterSystem]
+    CS --&gt;|save + release + disconnect| Client
+    Client --&gt;|reconnect| World[WorldServer]
+    World --&gt;|route to hosting scene server| Client
 </code></pre>
 <h3 id="channel-list-load--request">Channel List (Load / Request)</h3>
 <pre><code>OnCharacterLoaded(conn, character) / OnRequestChannelList(conn, msg, channel)
 │
 ├─ 1. Validate connection + character
-├─ 2. Reject if instanced scene
-├─ 3. Acquire ingress guard (RequestList)
-├─ 4. Capture sceneName, worldServerID, characterID
-├─ 5. Resolve maxClients from WorldSceneDetailsCache (fallback: 500)
+├─ 2. Acquire ingress guard (RequestList)
+├─ 3. Instanced scene → release guard, send EMPTY list (InstanceSceneHandle)
+├─ 4. Capture sceneName, worldServerID, characterID, currentSceneHandle
+├─ 5. Resolve maxClients from WorldSceneDetailsCache (fallback: 200)
 └─ 6. TryEnqueueIngressWork → FetchAndSendChannelListAsync
        │
        ├─ FetchAvailableScenesAsync(worldServerID, sceneName, maxClients)
        │    └─ Cache hit → return cached; miss → ISceneService.FetchAvailableAsync → cache result
        ├─ Filter to SceneType.OpenWorld
        ├─ For each instance:
-       │    └─ FetchSceneServerAddressAsync(sceneServerID)
+       │    └─ FetchSceneServerAddressAsync(sceneServerID)   # liveness probe; port stays server-side
        │         └─ Cache hit → return cached; miss → ISceneServerService.FetchAsync → cache result
-       │              └─ Failure → invalidate cache entry
-       ├─ Build List&lt;ChannelAddress&gt; (Address, Port, SceneHandle, SceneName, CharacterCount)
-       └─ TryEnqueueMainThread
+       │              └─ Failure → invalidate cache entry, skip this channel
+       ├─ Build List&lt;ChannelAddress&gt; (SceneHandle, SceneName, CharacterCount)
+       └─ finally: TryEnqueueMainThread
               └─ Validate conn still active → Broadcast SceneChannelListBroadcast
+                 (Addresses + CurrentSceneHandle; empty list on any failure above)
 </code></pre>
 <h3 id="channel-switch-1">Channel Switch</h3>
 <pre><code>OnChannelSelect(conn, msg, channel)
@@ -689,16 +704,17 @@
        │
        ├─ FetchAvailableScenesAsync (cache-aware)
        ├─ Verify targetHandle exists, is OpenWorld, has capacity
+       │    └─ Fails → ResolveUnavailableReasonAsync → SendTransferRefused
+       ├─ ICharacterService.TryBeginChannelSwitchAsync (the cooldown that survives the disconnect)
+       │    └─ Not granted → SendTransferRefused(OnCooldown)
        └─ TryEnqueueMainThread
               ├─ Re-validate character still mapped to connection
-              ├─ character.SceneHandle = targetHandle
-              ├─ character.DisableFlags(CharacterFlags.IsLoaded)
-              └─ conn.Disconnect(false)
-                     │
-                     └─ Triggers CharacterSystem.OnRemoteConnectionStopped
-                            ├─ RemoveCharacterConnectionMapping
-                            ├─ SaveAndDespawnCharacter (saves with updated SceneHandle)
-                            └─ Client auto-reconnects → world server re-routes to target channel
+              ├─ Re-check CharacterStateValidation.CanActOrMove
+              └─ ICharacterSystem.BeginChannelTransfer(conn, targetHandle)
+                     ├─ OnDisconnect raised while SceneHandle still names the source instance
+                     ├─ Rebind SceneHandle → save → release session claim → disconnect
+                     └─ Client auto-reconnects → world server re-routes to target channel
+              (any failure on this path → ReleaseChannelSwitchClaim + SendTransferRefused)
 </code></pre>
 <h3 id="onupdate-sweep">OnUpdate Sweep</h3>
 <pre><code>OnUpdate(deltaTime)
@@ -773,12 +789,12 @@ RuntimeDataContainer
 <tr>
 <td><code>AvailableSceneCache</code></td>
 <td><code>TimedCache&lt;string, IReadOnlyList&lt;SceneData&gt;&gt;</code></td>
-<td>Write-through TTL cache of <code>FetchAvailableAsync</code> results keyed by scene name</td>
+<td>Write-through TTL cache of <code>FetchAvailableAsync</code> results keyed by <code>worldServerID\|sceneName</code></td>
 </tr>
 <tr>
 <td><code>SceneServerAddressCache</code></td>
-<td><code>TimedCache&lt;long, (string, ushort)&gt;</code></td>
-<td>Write-through TTL cache of scene server addresses keyed by scene server ID</td>
+<td><code>TimedCache&lt;long, ushort&gt;</code></td>
+<td>Write-through TTL cache of scene server ports keyed by scene server ID; used only to prove the host process is alive</td>
 </tr>
 </tbody>
 </table>

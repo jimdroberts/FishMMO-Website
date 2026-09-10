@@ -311,12 +311,12 @@
 <tr>
 <td><code>PartyAddBroadcast</code></td>
 <td><code>OnClientPartyAddBroadcastReceived</code></td>
-<td>Updates local <code>ID</code>/<code>Rank</code> if self, invokes <code>OnAddPartyMember</code></td>
+<td>Carries <code>PartyID</code> plus one <code>PartyAddEntry</code> (<code>Member</code>). Updates local <code>ID</code>/<code>Rank</code> if self, invokes <code>OnAddPartyMember</code></td>
 </tr>
 <tr>
 <td><code>PartyAddMultipleBroadcast</code></td>
 <td><code>OnClientPartyAddMultipleBroadcastReceived</code></td>
-<td>Validates member set, then processes each add individually</td>
+<td>Carries <code>PartyID</code> <strong>once</strong> and a list of <code>PartyAddEntry</code>. Validates the member set, then re-attaches the party id to each entry so the per-row handler is identical to a single add</td>
 </tr>
 <tr>
 <td><code>PartyLeaveBroadcast</code></td>
@@ -352,7 +352,7 @@
 </tr>
 <tr>
 <td><code>OnPartyCreated</code></td>
-<td><code>Action&lt;string&gt;</code></td>
+<td><code>Action</code></td>
 <td>Fired when a party is successfully created</td>
 </tr>
 <tr>
@@ -363,7 +363,7 @@
 <tr>
 <td><code>OnAddPartyMember</code></td>
 <td><code>Action&lt;long, PartyRank, float&gt;</code></td>
-<td>Fired when a member is added (ID, rank, HP%)</td>
+<td>Fired when a member is added (ID, rank, HP fraction). The wire carries one <strong>byte</strong>; <code>PartyVitalsQuantiser.ByteToFraction</code> expands it before the event</td>
 </tr>
 <tr>
 <td><code>OnValidatePartyMembers</code></td>
@@ -382,6 +382,14 @@
 </tr>
 </tbody>
 </table>
+<h3 id="pooling-reset">Pooling reset</h3>
+<p><code>ResetState(bool)</code> clears <code>ID</code>, <code>Rank</code> and every event subscriber. Neither field is a SyncVar, so
+nothing else returns them to their defaults — a recycled object that kept <code>ID</code> would report the
+previous occupant's party to every caller asking whether this character is grouped (friendly-fire
+and loot-eligibility checks among them) until a party broadcast happened to overwrite it, which for
+a character that never joins a party is never. The subscribers are per-spawn: each is held by an
+owner-side panel bound to the character being torn down, so a controller that kept them would push
+the next character's roster into the previous character's UI.</p>
 <h3 id="character-connectdisconnect">Character Connect/Disconnect</h3>
 <table>
 <thead>

@@ -117,11 +117,13 @@ out-of-game counterpart to the in-game authentication handled by the LoginServer
 — creating an account before first launch, recovering from a lost authenticator,
 an operator banning a cheater — have a home outside the FishNet connection
 lifecycle.</p>
-<p>It shares the same primitives as the rest of the stack rather than
-reimplementing them: SRP salt/verifier generation and TOTP helpers come from
-<code>FishMMO-Auth</code>, persistence is meant to go through <code>FishMMO-DB</code>, and username,
-password, and email validation are delegated to <code>FishMMO.Shared.Authentication</code>
-so the rules cannot drift from the ones the LoginServer enforces.</p>
+<p>It is wired to share the same primitives as the rest of the stack rather than
+reimplement them: SRP salt/verifier generation and TOTP helpers are to come from
+<code>FishMMO-Auth</code> and persistence from <code>FishMMO-DB</code> — both are referenced and
+imported but not yet called — while username, password, and email validation are
+already delegated to <code>FishMMO.Shared.Authentication</code>
+so the rules cannot drift from the ones the LoginServer enforces
+(<code>FishMMO-SharedUtility/FishMMO-SharedUtility/Authentication.cs</code>).</p>
 <blockquote>
 <p><strong>The launcher's news panel does not come from here.</strong> It is fetched from
 <code>Constants.Configuration.LauncherHtmlUrl</code>, which is baked at build time from
@@ -173,12 +175,15 @@ so the rules cannot drift from the ones the LoginServer enforces.</p>
 <pre><code>FishMMO-CMS/
 ├── FishMMO-CMS.slnx
 └── FishMMO-CMS.Server/
-    ├── FishMMO-CMS.Server.csproj   # net8.0 web SDK; copies appsettings from FishMMO-Setup
+    ├── FishMMO-CMS.Server.csproj   # net8.0 web SDK; RootNamespace FishMMO.CMS.Server;
+    │                               # copies appsettings from FishMMO-Setup
     ├── Program.cs                  # Host builder, config layering, Swagger, controller mapping
     └── Controllers/
         ├── AccountController.cs    # api/Account  — player self-service
         └── AdminController.cs      # api/Admin    — operator actions
 </code></pre>
+<p>There is no client or frontend project — <code>FishMMO-CMS.slnx</code> contains exactly one
+project, <code>FishMMO-CMS.Server</code>. Callers are the browser, <code>curl</code>, or the Swagger UI.</p>
 <h3 id="project-references">Project References</h3>
 <table>
 <thead>
@@ -190,7 +195,7 @@ so the rules cannot drift from the ones the LoginServer enforces.</p>
 <tbody>
 <tr>
 <td><code>FishMMO-Auth/FishMMO-ServerAuth</code></td>
-<td><code>ClientSrpData</code> (SRP salt/verifier), <code>CryptoHelper.TwoFactor</code> (TOTP secret, recovery codes, otpauth URI)</td>
+<td>The server auth cores, and transitively <code>FishMMO-AuthShared</code>: <code>ClientSrpData</code> (SRP salt/verifier) and <code>CryptoHelper.TwoFactor</code> (TOTP secret, recovery codes, otpauth URI). Both controllers <code>using FishMMO.Auth.Core</code> / <code>FishMMO.Auth.Implementation</code>; neither calls anything from them yet</td>
 </tr>
 <tr>
 <td><code>FishMMO-Database/FishMMO-DB</code></td>
@@ -198,8 +203,8 @@ so the rules cannot drift from the ones the LoginServer enforces.</p>
 </tr>
 </tbody>
 </table>
-<p><code>Swashbuckle.AspNetCore</code> supplies the Swagger UI, which is served only in the
-Development environment.</p>
+<p><code>Swashbuckle.AspNetCore</code> <code>6.5.0</code> is the only NuGet package reference; it supplies
+the Swagger UI, which is served only in the Development environment.</p>
 <h2 id="endpoints">Endpoints</h2>
 <h3 id="apiaccount--player-self-service"><code>api/Account</code> — player self-service</h3>
 <table>
@@ -233,6 +238,16 @@ Development environment.</p>
 </tr>
 </tbody>
 </table>
+<p>Request bodies are the DTOs declared alongside each controller: <code>RegisterRequest</code>
+(<code>Username</code>, <code>Password</code>, <code>Email</code>, <code>Age</code>), <code>VerifyRequest</code> (<code>Username</code>, <code>Code</code>),
+and <code>ChangePasswordRequest</code> (<code>CurrentPassword</code>, <code>NewPassword</code>). <code>2fa/setup</code>
+takes no body and reads no route or query parameter — there is nothing yet to
+identify the caller with.</p>
+<p>Within this controller <code>register</code> is the only route that runs all three
+<code>Authentication</code> checks, returning <code>400</code> with an <code>error</code> member on failure.
+<code>change-password</code> validates <code>NewPassword</code> only — <code>CurrentPassword</code> is never
+read. <code>verify</code> checks that both fields are non-blank. Every other outcome is the
+canned <code>200</code>.</p>
 <h3 id="apiadmin--operator-actions"><code>api/Admin</code> — operator actions</h3>
 <table>
 <thead>
@@ -280,6 +295,11 @@ Development environment.</p>
 </tr>
 </tbody>
 </table>
+<p><code>accounts/search</code> returns an empty array; the <code>{username}</code> routes echo the name
+back in a <code>message</code> string without touching a database. <code>force-password-reset</code>
+validates <code>NewPassword</code> via <code>Authentication.IsAllowedPassword</code>; <code>access-level</code>
+accepts a <code>SetAccessLevelRequest.AccessLevel</code> byte and does not yet check it
+against the <code>AccessLevel</code> enum.</p>
 <h2 id="configuration">Configuration</h2>
 <p><code>Program.cs</code> layers configuration in this order, so a deployed instance can be
 retuned without rebuilding:</p>
@@ -293,6 +313,11 @@ output directory as <code>appsettings.json</code> (and the Production variant as
 </ol>
 <p>Edit the templates under <code>FishMMO-Setup/</code>, not the copies in <code>bin/</code> — the build
 overwrites those.</p>
+<p>The Development template sets <code>AllowedHosts</code> to <code>localhost</code> and ships an empty
+<code>ConnectionStrings</code> block; the PostgreSQL connection string is expected from the
+<code>ConnectionStrings__DefaultConnection</code> environment variable in both environments,
+never from the committed file. Nothing in <code>Program.cs</code> reads either key yet — see
+<a href="#implementation-status">Implementation Status</a>.</p>
 <h2 id="build-and-run">Build and Run</h2>
 <pre><code class="lang-bash">cd FishMMO-CMS
 dotnet build FishMMO-CMS.slnx -c Release
@@ -363,6 +388,10 @@ comments in the source are the authoritative list; this is the summary.</p>
 </tr>
 </tbody>
 </table>
+<p><code>Program.cs</code> calls <code>app.UseAuthorization()</code> but registers neither
+<code>AddAuthentication</code> nor <code>AddAuthorization</code>, and no controller carries an
+<code>[Authorize]</code> attribute — so the middleware has no policy to enforce and every
+request is permitted.</p>
 <blockquote>
 <p>Until the two authorization rows are addressed, this service must not be
 exposed to a network. Any caller can invoke every administrative route.</p>

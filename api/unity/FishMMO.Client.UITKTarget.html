@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class UITKTarget | FishMMO Documentation ">
       
-      <meta name="description" content="UI Toolkit target frame. Shows the current target&#39;s name (faction-coloured), a health bar, its faction standing, and strips of the buffs and debuffs the SERVER has chosen to show observers. The overhead 3D label, outline and faction colouring are rendering-agnostic and driven from here rather than from the visual tree.">
+      <meta name="description" content="UI Toolkit target frame: two cards side by side. The HOVER card follows the pointer, as the frame always has; the PINNED card holds a character the player chose to track and stays up until they release it, it dies, it despawns or it leaves range. Each card shows its target&#39;s name (faction-coloured), a health bar, its faction standing, and strips of the buffs and debuffs the SERVER has chosen to show observers. The overhead 3D label, outline and faction colouring are rendering-agnostic and driven from here rather than from the visual tree.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_UITKTarget" data-uid="FishMMO.Client.UITKTarget" class="text-break">
-Class UITKTarget  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L32"><i class="bi bi-code-slash"></i></a>
+Class UITKTarget  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L46"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,10 +97,13 @@ Class UITKTarget  <a class="header-action link-secondary" title="View source" hr
   <dl><dt>Assembly</dt><dd>FishMMO.Client.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>UI Toolkit target frame. Shows the current target's name (faction-coloured), a health bar,
-its faction standing, and strips of the buffs and debuffs the SERVER has chosen to show
-observers. The overhead 3D label, outline and faction colouring are rendering-agnostic and
-driven from here rather than from the visual tree.</p>
+  <div class="markdown summary"><p>UI Toolkit target frame: two cards side by side. The HOVER card follows the pointer, as
+the frame always has; the PINNED card holds a character the player chose to track and stays
+up until they release it, it dies, it despawns or it leaves range. Each card shows its
+target's name (faction-coloured), a health bar, its faction standing, and strips of the
+buffs and debuffs the SERVER has chosen to show observers. The overhead 3D label, outline
+and faction colouring are rendering-agnostic and driven from here rather than from the
+visual tree.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -213,6 +216,15 @@ driven from here rather than from the visual tree.</p>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ToggleVisibility">UITKControl.ToggleVisibility()</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_InventoryPanelName">UITKControl.InventoryPanelName</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_OpensInventoryOnShow">UITKControl.OpensInventoryOnShow</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_ShowInventoryIfClosed">UITKControl.ShowInventoryIfClosed()</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Show">UITKControl.Show()</a>
@@ -668,19 +680,30 @@ driven from here rather than from the visual tree.</p>
 
   <h2 id="FishMMO_Client_UITKTarget_remarks">Remarks</h2>
   <div class="markdown level0 remarks"><p>
+<b>Two cards, one panel.</b> Action combat does not want a sticky target: abilities go
+where the player aims, and the hover frame is the readout for that. What players asked
+for is a way to keep ONE opponent's health and debuffs on screen while the pointer sweeps
+across everyone else in the fight — so the pin is a second card, not a change to the
+first. Nothing gameplay-authoritative reads either card. The two never show the same
+character: when the pointer rests on the pinned character the hover card stands down,
+because two identical cards say nothing that one does not.
+</p>
+<p>
 <b>Change-driven.</b> <code>TargetController</code> re-raises <code>OnUpdateTarget</code> twenty times a
 second for as long as the pointer rests on something, and this panel treated every one of
 them as a brand-new target: seven <code>GetComponent</code> calls, two or three string
 concatenations, a full reconcile of the buff strip and — worst — a destroy/recreate cycle of
 the overhead 3D label, twenty times a second, for a target that had not changed. Everything
 that depends only on WHICH target is resolved once, on the change; the update path only
-re-reads the values that actually move.
+re-reads the values that actually move. The pinned card gets no update event at all, so
+its health is re-read from <a class="xref" href="FishMMO.Client.UITKTarget.html#FishMMO_Client_UITKTarget_OnTick">OnTick()</a> — an integer comparison per frame.
 </p>
 <p>
-<b>Model / view split.</b> The displayed values live in fields; the elements belong to one
-visual tree and are rebuilt from those fields in <code>OnAfterShow</code> / <code>OnAfterStarting</code>.
-<code>UIDocument</code> re-clones the UXML on every enable, so a frame that wrote its content
-before <code>Show()</code> — or cached elements across a hide/show — comes back blank.
+<b>Model / view split.</b> The displayed values live in each card's fields; the elements
+belong to one visual tree and are rebuilt from those fields in <code>OnAfterShow</code> /
+<code>OnAfterStarting</code>. <code>UIDocument</code> re-clones the UXML on every enable, so a frame
+that wrote its content before <code>Show()</code> — or cached elements across a hide/show — comes
+back blank.
 </p>
 </div>
 
@@ -692,7 +715,7 @@ before <code>Show()</code> — or cached elements across a hide/show — comes b
 
   <h3 id="FishMMO_Client_UITKTarget_HealthAttributeID" data-uid="FishMMO.Client.UITKTarget.HealthAttributeID">
   HealthAttributeID
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L83"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L103"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The health attribute template ID used to identify the target's health resource.</p>
@@ -729,7 +752,7 @@ public int HealthAttributeID</code></pre>
 
   <h3 id="FishMMO_Client_UITKTarget_Layer" data-uid="FishMMO.Client.UITKTarget.Layer">
   Layer
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L35"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L49"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Draw order tier for this panel. See <a class="xref" href="FishMMO.Client.UITKPanelLayer.html">UITKPanelLayer</a>.</p>
@@ -765,7 +788,7 @@ public int HealthAttributeID</code></pre>
 
   <h3 id="FishMMO_Client_UITKTarget_OnAfterShow" data-uid="FishMMO.Client.UITKTarget.OnAfterShow">
   OnAfterShow()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L312"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L420"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called at the end of <a class="xref" href="FishMMO.Client.UITKControl.html#FishMMO_Client_UITKControl_Show">Show()</a>, against the tree the player will actually
@@ -804,7 +827,7 @@ rebuilt. This one runs on every show, rebuilt tree or not.
 
   <h3 id="FishMMO_Client_UITKTarget_OnAfterStarting" data-uid="FishMMO.Client.UITKTarget.OnAfterStarting">
   OnAfterStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L318"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L426"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Re-applies the character once the visual tree exists.</p>
@@ -840,10 +863,10 @@ equivalent.</p>
 
   <h3 id="FishMMO_Client_UITKTarget_OnDestroying" data-uid="FishMMO.Client.UITKTarget.OnDestroying">
   OnDestroying()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L241"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L332"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Releases the observed-buff subscription and the overhead label.</p>
+  <div class="markdown level1 summary"><p>Releases the observed-buff subscription and the overhead nameplates.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -867,7 +890,7 @@ equivalent.</p>
 
   <h3 id="FishMMO_Client_UITKTarget_OnPostSetCharacter" data-uid="FishMMO.Client.UITKTarget.OnPostSetCharacter">
   OnPostSetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L273"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L363"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Subscribes to the target controller after the character is set.</p>
@@ -894,7 +917,7 @@ equivalent.</p>
 
   <h3 id="FishMMO_Client_UITKTarget_OnPreSetCharacter" data-uid="FishMMO.Client.UITKTarget.OnPreSetCharacter">
   OnPreSetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L259"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L351"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unsubscribes from the target controller before a character is set.</p>
@@ -927,10 +950,10 @@ re-applying the same character never went through it.</p>
 
   <h3 id="FishMMO_Client_UITKTarget_OnPreUnsetCharacter" data-uid="FishMMO.Client.UITKTarget.OnPreUnsetCharacter">
   OnPreUnsetCharacter()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L288"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L376"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Unsubscribes from the target controller and releases the overhead label.</p>
+  <div class="markdown level1 summary"><p>Unsubscribes from the target controller and releases both cards.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -954,7 +977,7 @@ re-applying the same character never went through it.</p>
 
   <h3 id="FishMMO_Client_UITKTarget_OnQuitToLogin" data-uid="FishMMO.Client.UITKTarget.OnQuitToLogin">
   OnQuitToLogin()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L304"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L391"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when the client quits to the login screen.
@@ -982,10 +1005,10 @@ Override to perform cleanup such as stopping coroutines.</p>
 
   <h3 id="FishMMO_Client_UITKTarget_OnStarting" data-uid="FishMMO.Client.UITKTarget.OnStarting">
   OnStarting()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L197"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L300"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Queries the target frame elements and subscribes to the observed-buff push.</p>
+  <div class="markdown level1 summary"><p>Queries both cards' elements and subscribes to the observed-buff push.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -1014,10 +1037,10 @@ before it is added so rebuilds cannot stack handlers.</p>
 
   <h3 id="FishMMO_Client_UITKTarget_OnTick" data-uid="FishMMO.Client.UITKTarget.OnTick">
   OnTick()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L333"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L444"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Animates the buff strips' remaining-duration fills.</p>
+  <div class="markdown level1 summary"><p>Re-reads the pinned card's health and animates both cards' remaining-duration fills.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -1034,9 +1057,12 @@ before it is added so rebuilds cannot stack handlers.</p>
 
 
   <h4 class="section" id="FishMMO_Client_UITKTarget_OnTick_remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>The server pushes an observed-buff list only when the SET changes, so the countdown
-between pushes is local. The entries carry the seconds remaining at send time; this
-subtracts the time elapsed since. Skipped entirely when nothing is on screen.</p>
+  <div class="markdown level1 remarks"><p>The pinned card has no update event: the controller only re-reports what the pointer
+is on. Its health is therefore polled here, and <span class="xref">FishMMO.Client.UITKTarget.RefreshHealth(FishMMO.Client.UITKTarget.TargetCard)</span> makes that
+two integer comparisons per frame until a number actually moves. The buff countdown is
+local for both cards — the server pushes an observed-buff list only when the SET
+changes, so the entries carry the seconds remaining at send time and this subtracts
+the time elapsed since. Skipped entirely when nothing is on screen.</p>
 </div>
 
 
@@ -1046,10 +1072,10 @@ subtracts the time elapsed since. Skipped entirely when nothing is on screen.</p
 
   <h3 id="FishMMO_Client_UITKTarget_TargetController_OnChangeTarget_UnityEngine_Transform_" data-uid="FishMMO.Client.UITKTarget.TargetController_OnChangeTarget(UnityEngine.Transform)">
   TargetController_OnChangeTarget(Transform)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L365"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L496"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Updates the target frame and overhead label for a newly selected target.</p>
+  <div class="markdown level1 summary"><p>Frames a newly hovered target in the hover card.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -1079,10 +1105,10 @@ subtracts the time elapsed since. Skipped entirely when nothing is on screen.</p
 
   <h3 id="FishMMO_Client_UITKTarget_TargetController_OnClearTarget_UnityEngine_Transform_" data-uid="FishMMO.Client.UITKTarget.TargetController_OnClearTarget(UnityEngine.Transform)">
   TargetController_OnClearTarget(Transform)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L479"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L566"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Hides the frame and overhead labels when the target is cleared.</p>
+  <div class="markdown level1 summary"><p>Releases the hover card when the pointer leaves its target.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -1112,10 +1138,10 @@ subtracts the time elapsed since. Skipped entirely when nothing is on screen.</p
 
   <h3 id="FishMMO_Client_UITKTarget_TargetController_OnUpdateTarget_UnityEngine_Transform_" data-uid="FishMMO.Client.UITKTarget.TargetController_OnUpdateTarget(UnityEngine.Transform)">
   TargetController_OnUpdateTarget(Transform)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L454"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Target/UITKTarget.cs/#L530"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Handles a target update — the same target, re-reported on the controller's poll.</p>
+  <div class="markdown level1 summary"><p>Handles a hover update — the same target, re-reported on the controller's poll.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 

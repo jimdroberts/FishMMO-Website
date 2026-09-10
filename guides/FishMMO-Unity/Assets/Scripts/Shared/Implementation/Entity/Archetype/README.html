@@ -287,8 +287,42 @@
 <td><code>void</code></td>
 <td>Sets archetype by direct template reference</td>
 </tr>
+<tr>
+<td><code>RestoreArchetype(int)</code></td>
+<td><code>void</code></td>
+<td>Installs an archetype this peer was <strong>told</strong> about, raising nothing</td>
+</tr>
+<tr>
+<td><code>Version</code></td>
+<td><code>long</code></td>
+<td>Persistence version; advanced on change and by the save snapshot</td>
+</tr>
+<tr>
+<td><code>PersistenceDirty</code></td>
+<td><code>bool</code></td>
+<td>Whether the archetype has changed since the database confirmed it</td>
+</tr>
+<tr>
+<td><code>MarkPersisted(long)</code></td>
+<td><code>void</code></td>
+<td>Clears the dirty mark only if nothing changed since that snapshot</td>
+</tr>
+<tr>
+<td><code>Restore(int, long)</code></td>
+<td><code>void</code></td>
+<td>Load path: installs a persisted template and version, no events, no requirement check, not dirty</td>
+</tr>
 </tbody>
 </table>
+<p><strong><code>SetArchetype</code> versus <code>RestoreArchetype</code>.</strong> <code>SetArchetype</code> ends in
+<code>Character.Invoke(onArchetypeChangeTriggers)</code>, and <code>BaseCharacter.Invoke</code> has no authority gate —
+only a minority of ECA action types gate themselves with <code>EcaAuthority</code>. Both the spawn payload and
+the observer broadcast run on <strong>every</strong> peer for every character that walks into observer range, so
+using <code>SetArchetype</code> there ran a stranger's archetype-change triggers on the onlooker's machine.
+Those two paths call <code>RestoreArchetype</code>, which installs the value and raises nothing. It is a
+separate method rather than a <code>skipEvent</code> argument because <code>IArchetypeController</code> declares the
+parameterless signatures, and an implementation with an extra optional parameter does not satisfy an
+interface member.</p>
 <h3 id="lifecycle-methods">Lifecycle Methods</h3>
 <table>
 <thead>
@@ -300,15 +334,15 @@
 <tbody>
 <tr>
 <td><code>ResetState(bool asServer)</code></td>
-<td>Clears the <code>Template</code> reference to <code>null</code></td>
+<td>Clears <code>Template</code>, <code>Version</code> and <code>PersistenceDirty</code> for pooling</td>
 </tr>
 <tr>
 <td><code>ReadPayload(connection, reader)</code></td>
-<td>Reads template ID (<code>int</code>), calls <code>SetArchetype(id)</code> if valid (&gt;= 0)</td>
+<td>Reads the template ID (unpacked <code>int</code>), calls <code>RestoreArchetype(id)</code> if valid (&gt;= 0)</td>
 </tr>
 <tr>
 <td><code>WritePayload(connection, writer)</code></td>
-<td>Writes template ID (<code>int</code>), or <code>-1</code> if no archetype is assigned</td>
+<td>Writes the template ID (unpacked <code>int</code>), or <code>-1</code> if no archetype is assigned</td>
 </tr>
 </tbody>
 </table>
@@ -325,16 +359,19 @@
 <tbody>
 <tr>
 <td>Write</td>
-<td><code>int</code> (template ID)</td>
+<td><code>int</code> unpacked (template ID)</td>
 <td>Writes the template's cached <code>ID</code>, or <code>-1</code> if null</td>
 </tr>
 <tr>
 <td>Read</td>
-<td><code>int</code> (template ID)</td>
-<td>Reads the ID and calls <code>SetArchetype(id)</code> if &gt;= 0</td>
+<td><code>int</code> unpacked (template ID)</td>
+<td>Reads the ID and calls <code>RestoreArchetype(id)</code> if &gt;= 0</td>
 </tr>
 </tbody>
 </table>
+<p>Unpacked deliberately: template IDs are deterministic 32-bit hashes from
+<code>CachedScriptableObject.AddToCache</code>, so they span the whole range and FishNet's signed-packed form
+spends five bytes where unpacked spends four.</p>
 <p>The archetype is synchronized as part of the character's initial payload when a client receives the character's networked state. FishNet calls <code>WritePayload</code> on the server and <code>ReadPayload</code> on the client automatically for each <code>NetworkBehaviour</code> on the character.</p>
 <h4 id="runtime-broadcast-synchronization">Runtime Broadcast Synchronization</h4>
 <p>At runtime, archetype changes are synchronized with two broadcast paths:</p>
@@ -354,8 +391,8 @@
 </tr>
 <tr>
 <td><code>CharacterObserverArchetypeUpdateBroadcast</code></td>
-<td>Observer clients</td>
-<td>Includes <code>CharacterID</code> so observers can route updates through <code>BaseCharacter.ClientCharacters</code> to the correct remote character controller.</td>
+<td>Observer clients (<code>ObserverBroadcastScope.BroadcastToObserversExceptOwner</code>)</td>
+<td>Includes <code>CharacterID</code> so observers can route updates through <code>BaseCharacter.ClientCharacters</code> to the correct remote character controller; applied with <code>RestoreArchetype</code>.</td>
 </tr>
 </tbody>
 </table>

@@ -149,7 +149,7 @@
 </table>
 <h2 id="architecture">Architecture</h2>
 <pre><code>NpgsqlDbContextFactory
-├── ConnectionPoolMetrics       (Metrics/) — driven by EF Core interceptors
+├── ConnectionPoolMetrics       (Metrics/) — driven by ConnectionMetricsInterceptor (EF Core DbConnectionInterceptor)
 ├── DatabaseMetricsTracker      (Metrics/) — success / failure / latency aggregates
 ├── QueryPerformanceTracker     (Diagnostics/) — per-operation percentiles, slow query events
 └── DatabaseHealthMonitor       (Health/) — SELECT 1 probe + status classification
@@ -159,10 +159,14 @@
 ├── Health/                      # Database availability and connectivity monitoring
 │   ├── DatabaseHealthMonitor.cs    # Performs health checks and connection validation
 │   ├── HealthCheckResult.cs        # Health check result data structure
-│   └── HealthStatus.cs             # Health status enumeration (Healthy, Degraded, Unhealthy)
+│   ├── HealthStatus.cs             # Health status enumeration (Healthy, Degraded, Unhealthy)
+│   ├── PoolHealthResult.cs         # Pool health snapshot (utilization, peak, exhaustion, recommended action)
+│   ├── PoolHealthStatus.cs         # Pool health enumeration
+│   └── DbContextFactoryHealthExtensions.cs  # GetConnectionPoolHealth(this factory) extension
 │
 ├── Metrics/                     # Performance metrics and statistics tracking
-│   ├── ConnectionPoolMetrics.cs    # Runtime connection open/close + pool signals (via EF Core interceptors)
+│   ├── ConnectionMetricsInterceptor.cs  # DbConnectionInterceptor feeding ConnectionPoolMetrics
+│   ├── ConnectionPoolMetrics.cs    # Runtime connection open/close + pool signals; GetPoolHealth(...)
 │   ├── DatabaseMetricsTracker.cs   # Aggregate database operation metrics
 │   └── MetricsSummary.cs           # Metrics summary data structure
 │
@@ -269,10 +273,11 @@ performanceTracker.SlowQueryDetected += (sender, e) =&gt;
 };
 
 // Get performance report
-var slowestOps = performanceTracker.GetSlowestOperations(10);
-foreach (var (opName, metrics) in slowestOps)
+// GetSlowestOperations returns IReadOnlyCollection&lt;QueryMetrics&gt;; the operation name is on the metric.
+IReadOnlyCollection&lt;QueryMetrics&gt; slowestOps = performanceTracker.GetSlowestOperations(10);
+foreach (var metrics in slowestOps)
 {
-    Console.WriteLine($&quot;{opName}: Avg={metrics.AverageMs}ms, P95={metrics.P95Ms}ms, P99={metrics.P99Ms}ms&quot;);
+    Console.WriteLine($&quot;{metrics.OperationName}: Avg={metrics.AverageMs}ms, P95={metrics.P95Ms}ms, P99={metrics.P99Ms}ms&quot;);
 }
 </code></pre>
 <h4 id="query-diagnostics-enhancements-future">Query Diagnostics Enhancements (Future)</h4>
@@ -320,10 +325,10 @@ Console.WriteLine($&quot;Pool Utilization: {poolMetrics.GetUtilizationPercentage
 </code></pre>
 <h2 id="future-expansions">Future Expansions</h2>
 <p>The Monitoring namespace is designed to accommodate:</p>
+<p>Per-operation query performance tracking and slow query detection already ship — see
+<code>Diagnostics/QueryPerformanceTracker.cs</code>. What is still absent:</p>
 <h3 id="diagnostics-future">Diagnostics (Future)</h3>
 <ul>
-<li>Query performance tracking per operation</li>
-<li>Slow query detection and logging</li>
 <li>Query plan analysis</li>
 <li>Performance profiling</li>
 </ul>
@@ -354,6 +359,10 @@ Console.WriteLine($&quot;Pool Utilization: {poolMetrics.GetUtilizationPercentage
 <ul>
 <li><strong>NpgsqlDbContextFactory</strong>: Integrates ConnectionPoolMetrics and QueryPerformanceTracker</li>
 <li><strong>DatabaseHealthMonitor</strong>: Combines health checks with pool metrics</li>
+<li><strong>Pool health</strong>: <code>ConnectionPoolMetrics.GetPoolHealth(...)</code>, or
+<code>factory.GetConnectionPoolHealth()</code> via <code>DbContextFactoryHealthExtensions</code>, returns a
+<code>PoolHealthResult</code> carrying <code>UtilizationPercent</code>, <code>PeakActiveConnections</code>,
+<code>PoolExhaustionCount</code>, <code>RequiresAction</code> and <code>RecommendedAction</code></li>
 <li><strong>Services</strong>: Integrate QueryPerformanceTracker for operation-level monitoring</li>
 <li><strong>Unity</strong>: DatabaseHealthService for game server monitoring</li>
 <li><strong>Configuration</strong>: All monitoring components configurable via appsettings.json</li>

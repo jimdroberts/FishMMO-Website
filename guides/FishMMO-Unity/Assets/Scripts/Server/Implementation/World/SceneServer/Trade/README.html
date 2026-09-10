@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Trade System | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Trade System | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Trade/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="trade-system">Trade System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Trade/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p>Player-to-player trading of items and currency (issue #144). One session between two
+characters: each puts inventory items and currency on the table, both confirm it, both accept
+the same version of the frozen table, and the exchange is applied as one in-memory step and
+one database commit.</p>
+<h2 id="files">Files</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TradeSystem.cs</code></td>
+<td>Lifecycle, configuration, invitations, the range/state tick, session open/close.</td>
+</tr>
+<tr>
+<td><code>TradeSystem.Handlers.cs</code></td>
+<td>The eight broadcast handlers: <code>TradeRequestBroadcast</code>, <code>TradeRequestResponseBroadcast</code>, <code>TradeOfferItemBroadcast</code>, <code>TradeWithdrawItemBroadcast</code>, <code>TradeSetCurrencyBroadcast</code>, <code>TradeConfirmBroadcast</code> (confirm/revoke), <code>TradeAcceptBroadcast</code> (accept/un-accept), <code>TradeCancelBroadcast</code>. Every refusal is answered with a <code>TradeRefusedBroadcast</code> and the current table.</td>
+</tr>
+<tr>
+<td><code>TradeSystem.Commit.cs</code></td>
+<td>Completion: re-validation, currency deduction, in-memory exchange, credit, one persistence unit, client notification.</td>
+</tr>
+<tr>
+<td><code>TradeSession.cs</code></td>
+<td>Pure state, the <code>TradePhase</code>, and the confirm/accept rules (<code>TryAddOffer</code>, <code>TryRemoveOffer</code>, <code>TrySetCurrency</code>, <code>TryConfirm</code>, <code>TryAccept</code>, <code>TryBeginCommit</code>). <strong>Every change clears both confirmations and both acceptances and bumps the version; a confirm and an accept must each quote the current version.</strong> It also carries the <code>CommitState</code> the commit hangs its escrow, its <code>TradeExchange.Applied</code> and its failure reason on.</td>
+</tr>
+<tr>
+<td><code>TradeExchange.cs</code></td>
+<td>Pure container arithmetic: TAKE every offer out of both bags, GIVE each to the other, or undo everything. Emits the rows each write must carry.</td>
+</tr>
+<tr>
+<td><code>TradeSystemRuntimeData.cs</code> / <code>TradeSystemMainThreadQueueData.cs</code></td>
+<td>The ingress guard and the main-thread queue.</td>
+</tr>
+</tbody>
+</table>
+<p>The wire contract is <code>Shared/Implementation/Network/Character/TradeBroadcasts.cs</code>; the rules
+both peers share (range, scene, quantity resolution, the bag-room estimate) are
+<code>Shared/Implementation/Entity/Trade/TradeRules.cs</code>. The client window is
+<code>Client/GUI/World/Trade/UITKTrade.cs</code>.</p>
+<h2 id="what-the-client-may-say">What the client may say</h2>
+<p>A slot and a quantity, a currency amount, a character id, an accept that quotes a state
+version, a cancel. Never an item, a template, a seed, a price or a balance. The server
+resolves everything from its own state, and <code>CharacterStateValidation.CanAct</code> fronts every
+handler except cancel — a dead or stunned player must still be able to close their window.</p>
+<h2 id="two-stages-confirm-then-accept">Two stages: confirm, then accept</h2>
+<p>Trading is deliberately two-stage, because a single accept only makes a last-minute switch
+<em>unlikely</em> (you have to win a race against the version check), while two stages make it
+<em>impossible</em>:</p>
+<ol>
+<li><strong>Confirm</strong> — &quot;this is my final offer&quot;. One confirmation changes nothing else; the other
+party may still edit.</li>
+<li><strong>Both confirmed → the table is FROZEN.</strong> Every change is refused outright
+(<code>TradeOfferRefusal.TableLocked</code> → <code>TradeRefusalReason.TableLocked</code>): no item added,
+withdrawn or re-priced, on either side. Only accepting, revoking and cancelling remain.</li>
+<li><strong>Accept</strong> — refused entirely until the table is frozen (<code>NotLocked</code> → <code>NotConfirmed</code>), so
+an acceptance is always a decision about a settled table.</li>
+</ol>
+<p>Changing your mind means <strong>revoking</strong>, which unfreezes the table and clears <strong>both</strong>
+acceptances — an acceptance was consent to a frozen table, and the table is no longer frozen.
+The other party's <em>confirmation</em> survives a revoke (they have not changed their mind about
+their own offer); any actual change to the table then clears that too, as ever.</p>
+<p>Both the confirm and the accept quote the <code>TradeStateBroadcast.Version</code> they consent to, so a
+click already in flight when the table changed lands as a no-op rather than as consent to
+something the player never saw. <code>TradeSession.Touch()</code> is the single place the invariant
+lives: every mutator bumps the version and clears both confirmations and both acceptances.</p>
+<h2 id="reservation-the-inventory-slot-lock">Reservation: the inventory slot lock</h2>
+<p>An offered item's inventory slot is <strong>locked</strong> on the server the moment it goes on the
+table. Every path that could move, split, merge, sell, mail, equip or consume an item refuses
+a locked slot — including equip, which runs inside the replicate tick and has no broadcast
+handler, and the consumable finder, which skips locked slots for the same reason. Withdrawing
+the offer, or the session ending for any reason, unlocks it. The owning client locks the same
+slots from the authoritative <code>TradeStateBroadcast</code>, so its bag greys them out and prediction
+stays deterministic.</p>
+<p>Completion re-reads every slot regardless (<code>TradeRules.OfferStillHolds</code>: same item id, same
+template, at least the offered quantity). The lock is the reservation; the re-check is the
+second lock on the same door.</p>
+<h2 id="range-and-state">Range and state</h2>
+<p><code>maxTradeDistance</code> (asset, default 15 m, floor 2 m) is enforced by the server: a tick every
+<code>rangeCheckIntervalSeconds</code> closes any open session whose parties are no longer both present,
+able to act, in the same scene <strong>instance</strong> (handle, not name) and within range. The same
+rule is applied once more at completion. The client runs the same check against the partner's
+observed position so its window closes immediately; the server's check is the one that
+decides. Disconnect and despawn both close the session (the character system raises the
+disconnect event before combat-linger begins).</p>
+<h2 id="one-character-one-trade">One character, one trade</h2>
+<p><code>sessionsByCharacter</code> holds one session per party. A character in a session, or with an
+invitation out or pending, refuses new invitations from either end (<code>SelfBusy</code> /
+<code>TargetBusy</code>). Invitations lapse after <code>inviteTtlSeconds</code>; a decline or lapse arms a
+per-pair cooldown so a refused request cannot be re-sent every debounce interval.</p>
+<h2 id="completion-tradesystemcommitcs--the-database-commit-is-the-point-of-truth">Completion (<code>TradeSystem.Commit.cs</code>) — the database commit is the point of truth</h2>
+<p>Nothing about a trade is final until the ONE transaction carrying both characters' halves has
+committed, and memory is mutated only while that transaction holds both characters' session
+row locks. That is what makes a server crash at any instant safe:</p>
+<ul>
+<li><strong>before the commit</strong>: memory is lost, the database rolls back — the trade never happened
+for either side;</li>
+<li><strong>after the commit</strong>: the database holds the whole trade for both, and the next login
+loads it.</li>
+</ul>
+<p>There is no interleaving in which one side's half is durable and the other's is not, because
+there is only one write and it decides. A crash can lose a trade in flight; it cannot
+duplicate one.</p>
+<p>Five hops, in this order (<code>ICharacterInventorySystem.TryRunExchange</code>, passed the tag
+<code>&quot;PlayerTrade&quot;</code>):</p>
+<ol>
+<li><strong>Main thread, <code>TryCommit</code></strong> — the session moves to <code>Committing</code> (no request from either
+party is honoured), the offered slots stay locked, nothing is mutated.</li>
+<li><strong>Worker</strong> — open the transaction, take BOTH session row locks in ascending id order. No
+other write for either character can commit until this transaction ends.</li>
+<li><strong>Main thread, <code>ApplyExchange</code>, under the locks</strong> — re-validate everything as if the
+trade were proposed now (presence, <code>CanAct</code>, scene, range, every offered slot, both
+balances, no <code>int</code> overflow on receipt); <strong>deduct</strong> both currency offers (an escrow — a
+concurrent spend can only spend what is left, and a refusal refunds exactly); apply the
+item exchange in memory all-or-nothing (<code>TradeExchange.TryApply</code>); hand back the rows.
+Sequences and versions are stamped HERE, so every write captured before this instant is
+older than the trade and every write captured after carries it. Every touched slot on
+both sides is locked from this instant until the outcome. <strong>Credits are not applied
+here</strong>: they ride in the written attribute row and land in memory only once the commit
+is known, so a refusal never has to claw back money already spent.</li>
+<li><strong>Worker</strong> — both characters' item rows (an item that crossed whole keeps its id and is
+re-owned by the upsert; only an item that merged entirely into a resident stack is
+deleted), both attribute sheets, the <code>currency_ledger</code> rows (<code>PlayerTrade</code>, <code>Absorbed</code>),
+commit.</li>
+<li><strong>Main thread, <code>FinishExchange</code></strong> — on commit: credit both, close as <code>Completed</code> (the
+close goes BEFORE the inventory updates, because the clients still hold their local slot
+locks and their handlers refuse a locked slot), then the set/remove broadcasts. On
+refusal: <code>TradeExchange.Applied.Undo()</code> restores both bags exactly, the deductions are
+refunded, the session closes with the reason; the inventory system <strong>voids</strong> every batch
+captured for either character while the applied state was visible
+(<code>ItemWriteJournal.VoidCaptures</code>) — a snapshot or despawn flush captured in that window
+described a trade that never happened — and reconciles both from the restored memory.</li>
+</ol>
+<p>A character that disconnects while the commit is in flight is not closed out of the session;
+the outcome closes it. Its despawn flush waits on the same row lock, so it lands after the
+outcome and is ordered — or voided — by the journal. A committing session whose outcome
+never arrives (main thread unreachable for <code>CommitTimeoutSeconds</code>, 60 s) is treated as refused.</p>
+<p>Room is estimated when an offer is <strong>confirmed</strong> and again when it is <strong>accepted</strong>
+(<code>TradeRules.HasRoomFor</code>), so a player short of bag space hears it while the table is still
+theirs to trim rather than after both have accepted. The exchange's own all-or-nothing
+refusal remains the decision.</p>
+<h2 id="tuning-the-tradesystem-asset">Tuning (the <code>TradeSystem</code> asset)</h2>
+<p><code>maxTradeDistance</code> (clamped by <code>TradeRules.ClampMaxDistance</code>, floor
+<code>TradeRules.MinimumMaxDistance</code> = 2 m, default <code>DefaultMaxDistance</code> = 15 m),
+<code>rangeCheckIntervalSeconds</code> (floor 0.05 s), <code>maxOfferSlots</code> (<code>TradeRules.ClampMaxOfferSlots</code>,
+default 8 = the window's 4x2 grid, ceiling <code>MaximumOfferSlots</code> = 32; the window grows its grid
+to match), <code>inviteTtlSeconds</code>, <code>perTargetInviteCooldownSeconds</code>, <code>maxMainThreadActionsPerFrame</code>,
+the ingress guard settings (<code>ingressDebounceMilliseconds</code>, <code>ingressSweepIntervalSeconds</code>,
+<code>ingressEntryTtlSeconds</code>, <code>ingressSweepMaxRemovals</code>), and <code>currencyTemplate</code> (the same <code>Currency</code> attribute the merchant and mailbox
+use; unset refuses currency offers with <code>NoCurrency</code>).</p>
+<h2 id="tests">Tests</h2>
+<p><code>Assets/UnitTests/TradeSessionTests.cs</code> (the acceptance truth table),
+<code>TradeExchangeTests.cs</code> (conservation on success and on every refusal, the room estimate,
+against real <code>InventoryController</code>s), <code>TradePanelTests.cs</code> (the window on a real UI
+Toolkit panel). <code>Assets/ZZRenderScratch/TradePanelRender.cs</code> renders the window with a
+mock two-sided table.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

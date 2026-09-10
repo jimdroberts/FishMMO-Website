@@ -98,6 +98,7 @@
 <li><a href="#features">Features</a></li>
 <li><a href="#prerequisites">Prerequisites</a></li>
 <li><a href="#configuration">Configuration</a></li>
+<li><a href="#window-mode">Window Mode</a></li>
 <li><a href="#state-machine">State Machine</a></li>
 <li><a href="#the-update-path">The Update Path</a></li>
 <li><a href="#handoff-to-the-game">Handoff to the Game</a></li>
@@ -219,6 +220,8 @@ drawing.</p>
 <li><strong>Patch integrity verification</strong> — the server reports the expected SHA-256 and byte size up front; the downloaded archive is hashed and rejected on mismatch.</li>
 <li><strong>Unreachable-update detection</strong> — the server states whether it holds a patch <em>from this specific version</em>, so a client with no upgrade path lands in <code>PatchUnavailable</code> (reinstall required) rather than looping forever on a request that can only 404.</li>
 <li><strong>Transient-state watchdog</strong> — any state with no interactive button is forced back to a recoverable one after <code>transientStateTimeoutSeconds</code>. Download progress resets the timer, so a slow patch is never interrupted. This is a catch-all for a coroutine that dies (Unity logs the exception and silently stops it), not a substitute for per-operation error handling.</li>
+<li><strong>Cancellable waits</strong> — <code>CheckingVersion</code> and <code>DownloadingPatch</code> put <strong>Cancel</strong> on the button rather than disabling it, and land in <code>Cancelled</code> rather than in a failure state, so the log does not report an error for the player doing what the button offered.</li>
+<li><strong>Window mode owned for the whole process</strong> — see <a href="#window-mode">Window Mode</a>.</li>
 <li><strong>Re-entrancy interlocks</strong> — <code>isConnecting</code>, <code>isLaunching</code>, and <code>isUpdating</code> guard the three entry points. The button state alone is insufficient, because the update flow is also entered directly from the version check.</li>
 <li><strong>Signed requests</strong> — every call carries an <code>X-FishMMO-Client</code> HMAC header via <code>ClientApiSigner</code>, which the IPFetch and Patcher servers' <code>ClientGate</code> middleware validates.</li>
 </ul>
@@ -258,12 +261,6 @@ drawing.</p>
 <td><code>string</code> (<code>TextArea</code>)</td>
 <td>built-in blurb</td>
 <td>Shown in the news pane when no feed is configured, and when a fetch fails</td>
-</tr>
-<tr>
-<td><code>defaultScreenWidth</code> / <code>defaultScreenHeight</code></td>
-<td><code>int</code></td>
-<td>—</td>
-<td>Window size applied on launch</td>
 </tr>
 <tr>
 <td><code>transientStateTimeoutSeconds</code></td>
@@ -387,6 +384,59 @@ assigned image, so replacing the artwork needs no code change.</li>
 the full panel width. The affirmative action is where the eye and the cursor finish, and the
 destructive one is far enough away that neither is reachable by a mis-click on the other.</li>
 </ul>
+<h2 id="window-mode">Window Mode</h2>
+<p><code>LauncherWindow</code> is a static class that owns the window mode for the whole process. It exists
+because a standalone player creates its window <strong>before any script runs</strong>, in the mode Unity
+remembered from the previous clean exit — and since the launcher and the game share one process
+that always exits from the game in fullscreen, every launch after the first opened fullscreen,
+played the splash screen fullscreen, loaded two addressable scenes, and only then shrank to the
+launcher's size when <code>ClientLauncher.Awake</code> ran (issue #221).</p>
+<table>
+<thead>
+<tr>
+<th>Moment</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RuntimeInitializeLoadType.SubsystemRegistration</code></td>
+<td><code>ResetStaticState</code> clears the per-session statics, for play sessions with domain reload off</td>
+</tr>
+<tr>
+<td><code>RuntimeInitializeLoadType.BeforeSceneLoad</code> (standalone only, <code>#if !UNITY_EDITOR &amp;&amp; !UNITY_WEBGL</code>)</td>
+<td><code>CaptureNativeMode</code> reads the display's own resolution and refresh rate <strong>before</strong> anything resizes the window, <code>LauncherSettings.EnsureLoaded()</code> loads the store, <code>ApplyLauncherMode()</code> puts the window into the launcher's windowed size, <code>IsActive</code> becomes true, and <code>MainBootstrapSystem.OnClientShutdownStarting</code> is subscribed</td>
+</tr>
+<tr>
+<td><code>ClientLauncher.Awake</code></td>
+<td><code>ApplyWindowSize()</code> calls <code>LauncherWindow.ApplyLauncherMode()</code> again. Normally a no-op — <code>IsInLauncherMode</code> short-circuits when the mode is already in force — so it is purely the fallback for a failed boot-time request</td>
+</tr>
+<tr>
+<td>Hand-off to the game</td>
+<td><code>ClientLauncher.RestoreGameDisplayMode</code> applies the saved mode, or the captured native mode borderless-fullscreen when nothing is saved</td>
+</tr>
+<tr>
+<td><code>MainBootstrapSystem</code> shutdown</td>
+<td><code>RestoreForNextLaunch</code> puts the window back to the launcher's size a frame before the process quits, so Unity records <em>that</em> mode and the next launch is created in it</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The boot-time display apply is deliberately skipped on this path.</strong> <code>ClientDisplaySettings.ApplySaved</code>
+guards <code>ApplySavedDisplayMode()</code> with <code>if (!LauncherWindow.IsActive)</code>: applying the game's saved
+mode during the first scene's <code>Awake</code> only put the window into fullscreen behind the splash screen
+for the launcher to shrink again seconds later. Everything else in that method — quality, VSync,
+anisotropic filtering, frame rate, brightness — still runs. The editor and WebGL boot straight into
+the game, keep <code>IsActive</code> false, and keep the boot-time apply.</p>
+<p>The two mechanisms cover different failures: the exit-time restore is what makes a normal launch
+flash-free, and the boot-time correction is what carries a launch after a crash skipped the
+restore. Unity's own <code>Screenmanager*</code> player prefs are never written directly — the mode in force
+at quit is the only thing recorded.</p>
+<p>Sizes: <code>DefaultWidth</code>/<code>DefaultHeight</code> are 1024x768 (matching the Player Settings default window, so
+a fresh install's very first window is already the right size) and <code>MinWidth</code>/<code>MinHeight</code> are
+480x360, mirroring the min-width and min-height in <code>UILauncher.uss</code>. <code>ResolveWindowSize()</code> prefers
+the player's last size from <code>LauncherSettings.GetWindowSize</code>, which clamps it against the current
+display. <code>SetScreenResolution</code> retries at 60 Hz when a display rejects the refresh rate it
+reported.</p>
 <h2 id="state-machine">State Machine</h2>
 <table>
 <thead>
@@ -412,9 +462,9 @@ destructive one is far enough away that neither is reachable by a mis-click on t
 </tr>
 <tr>
 <td><code>CheckingVersion</code></td>
-<td>disabled</td>
-<td>—</td>
-<td>Comparing installed version to the server's</td>
+<td><strong>Cancel</strong></td>
+<td><code>CancelVersionCheck</code></td>
+<td>Comparing installed version to the server's. Cancellable: it walks every API host with its own timeout and retry budget, so it can last minutes; per-attempt progress moves to the status line</td>
 </tr>
 <tr>
 <td><code>UpdateAvailable</code></td>
@@ -424,9 +474,9 @@ destructive one is far enough away that neither is reachable by a mis-click on t
 </tr>
 <tr>
 <td><code>DownloadingPatch</code></td>
-<td>disabled</td>
-<td>—</td>
-<td>Progress bar visible; heartbeats the watchdog</td>
+<td><strong>Cancel</strong></td>
+<td><code>CancelUpdate</code></td>
+<td>Progress bar visible; heartbeats the watchdog. Cancellable for the same reason, with the progress bar carrying the message</td>
 </tr>
 <tr>
 <td><code>ApplyingPatch</code></td>
@@ -494,6 +544,12 @@ destructive one is far enough away that neither is reachable by a mis-click on t
 <td><code>PlayButtonConnect</code></td>
 <td>Retry; version parse failures can be transient after a partial patch</td>
 </tr>
+<tr>
+<td><code>Cancelled</code></td>
+<td>enabled</td>
+<td><code>PlayButtonConnect</code></td>
+<td>The player cancelled a version check or a download. Deliberately not a failure state: failures are logged at <code>Error</code>, and a cancellation is the player using a button that was offered</td>
+</tr>
 </tbody>
 </table>
 <blockquote>
@@ -559,6 +615,16 @@ session. Unloading also destroys the component, so nothing after that call may d
 <td>Launcher gets out of the way</td>
 <td>Press <strong>Play</strong> in the editor and in a build</td>
 <td>Launcher UI disappears at the handoff on both paths, even where the scene unload no-ops</td>
+</tr>
+<tr>
+<td>Launcher opens windowed</td>
+<td>Play to fullscreen, quit, relaunch the build</td>
+<td>Splash screen and launcher are both at the launcher's window size — no fullscreen flash</td>
+</tr>
+<tr>
+<td>Fullscreen survives the hand-off</td>
+<td>Save fullscreen in Options, quit, relaunch, press <strong>Play</strong></td>
+<td>Launcher is windowed, the game comes up fullscreen</td>
 </tr>
 <tr>
 <td>Host failover</td>
@@ -640,7 +706,9 @@ session. Unloading also destroys the component, so nothing after that call may d
 <h2 id="project-structure">Project Structure</h2>
 <pre><code>Client/Launcher/
 ├── ClientLauncher.cs            # MonoBehaviour: state machine, orchestration
-├── LauncherState.cs             # The 16 UI/process states
+├── LauncherWindow.cs            # Process-lifetime window mode: boot sizing, native mode capture,
+│                                #   exit-time restore (issue #221)
+├── LauncherState.cs             # The 17 UI/process states
 ├── LauncherSettings.cs          # Typed access to the persisted Launcher.* settings + their clamps
 ├── PatchInfo.cs                 # Server patch metadata: UpToDate, PatchAvailable, Sha256, Size
 ├── VersionFetch.cs              # Version response parsing

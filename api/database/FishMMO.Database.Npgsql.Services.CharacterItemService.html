@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Database_Npgsql_Services_CharacterItemService" data-uid="FishMMO.Database.Npgsql.Services.CharacterItemService" class="text-break">
-Class CharacterItemService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L53"><i class="bi bi-code-slash"></i></a>
+Class CharacterItemService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L58"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -181,11 +181,16 @@ an item that never learns its id gets a new row — and a new ledger key — on 
 <p>
 <b>The <code>(character_id, container, slot)</code> unique index is not a conflict target.</b> It
 exists to stop two items claiming one slot, a state the in-memory container cannot represent.
-It is checked per row, so a statement that moves several items at once can trip it halfway
-through even when the end state is legal. <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterItemService.html#FishMMO_Database_Npgsql_Services_CharacterItemService_SaveSnapshotAsync_System_Int64_System_Collections_Generic_IReadOnlyCollection_FishMMO_Database_Data_ItemContainerType__System_Collections_Generic_IEnumerable_FishMMO_Database_Data_CharacterItemData__System_Threading_CancellationToken_">SaveSnapshotAsync(long, IReadOnlyCollection&lt;ItemContainerType&gt;, IEnumerable&lt;CharacterItemData&gt;, CancellationToken)</a> avoids that by
-deleting the character's rows before re-inserting them; the incremental paths move one item
-at a time. A stale row still sitting on a slot that an incoming item claims surfaces as a
-UNIQUE_VIOLATION and is repaired by the next snapshot.
+It is checked per row, not per statement, so any write that exchanges two items' slots —
+a swap, a deposit onto an occupied bank slot, an equip that displaces the item already worn —
+would trip it partway through even though the end state is legal. Every multi-row path here
+therefore PARKS first: <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterItemService.html#FishMMO_Database_Npgsql_Services_CharacterItemService_SaveSnapshotAsync_System_Int64_System_Collections_Generic_IReadOnlyCollection_FishMMO_Database_Data_ItemContainerType__System_Collections_Generic_IEnumerable_FishMMO_Database_Data_CharacterItemData__System_Threading_CancellationToken_">SaveSnapshotAsync(long, IReadOnlyCollection&lt;ItemContainerType&gt;, IEnumerable&lt;CharacterItemData&gt;, CancellationToken)</a> deletes the character's rows before
+re-inserting them, and the bulk <a class="xref" href="FishMMO.Database.Npgsql.Services.CharacterItemService.html#FishMMO_Database_Npgsql_Services_CharacterItemService_PersistAsync_System_Collections_Generic_IEnumerable_FishMMO_Database_Data_CharacterItemData__System_Threading_CancellationToken_">PersistAsync(IEnumerable&lt;CharacterItemData&gt;, CancellationToken)</a>
+moves the rows it is about to update onto negative slots that nothing else can occupy, then
+writes the final layout. Both happen inside the caller's transaction, so no intermediate
+state is ever visible. A stale row still sitting on a slot that an incoming item claims —
+one this batch does not know about — still surfaces as a UNIQUE_VIOLATION and is repaired
+by the next snapshot.
 </p>
 </div>
 
@@ -198,7 +203,7 @@ UNIQUE_VIOLATION and is repaired by the next snapshot.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterItemService__ctor_FishMMO_Database_Npgsql_INpgsqlDbContextFactory_" data-uid="FishMMO.Database.Npgsql.Services.CharacterItemService.#ctor(FishMMO.Database.Npgsql.INpgsqlDbContextFactory)">
   CharacterItemService(INpgsqlDbContextFactory)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L75"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L80"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
@@ -233,7 +238,7 @@ UNIQUE_VIOLATION and is repaired by the next snapshot.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterItemService_DeleteAsync_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterItemService.DeleteAsync(System.Int64,System.Int64,System.Threading.CancellationToken)">
   DeleteAsync(long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L326"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L417"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes the entity identified by the given key if <code class="paramref">incomingVersion</code> is newer.</p>
@@ -276,7 +281,7 @@ UNIQUE_VIOLATION and is repaired by the next snapshot.
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterItemService_DeleteItemAsync_System_Int64_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterItemService.DeleteItemAsync(System.Int64,System.Int64,System.Int64,System.Threading.CancellationToken)">
   DeleteItemAsync(long, long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L371"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L462"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes one item by its identity, if <code class="paramref">incomingVersion</code> is newer.</p>
@@ -330,7 +335,7 @@ such ambiguity when the row and the item are the same thing.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterItemService_FetchAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterItemService.FetchAsync(System.Int64,System.Threading.CancellationToken)">
   FetchAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L579"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L701"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches a collection of items for the given key.</p>
@@ -370,7 +375,7 @@ such ambiguity when the row and the item are the same thing.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterItemService_PersistAsync_FishMMO_Database_Data_CharacterItemData_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterItemService.PersistAsync(FishMMO.Database.Data.CharacterItemData,System.Threading.CancellationToken)">
   PersistAsync(CharacterItemData, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L93"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L98"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Persists the provided data.</p>
@@ -410,7 +415,7 @@ such ambiguity when the row and the item are the same thing.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterItemService_PersistAsync_System_Collections_Generic_IEnumerable_FishMMO_Database_Data_CharacterItemData__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterItemService.PersistAsync(System.Collections.Generic.IEnumerable{FishMMO.Database.Data.CharacterItemData},System.Threading.CancellationToken)">
   PersistAsync(IEnumerable&lt;CharacterItemData&gt;, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L171"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L176"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Persists the provided items.</p>
@@ -458,7 +463,7 @@ which discrepancies a caller should care about and which are routine.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_CharacterItemService_SaveSnapshotAsync_System_Int64_System_Collections_Generic_IReadOnlyCollection_FishMMO_Database_Data_ItemContainerType__System_Collections_Generic_IEnumerable_FishMMO_Database_Data_CharacterItemData__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.CharacterItemService.SaveSnapshotAsync(System.Int64,System.Collections.Generic.IReadOnlyCollection{FishMMO.Database.Data.ItemContainerType},System.Collections.Generic.IEnumerable{FishMMO.Database.Data.CharacterItemData},System.Threading.CancellationToken)">
   SaveSnapshotAsync(long, IReadOnlyCollection&lt;ItemContainerType&gt;, IEnumerable&lt;CharacterItemData&gt;, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L424"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/Character/CharacterItemService.cs/#L515"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Replaces every item this character owns with an authoritative snapshot of the server's

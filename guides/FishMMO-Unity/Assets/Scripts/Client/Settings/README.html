@@ -118,7 +118,11 @@ first scene, and is applied during the boot phase rather than when the settings 
 </tr>
 <tr>
 <td><code>ClientDisplaySettings</code></td>
-<td>Display modes, quality, VSync, frame-rate cap, brightness.</td>
+<td>Display modes, quality, VSync, frame-rate cap, brightness, anisotropic filtering.</td>
+</tr>
+<tr>
+<td><code>ClientCameraSettings</code></td>
+<td>Look sensitivity onto <code>KCCCamera.RotationSpeed</code>, and the antialiasing mode.</td>
 </tr>
 <tr>
 <td><code>ClientAudioSettings</code></td>
@@ -131,6 +135,18 @@ first scene, and is applied during the boot phase rather than when the settings 
 <tr>
 <td><code>AudioChannel</code></td>
 <td>The volume groups.</td>
+</tr>
+<tr>
+<td><code>ClientCrosshairSettings</code></td>
+<td>Whether the crosshair is drawn, and its shape, size and opacity.</td>
+</tr>
+<tr>
+<td><code>ClientNameplateSettings</code></td>
+<td>Overhead nameplate opacity, scale, background strength, budget, guild and title rows.</td>
+</tr>
+<tr>
+<td><code>ClientWorldLabelSettings</code></td>
+<td>World-label scale, distance, opacity, budget, occlusion, and the per-kind nameplate ranges.</td>
 </tr>
 <tr>
 <td><code>UIProfile</code></td>
@@ -152,7 +168,8 @@ MainBootstrapSystem.OnPreload()          (first scene's Awake)
   └── OnApplyClientBootSettings?.Invoke()
       └── ClientSettingsBootstrap.Apply()                  (guarded: runs once per session)
           ├── ClientSettings.ApplyAll()
-          │   ├── display   — quality, mode, VSync, frame rate, brightness, scene hook
+          │   ├── display   — quality, mode, VSync, frame rate, brightness, anisotropic, scene hook
+          │   ├── camera    — look sensitivity onto KCCCamera, antialiasing
           │   ├── audio     — channel levels, master onto the listener, focus watcher
           │   ├── interface — UI scale onto the shared PanelSettings
           │   └── theme     — UITKThemeManager.Reload()
@@ -202,7 +219,11 @@ files.</p>
 <tbody>
 <tr>
 <td>Display</td>
-<td><code>VSync</code>, <code>Frame Rate Limit</code>, <code>Brightness</code>, <code>Resolution Width</code>, <code>Resolution Height</code>, <code>Refresh Rate</code>, <code>Fullscreen</code>, <code>Quality Level</code></td>
+<td><code>VSync</code>, <code>Frame Rate Limit</code>, <code>Brightness</code>, <code>Resolution Width</code>, <code>Resolution Height</code>, <code>Refresh Rate</code>, <code>Fullscreen</code>, <code>Quality Level</code>, <code>Anisotropic Filtering</code></td>
+</tr>
+<tr>
+<td>Camera</td>
+<td><code>Look Sensitivity</code>, <code>Antialiasing</code></td>
 </tr>
 <tr>
 <td>Audio</td>
@@ -211,6 +232,22 @@ files.</p>
 <tr>
 <td>Gameplay</td>
 <td><code>ShowDamage</code>, <code>ShowHeals</code>, <code>ShowAchievementCompletion</code>, <code>IgnorePartyInvites</code>, <code>IgnoreGuildInvites</code></td>
+</tr>
+<tr>
+<td>Crosshair</td>
+<td><code>Crosshair.Enabled</code>, <code>Crosshair.Style</code>, <code>Crosshair.Size</code>, <code>Crosshair.Opacity</code></td>
+</tr>
+<tr>
+<td>World labels</td>
+<td><code>WorldLabels.Scale</code>, <code>WorldLabels.Distance</code>, <code>WorldLabels.Opacity</code>, <code>WorldLabels.MaxVisible</code>, <code>WorldLabels.Occlude</code>, <code>WorldLabels.NpcNameRange</code>, <code>WorldLabels.PlayerNameRange</code>, <code>WorldLabels.ShowOwnName</code></td>
+</tr>
+<tr>
+<td>Nameplates</td>
+<td><code>Nameplates.Opacity</code>, <code>Nameplates.Scale</code>, <code>Nameplates.BackgroundOpacity</code>, <code>Nameplates.MaxVisible</code>, <code>Nameplates.ShowGuild</code>, <code>Nameplates.ShowTitles</code></td>
+</tr>
+<tr>
+<td>Map</td>
+<td><code>Map.MinimapZoom</code>, <code>Map.MinimapRotates</code>, <code>Map.MinimapFrameRate</code>, <code>Map.ShowCoordinates</code></td>
 </tr>
 <tr>
 <td>Interface</td>
@@ -222,6 +259,9 @@ files.</p>
 </tr>
 </tbody>
 </table>
+<p><code>UI.SnapGridSize</code> and <code>UI.Panel.&lt;name&gt;.X</code> / <code>.Y</code> are named by <code>UITKPanelPositions</code> rather than by
+<code>ClientSettings</code>, since the panel layer owns them; everything else in the table is a
+<code>ClientSettings</code> constant.</p>
 <p>Quality is stored by <strong>name</strong>, not index: levels can be reordered between builds and an index
 saved against the old order silently selects a different level. A name that no longer exists is
 ignored.</p>
@@ -327,14 +367,91 @@ a true gamma control would need a URP Volume with a Color Adjustments override.<
 <p>Levels are stored as slider positions and applied through a squared curve, so the middle of the
 slider lands near the middle of the perceived range. The stored value is always the slider
 position, so the curve can change later without invalidating anybody's settings.</p>
-<p><strong>Only <code>Master</code> is offered today.</strong> It is applied to <code>AudioListener.volume</code>, which scales
-everything the scene plays. The other five channels keep their key, default, stored level and
-change event so that wiring up an audio system later is adding entries to
-<code>ClientAudioSettings.PlayableChannels</code> — but nothing in the client owns an <code>AudioSource</code> yet, so
-sliders for them would save perfectly and change nothing audible. A control that does nothing is
-worse than a missing one.</p>
+<p><strong>All six channels are offered.</strong> <code>PlayableChannels</code> now lists every member of <code>AudioChannel</code>,
+so the Audio tab builds a slider per channel. <code>Master</code> is still special: it is applied to
+<code>AudioListener.volume</code>, which scales everything the scene plays, and <code>EffectiveVolume(channel)</code>
+folds it into whichever channel is asked for — nothing should ever play <em>on</em> Master.</p>
+<p>The other five reach sound through <code>ChannelAudioSource</code> (in
+<a href="https://github.com/jimdroberts/FishMMO/tree/main/FishMMO-Unity/Assets/Scripts/Client/Audio"><code>Client/Audio</code></a>), a <code>[RequireComponent(typeof(AudioSource))]</code> component that captures
+the source's authored volume once and rescales it by <code>EffectiveVolume</code> of its channel whenever
+<code>OnVolumeChanged</code> fires. Assign <code>AuthoredVolume</code> rather than <code>AudioSource.volume</code> when code wants
+to change how loud a sound sits in the mix, or the next slider move overwrites it. <code>ClientUIAudio</code>
+is the first consumer: it adds one on the <code>Interface</code> channel. There is deliberately no
+<code>AudioMixer</code> — a mixer's groups and exposed parameters live in a binary asset, and a parameter set
+before the mixer has loaded is silently dropped, which is the state the client boots in.</p>
+<p><code>ClientAudioSettings.ResetToDefaults</code> stays scoped to <code>PlayableChannels</code>, which is now every
+channel; the scoping remains so that a channel retired from the list stops being written rather
+than lingering in <code>Configuration.cfg</code> as a setting nobody is shown.</p>
 <p>Muting when unfocused is a volume decision, not a pause: it is applied on top of Master rather
 than by writing zero into it, so the saved level is not destroyed by switching windows.</p>
+<h2 id="camera">Camera</h2>
+<p><code>ClientCameraSettings</code> is separate from <code>ClientDisplaySettings</code> because it writes to a <strong>scene
+object</strong>, not to Unity's global state, and that object does not exist for the whole session.</p>
+<ul>
+<li><strong>Look sensitivity</strong> (<code>Look Sensitivity</code>, 0.1–1.0, default 0.5) is written onto
+<code>KCCCamera.RotationSpeed</code>. <code>ApplyLookSensitivity</code> returns <code>false</code> when there is no camera yet,
+which is the normal state at boot — <code>PlayerInputController.Initialize</code> applies it again once the
+local character is in the world. Without that second apply the camera would keep its authored
+speed for the whole session and the saved value would look ignored. Only <code>ApplySaved</code> logs;
+dragging the slider does not.</li>
+<li>Sensitivity is observable only while the cursor is locked. With mouse mode on the camera does not
+turn at all, so the slider looks broken if tested there — there is simply no look input to scale.</li>
+<li><strong>Antialiasing</strong> (<code>Antialiasing</code>) is a project enum, <code>AntialiasingOption</code>: <code>Off</code>, <code>Fast</code> (FXAA),
+<code>Balanced</code> (SMAA, the default) and <code>Temporal</code> (TAA). Deliberately not Unity's <code>AntialiasingMode</code>,
+because a reordering there would silently change what an existing saved file means. It is applied
+to the main camera's <code>UniversalAdditionalCameraData</code>, with <code>antialiasingQuality</code> forced to <code>High</code>.
+It is post-process antialiasing, not MSAA: MSAA lives on the render pipeline asset and is chosen
+by the quality level, so exposing it here would give two controls one set of edges to fight over.</li>
+</ul>
+<p><code>ClientDisplaySettings</code> also owns <strong>anisotropic filtering</strong> (<code>Anisotropic Filtering</code>), applied
+through <code>ApplyAnisotropicFiltering</code> alongside the other quality writes and therefore covered by the
+same editor restore.</p>
+<h2 id="crosshair-nameplates-and-world-labels">Crosshair, nameplates and world labels</h2>
+<p>Three separate models, all read straight off <code>ClientSettings</code> and all edited from the <strong>Gameplay</strong>
+tab. Each raises an <code>OnChanged</code> event that the drawing layer subscribes to, and each default is
+what its layer already drew with no configuration at all — so a fresh install looks unchanged and
+only a player who moves something changes anything.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Consumer</th>
+<th>What it owns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ClientCrosshairSettings</code></td>
+<td><code>UITKCrosshair</code></td>
+<td><code>Enabled</code>, <code>Style</code> (<code>Cross</code> / <code>Dot</code> / <code>Circle</code>, applied as one of <code>StyleClasses</code> on the icon), <code>Size</code> (4–32 pt, default 8), <code>Opacity</code> (0.1–1)</td>
+</tr>
+<tr>
+<td><code>ClientNameplateSettings</code></td>
+<td><code>UITKNameplateLayer</code></td>
+<td><code>Opacity</code> (0.2–1), <code>Scale</code> (0.5–2), <code>BackgroundOpacity</code> (0–1, a multiplier on each style's own opacity), <code>MaxVisible</code> (8–256, default 64), <code>ShowGuild</code>, <code>ShowTitles</code></td>
+</tr>
+<tr>
+<td><code>ClientWorldLabelSettings</code></td>
+<td><code>UITKWorldLabelLayer</code>, and <code>ClientNameplateDisplay</code> for the three visibility rules</td>
+<td><code>Scale</code> (0.5–2), <code>Distance</code> (10–200 m, default 80), <code>Opacity</code> (0.2–1), <code>MaxVisible</code> (16–256, default 64), <code>Occlude</code> (default off), <code>NpcNameRange</code> / <code>PlayerNameRange</code> (0–200 m, default 30; zero means target only), <code>ShowOwnName</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why nameplates and world labels are split.</strong> They are drawn by different layers with separate
+budgets and answer different questions: a damage number is feedback read for a second, a nameplate
+is furniture looked past all day. Wanting one loud and the other faint is an ordinary preference a
+single shared opacity could not express.</p>
+<p><strong>What stays shared</strong> is the draw distance and the hide-behind-geometry toggle — statements about
+projected world UI as a whole — plus the two ranges and the own-name toggle, which keep their
+original <code>WorldLabels.*</code> keys because moving them would silently reset every existing install.</p>
+<p>Draw distance and both visible caps are performance controls rather than taste: they bound the
+client's hottest UI loop, one projection, one style diff and one sort entry per label per frame.
+Scale <em>multiplies</em> the computed size and its clamp bounds together, since a label's font size is
+derived from its world size and camera distance — a fixed point size would throw away the
+perspective behaviour, and scaling without moving the clamp would be swallowed by the upper bound
+as soon as the player walked close.</p>
+<p>Crosshair <strong>colour</strong> is deliberately absent here: <code>Crosshair</code> is already a themed colour in
+<code>UITKTheme.ColorNames</code>, edited from the Interface tab's colour list.</p>
 <h2 id="ui-profiles">UI profiles</h2>
 <p>A <strong>UI profile</strong> is the player's window layout, theme colours and interface scale in a file of
 its own, under <code>UIProfiles/</code> in the install directory, so it can be handed to somebody else.</p>
@@ -412,11 +529,29 @@ and spaces, and anything containing a path separator.</p>
 <td>Save, change things, load</td>
 <td>Layout, colours and scale restored; unrelated <code>.cfg</code> refused</td>
 </tr>
+<tr>
+<td>Look sensitivity survives boot</td>
+<td>Set it, restart, enter the world without touching the slider</td>
+<td>The camera turns at the saved rate; the boot apply logs &quot;no camera yet&quot;</td>
+</tr>
+<tr>
+<td>Per-channel audio</td>
+<td>Drop Music, click a UI button</td>
+<td>Interface sounds unchanged; only the Music channel drops</td>
+</tr>
+<tr>
+<td>Label budget</td>
+<td>Lower Max Visible in a crowd</td>
+<td>Nearest labels kept, furthest dropped</td>
+</tr>
 </tbody>
 </table>
 <h2 id="related">Related</h2>
 <ul>
-<li><a href="https://github.com/jimdroberts/FishMMO/tree/main/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options">Settings panel</a> — the five-tab UI over this model</li>
+<li><a href="https://github.com/jimdroberts/FishMMO/tree/main/FishMMO-Unity/Assets/Scripts/Client/GUI/World/Options">Settings panel</a> — the five-tab UI over this model (Display, Audio,
+Gameplay, Controls, Interface; the crosshair, nameplate and world-label rows are on Gameplay)</li>
+<li><a href="https://github.com/jimdroberts/FishMMO/tree/main/FishMMO-Unity/Assets/Scripts/Client/Audio">Client audio</a> — <code>ChannelAudioSource</code> and <code>ClientUIAudio</code>, the consumers of the
+channel levels</li>
 <li><a href="../../Shared/Implementation/Bootstrap/README.html">Bootstrap</a> — where the apply hook is raised</li>
 <li><a href="../Launcher/README.html">Launcher</a> — shares the same <code>Configuration</code> instance</li>
 </ul>

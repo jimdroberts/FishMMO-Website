@@ -389,7 +389,7 @@
 </tr>
 </tbody>
 </table>
-<p>The archetype is re-applied here rather than relying on <code>AIController.InitializeOnce</code>, which only runs on an instance's very first Awake — without this a recycled NPC would keep the previous spawner's brain.</p>
+<p>The controller reads every AI state and tuning value live from its archetype, so this one assignment is the whole override, and it takes effect on a recycled instance too. With no override the prefab's own archetype is assigned back, the same &quot;this spawner's value, or the prefab's&quot; rule every other override follows.</p>
 <p>The scale is deliberately uniform: a non-uniform scale would desynchronise the NavMeshAgent's radius and height from the collider.</p>
 <h3 id="itemspawnablesettings">ItemSpawnableSettings</h3>
 <table>
@@ -429,6 +429,12 @@
 </tbody>
 </table>
 <p>Each <code>ItemRoll</code> carries its own template, stack range and weight. <code>OnValidate</code> repairs inverted stack ranges and negative weights, which would otherwise be a spawn-time exception on a live server rather than a bad item.</p>
+<p><code>OnSpawned</code> writes the rolled template and stack amount onto the spawned <code>WorldItem</code>, plus a
+non-zero <strong>generation seed</strong> onto the <code>WorldItem</code> (two 16-bit draws from
+<code>DeterministicRNG.Shared</code>, retried while zero). Zero is <code>Item.Initialize</code>'s sentinel for &quot;derive a
+seed from the database id&quot;, and a freshly granted item has no id — so a drop spawned without one
+rolled its attributes from <code>RNG(0)</code>, identically for every drop of that template, and re-rolled
+them differently after the next relog once a real row id existed.</p>
 <h3 id="objectspawntype-enum">ObjectSpawnType Enum</h3>
 <pre><code>ObjectSpawnType : byte
 ├── Linear   = 0   # Sequential cycling through the list

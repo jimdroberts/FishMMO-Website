@@ -151,8 +151,8 @@
 <li>Event-driven achievement progress tracking via <code>IAchievementController.OnUpdateAchievement</code> and <code>IAchievementController.OnCompleteAchievement</code></li>
 <li>Real-time client notification of achievement progress and tier updates via <code>AchievementUpdateBroadcast</code></li>
 <li>Ability reward processing: learns unknown base abilities and ability events, skips already-known entries, broadcasts additions</li>
-<li>Item reward processing with inventory-first placement and automatic bank fallback when inventory capacity is insufficient</li>
-<li>Batched slot broadcast payloads for inventory and bank item changes</li>
+<li>Item reward processing with inventory-first placement and automatic bank fallback when inventory capacity is insufficient; the destination container is chosen once, before any item is placed, so a reward set is never split across inventory and bank</li>
+<li>Item rewards are granted through <code>ICharacterInventorySystem.TryGrantItem</code>, the inventory system's single funnel. The funnel places the item, broadcasts the slot, persists it and writes back the identity the database assigns. This system does not place, broadcast or persist items itself: doing so left every reward at <code>ID == 0</code> — unequippable, and rewritten as a fresh row on every save until a snapshot repaired it</li>
 <li>Asynchronous persistence of all reward side effects through <code>IAsyncWorkerData</code> to avoid blocking gameplay</li>
 <li>Per-learned-template DB persistence queuing for known abilities</li>
 <li>Per-modified-slot DTO capture on main thread with async persistence queuing for items</li>
@@ -191,7 +191,7 @@
 </tr>
 <tr>
 <td><code>ICharacterItemService</code></td>
-<td>Persists inventory item slot changes from rewards</td>
+<td>Resolved at reward time and passed to <code>HandleItemRewards</code>, which no longer uses it — item persistence belongs to the inventory system's grant funnel. The parameter is kept so the call site reads as before</td>
 </tr>
 </tbody>
 </table>
@@ -244,15 +244,12 @@
 <td>Notify newly learned ability events</td>
 </tr>
 <tr>
-<td><code>InventorySetMultipleItemsBroadcast</code></td>
-<td>Notify inventory item reward changes</td>
-</tr>
-<tr>
-<td><code>BankSetMultipleItemsBroadcast</code></td>
-<td>Notify bank item reward changes</td>
+<td><code>ChatBroadcast</code> (<code>ChatChannel.System</code>)</td>
+<td>Tells the owner when inventory and bank are both too full to deliver the item rewards</td>
 </tr>
 </tbody>
 </table>
+<p>Item slot updates (<code>InventorySetMultipleItemsBroadcast</code>, <code>BankSetMultipleItemsBroadcast</code>) are sent by <code>CharacterInventorySystem</code> as part of the grant funnel, not by this system.</p>
 <h3 id="external-integration-points">External Integration Points</h3>
 <table>
 <thead>
@@ -272,7 +269,11 @@
 </tr>
 <tr>
 <td><code>InventoryController</code> / <code>BankController</code></td>
-<td>Item placement and slot changes</td>
+<td>Free-slot capacity check that chooses the reward destination</td>
+</tr>
+<tr>
+<td><code>CharacterInventorySystem</code> (<code>ICharacterInventorySystem</code>)</td>
+<td><code>TryGrantItem</code> — placement, slot broadcast, persistence and identity write-back for every item reward</td>
 </tr>
 <tr>
 <td><code>AsyncWorkerData</code> (<code>IAsyncWorkerData</code>)</td>
@@ -280,7 +281,7 @@
 </tr>
 <tr>
 <td>Database services</td>
-<td>Known ability/inventory/bank persistence</td>
+<td>Known ability persistence</td>
 </tr>
 </tbody>
 </table>
@@ -297,22 +298,11 @@
 <h4 id="item-rewards">Item Rewards</h4>
 <p><code>HandleItemRewards(...)</code>:</p>
 <ol>
-<li>Checks reward list.</li>
-<li>Attempts inventory route first if sufficient free slots.</li>
-<li>Falls back to bank route if inventory capacity is insufficient and bank has room.</li>
-<li>For each modified slot:
-<ul>
-<li>build DTO on main thread</li>
-<li>queue async persistence (<code>PersistInventorySlotAsync</code> / <code>PersistBankSlotAsync</code>)</li>
-<li>add slot update broadcast payload</li>
-</ul>
-</li>
-<li>Sends batched slot broadcasts:
-<ul>
-<li><code>InventorySetMultipleItemsBroadcast</code></li>
-<li><code>BankSetMultipleItemsBroadcast</code></li>
-</ul>
-</li>
+<li>Checks reward list; returns when empty.</li>
+<li>Resolves <code>ICharacterInventorySystem</code> from <code>Server.BehaviourRegistry</code>. Without it the rewards are dropped and an error is logged — there is no local placement path any more.</li>
+<li>Chooses a destination: <code>InventoryType.Inventory</code> when <code>IInventoryController.FreeSlots()</code> covers the whole reward list, otherwise <code>InventoryType.Bank</code> when <code>IBankController.FreeSlots()</code> does.</li>
+<li>If neither has room, sends the owner a <code>ChatBroadcast</code> on <code>ChatChannel.System</code> (&quot;Your inventory and bank are full…&quot;) and returns.</li>
+<li>Calls <code>inventorySystem.TryGrantItem(character, new Item(template, 1), destination)</code> per reward, skipping null templates and logging a warning for any item the funnel refuses to place.</li>
 </ol>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
@@ -341,11 +331,19 @@
 </tr>
 <tr>
 <td>Item reward — inventory route</td>
-<td>Complete an achievement with item rewards when inventory has free slots; verify <code>InventorySetMultipleItemsBroadcast</code></td>
+<td>Complete an achievement with item rewards when inventory has free slots; verify <code>InventorySetMultipleItemsBroadcast</code> arrives from the grant funnel</td>
 </tr>
 <tr>
 <td>Item reward — bank fallback</td>
 <td>Complete an achievement with item rewards when inventory is full but bank has room; verify <code>BankSetMultipleItemsBroadcast</code></td>
+</tr>
+<tr>
+<td>Item reward — both full</td>
+<td>Complete an achievement with item rewards when neither container has room; verify the System-channel refusal message and that no item is placed</td>
+</tr>
+<tr>
+<td>Reward item identity</td>
+<td>Inspect a rewarded item after the grant; its <code>ID</code> must be the database-assigned row id, not <code>0</code> (the funnel writes the identity back and re-sends the slot)</td>
 </tr>
 <tr>
 <td>Async persistence queuing</td>
@@ -393,11 +391,11 @@
 │      │    └── Skip known → Learn unknown → Queue DB persist → Broadcast
 │      │
 │      └── Item rewards (HandleItemRewards)
-│           ├── Try inventory route (if free slots)
-│           ├── Fallback to bank route (if inventory full)
-│           ├── Build DTO on main thread per modified slot
-│           ├── Queue async persistence per slot
-│           └── Send batched InventorySetMultipleItemsBroadcast / BankSetMultipleItemsBroadcast
+│           ├── Resolve ICharacterInventorySystem (drop + error if absent)
+│           ├── Choose destination once: Inventory → Bank → refuse
+│           ├── Refusal → System ChatBroadcast to the owner
+│           └── Per reward → ICharacterInventorySystem.TryGrantItem
+│                └── funnel places, broadcasts, persists, writes back ID
 │
 └─ Reward application: immediate in memory
    Persistence: queued asynchronously via IAsyncWorkerData
@@ -418,9 +416,6 @@
 </code></pre>
 <h2 id="license">License</h2>
 <p>This project is subject to the FishMMO project license.</p>
-<ul>
-<li><strong>Database services</strong> — known ability/inventory/bank persistence.</li>
-</ul>
 
 </article>
 

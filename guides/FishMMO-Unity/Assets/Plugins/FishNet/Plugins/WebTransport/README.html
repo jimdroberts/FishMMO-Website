@@ -104,11 +104,11 @@
 <tr>
 <td>Linux x86_64</td>
 <td>Native <code>libfishmmo_webtransport.so</code></td>
-<td>Shipped</td>
+<td>Build required</td>
 </tr>
 <tr>
 <td>Windows x86_64</td>
-<td>Native <code>fishmmo_webtransport.dll</code></td>
+<td>Native <code>fishmmo_webtransport.dll</code> (+ <code>msquic.dll</code>)</td>
 <td>Build required</td>
 </tr>
 <tr>
@@ -123,6 +123,9 @@
 </tr>
 </tbody>
 </table>
+<p>No native binary is tracked for any platform, Linux included — every machine
+builds its own from <code>FishMMO-WebTransport/</code>. See
+<a href="Plugins/README.html">Plugins/README.md</a> for the per-platform commands.</p>
 <h2 id="architecture">Architecture</h2>
 <ul>
 <li><strong>Native</strong>: P/Invoke to <code>fishmmo_webtransport</code> (msquic wrapper)</li>
@@ -132,6 +135,55 @@
 </ul>
 <p>Both channels are real. Nothing is remapped: unreliable traffic travels as
 datagrams on every platform, browsers included.</p>
+<h2 id="native-library-contract">Native library contract</h2>
+<p>Because no binary is tracked, the library that loads at runtime can be older
+than the C# that calls it. <code>WebTransportNative.EnsureInitialized</code> checks that
+before anything else:</p>
+<ul>
+<li><code>wt_abi_version()</code> must equal <code>WebTransportNative.ExpectedAbiVersion</code> (<strong>3</strong>,
+paired with <code>WT_ABI_VERSION</code> in <code>FishMMO-WebTransport/src/webtransport_api.h</code>;
+<code>FishMMO-WebTransport/tests/check_abi_version.sh</code> verifies the pair). A
+mismatch, a <code>DllNotFoundException</code>, or a library too old to export
+<code>wt_abi_version</code> at all is logged with <code>WebTransportNative.RebuildHint</code> — the
+build command for the running platform — and initialisation returns <code>false</code>
+instead of throwing <code>EntryPointNotFoundException</code> from some later P/Invoke.</li>
+<li><code>wt_tls_provider()</code> is read into <code>WebTransportNative.TlsProvider</code> and logged
+alongside <code>wt_version()</code> once initialisation succeeds. Only the OpenSSL
+(quictls) flavour of msquic can load PEM files and host a server; a
+Schannel-flavour build fails <code>wt_server_start</code> with
+<code>WTError.TLSBackend</code> (-8), and <code>ServerSocket.DescribeStartFailure</code> turns that
+code — and the two certificate-shaped <code>WTError.TLSError</code> cases — into the
+rebuild or the missing-file path.</li>
+</ul>
+<h2 id="abuse-limits-and-backpressure">Abuse limits and backpressure</h2>
+<p>The server socket bounds what one connection can cost, inbound and outbound.
+Nothing here is per-account: it is all keyed on the connection.</p>
+<p><strong>Inbound.</strong> <code>ServerSocket</code> charges every stream message and datagram to a
+per-connection token bucket on the QUIC worker thread, before any unmanaged copy
+(<code>TryAdmitInbound</code>). The default budget is serialised on the transport component
+— <code>maxInboundMessagesPerSecond</code> 200, <code>inboundMessageBurst</code> 400 — and a
+connection that keeps sending after its bucket empties is disconnected once
+<code>InboundOverflowKickThreshold</code> (100) consecutive messages have been refused. The
+disconnect is queued to <code>pendingInboundKicks</code> and issued from the main thread in
+<code>DrainInboundKicks</code>, because msquic must not be re-entered from its own
+callback. A second cap, <code>MaxIncomingEventsPerConnection</code> (1000 of the shared
+<code>MaxIncomingEvents</code> 10000), stops one connection's backlog from evicting
+everyone else's when the main thread falls behind.</p>
+<p><strong>Native mirror.</strong> <code>ServerSocket.StartConnection</code> passes the same budget to
+<code>wt_server_set_limits</code> before <code>wt_server_start</code>, so a flood is refused inside the
+library too. The five connection-shaped limits — <code>connectIntervalMs</code>,
+<code>maxConnectionsPerIp</code>, <code>maxHalfOpenConnections</code>,
+<code>maxQueuedDatagramsPerConnection</code>, <code>maxH3StreamsPerConnection</code> — default to <code>-1</code>,
+meaning &quot;keep the native default&quot;; <code>0</code> disables one. <code>WebTransport.SetNativeLimits()</code>
+and <code>WebTransport.SetInboundRateLimit()</code> change them from code, the latter also
+on a live socket.</p>
+<p><strong>Outbound.</strong> <code>SendToClient</code> counts queued packets per connection in
+<code>outgoingPerConnection</code> and refuses at <code>MaxOutgoingPerConnection</code> (2000) of the
+shared <code>CommonSocket.MaxOutgoingQueueSize</code> (10000). A reliable packet over that
+share, or a <code>WTError.BufferFull</code> from a reliable send (the native
+per-connection in-flight cap, 8 MB), means the peer is not reading and its
+stream is already broken, so <code>KickSlowClient</code> disconnects it rather than let the
+shared queue drop other clients' reliable packets. Broadcasts (<code>connectionId == -1</code>) count against nobody.</p>
 <h2 id="wire-format">Wire format</h2>
 <p>A QUIC stream is an ordered byte stream, not a message stream — writes may be
 coalesced or split arbitrarily. Every application message on the reliable
@@ -199,10 +251,12 @@ underscore <em>is</em> correct — <code>_free</code> there is the JS-side name 
 allocator as <code>_malloc</code>. The underscore rule is opposite on each side of the
 boundary, which is exactly why the wrapper exists.</p>
 <h2 id="tls">TLS</h2>
-<p>The <strong>server</strong> presents a certificate the same way it always has, via
-<code>CertificatePath</code> / <code>PrivateKeyPath</code> in its <code>.cfg</code>. Nothing about server TLS
-changed, and the server never uses the JavaScript bridge — that exists only in
-WebGL <em>client</em> builds.</p>
+<p>The <strong>server</strong> presents a certificate via <code>CertificatePath</code> / <code>PrivateKeyPath</code> in
+its <code>.cfg</code>. Both are required: the native library generates nothing self-signed,
+and msquic refuses a server with no credential, so an unset or unreadable path
+fails <code>wt_server_start</code> with <code>WTError.TLSError</code> and the log names the file and
+the working directory it was resolved against. The server never uses the
+JavaScript bridge — that exists only in WebGL <em>client</em> builds.</p>
 <p><code>SetServerCertificateHashes</code> is a <strong>client</strong> setting despite the name, which
 comes from the W3C option it feeds (<code>serverCertificateHashes</code> — &quot;hashes <em>of the</em>
 server's certificate&quot;, supplied by whoever connects). It exists because browsers

@@ -666,7 +666,7 @@ May be a live <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">I
 
   <h3 id="FishMMO_Shared_AbilityObject_ElapsedTicks" data-uid="FishMMO.Shared.AbilityObject.ElapsedTicks">
   ElapsedTicks
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L156"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L180"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Ticks this object has simulated since spawn. Advanced in <span class="xref">FishMMO.Shared.AbilityObject.OnTick()</span> before tick
@@ -698,7 +698,7 @@ events dispatch, so the first tick's events see a value of 1.</p>
 
   <h3 id="FishMMO_Shared_AbilityObject_HitCount" data-uid="FishMMO.Shared.AbilityObject.HitCount">
   HitCount
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L114"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L116"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Number of hits this object can perform before being destroyed.</p>
@@ -758,9 +758,53 @@ events dispatch, so the first tick's events see a value of 1.</p>
 
 
 
+  <h3 id="FishMMO_Shared_AbilityObject_PreRedirectElapsedTicks" data-uid="FishMMO.Shared.AbilityObject.PreRedirectElapsedTicks">
+  PreRedirectElapsedTicks
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L198"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Ticks this object simulated on legs BEFORE the current one. Zero until a
+<span class="xref">FishMMO.Shared.AbilityObject.Redirect(UnityEngine.Quaternion)</span> resets <a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_ElapsedTicks">ElapsedTicks</a> for a new leg.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public uint PreRedirectElapsedTicks</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_AbilityObject_PreRedirectElapsedTicks_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Lifetime and trajectory age at different clocks once an object has been redirected:
+the closed-form pose reads the CURRENT leg's <a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_ElapsedTicks">ElapsedTicks</a>, but
+<a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_RemainingLifeTime">RemainingLifeTime</a> has been running since the original spawn. The spawn
+payload's in-flight block anchors its fast-forward to the current leg (that is what
+reproduces the pose), so without this counter a late joiner rebuilt a redirected
+object with its FULL lifetime less only the current leg — the copy outlived the
+server's by however long the object flew before the turn, then played its authored
+OnDestroy effects at a place and time where nothing happened. The payload sends this
+so the receiver can charge the earlier legs against lifetime too; see
+<a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_ConsumeLifetime_System_UInt32_">ConsumeLifetime(uint)</a>.</p>
+</div>
+
+
+
+
+
   <h3 id="FishMMO_Shared_AbilityObject_RNG" data-uid="FishMMO.Shared.AbilityObject.RNG">
   RNG
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L136"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L160"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Random number generator for ability effects.</p>
@@ -784,6 +828,28 @@ events dispatch, so the first tick's events see a value of 1.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Shared_AbilityObject_RNG_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+<b>Shared by every action in this object's event chains, and advanced by side effect —
+so a draw that happens on one peer and not another desynchronises everything drawn
+after it.</b> The generator is threaded onto the OnSpawn, OnTick, OnHit and OnDestroy
+payloads, and <code>RandomRangeValue</code> / <code>RandomRangeFloatValue</code> consume it through
+<code>EventData.RNG</code>. Its state is carried in the reconcile, which keeps the server and
+the caster's owner aligned; an observer has no reconcile and stays aligned only by
+making the same draws in the same order.
+</p>
+<p>
+<b>The rule that follows: a value provider is evaluated BEFORE any peer gate, never
+after.</b> An action that draws behind <code>EcaAuthority.MayPredict</code>, an
+<code>IsServer</code> test or <span class="xref">FishMMO.Shared.AbilityObject.ResolvesHitsLocally</span> advances this generator only
+on the peers that pass — and an ungated action later in the same chain
+(<code>AbilityForkHitAction</code>) then reads a different number. That put an observer's copy
+of a forking projectile on a heading the server never took, permanently, from its first
+hit. Evaluate the provider, then gate on what to DO with it. This is the same rule
+<code>ResolveTargetAndSpawn</code> already follows when it advances the seed during a replay
+whose spawn it deliberately skips.
+</p>
+</div>
 
 
 
@@ -791,7 +857,7 @@ events dispatch, so the first tick's events see a value of 1.</p>
 
   <h3 id="FishMMO_Shared_AbilityObject_RemainingLifeTime" data-uid="FishMMO.Shared.AbilityObject.RemainingLifeTime">
   RemainingLifeTime
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L118"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L120"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Remaining lifetime in seconds before the object is destroyed.</p>
@@ -822,7 +888,7 @@ events dispatch, so the first tick's events see a value of 1.</p>
 
   <h3 id="FishMMO_Shared_AbilityObject_Snapshot" data-uid="FishMMO.Shared.AbilityObject.Snapshot">
   Snapshot
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L163"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L205"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Immutable snapshot of the ability data captured at spawn time.
@@ -855,7 +921,7 @@ Used as a fallback when the live <a class="xref" href="FishMMO.Shared.AbilityObj
 
   <h3 id="FishMMO_Shared_AbilityObject_SpawnPosition" data-uid="FishMMO.Shared.AbilityObject.SpawnPosition">
   SpawnPosition
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L147"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L171"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>World position this object was spawned at.</p>
@@ -894,7 +960,7 @@ broadcast actually holds. See <a class="xref" href="FishMMO.Shared.AbilityMoveTr
 
   <h3 id="FishMMO_Shared_AbilityObject_SpawnRotation" data-uid="FishMMO.Shared.AbilityObject.SpawnRotation">
   SpawnRotation
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L150"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L174"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>World rotation this object was spawned with. See <a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_SpawnPosition">SpawnPosition</a>.</p>
@@ -925,7 +991,7 @@ broadcast actually holds. See <a class="xref" href="FishMMO.Shared.AbilityMoveTr
 
   <h3 id="FishMMO_Shared_AbilityObject_SpawnTick" data-uid="FishMMO.Shared.AbilityObject.SpawnTick">
   SpawnTick
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L124"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L126"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The network tick at which this ability object was spawned, expressed as a
@@ -963,7 +1029,7 @@ Used by the rollback system to identify predicted objects that need to be destro
 
   <h3 id="FishMMO_Shared_AbilityObject_GameObject" data-uid="FishMMO.Shared.AbilityObject.GameObject">
   GameObject
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L378"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L535"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Cached reference to the object's GameObject.</p>
@@ -995,7 +1061,7 @@ Used by the rollback system to identify predicted objects that need to be destro
 
   <h3 id="FishMMO_Shared_AbilityObject_IsServer" data-uid="FishMMO.Shared.AbilityObject.IsServer">
   IsServer
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L243"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L285"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>True when this ability object is simulating on the server. Gameplay effects
@@ -1028,7 +1094,7 @@ Used by the rollback system to identify predicted objects that need to be destro
 
   <h3 id="FishMMO_Shared_AbilityObject_OnHitEvents" data-uid="FishMMO.Shared.AbilityObject.OnHitEvents">
   OnHitEvents
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L179"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L221"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>OnHit events for collision dispatching. Prefers the live Ability, falls back to the Snapshot.
@@ -1061,7 +1127,7 @@ Returns <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.coll
 
   <h3 id="FishMMO_Shared_AbilityObject_Speed" data-uid="FishMMO.Shared.AbilityObject.Speed">
   Speed
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L168"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L210"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Movement speed. Prefers the live Ability, falls back to the Snapshot.</p>
@@ -1093,7 +1159,7 @@ Returns <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.coll
 
   <h3 id="FishMMO_Shared_AbilityObject_TotalLifeTime" data-uid="FishMMO.Shared.AbilityObject.TotalLifeTime">
   TotalLifeTime
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L173"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L215"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Total configured lifetime. Prefers the live Ability, falls back to the Snapshot.</p>
@@ -1125,7 +1191,7 @@ Returns <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.coll
 
   <h3 id="FishMMO_Shared_AbilityObject_Transform" data-uid="FishMMO.Shared.AbilityObject.Transform">
   Transform
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L382"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L539"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Cached reference to the object's Transform.</p>
@@ -1157,11 +1223,52 @@ Returns <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.coll
 </h2>
 
 
+  <a id="FishMMO_Shared_AbilityObject_ConsumeLifetime_" data-uid="FishMMO.Shared.AbilityObject.ConsumeLifetime*"></a>
+
+  <h3 id="FishMMO_Shared_AbilityObject_ConsumeLifetime_System_UInt32_" data-uid="FishMMO.Shared.AbilityObject.ConsumeLifetime(System.UInt32)">
+  ConsumeLifetime(uint)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L1745"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Charges ticks against this object's lifetime WITHOUT advancing its trajectory clock.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void ConsumeLifetime(uint ticks)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>ticks</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint32">uint</a></dt>
+    <dd><p>Lifetime ticks consumed on legs this client is not reproducing.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_AbilityObject_ConsumeLifetime_System_UInt32__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>For a streamed object that was redirected before this client saw it: the in-flight
+payload anchors <a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_FastForward_System_UInt32_">FastForward(uint)</a> to the current leg so the pose lands where
+the server holds it, and this separately charges the legs flown before the turn — see
+<a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_PreRedirectElapsedTicks">PreRedirectElapsedTicks</a>. Expiry here destroys quietly for the same
+reason FastForward's does: an object this far through its life may already be gone on
+the server, and its destroy effects have played there.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_AbilityObject_FastForward_" data-uid="FishMMO.Shared.AbilityObject.FastForward*"></a>
 
   <h3 id="FishMMO_Shared_AbilityObject_FastForward_System_UInt32_" data-uid="FishMMO.Shared.AbilityObject.FastForward(System.UInt32)">
   FastForward(uint)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L955"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L1713"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Advances this object's simulation clock without running per-tick events, so an
@@ -1188,11 +1295,22 @@ observer that learns about a spawn late can place the object where the server ha
 
 
   <h4 class="section" id="FishMMO_Shared_AbilityObject_FastForward_System_UInt32__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>The closed-form trajectory (<a class="xref" href="FishMMO.Shared.AbilityMoveTransformAction.html">AbilityMoveTransformAction</a>) reads
+  <div class="markdown level1 remarks"><p>
+The closed-form trajectory (<a class="xref" href="FishMMO.Shared.AbilityMoveTransformAction.html">AbilityMoveTransformAction</a>) reads
 <a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_ElapsedTicks">ElapsedTicks</a>, so bumping the counter is enough to move the object on its
 next tick; the lifetime is advanced by the same amount so the object still expires on
 the server's schedule. An object fast-forwarded past its lifetime is destroyed quietly —
-it no longer exists on the server, so its destroy effects have already played.</p>
+it no longer exists on the server, so its destroy effects have already played.
+</p>
+<p>
+<b>Per-tick ECA events are deliberately NOT replayed</b> for the skipped ticks. Catching
+up a second of a channelled flame would fire a second of its OnTick chain in one frame:
+a stack of particle systems at every position the object passed through, and, for any
+authored tick action with a peer-visible effect, that effect repeated as many times as
+the message was late. What the observer owes is the object's POSE — where the server
+holds it now — and advancing the counter is the whole of that debt. The ticks it did not
+run are ticks whose visuals happened before this peer was watching.
+</p>
 </div>
 
 
@@ -1202,7 +1320,7 @@ it no longer exists on the server, so its destroy effects have already played.</
 
   <h3 id="FishMMO_Shared_AbilityObject_ResolveSpawnPose_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Ability_UnityEngine_Transform_FishMMO_Shared_TargetInfo_UnityEngine_Vector3_UnityEngine_Vector3_" data-uid="FishMMO.Shared.AbilityObject.ResolveSpawnPose(FishMMO.Shared.Core.ICharacter,FishMMO.Shared.Ability,UnityEngine.Transform,FishMMO.Shared.TargetInfo,UnityEngine.Vector3,UnityEngine.Vector3)">
   ResolveSpawnPose(ICharacter, Ability, Transform, TargetInfo, Vector3, Vector3)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L1514"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L2367"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resolves the world pose an ability object spawns with, from the spawn target type.
@@ -1261,7 +1379,7 @@ Observers receive the result in <a class="xref" href="FishMMO.Shared.AbilityActi
 
   <h3 id="FishMMO_Shared_AbilityObject_SetAbilitySpawnPosition_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Ability_UnityEngine_Transform_FishMMO_Shared_TargetInfo_UnityEngine_Vector3_UnityEngine_Vector3_UnityEngine_Transform_" data-uid="FishMMO.Shared.AbilityObject.SetAbilitySpawnPosition(FishMMO.Shared.Core.ICharacter,FishMMO.Shared.Ability,UnityEngine.Transform,FishMMO.Shared.TargetInfo,UnityEngine.Vector3,UnityEngine.Vector3,UnityEngine.Transform)">
   SetAbilitySpawnPosition(ICharacter, Ability, Transform, TargetInfo, Vector3, Vector3, Transform)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L1492"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L2345"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Positions and rotates the ability object transform based on the spawn target type.
@@ -1306,7 +1424,7 @@ See <a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_Abili
 
   <h3 id="FishMMO_Shared_AbilityObject_Spawn_FishMMO_Shared_Ability_FishMMO_Shared_Core_ICharacter_UnityEngine_Transform_FishMMO_Shared_TargetInfo_UnityEngine_Vector3_UnityEngine_Vector3_System_Int32_FishMMO_Shared_PredictionTick_System_Nullable_FishMMO_Shared_AbilitySpawnPose__" data-uid="FishMMO.Shared.AbilityObject.Spawn(FishMMO.Shared.Ability,FishMMO.Shared.Core.ICharacter,UnityEngine.Transform,FishMMO.Shared.TargetInfo,UnityEngine.Vector3,UnityEngine.Vector3,System.Int32,FishMMO.Shared.PredictionTick,System.Nullable{FishMMO.Shared.AbilitySpawnPose})">
   Spawn(Ability, ICharacter, Transform, TargetInfo, Vector3, Vector3, int, PredictionTick, AbilitySpawnPose?)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L1395"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L2217"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Spawns an ability object for any character type (PC or NPC). Handles pet summons,
@@ -1374,7 +1492,7 @@ discarded — see <span class="xref">FishMMO.Shared.AbilityContainerAllocator</s
 
   <h3 id="FishMMO_Shared_AbilityObject_SpawnsWorldObject_FishMMO_Shared_AbilityTemplate_" data-uid="FishMMO.Shared.AbilityObject.SpawnsWorldObject(FishMMO.Shared.AbilityTemplate)">
   SpawnsWorldObject(AbilityTemplate)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L1480"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L2333"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>True when <a class="xref" href="FishMMO.Shared.AbilityObject.html#FishMMO_Shared_AbilityObject_Spawn_FishMMO_Shared_Ability_FishMMO_Shared_Core_ICharacter_UnityEngine_Transform_FishMMO_Shared_TargetInfo_UnityEngine_Vector3_UnityEngine_Vector3_System_Int32_FishMMO_Shared_PredictionTick_System_Nullable_FishMMO_Shared_AbilitySpawnPose__">Spawn(Ability, ICharacter, Transform, TargetInfo, Vector3, Vector3, int, PredictionTick, AbilitySpawnPose?)</a> would create a world object for this template — i.e.
@@ -1405,9 +1523,11 @@ there is something for an observer to reproduce.</p>
 
 
   <h4 class="section" id="FishMMO_Shared_AbilityObject_SpawnsWorldObject_FishMMO_Shared_AbilityTemplate__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Pet and self-target abilities apply on the server and reach clients through their own
-paths (pet broadcasts, reconcile/resource broadcasts), so an activation broadcast for
-them would be received, decoded and discarded by every observer for nothing.</p>
+  <div class="markdown level1 remarks"><p>Pet and self-target abilities create nothing for an observer to reproduce, so an
+activation broadcast for them would be received, decoded and discarded for nothing.
+Their effects reach an observer through the ordinary state paths instead (buff and
+resource broadcasts, pet spawns). Note this is about what an OBSERVER must be told; the
+caster's own client does dispatch a self-target ability's effects locally, for feedback.</p>
 </div>
 
 
@@ -1417,7 +1537,7 @@ them would be received, decoded and discarded by every observer for nothing.</p>
 
   <h3 id="FishMMO_Shared_AbilityObject_TryResolveFrom_FishMMO_Shared_Core_EventData_FishMMO_Shared_AbilityObject__" data-uid="FishMMO.Shared.AbilityObject.TryResolveFrom(FishMMO.Shared.Core.EventData,FishMMO.Shared.AbilityObject@)">
   TryResolveFrom(EventData, out AbilityObject)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L321"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Ability/AbilityObject.cs/#L470"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Pulls the ability object out of whichever event shape an action was wired to.</p>

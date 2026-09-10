@@ -119,6 +119,8 @@
 <li><strong>HandshakeService</strong> — X25519 ECDH key agreement, stateless HMAC cookie challenge/verification, protocol version negotiation, IP normalization, and key confirmation MACs.</li>
 <li><strong>SrpService</strong> — encrypted SRP field handling, registration encryption, TOTP payload encryption/decryption, fake-salt derivation, and account verification payload encryption.</li>
 <li><strong>TokenService</strong> — token build/hash/encrypt/decrypt/verify pipeline.</li>
+<li><strong>KeyEnvelope</strong> — AES-256-GCM envelope for wrapping symmetric key material at rest, with a 4-byte magic prefix so a wrapped blob is distinguishable from a legacy raw 32-byte key in the same column. The KEK is supplied per call.</li>
+<li><strong>IKmsProvider</strong> — pluggable key-management backend (AWS KMS, Vault, PKCS#11) for the TOTP master KEK; <code>LocalDeriveKmsProvider</code> is the shipped HMAC-SHA256 local-derive default.</li>
 <li><strong>ClientSrpData</strong> — Client-side SRP-6a session state with sensitive-field cleanup.</li>
 </ul>
 <h3 id="fishmmo-clientauth">FishMMO-ClientAuth</h3>
@@ -267,6 +269,7 @@ dotnet build FishMMO-Auth/FishMMO-ServerAuth/FishMMO-ServerAuth.csproj -c Releas
     protected override Task PersistKickRequestAsync(string username) { /* DB write */ }
     protected override Task PersistTokenHashAsync(string username, string tokenHash, int expirationMinutes) { /* DB write */ }
     protected override Task&lt;bool&gt; VerifyTotpCodeAsync(string username, string totpCode, byte[] totpMasterKey) { /* DB + TOTP verify */ }
+    protected override Task&lt;bool&gt; TryResendVerificationEmailIfExpiredAsync(string username, DateTime? verifyCodeExpiresUtc) { /* DB + mail */ }
 }
 
 // On startup:
@@ -366,7 +369,14 @@ CryptographicOperations.ZeroMemory(rawToken);
 <li><code>TokenSigningKey</code> — 32-byte HMAC-SHA256 key for token issuance. Required; if null, token issuance is disabled.</li>
 <li><code>TotpMasterKey</code> — 32-byte AES key for decrypting TOTP secrets stored in the database. Optional; if null, TOTP is disabled.</li>
 <li><code>LoginServerId</code> — database ID embedded in issued tokens.</li>
+<li><code>TokenSigningKeyId</code> — database ID of the signing key, embedded in issued tokens so a World/Scene server's <code>FetchSigningKeyAsync(loginServerId, signingKeyId)</code> can find it.</li>
 <li><code>TokenExpirationMinutes</code> — token validity window (default <code>10f</code>).</li>
+<li><code>VerifyWorkerCount</code> / <code>ProofWorkerCount</code> (default <code>2</code>) and <code>VerifyChannelCapacity</code> / <code>ProofChannelCapacity</code> (default <code>500</code>) — SRP worker pool and bounded-channel sizes. <code>TokenAuthenticatorCore</code> has the equivalent <code>TokenWorkerCount</code> / <code>TokenChannelCapacity</code>.</li>
+<li><code>MaxConcurrentTotpVerifications</code> — semaphore bound on concurrent TOTP verifications (default <code>4</code>).</li>
+</ul>
+<p><code>BaseAuthenticatorCore</code> (both server cores):</p>
+<ul>
+<li><code>ExpectedGameVersion</code> — when non-empty, a client whose <code>ClientHandshake.GameVersion</code> differs is rejected with <code>ClientAuthenticationResult.VersionMismatch</code>. Empty (the default) skips the check.</li>
 </ul>
 <p>Operational configuration expectations:</p>
 <ul>

@@ -151,12 +151,12 @@
 <tr>
 <td><code>ServerListBroadcast</code></td>
 <td>Server → Client</td>
-<td>Response containing <code>List&lt;WorldServerDetails&gt;</code> of active world servers</td>
+<td>Response containing a <code>WorldServerDetails[]</code> of active world servers. A fixed-size array, not a <code>List&lt;T&gt;</code>: FishNet serializes on the network thread, and the server replaces the whole array rather than mutating entries in place.</td>
 </tr>
 <tr>
 <td><code>WorldSceneConnectBroadcast</code></td>
 <td>Server → Client</td>
-<td>Provides address and port for connecting to a specific world scene server</td>
+<td>Carries only the port of a world scene server; the address is always <code>Constants.Configuration.GameHost</code></td>
 </tr>
 </tbody>
 </table>
@@ -165,7 +165,7 @@
 <ul>
 <li><strong>World Server Service Unavailable:</strong> An empty <code>ServerListBroadcast</code> is sent and a warning is logged.</li>
 <li><strong>Database Fetch Failure:</strong> An empty <code>ServerListBroadcast</code> is sent with the error message logged.</li>
-<li><strong>Async Enqueue Failure:</strong> The in-flight gate is released immediately and a warning is logged.</li>
+<li><strong>Async Enqueue Failure:</strong> The in-flight gate is released immediately and a <code>ServerBusyBroadcast</code> is sent via <code>SendServerBusy</code>.</li>
 <li><strong>Unexpected Exception:</strong> Caught in the <code>ProcessServerListRequestAsync</code> catch block, logged, and the in-flight gate is released in the <code>finally</code> block.</li>
 </ul>
 <h3 id="authentication-check">Authentication Check</h3>
@@ -202,7 +202,7 @@
 <h2 id="features">Features</h2>
 <ul>
 <li><strong>Active world server list</strong> — async database fetch via <code>IWorldServerService.FetchActiveAsync</code>, filtered by configurable <code>idleTimeout</code> (default 60s)</li>
-<li><strong>DTO mapping</strong> — maps <code>WorldServerData</code> rows to <code>WorldServerDetails</code> (Name, LastPulse, Address, Port, CharacterCount, Locked)</li>
+<li><strong>DTO mapping</strong> — maps <code>WorldServerData</code> rows to <code>WorldServerDetails</code> (Name, Port, CharacterCount, Locked). The DTO carries no address and no pulse timestamp: every server is reached through the same host, and the pulse age is already spent server-side as the <code>idleTimeout</code> filter, so sending it would only invite the client to re-derive a decision the server has made.</li>
 <li><strong>Per-connection in-flight gating</strong> — <code>ConcurrentDictionary&lt;int, byte&gt;</code> prevents duplicate concurrent server-list requests per connection</li>
 <li><strong>Post-release cooldown</strong> — configurable <code>serverListCooldownMilliseconds</code> (default 1000ms) gap between successive requests enforced via <code>NextAllowedRequestUtcByClientId</code></li>
 <li><strong>Bounded main-thread draining</strong> — configurable <code>maxMainThreadResponsesPerFrame</code> to time-slice response dispatch and avoid frame spikes</li>
@@ -340,7 +340,7 @@
 Server validates authentication, checks in-flight gate and cooldown
 Server enqueues async work → fetches active servers from DB (filtered by idleTimeout)
 Server maps WorldServerData rows to WorldServerDetails DTOs
-Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port, CharacterCount, Locked }, ... ] }
+Server sends: ServerListBroadcast { Servers = [ { Name, Port, CharacterCount, Locked }, ... ] }
 </code></pre>
 <h3 id="server-list-request--failure-service-unavailable">Server List Request — Failure (Service Unavailable)</h3>
 <pre><code>Client sends: RequestServerListBroadcast { }
@@ -352,8 +352,10 @@ Server releases in-flight gate
 <h3 id="server-list-request--cooldown-rejection">Server List Request — Cooldown Rejection</h3>
 <pre><code>Client sends: RequestServerListBroadcast { }
 Server checks NextAllowedRequestUtcByClientId → cooldown not expired
-Request silently dropped (client must wait for cooldown to expire)
+Server sends: ServerListBroadcast { Servers = [] }    // answered, not dropped
 </code></pre>
+<p>The same empty answer is sent when the in-flight gate is already held. The client is
+always answered so its request never hangs waiting on a reply that will not come.</p>
 <h3 id="server-list-request--unauthenticated">Server List Request — Unauthenticated</h3>
 <pre><code>Client sends: RequestServerListBroadcast { }
 Server checks AccountManager → connection not authenticated
@@ -387,12 +389,12 @@ Server kicks connection with KickReason.UnusualActivity
 <tr>
 <td>In-flight gating</td>
 <td>Rapid-fire requests from same connection</td>
-<td>Only one request processed at a time; subsequent requests silently dropped</td>
+<td>Only one request processed at a time; subsequent requests answered with an empty <code>ServerListBroadcast</code></td>
 </tr>
 <tr>
 <td>Cooldown enforcement</td>
 <td>Send request immediately after previous completes</td>
-<td>Request rejected until 1-second cooldown expires</td>
+<td>Empty <code>ServerListBroadcast</code> returned until the 1-second cooldown expires</td>
 </tr>
 <tr>
 <td>Authentication enforcement</td>
@@ -497,7 +499,7 @@ Server/Core/LoginServer/ServerSelect/
 
 Shared/Implementation/Network/ServerSelect/
 ├── ServerSelectBroadcasts.cs                # Network broadcast structs (RequestServerListBroadcast, ServerListBroadcast, WorldSceneConnectBroadcast)
-└── ServerAddress.cs                         # Serializable server address with HTTPS formatting
+└── ServerAddress.cs                         # ServerAddress / ServerAddresses, including the IPFetch connection token
 
 Shared/Implementation/Network/
 └── WorldServerDetails.cs                    # Serializable world server details DTO
@@ -517,25 +519,26 @@ Shared/Implementation/Network/
 <h4 id="broadcast-structs">Broadcast Structs</h4>
 <pre><code>IBroadcast
 ├── RequestServerListBroadcast      → (empty, no fields)
-├── ServerListBroadcast             → List&lt;WorldServerDetails&gt;
-└── WorldSceneConnectBroadcast      → string Address, ushort Port
+├── ServerListBroadcast             → WorldServerDetails[] Servers
+├── WorldSceneConnectBroadcast      → ushort Port
+├── RequestConnectionTokenBroadcast → (empty, no fields)
+└── ConnectionTokenBroadcast        → string ConnectionToken
 </code></pre>
 <h4 id="shared-data-classes">Shared Data Classes</h4>
 <pre><code>WorldServerDetails
 ├── Name            : string
-├── LastPulse       : DateTime
-├── Address         : string
 ├── Port            : ushort
-├── CharacterCount  : int
+├── CharacterCount  : int    // server enforces &gt;= 0
 └── Locked          : bool
 
 ServerAddress
-├── Address         : string
-├── Port            : ushort
-└── HTTPSAddress()  : string    // formats as https://Address:Port/
+├── Address         : string    // internal bind address
+└── Port            : ushort
 
 ServerAddresses
-└── Addresses       : List&lt;ServerAddress&gt;
+├── Addresses       : List&lt;ServerAddress&gt;    // internal use
+├── Ports           : List&lt;ushort&gt;           // client use
+└── ConnectionToken : string                 // one-time token issued by IPFetch
 </code></pre>
 <h3 id="external-integration-points">External Integration Points</h3>
 <table>

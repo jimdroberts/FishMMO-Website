@@ -300,7 +300,7 @@ interfaces exposes the server directly.</p>
 <h3 id="phase-1-launcher-startup--version-check">Phase 1: Launcher Startup &amp; Version Check</h3>
 <pre><code class="lang-mermaid">sequenceDiagram
     actor Player
-    participant Launcher as ClientLauncher, (plain MonoBehaviour)
+    participant Launcher as ClientLauncher, (MonoBehaviour + ILauncherView)
     participant API as api.fishmmo.com, (NGINX → Patcher)
     participant CMS as News Host, (Constants.Configuration.LauncherHtmlUrl)
 
@@ -324,12 +324,12 @@ interfaces exposes the server directly.</p>
     alt Client &lt; Server, and patch_available == false
         Launcher-&gt;&gt;Launcher: PatchUnavailable, &quot;download the latest full client&quot;, (button re-runs the version check)
     else Client &lt; Server, and patch_available == true
-        Launcher-&gt;&gt;Launcher: PlayButtonUpdate() (auto-entered), → DownloadingPatch
+        Launcher-&gt;&gt;Launcher: AutoUpdate on → PlayButtonUpdate() (auto-entered), → DownloadingPatch, AutoUpdate off → UpdateAvailable (waits for the player)
         Launcher-&gt;&gt;API: GET /{clientVersion} (patch ZIP), same APIHost that answered the version check
         alt 200 OK
             API--&gt;&gt;Launcher: {from}-{to}.zip stream
             Launcher-&gt;&gt;Launcher: Write to Patches/{from}-{to}.zip, • Constants.GetPatchesDirectory(), • ZIP magic check (PK\x03\x04), • SHA-256 verify vs manifest
-            Launcher-&gt;&gt;Launcher: ApplyingPatch, → SystemUpdaterLauncher.LaunchUpdater(), (-version, -latestversion, -pid, -exe)
+            Launcher-&gt;&gt;Launcher: ApplyingPatch, → SystemUpdaterLauncher.LaunchUpdater(), (-version, -latestversion, -pid, -exe, -patches)
             Note over Launcher: Launcher does NOT wait for the updater to exit —, it watches 10s for a fast failure, then quits so the, updater (which kills it by PID) can replace the binaries
         else 204 No Content (already up to date)
             API--&gt;&gt;Launcher: 204, no body
@@ -341,9 +341,19 @@ interfaces exposes the server directly.</p>
         Launcher-&gt;&gt;Launcher: ClientAhead, (Play is NOT offered — button re-checks version)
     end
 </code></pre>
-<p><strong>Launcher states</strong> (<code>LauncherState.cs</code>): <code>LoadingNews</code>, <code>Connecting</code>, <code>CheckingVersion</code>, <code>DownloadingPatch</code>,
-<code>ApplyingPatch</code>, <code>ReadyToPlay</code>, <code>ClientAhead</code>, <code>ConnectionFailed</code>, <code>VersionCheckFailed</code>, <code>PatchDownloadFailed</code>,
-<code>UpdaterFailed</code>, <code>LaunchFailed</code>, <code>PatchUnavailable</code>, <code>VersionError</code>, <code>ServerRejectedVersion</code>.</p>
+<p><strong>Launcher states</strong> (<code>LauncherState.cs</code>): <code>LoadingNews</code>, <code>Connecting</code>, <code>CheckingVersion</code>, <code>UpdateAvailable</code>,
+<code>DownloadingPatch</code>, <code>ApplyingPatch</code>, <code>ReadyToPlay</code>, <code>ClientAhead</code>, <code>ConnectionFailed</code>, <code>VersionCheckFailed</code>,
+<code>PatchDownloadFailed</code>, <code>UpdaterFailed</code>, <code>LaunchFailed</code>, <code>PatchUnavailable</code>, <code>VersionError</code>,
+<code>ServerRejectedVersion</code>, <code>Cancelled</code>.</p>
+<blockquote>
+<p><code>UpdateAvailable</code> is reachable only when <code>LauncherSettings.AutoUpdate</code> is off. With it on — the default, and
+how the launcher has always behaved — an out-of-date client goes straight to <code>DownloadingPatch</code> without
+parking on an Update button.</p>
+</blockquote>
+<blockquote>
+<p>The launcher renders through <code>ILauncherView</code>; <code>UITKClientLauncher</code> (<code>Client/GUI/Launcher/</code>) is its sole
+implementation, so the flow above is UI-toolkit-driven rather than drawn by <code>ClientLauncher</code> itself.</p>
+</blockquote>
 <blockquote>
 <p><code>ServerRejectedVersion</code> is wired into the UI state machine but not yet driven by the version-check endpoint —
 version rejection is currently reported during the handshake as <code>ClientAuthenticationResult.VersionMismatch</code>
@@ -435,7 +445,7 @@ re-enables the button if neither signal arrives.</p>
 
     Client-&gt;&gt;Server: ClientHandshake {,   PublicKey: client_x25519_pub,,   Cookie: hmac_cookie_bytes,,   ConnectionToken: null, }
 
-    Server-&gt;&gt;Server: Phase 2: Cookie Verification, • HMAC-SHA256 verify with rollover,   (current + previous time bucket), • Per-IP rate limit check (250ms debounce), • Global rate limit check (500/sec)
+    Server-&gt;&gt;Server: Phase 2: Cookie Verification, • HMAC-SHA256 verify with rollover,   (current + previous time bucket), • Per-IP rate limit check (8 completions per sliding 2s window), • Global rate limit check (500/sec)
 
     Server-&gt;&gt;Server: X25519 ECDH Key Agreement, • Generate server ephemeral keypair, • Compute shared secret, • HKDF derive session keys:,   - ClientToServerKey (AES-256),   - ServerToClientKey (AES-256),   - ClientNoncePrefix,   - ServerNoncePrefix
 
@@ -1246,17 +1256,17 @@ in the same order. The order is the contract, not an implementation detail.</p>
 <tr>
 <td>Channel switch</td>
 <td><code>SceneChannelSystem</code> → <code>ICharacterSystem.BeginChannelTransfer</code></td>
-<td><code>BeginDeliberateTransfer</code></td>
+<td><code>SuppressCombatLingerOnDisconnect</code></td>
 </tr>
 <tr>
-<td>Dungeon entry</td>
+<td>Dungeon / arena entry</td>
 <td><code>InteractableSystem</code> → <code>EnterInstance</code></td>
-<td><code>BeginDeliberateTransfer</code></td>
+<td><code>SuppressCombatLingerOnDisconnect</code></td>
 </tr>
 <tr>
 <td>Leave instance</td>
 <td><code>RequestLeaveInstanceBroadcast</code> / <code>/leaveinstance</code> → <code>TryLeaveInstance</code></td>
-<td><code>BeginDeliberateTransfer</code></td>
+<td><code>SuppressCombatLingerOnDisconnect</code></td>
 </tr>
 </tbody>
 </table>
@@ -1277,7 +1287,7 @@ at which point players queue for a scene instance that is in fact deserted.</li>
 <li><strong>Save and fully release before the connection drops.</strong> The destination's <code>TryClaimAsync</code>
 requires <code>session_state = Offline</code> or an expired lease, so a transfer that lingers cannot be
 claimed on arrival.</li>
-<li><strong>Mark the disconnect as deliberate.</strong> Combat-logout linger exists to punish a dropped
+<li><strong>Suppress combat-logout linger for the server-initiated disconnect.</strong> Combat-logout linger exists to punish a dropped
 connection, and a transfer <em>is</em> a dropped connection. A transfer that lingered would leave
 the body — and its claim — on the source server while the row says the character belongs to
 the destination, which then loses the claim race and kicks the arriving client on every
@@ -1513,7 +1523,7 @@ zone change.</li>
 <li><strong>Verify NGINX rate limits are active</strong> — check <code>limit_req_zone</code> and <code>limit_conn_zone</code> counters via <code>nginx -s reopen</code> logs or live metrics. Confirm the zones are not exhausted by legitimate traffic.</li>
 <li><strong>Enable stricter limits</strong> — reduce <code>limit_req</code> to 5r/s (API) and 1r/s (patch), tighten <code>limit_conn</code> to 5 conn/IP. Apply at NGINX edge; no game-server restart required.</li>
 <li><strong>Check nonce cache pressure</strong> — if the <code>ClientGate</code> nonce LRU exceeds 20,000 entries, the <code>Array.Sort</code> on eviction causes CPU spikes. Consider restarting the IPFetch/Patcher processes to flush the cache.</li>
-<li><strong>If the attack targets QUIC game ports</strong>, the game server's per-IP handshake debounce (250ms) and global cap (500/sec) provide the last line of defense. Monitor <code>MaxPendingAuthConnections</code> (10,000) — if hit, legitimate clients are locked out.</li>
+<li><strong>If the attack targets QUIC game ports</strong>, the game server's per-IP handshake limiter (8 per sliding 2s window) and global cap (500/sec) provide the last line of defense. Monitor <code>MaxPendingAuthConnections</code> (10,000) — if hit, legitimate clients are locked out.</li>
 </ol>
 <h4 id="account-takeover">Account Takeover</h4>
 <p>Suspicion: a user reports unauthorized access, or an anomaly detection alert fires on an account.</p>
@@ -1549,7 +1559,7 @@ zone change.</li>
 │                                                              │
 │  LAYER 3: Game Server                                       │
 │  ├─ Global handshake cap: 500/sec                           │
-│  ├─ Per-IP handshake debounce: 250ms                        │
+│  ├─ Per-IP handshake limit: 8 per 2s window                 │
 │  ├─ Pending auth cap: 10,000                                │
 │  ├─ Auth TTL sweep: 15s stale, 60s hard deadline            │
 │  ├─ Per-account rate limit: 1s (SRP verify)                 │
@@ -1712,7 +1722,7 @@ scene transfer or bind-point respawn.</p>
 <td><strong>WebTransport (QUIC)</strong></td>
 <td>✅ (via C++ lib)</td>
 <td>✅ (via C++ lib)</td>
-<td>❌ (binary missing)</td>
+<td>✅ (via C++ lib, built locally with <code>build_macos.sh</code> — must be built on a Mac)</td>
 <td>✅ (via browser WebTransport API + server HTTP/3)</td>
 </tr>
 <tr>
@@ -1738,6 +1748,12 @@ scene transfer or bind-point respawn.</p>
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p><strong>Native plugin note:</strong> No native WebTransport binary is tracked for any platform —
+<code>FishMMO-Unity/.gitignore</code> excludes <code>Assets/Plugins/FishNet/Plugins/WebTransport/Plugins/*/</code>.
+Each platform's library is produced locally by the matching script in <code>FishMMO-WebTransport/</code>
+(<code>build_windows.ps1</code>, <code>build_linux.sh</code>, <code>build_macos.sh</code>) and must be built on that platform.</p>
+</blockquote>
 <blockquote>
 <p><strong>WebGL note:</strong> The C++ msquic server includes a full HTTP/3 WebTransport handshake implementation
 in <code>src/http3.cpp</code>. The server auto-detects browser clients by inspecting the first byte of the
@@ -1999,13 +2015,13 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <tbody>
 <tr>
 <td><code>APIHost</code></td>
-<td><code>https://api.fishmmo.com/</code></td>
-<td><code>Constants.cs</code></td>
+<td><code>GeneratedHostConfig.ApiHost</code> (build-time substituted; committed value is the <code>FISHMMO_SENTINEL_PLACEHOLDER_API_HOST</code> sentinel)</td>
+<td><code>Constants.cs</code> → <code>HostConfig.generated.cs</code></td>
 </tr>
 <tr>
 <td><code>GameHost</code></td>
-<td><code>game.fishmmo.com</code></td>
-<td><code>Constants.cs</code></td>
+<td><code>GeneratedHostConfig.GameHost</code> (build-time substituted; committed value is the <code>FISHMMO_SENTINEL_PLACEHOLDER_GAME_HOST</code> sentinel)</td>
+<td><code>Constants.cs</code> → <code>HostConfig.generated.cs</code></td>
 </tr>
 <tr>
 <td><code>AuthStaleTtlSeconds</code></td>
@@ -2023,8 +2039,13 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <td><code>BaseAuthenticatorCore.cs</code></td>
 </tr>
 <tr>
-<td><code>HandshakeIpDebounceSeconds</code></td>
-<td>0.25s</td>
+<td><code>HandshakeIpWindowSeconds</code></td>
+<td>2s</td>
+<td><code>BaseAuthenticatorCore.cs</code></td>
+</tr>
+<tr>
+<td><code>HandshakeIpBurstLimit</code></td>
+<td>8</td>
 <td><code>BaseAuthenticatorCore.cs</code></td>
 </tr>
 <tr>
@@ -2116,6 +2137,11 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <td><code>InstanceReadyGraceSeconds</code></td>
 <td>180s</td>
 <td><code>WorldSceneSystem.cs</code></td>
+</tr>
+<tr>
+<td><code>DefaultMaxInstanceLifetimeMinutes</code></td>
+<td>120 min (configurable via <code>MaxInstanceLifetimeMinutes</code>)</td>
+<td><code>SceneServerSystem.cs</code></td>
 </tr>
 <tr>
 <td><code>StaleSceneRowGraceSeconds</code></td>
@@ -2224,7 +2250,7 @@ the same moment the handshake watchdog starts.</li>
 <ul>
 <li><strong>Build the server binary</strong> via the FishMMO Dashboard (Build → Server) targeting the desired platform and server type (Login/World/Scene).</li>
 <li><strong>Copy the binary and its <code>.cfg</code> file</strong> to the deployment host. Use the appropriate template from <code>FishMMO-Setup/Production/</code> (e.g., <code>SceneServer.cfg</code> for a new scene server).</li>
-<li><strong>Register the server</strong> in the database: insert a row into the <code>world_scenes</code> or <code>login_servers</code> table with the server's address, port, and metadata. The IPFetch/LoginServer discovery queries read these tables.</li>
+<li><strong>Let the server register itself.</strong> Servers write and pulse their own rows on first successful start — there is no hand-inserted registration step. Confirm the row appears in <code>login_servers</code>, <code>world_servers</code> or <code>scene_servers</code> (individual scene instances land in <code>scenes</code>); the IPFetch/LoginServer discovery queries read these tables.</li>
 <li><strong>Add a new NGINX stream block</strong> via <code>gen-fishmmo-stream-config.sh</code> if the server uses a port that hasn't been opened yet, then reload NGINX with <code>nginx -t &amp;&amp; nginx -s reload</code>.</li>
 <li><strong>Verify</strong> by checking server logs for &quot;Initialization Complete&quot; and confirming client connections succeed.</li>
 </ul>
@@ -2238,7 +2264,7 @@ the same moment the handshake watchdog starts.</li>
 <h3 id="handle-a-ddos-attack">Handle a DDoS Attack</h3>
 <ul>
 <li><strong>Enable NGINX edge rate limits</strong> immediately: drop <code>limit_req</code> to 5r/s (API), 1r/s (patch), and <code>limit_conn</code> to 5 conn/IP. No server restart required; NGINX reloads limits on config change.</li>
-<li><strong>Verify game-server defenses</strong> are active: the handshake global cap (500/sec), per-IP debounce (250ms), and pending auth cap (10,000) are compiled-in constants that cannot be changed at runtime — if overwhelmed, consider adding additional NGINX stream proxy nodes.</li>
+<li><strong>Verify game-server defenses</strong> are active: the handshake global cap (500/sec), per-IP limiter (8 completions per sliding 2 s window, sustaining 4/sec/IP), and pending auth cap (10,000) are compiled-in constants that cannot be changed at runtime — if overwhelmed, consider adding additional NGINX stream proxy nodes.</li>
 <li><strong>Check nonce cache pressure</strong> in <code>ClientGate</code>: if the LRU exceeds 20,000 entries, the eviction sort causes CPU spikes. Restart IPFetch/Patcher processes to flush the cache.</li>
 <li><strong>Scale horizontally</strong> by adding NGINX proxy instances behind a load balancer, then distributing game server ports across them.</li>
 </ul>
@@ -2334,21 +2360,28 @@ reaps its scene rows once <code>last_pulse</code> is older than <code>SceneServe
 <td>ushort</td>
 <td><code>7777</code></td>
 <td>All</td>
-<td>Network port. Defaults: Login=7770, World=7780, Scene=7781 (code default) / 7790 (file default).</td>
+<td>Network port. Per-server-type defaults (<code>FileServerConfiguration.GetDefaultPort</code>): Login=7770, World=7780, Scene=7790.</td>
 </tr>
 <tr>
 <td><code>StaleSceneTimeout</code></td>
 <td>int</td>
 <td><code>5</code></td>
-<td>All</td>
-<td>Minutes an empty <strong>open-world</strong> scene instance stays loaded before it is unloaded and its scene row deleted. Read by the SceneServer.</td>
+<td>Scene</td>
+<td>Minutes an empty <strong>open-world</strong> scene instance stays loaded before it is unloaded and its scene row deleted. Only the SceneServer reads it (<code>SceneServerSystem.ResolveStaleTimeoutMinutes</code>); the templates ship it in all three files.</td>
 </tr>
 <tr>
 <td><code>StaleInstanceSceneTimeout</code></td>
 <td>int</td>
 <td><code>2</code></td>
-<td>All</td>
-<td>Minutes an empty <strong>Group/PvP (instanced)</strong> scene stays loaded. Shorter than <code>StaleSceneTimeout</code> because a dungeon instance belongs to one character or party and is unlikely to be wanted again once empty. Code fallback <code>5</code>.</td>
+<td>Scene</td>
+<td>Minutes an empty <strong>Group/PvP (instanced)</strong> scene stays loaded. Shorter than <code>StaleSceneTimeout</code> because a dungeon instance belongs to one character or party and is unlikely to be wanted again once empty. Only the SceneServer reads it (<code>SceneServerSystem.ResolveStaleTimeoutMinutes</code>). Code fallback <code>5</code>.</td>
+</tr>
+<tr>
+<td><code>MaxInstanceLifetimeMinutes</code></td>
+<td>int</td>
+<td><code>120</code> (code fallback)</td>
+<td>Scene</td>
+<td>Minutes an instanced scene may exist before it is closed regardless of who is inside, measured from the scene row's creation. <strong>Not present in any template</strong> — add the key by hand to override the fallback. A dungeon difficulty declaring its own <code>LifetimeMinutes</code> overrides it for instances opened at that difficulty.</td>
 </tr>
 <tr>
 <td><code>CertificatePath</code></td>
@@ -2433,6 +2466,41 @@ reaps its scene rows once <code>last_pulse</code> is older than <code>SceneServe
 <td><code>true</code></td>
 <td>Login</td>
 <td>Enable SSL/TLS for SMTP. Production must be <code>true</code>. Overridable via <code>FISHMMO_SMTP_USE_SSL</code> env var.</td>
+</tr>
+<tr>
+<td><code>AllowedOrigins</code></td>
+<td>string (CSV)</td>
+<td><code>https://play.fishmmo.com</code></td>
+<td>Login</td>
+<td>Comma-separated CORS origins permitted for WebGL clients.</td>
+</tr>
+<tr>
+<td><code>LoginQueueUpdateRateSeconds</code></td>
+<td>float</td>
+<td><code>2.0</code></td>
+<td>Login</td>
+<td>How often queued clients receive a position update.</td>
+</tr>
+<tr>
+<td><code>LoginQueueMaxSize</code></td>
+<td>int</td>
+<td><code>500</code></td>
+<td>Login</td>
+<td>Queue capacity; clients beyond it are rejected outright rather than queued.</td>
+</tr>
+<tr>
+<td><code>LoginQueueAdmissionRatePerSecond</code></td>
+<td>float</td>
+<td><code>5.0</code></td>
+<td>Login</td>
+<td>Rate at which queued clients are admitted to the login server.</td>
+</tr>
+<tr>
+<td><code>LoginQueueTimeoutSeconds</code></td>
+<td>int</td>
+<td><code>300</code></td>
+<td>Login</td>
+<td>Maximum wait before a queued client is timed out.</td>
 </tr>
 </tbody>
 </table>

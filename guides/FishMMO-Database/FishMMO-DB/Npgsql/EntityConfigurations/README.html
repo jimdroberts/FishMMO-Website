@@ -101,6 +101,110 @@ same namespace as the entity models avoids <code>using</code> aliases and keeps 
 files consistent with the entities they configure.</p>
 <p>If a future reader finds this surprising, please keep this note in mind rather
 than reorganising files to match the folder structure.</p>
+<h2 id="what-is-here">What is here</h2>
+<p>55 files, one per table, mirroring the folders under <code>Npgsql/Entities/</code>. The table name a
+configuration declares with <code>ToTable(...)</code> is the authority for the schema; the C# names are
+<code>&lt;Name&gt;Entity</code> / <code>&lt;Name&gt;EntityConfiguration</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Folder</th>
+<th>Tables</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(root)</td>
+<td><code>deployment_secrets</code></td>
+</tr>
+<tr>
+<td><code>Login/</code></td>
+<td><code>accounts</code>, <code>auth_tokens</code>, <code>connection_token_keys</code>, <code>email_queue</code>, <code>login_servers</code>, <code>login_server_signing_keys</code>, <code>two_factor_recovery_codes</code></td>
+</tr>
+<tr>
+<td><code>World/</code></td>
+<td><code>world_servers</code>, <code>kick_requests</code></td>
+</tr>
+<tr>
+<td><code>Scene/</code></td>
+<td><code>scenes</code>, <code>scene_servers</code>, <code>chat</code>, <code>quests</code>, <code>group_finder_queue</code></td>
+</tr>
+<tr>
+<td><code>Scene/Character/</code></td>
+<td><code>characters</code> plus 22 per-character tables, including <code>character_item</code>, <code>character_waypoints</code> and <code>currency_ledger</code></td>
+</tr>
+<tr>
+<td><code>Scene/Guild/</code></td>
+<td><code>guilds</code>, <code>guild_rank</code>, <code>guild_log</code>, <code>guild_application</code>, <code>guild_updates</code></td>
+</tr>
+<tr>
+<td><code>Scene/Party/</code></td>
+<td><code>parties</code>, <code>party_updates</code></td>
+</tr>
+<tr>
+<td><code>Scene/Arena/</code></td>
+<td><code>arena_match</code>, <code>arena_match_member</code>, <code>arena_season</code>, <code>arena_rating</code>, <code>arena_penalty</code></td>
+</tr>
+<tr>
+<td><code>Scene/Housing/</code></td>
+<td><code>plots</code>, <code>plot_structures</code>, <code>plot_access</code>, <code>plot_vault</code>, <code>plot_updates</code></td>
+</tr>
+</tbody>
+</table>
+<p>The full per-table inventory lives in <a href="../../README.html#table-inventory"><code>../../README.md</code></a>.</p>
+<h2 id="conventions-these-files-follow">Conventions these files follow</h2>
+<ul>
+<li>Timestamps default with <code>HasDefaultValueSql(&quot;timezone('UTC', CURRENT_TIMESTAMP)&quot;)</code>, never a
+client clock, so rows written by different scene servers order correctly under clock skew.</li>
+<li>Every index a service's hot query depends on is declared here, with a comment naming the query
+it serves. Services write their upserts as raw SQL with an <code>ON CONFLICT (columns)</code> list, so a
+unique index declared here is load-bearing for that statement: change its columns and the upsert
+starts failing at runtime, not at compile time.</li>
+<li>Partial indexes are used wherever the interesting rows are a minority of the table
+(<code>HasFilter(&quot;active = TRUE&quot;)</code>, <code>HasFilter(&quot;tax_due_utc IS NOT NULL&quot;)</code>,
+<code>HasFilter(&quot;owner_character_id &lt;&gt; 0&quot;)</code>, and similar).</li>
+<li>Enum-valued columns are stored as <code>int</code> with a comment fixing the numeric meaning, because this
+assembly cannot reference <code>FishMMO.Shared</code>. The pairing is pinned by tests
+(<code>ItemContainerTypeParityTests</code>, <code>CurrencyLedgerStateTests</code>), not by a shared type.</li>
+</ul>
+<h2 id="configurations-added-in-this-window">Configurations added in this window</h2>
+<ul>
+<li><strong><code>Scene/Character/CharacterItemEntityConfiguration.cs</code></strong> replaced
+<code>CharacterInventoryEntityConfiguration</code>, <code>CharacterEquipmentEntityConfiguration</code> and
+<code>CharacterBankEntityConfiguration</code>, all three deleted. One <code>character_item</code> table keyed by the
+item's own id; <code>(character_id, container, slot)</code> is a unique <strong>index</strong>, not the upsert conflict
+target, and is checked per row — see the file's comment for why a straight slot swap would trip
+it and how <code>CharacterItemService.SaveSnapshotAsync</code> avoids emitting one.</li>
+<li><strong><code>Scene/Character/CharacterWaypointEntityConfiguration.cs</code></strong> — composite key
+<code>(CharacterID, SceneName, Page)</code>, which is both the upsert's arbiter and the prefix scan the
+character load uses. <code>Mask</code> is a bitmask page merged with <code>mask | EXCLUDED.mask</code> in
+<code>CharacterWaypointService</code>; the table is deliberately <strong>not</strong> versioned last-writer-wins, since
+a character never un-discovers a place. <code>SceneName</code> is capped at 64 characters.</li>
+<li><strong><code>Scene/Character/CurrencyLedgerEntityConfiguration.cs</code></strong> — append-only history. <code>Amount</code> is
+always positive; direction comes from <code>State</code> (<code>Absorbed</code> = 1, <code>Returned</code> = 2, and
+<code>CurrencyLedgerService.RecordAsync</code> rejects anything else, including the <code>Unsettled</code> default).
+Two composite indexes: <code>ix_currency_ledger_character_time</code> for per-character history and
+<code>ix_currency_ledger_reason_time</code> for per-sink aggregation over a window.</li>
+<li><strong><code>Scene/GroupFinderQueueEntityConfiguration.cs</code></strong> — the shared dungeon <em>and</em> arena queue.
+<code>CharacterID</code> is uniquely indexed (a character cannot be placed in two groups at once);
+<code>SceneType</code> defaults to <code>2</code> (<code>SceneType.Group</code>) because every row predating arenas was a dungeon
+row; the matcher's covering index is
+<code>(WorldServerID, SceneType, SceneName, Difficulty, Status, TimeCreated)</code>, and <code>LastPulse</code> is
+indexed for the stale-row reaper. Rows cascade with the character.</li>
+<li><strong><code>Scene/Arena/</code></strong> — five tables. <code>arena_match</code> has a unique index on <code>InstanceID</code> (the hosting
+scene server resolves the match from the instance it loaded); <code>arena_match_member</code> is unique on
+<code>(MatchID, CharacterID)</code>; <code>arena_season</code> uses a <strong>partial</strong> unique index
+(<code>HasFilter(&quot;active = TRUE&quot;)</code>) so at most one season is active; <code>arena_rating</code> is unique on
+<code>(SeasonID, CharacterID)</code> with a <code>(SeasonID, Rating)</code> leaderboard index and defaults of <code>1500</code>
+rating / <code>1500</code> peak; <code>arena_penalty</code> is the deserter lock, one row per character.</li>
+<li><strong><code>Scene/Housing/</code></strong> — five tables. <code>plots</code> is unique on
+<code>(WorldServerID, SceneName, PlotKey)</code> — plots are world-scoped, and <code>PlotKey</code> is capped at 64 to
+match <code>PlotIdentity.MaxPlotKeyLength</code> — with a filtered unique index
+<code>ix_plots_one_house_per_character</code> enforcing one house per character and a filtered <code>TaxDueUtc</code>
+index for the tax sweep. <code>plot_structures</code>, <code>plot_access</code> and <code>plot_updates</code> cascade from the
+plot; <code>plot_vault</code> deliberately has <strong>no</strong> foreign key to <code>plots</code> (it holds what a character is
+owed after the plot is gone) and cascades from the character instead.</li>
+</ul>
 
 </article>
 

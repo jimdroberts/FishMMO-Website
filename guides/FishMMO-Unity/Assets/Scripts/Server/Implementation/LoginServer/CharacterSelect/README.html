@@ -108,7 +108,7 @@
 </ul>
 <h2 id="overview">Overview</h2>
 <p>The Character Select system manages the character list, delete, and select workflows on the login server. It keeps the network handler path lightweight by queuing database-heavy work onto <code>AsyncWorkerData</code>, then marshals all FishNet broadcast responses back onto the Unity main thread through a dedicated main-thread queue container (<code>CharacterSelectSystemMainThreadQueueData</code>).</p>
-<p>Per-connection in-flight gating prevents a single client from queuing multiple concurrent list/select/delete operations, and a post-release cooldown (<code>RequestCooldownMilliseconds = 2000</code>) prevents rapid sequential spam. Bounded main-thread response draining (<code>maxMainThreadResponsesPerFrame</code>) avoids frame spikes.</p>
+<p>Per-connection in-flight gating prevents a single client from queuing multiple concurrent operations, and a post-release cooldown (<code>RequestCooldownMilliseconds = 2000</code>) prevents rapid sequential spam. List requests have their own gate and cooldown (<code>InFlightListRequests</code> / <code>NextAllowedListRequestUtc</code>), separate from select/delete: sharing one pair meant the list request the client issues on arrival armed a two-second cooldown that then refused the player's very next click on Play. Bounded main-thread response draining (<code>maxMainThreadResponsesPerFrame</code>) avoids frame spikes.</p>
 <h3 id="threading-model">Threading Model</h3>
 <table>
 <thead>
@@ -128,7 +128,7 @@
 </tr>
 <tr>
 <td>Main Thread</td>
-<td>FishNet <code>Broadcast</code> and <code>Kick</code> operations via queued actions</td>
+<td>FishNet <code>Broadcast</code> and <code>DisconnectWithNotice</code> operations via queued actions</td>
 </tr>
 </tbody>
 </table>
@@ -151,7 +151,17 @@
 <tr>
 <td><code>CharacterListBroadcast</code></td>
 <td>Server → Client</td>
-<td>Response containing <code>List&lt;CharacterDetails&gt;</code></td>
+<td>Response containing <code>CharacterDetails[]</code></td>
+</tr>
+<tr>
+<td><code>CharacterListResultBroadcast</code></td>
+<td>Server → Client</td>
+<td>Sent instead of a list when the request cannot be answered: <code>CharacterListResult.Busy</code> or <code>.Failed</code></td>
+</tr>
+<tr>
+<td><code>ServerBusyBroadcast</code></td>
+<td>Server → Client</td>
+<td>Accompanies <code>Busy</code> when the async worker pool refused the work (<code>SendServerBusy</code>)</td>
 </tr>
 <tr>
 <td><code>CharacterDeleteBroadcast</code></td>
@@ -169,18 +179,24 @@
 <td>Request selection of a named character</td>
 </tr>
 <tr>
+<td><code>CharacterSelectResultBroadcast</code></td>
+<td>Server → Client</td>
+<td>Terminal answer for every selection: <code>Success</code>, <code>OtherCharacterInWorld</code> (with the offending <code>CharacterName</code>), or <code>Failed</code></td>
+</tr>
+<tr>
 <td><code>ServerListBroadcast</code></td>
 <td>Server → Client</td>
-<td>Response containing <code>List&lt;WorldServerDetails&gt;</code> of active world servers</td>
+<td>Sent after a successful selection, containing <code>WorldServerDetails[]</code> of active world servers</td>
 </tr>
 </tbody>
 </table>
 <h3 id="failure-response-behaviour">Failure Response Behaviour</h3>
 <p>All request flows guarantee a response to the client, even on failure, to prevent indefinite client hangs:</p>
 <ul>
-<li><strong>Character List:</strong> On DB service unavailability or fetch failure, an empty <code>CharacterListBroadcast</code> is sent.</li>
-<li><strong>Character Select:</strong> On any failure (service unavailability, UoW failure, ownership mismatch, commit failure, or world server fetch failure), an empty <code>ServerListBroadcast</code> is sent. If the character does not exist or belongs to another account, the connection is kicked with <code>KickReason.UnusualActivity</code>.</li>
+<li><strong>Character List:</strong> An empty <code>CharacterListBroadcast</code> is deliberately <em>not</em> used as the failure answer — it is indistinguishable from &quot;this account has no characters&quot;, so a database outage reached the player as their characters having been deleted. A refusal sends <code>CharacterListResultBroadcast</code> with <code>Busy</code> (cooldown, in-flight duplicate, or a saturated worker pool) or <code>Failed</code> (service unavailable or the fetch itself failed).</li>
+<li><strong>Character Select:</strong> Every selection gets a <code>CharacterSelectResultBroadcast</code>, success included — the client arms a reply deadline when it sends the request and only this message ends it. Failure paths (service unavailability, UoW failure, <code>SetSelectedAsync</code> failure, ownership verification failure, commit failure, world server fetch failure) send <code>Failed</code>. A character already in the world on the same account sends <code>OtherCharacterInWorld</code> carrying that character's name; re-selecting the <em>same</em> character is allowed, since that is how a player rejoins a combat-logged body. <code>FetchInWorldCharacterAsync</code> fails closed: a failed read refuses the selection rather than falling through it.</li>
 <li><strong>Character Delete:</strong> On failure, a <code>CharacterDeleteBroadcast</code> with an empty <code>CharacterName</code> is sent. The in-flight guard releases so the user can retry.</li>
+<li><strong>Protocol violations:</strong> A select request naming a character that does not exist, or one owned by another account, ends the connection with <code>DisconnectWithNotice(conn, DisconnectNoticeReason.ProtocolViolation, terminal: true)</code> — the client is told why before the socket closes. There are no <code>NetworkConnection.Kick</code> calls in this system.</li>
 </ul>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
@@ -213,17 +229,20 @@
 <strong>Scripting Backend:</strong> IL2CPP</p>
 <h2 id="features">Features</h2>
 <ul>
-<li><strong>Character list retrieval</strong> — async database fetch via <code>ICharacterService.FetchManyAsync</code>, maps <code>CharacterData</code> rows to <code>CharacterDetails</code> (name, scene, race template ID)</li>
+<li><strong>Character list retrieval</strong> — async database fetch via <code>ICharacterService.FetchManyAsync</code>, maps <code>CharacterData</code> rows to <code>CharacterDetails</code> (name, scene, race template ID, and <code>IsCombatLogged</code> from <code>CharacterFlags.IsCombatLogged</code>), sent as <code>CharacterDetails[]</code></li>
+<li><strong>Equipment preview not populated</strong> — <code>CharacterDetails.EquippedItems</code> exists on the DTO for dressing the select-screen preview model, but this system leaves it <code>null</code>, which the field documents as &quot;not sent&quot; (distinct from an empty array meaning &quot;wearing nothing&quot;). No server code populates it at HEAD.</li>
 <li><strong>Character deletion</strong> — atomic Unit of Work transaction covering sub-entity cleanup and soft-delete of the character row</li>
 <li><strong>Character selection</strong> — atomic Unit of Work transaction with defense-in-depth ownership verification and <code>SetSelectedAsync</code></li>
 <li><strong>World server routing</strong> — after successful selection, fetches active world servers via <code>IWorldServerService.FetchActiveAsync</code> and sends <code>ServerListBroadcast</code></li>
 <li><strong>Per-connection in-flight gating</strong> — <code>ConcurrentDictionary&lt;int, byte&gt;</code> prevents duplicate concurrent operations per connection</li>
-<li><strong>Post-release cooldown</strong> — 2-second gap between successive requests enforced via <code>NextAllowedRequestUtc</code></li>
+<li><strong>Post-release cooldown</strong> — 2-second gap between successive requests enforced via <code>NextAllowedRequestUtc</code>, with <code>NextAllowedListRequestUtc</code> tracking list requests independently</li>
+<li><strong>Separate list gate</strong> — list requests use <code>InFlightListRequests</code> / <code>NextAllowedListRequestUtc</code> so the automatic list fetch on arrival cannot throttle the deliberate selection that immediately follows it</li>
+<li><strong>Single-character-in-world enforcement</strong> — <code>ICharacterService.FetchInWorldCharacterAsync</code> refuses a selection while another character on the account is still in the world; the read fails closed</li>
 <li><strong>Bounded main-thread draining</strong> — configurable <code>maxMainThreadResponsesPerFrame</code> to time-slice response dispatch</li>
 <li><strong>Character name validation</strong> — <code>Authentication.IsAllowedCharacterName</code> check on delete and select before any async work</li>
 <li><strong>Disconnect cleanup</strong> — <code>OnRemoteConnectionStopped</code> removes in-flight and cooldown entries for disconnected clients</li>
 <li><strong>Configurable deletion retention</strong> — <code>KeepDeleteData</code> toggle controls whether sub-entity rows are preserved or purged</li>
-<li><strong>Sub-entity deletion</strong> — when <code>KeepDeleteData</code> is false, deletes abilities, achievements, attributes, bank, buffs, equipment, factions, friends, hotkeys, inventory, known abilities, and pets (guild/party memberships handled by <code>CharacterService.DeleteAsync</code>)</li>
+<li><strong>Sub-entity deletion</strong> — when <code>KeepDeleteData</code> is false, deletes abilities, achievements, attributes, buffs, factions, friends, hotkeys, items, known abilities, pets, pet attributes, pet buffs, waypoints, and archetypes (guild/party memberships handled by <code>CharacterService.DeleteAsync</code>). Inventory, bank and equipment share one table, so <code>ICharacterItemService.DeleteAsync</code> covers all three in a single statement. <code>ICharacterWaypointService.DeleteAsync</code> takes no version — the waypoint pages are a merge-only bitmask with no version stream. Deletes run with <code>deleteVersion = long.MaxValue</code> to unconditionally pass the per-entity version guards, and failures are logged but do not abort: the character-row soft-delete is the critical operation and orphaned sub-entity rows are harmless.</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -234,7 +253,7 @@
 <li><code>ICharacterService</code></li>
 <li><code>IWorldServerService</code></li>
 <li><code>IUnitOfWorkService</code></li>
-<li><code>ICharacterAbilityService</code>, <code>ICharacterAchievementService</code>, <code>ICharacterAttributeService</code>, <code>ICharacterItemService</code>, <code>ICharacterBuffService</code>, <code>ICharacterItemService</code>, <code>ICharacterFactionService</code>, <code>ICharacterFriendService</code>, <code>ICharacterHotkeyService</code>, <code>ICharacterItemService</code>, <code>ICharacterKnownAbilityService</code>, <code>ICharacterPetService</code></li>
+<li><code>ICharacterAbilityService</code>, <code>ICharacterAchievementService</code>, <code>ICharacterAttributeService</code>, <code>ICharacterBuffService</code>, <code>ICharacterFactionService</code>, <code>ICharacterFriendService</code>, <code>ICharacterHotkeyService</code>, <code>ICharacterItemService</code>, <code>ICharacterKnownAbilityService</code>, <code>ICharacterPetService</code>, <code>ICharacterPetAttributeService</code>, <code>ICharacterPetBuffService</code>, <code>ICharacterWaypointService</code>, <code>ICharacterArchetypeService</code></li>
 </ul>
 </li>
 <li><code>AccountManager</code> for connection-to-account mapping</li>
@@ -321,12 +340,22 @@
 <tr>
 <td><code>InFlightRequests</code></td>
 <td><code>ConcurrentDictionary&lt;int, byte&gt;</code></td>
-<td>Per-connection in-flight gate preventing duplicate concurrent list/select/delete operations</td>
+<td>Per-connection in-flight gate preventing duplicate concurrent select/delete operations</td>
 </tr>
 <tr>
 <td><code>NextAllowedRequestUtc</code></td>
 <td><code>ConcurrentDictionary&lt;int, DateTime&gt;</code></td>
-<td>Per-connection post-release cooldown timestamp; enforces <code>RequestCooldownMilliseconds</code> gap between successive requests</td>
+<td>Per-connection post-release cooldown timestamp for select/delete; enforces <code>RequestCooldownMilliseconds</code></td>
+</tr>
+<tr>
+<td><code>InFlightListRequests</code></td>
+<td><code>ConcurrentDictionary&lt;int, byte&gt;</code></td>
+<td>Per-connection in-flight gate for list requests, tracked separately from select/delete</td>
+</tr>
+<tr>
+<td><code>NextAllowedListRequestUtc</code></td>
+<td><code>ConcurrentDictionary&lt;int, DateTime&gt;</code></td>
+<td>Per-connection cooldown timestamp for list requests</td>
 </tr>
 </tbody>
 </table>
@@ -365,7 +394,9 @@
 <h3 id="character-list-request-client--server--client">Character List Request (Client → Server → Client)</h3>
 <pre><code>Client sends: CharacterRequestListBroadcast { }
 Server validates account, fetches characters from DB
-Server sends: CharacterListBroadcast { Characters = [ { CharacterName, SceneName, RaceTemplateID }, ... ] }
+Server sends: CharacterListBroadcast { Characters = [ { CharacterName, SceneName, RaceTemplateID, IsCombatLogged }, ... ] }
+Server sends: CharacterListResultBroadcast { Result = Busy }    // refused: cooldown / in-flight / worker pool full
+Server sends: CharacterListResultBroadcast { Result = Failed }  // service unavailable or fetch failed
 </code></pre>
 <h3 id="character-delete-request-client--server--client">Character Delete Request (Client → Server → Client)</h3>
 <pre><code>Client sends: CharacterDeleteBroadcast { CharacterName = &quot;MyHero&quot; }
@@ -375,8 +406,14 @@ Server sends: CharacterDeleteBroadcast { CharacterName = &quot;&quot; }         
 </code></pre>
 <h3 id="character-select-request-client--server--client">Character Select Request (Client → Server → Client)</h3>
 <pre><code>Client sends: CharacterSelectBroadcast { CharacterName = &quot;MyHero&quot; }
-Server validates account + ownership, sets selected, fetches world servers
-Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port, CharacterCount, Locked }, ... ] }
+Server validates account + ownership, refuses if another character is in the world,
+sets selected, fetches world servers
+Server sends: CharacterSelectResultBroadcast { Result = Success, CharacterName = &quot;MyHero&quot; }
+Server sends: ServerListBroadcast { Servers = [ { Name, Port, CharacterCount, Locked }, ... ] }
+
+// refusals
+Server sends: CharacterSelectResultBroadcast { Result = OtherCharacterInWorld, CharacterName = &quot;MyOtherHero&quot; }
+Server sends: CharacterSelectResultBroadcast { Result = Failed, CharacterName = &quot;MyHero&quot; }
 </code></pre>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
@@ -421,7 +458,7 @@ Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port
 <tr>
 <td>Ownership verification</td>
 <td>Attempt to select/delete another account's character</td>
-<td>Connection kicked with <code>KickReason.UnusualActivity</code> (select) or failure response (delete)</td>
+<td>Connection closed via <code>DisconnectWithNotice(DisconnectNoticeReason.ProtocolViolation, terminal: true)</code> (select) or <code>CharacterDeleteBroadcast</code> with an empty name (delete)</td>
 </tr>
 <tr>
 <td>Disconnect cleanup</td>
@@ -431,7 +468,12 @@ Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port
 <tr>
 <td>Failure responses</td>
 <td>DB service unavailable or query failure</td>
-<td>Client receives empty list response (never hangs)</td>
+<td>Client receives <code>CharacterListResultBroadcast</code>/<code>CharacterSelectResultBroadcast</code> with a reason — never an empty list, never silence</td>
+</tr>
+<tr>
+<td>Second character in world</td>
+<td>Select character B while A is still in the world</td>
+<td><code>CharacterSelectResultBroadcast { OtherCharacterInWorld, CharacterName = A }</code>; re-selecting A itself is allowed</td>
 </tr>
 <tr>
 <td>KeepDeleteData=false</td>
@@ -485,9 +527,10 @@ Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port
   |                           |-- Release in-flight gate        |
 
 * Sub-entity deletion only when KeepDeleteData == false.
-  Deletes: abilities, achievements, attributes, bank, buffs,
-  equipment, factions, friends, hotkeys, inventory,
-  known abilities, pets. Guild/party handled by CharacterService.
+  Deletes: abilities, achievements, attributes, buffs, factions,
+  friends, hotkeys, items (inventory + bank + equipment in one
+  statement), known abilities, pets, pet attributes, pet buffs,
+  waypoints, archetypes. Guild/party handled by CharacterService.
 </code></pre>
 <h3 id="character-select-flow">Character Select Flow</h3>
 <pre><code>Client                    LoginServer                        Database
@@ -501,6 +544,8 @@ Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port
   |                           |       |-- FetchAsync ----------&gt;|
   |                           |       |&lt;-- CharacterData -------|
   |                           |       |-- Verify ownership      |
+  |                           |       |-- FetchInWorldCharacter&gt;|
+  |                           |       |   (fail-closed refusal) |
   |                           |       |-- SetSelectedAsync ----&gt;|
   |                           |       |-- FetchByAccountAsync -&gt;|
   |                           |       |   (defense-in-depth)    |
@@ -510,6 +555,7 @@ Server sends: ServerListBroadcast { Servers = [ { Name, LastPulse, Address, Port
   |                           |       |&lt;-- WorldServerData[] ---|
   |                           |       |                         |
   |                           |&lt;- Enqueue main-thread response  |
+  |&lt;-- CharacterSelectResultBroadcast (Success)                 |
   |&lt;-- ServerListBroadcast    |                                 |
   |                           |-- Release in-flight gate        |
 </code></pre>
@@ -526,8 +572,8 @@ Server/Core/LoginServer/CharacterSelect/
 └── ICharacterSelectSystemMainThreadQueueData.cs # Main-thread queue data interface
 
 Shared/Implementation/Network/CharacterSelect/
-├── CharacterSelectBroadcasts.cs                # Network broadcast structs (request list, list, delete, select)
-└── CharacterDetails.cs                         # Serializable character details (name, scene, race template ID)
+├── CharacterSelectBroadcasts.cs                # Broadcast structs + CharacterListResult / CharacterSelectResult enums
+└── CharacterDetails.cs                         # CharacterDetails and EquippedItemEntry
 
 Shared/Implementation/Network/
 ├── WorldServerDetails.cs                       # Serializable world server details (name, address, port, etc.)
@@ -548,21 +594,29 @@ Shared/Implementation/Network/
 <h4 id="broadcast-structs">Broadcast Structs</h4>
 <pre><code>IBroadcast
 ├── CharacterRequestListBroadcast
-├── CharacterListBroadcast          → List&lt;CharacterDetails&gt;
+├── CharacterListBroadcast          → CharacterDetails[]
+├── CharacterListResultBroadcast    → CharacterListResult (Busy = 0, Failed = 1)
 ├── CharacterDeleteBroadcast        → string CharacterName
 ├── CharacterSelectBroadcast        → string CharacterName
-└── ServerListBroadcast             → List&lt;WorldServerDetails&gt;
+├── CharacterSelectResultBroadcast  → CharacterSelectResult (Success = 0,
+│                                     OtherCharacterInWorld = 1, Failed = 2)
+│                                     + string CharacterName
+└── ServerListBroadcast             → WorldServerDetails[]
 </code></pre>
 <h4 id="shared-data-classes">Shared Data Classes</h4>
 <pre><code>CharacterDetails
 ├── CharacterName   : string
 ├── SceneName       : string
-└── RaceTemplateID  : int
+├── RaceTemplateID  : int
+├── IsCombatLogged  : bool
+└── EquippedItems   : EquippedItemEntry[]   (left null by this system)
+
+EquippedItemEntry
+├── Slot            : ItemSlot
+└── TemplateID      : int
 
 WorldServerDetails
 ├── Name            : string
-├── LastPulse       : DateTime
-├── Address         : string
 ├── Port            : ushort
 ├── CharacterCount  : int
 └── Locked          : bool
@@ -607,6 +661,10 @@ WorldServerDetails
 <tr>
 <td><code>Authentication</code></td>
 <td>Character name validation via <code>IsAllowedCharacterName</code></td>
+</tr>
+<tr>
+<td><code>ICharacterWaypointService</code>, <code>ICharacterArchetypeService</code></td>
+<td>Sub-entity cleanup on delete when <code>KeepDeleteData</code> is false</td>
 </tr>
 </tbody>
 </table>

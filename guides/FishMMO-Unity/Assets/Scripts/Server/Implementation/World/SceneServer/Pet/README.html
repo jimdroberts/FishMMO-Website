@@ -90,7 +90,7 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/Pet/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p><strong>Short description:</strong> Server-side pet lifecycle and runtime control system for scene-server player characters, handling follow/stay/attack/stance/summon/release commands, ability-driven spawning and ability learning, character-driven spawn/despawn transitions, ingress guarding, and asynchronous database persistence with main-thread-marshaled broadcasts.</p>
+<p><strong>Short description:</strong> Server-side pet lifecycle and runtime control system for scene-server player characters, handling follow/stay/attack/attack-priority/stance/summon/release commands, ability-driven spawning and ability learning, character-driven spawn/despawn transitions, ingress guarding, and asynchronous database persistence with main-thread-marshaled broadcasts.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
 <li><a href="#overview">Overview</a></li>
@@ -114,11 +114,11 @@
 <li><strong>Async worker:</strong> database fetch/persist operations dispatched through <code>IAsyncWorkerData</code>.</li>
 <li><strong>Main-thread queue:</strong> marshaling async completion actions back to Unity/FishNet-safe context via <code>PetSystemMainThreadQueueData</code>.</li>
 </ul>
-<p>All DB writes are queued through <code>TryEnqueueAsyncWork(...)</code> to <code>IAsyncWorkerData</code> with <code>entityKey = characterID</code> for per-character operation ordering. If queueing fails (backpressure/missing dependency), the system logs warnings while keeping gameplay state intact. Broadcasts are only emitted after successful state transitions, ensuring clients never see stale or uncommitted data.</p>
+<p>Async work is queued to <code>IAsyncWorkerData</code> with <code>entityKey = characterID</code> for per-character ordering: reads through <code>TryEnqueueAsyncWork(...)</code>, and the one persistence write through <code>EnqueuePersistence(...)</code>, which falls back to the thread pool rather than dropping the write when the channel is full. If queueing a read fails (backpressure/missing dependency), the system logs warnings while keeping gameplay state intact. Broadcasts are only emitted after successful state transitions, ensuring clients never see stale or uncommitted data.</p>
 <h3 id="ownership">Ownership</h3>
 <p>Pets are spawned <strong>without an owning connection</strong> — server-owned, exactly like any other NPC. FishNet's <code>Replicate_Authoritative</code> only accepts server-produced input for an object with no owner, so handing a pet to the summoner's connection would make that client responsible for supplying input to a brain that does not run there, and the server's own decisions would be discarded. Nothing in the pet system reads the pet's <code>Owner</code>, and the pet's <code>NetworkTransform</code> is server-authoritative, so server ownership costs nothing.</p>
 <h3 id="commands-and-orders">Commands and orders</h3>
-<p>A pet carries two independent pieces of state, both server-authoritative and both written into the spawn payload:</p>
+<p>A pet carries three independent pieces of state, all server-authoritative and all written into the spawn payload:</p>
 <table>
 <thead>
 <tr>
@@ -138,9 +138,14 @@
 <td><code>Follow</code>, <code>Stay</code></td>
 <td>Whether the pet heels or holds position.</td>
 </tr>
+<tr>
+<td><code>PetAttackPriority</code> (packed <code>int</code>)</td>
+<td>a permutation of <code>PetAttackTarget.Pinned</code>, <code>Current</code>, <code>HighestThreat</code></td>
+<td>The order an attack order tries its three ways of choosing a victim.</td>
+</tr>
 </tbody>
 </table>
-<p>Both are byte-backed enums whose zero values (<code>Passive</code>, <code>Follow</code>) are the safe defaults, so an unset value never makes a pet pick a fight or strand itself. Clients only ever <em>request</em> a change; the server confirms with a broadcast.</p>
+<p>The first two are byte-backed enums whose zero values (<code>Passive</code>, <code>Follow</code>) are the safe defaults, so an unset value never makes a pet pick a fight or strand itself. The priority packs its three steps into one <code>int</code> with bit 0 as a set marker, so the 0 an old client or an unset field carries is never a valid order and decodes to <code>PetAttackPriority.Default</code> (pinned → current → highest threat). Clients only ever <em>request</em> a change; the server confirms with a broadcast.</p>
 <p>Movement orders are expressed as orders, not by writing the AI's combat target. <code>Target</code> means &quot;the thing I am fighting&quot; throughout the AI, and conflating the two is what previously made a pet told to Stay never move again.</p>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
@@ -182,19 +187,23 @@
 <h2 id="features">Features</h2>
 <ul>
 <li>Pet follow, stay, attack, stance, summon (warp), and release commands via network broadcasts with full validation</li>
-<li>Attack orders read the owner's own <code>ITargetController</code> rather than trusting a target ID from the message, then re-validate the target as alive, not the owner, not the pet, and hostile by faction</li>
+<li>Attack orders try three choices in the order the owner set (<code>PetAttackPriority</code>, default pinned → current → highest threat): the click carries the pinned and hovered frame ids separately, each verified — spawned character, owner's scene, within <code>TargetController.MAX_TARGET_DISTANCE</code> of the owner — with the server's own copy of the reported frame backing the current step, and the highest-threat step resolved from the threat tables (<code>AggressionDispatcher.TryFindHighestThreatAgainst</code>, which with pet-credited threat is what the owner and pet have attacked the most); whatever a step yields is re-validated as alive, not the owner, not the pet, and hostile by faction, and the first valid one wins</li>
+<li>The attack priority is session state on the owner's <code>IPetController</code> like the stance (<code>PetAttackPriorityBroadcast</code> request/confirm, refused unless a permutation of the three steps, applied at summon and sent with <code>PetAddBroadcast</code>); the client remembers it in its settings under <code>PetAttackPriority</code> and replays it on every summon, so it survives sessions with no database change</li>
+<li>Death is a full reset: a player's pet is dismissed from the kill event through the same <code>DismissPet</code> path as a voluntary release</li>
+<li>A pet and its owner share threat both ways (see the AI README): hit either and both are threatened; a pet's hits are credited to its owner as well</li>
 <li>Stance changes reject values outside the enum rather than casting a hostile byte straight in; dropping to <code>Passive</code> recalls the pet and interrupts its cast</li>
 <li>Defensive and Aggressive pets answer an attack on their owner via <code>IPetController.OnOwnerAttacked</code>, a server-side hook raised from the global damage event</li>
 <li>Pet ability learning: template IDs restored from the database and abilities granted by the <code>PetAbilityTemplate</code> are both taught to the pet's <code>IAbilityController</code> on spawn, and captured back before persistence</li>
 <li>Per-connection ingress guarding with debounce and in-flight protection to prevent duplicate operations across all pet control actions</li>
 <li>Ability-driven pet summoning via <code>AbilityObject.OnPetSummon</code> with bounding-box randomization and ground sphere cast for spawn positioning</li>
-<li>Automatic pet spawn on character login via async database load and main-thread marshaling</li>
-<li>Automatic pet state capture and async persistence on character despawn or pet death</li>
+<li>Automatic pet spawn on character login via async database load and main-thread marshaling, restoring version-matched attributes (<code>FetchPersistedPetAttributesAsync</code>) and buffs (<code>FetchPersistedPetBuffsAsync</code>) alongside the abilities</li>
+<li>Live pet state is written by the character save, not from here: <code>CharacterSystem.AppendPetData</code> snapshots the pet row, its attributes and its buffs before the session claim is released, so a zone transfer cannot race a second unordered write. Character despawn therefore tears the pet down and writes nothing</li>
+<li>Dismissal is the one thing this system persists: <code>PersistPetDismissed</code> → <code>SavePetDismissedAsync</code> records <code>spawned = false</code> for a release, an owner's death, or a pet's death, so a pet that died at noon is not waiting alive at the next login</li>
 <li>Pet AI initialization after the scene move and activation, so the NavMeshAgent is warped onto the mesh at its real spawn position rather than being driven while inactive</li>
 <li>A pet's AI <code>Home</code> resolves to its owner's live position, so leashing, wandering and return-home all track the player without the pet system having to write anything</li>
 <li>Faction data copying from owner to pet via <code>IFactionController.CopyFrom</code></li>
 <li>Shared <code>SpawnAndInitializePet</code> helper that handles existing-pet despawn, pooled object retrieval, AI/faction init, scene transfer, network spawn, and broadcast emission</li>
-<li>Optimistic concurrency on pet persistence with version-incremented writes via <code>ICharacterPetService</code></li>
+<li>Pet rows are versioned from the <strong>owner's</strong> counter (<code>++owner.Version</code>) — a pooled pet has no durable identity of its own — and restored attributes and buffs are accepted only when their version matches the pet row's, so a new pet cannot inherit the previous one's values</li>
 <li>Time-sliced main-thread queue draining with configurable per-frame action limits to avoid frame spikes</li>
 <li>Periodic ingress guard cleanup sweeps with configurable TTL and max removals per sweep</li>
 <li>Achievement integration for pet summon events via configurable <code>AchievementTemplate</code></li>
@@ -218,7 +227,7 @@
 <li>Confirm that <code>AsyncWorkerData</code> (<code>IAsyncWorkerData</code>) is available for non-blocking DB write queuing.</li>
 <li>Confirm that <code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code> is registered in the behaviour registry.</li>
 <li>Verify that the database service <code>ICharacterPetService</code> is available in the DB service registry.</li>
-<li>On initialize, <code>PetSystem</code> automatically registers broadcast handlers for <code>PetFollowBroadcast</code>, <code>PetStayBroadcast</code>, <code>PetAttackBroadcast</code>, <code>PetStanceBroadcast</code>, <code>PetSummonBroadcast</code>, and <code>PetReleaseBroadcast</code>, and subscribes to <code>AbilityObject.OnPetSummon</code>, <code>OnSpawnCharacter</code>, <code>OnDespawnCharacter</code>, and <code>OnPetKilled</code>; on deinitialize, it unregisters them all.</li>
+<li>On initialize, <code>PetSystem</code> automatically registers broadcast handlers for <code>PetFollowBroadcast</code>, <code>PetStayBroadcast</code>, <code>PetAttackBroadcast</code>, <code>PetAttackPriorityBroadcast</code>, <code>PetStanceBroadcast</code>, <code>PetSummonBroadcast</code>, and <code>PetReleaseBroadcast</code>, and subscribes to <code>AbilityObject.OnPetSummon</code>, <code>ICharacterDamageController.OnKilled</code>, <code>OnSpawnCharacter</code>, <code>OnDespawnCharacter</code>, and <code>OnPetKilled</code>; on deinitialize, it unregisters them all.</li>
 <li>Give the pet prefab an AI archetype — one of the six <code>Pet - *</code> assets under <code>Assets/Templates/Entity/NPCs/AI/Archetypes/</code> — and give the <code>PetAbilityTemplate</code> a <code>PetAbilities</code> list. A pet with no abilities will follow its owner and never attack.</li>
 </ol>
 <h2 id="configuration">Configuration</h2>
@@ -342,6 +351,7 @@
 <li><code>PetStanceBroadcast</code> → <code>OnPetStanceBroadcastReceived</code></li>
 <li><code>PetSummonBroadcast</code> → <code>OnPetSummonBroadcastReceived</code></li>
 <li><code>PetReleaseBroadcast</code> → <code>OnPetReleaseBroadcastReceived</code></li>
+<li><code>PetAttackPriorityBroadcast</code> → <code>OnPetAttackPriorityBroadcastReceived</code></li>
 </ul>
 <p>And unregisters them on deinitialize.</p>
 <h3 id="broadcasts-emitted">Broadcasts Emitted</h3>
@@ -355,7 +365,7 @@
 <tbody>
 <tr>
 <td><code>PetAddBroadcast</code></td>
-<td>Notify owner of successful pet spawn (pet ID, stance, movement order)</td>
+<td>Notify owner of successful pet spawn (pet ID, stance, attack priority, movement order)</td>
 </tr>
 <tr>
 <td><code>PetRemoveBroadcast</code></td>
@@ -368,6 +378,10 @@
 <tr>
 <td><code>PetMovementOrderBroadcast</code></td>
 <td>Confirm the authoritative movement order after Follow or Stay</td>
+</tr>
+<tr>
+<td><code>PetAttackPriorityBroadcast</code></td>
+<td>Confirm the authoritative attack priority — sent for every request, including a refused one, so the panel cannot be left out of step</td>
 </tr>
 </tbody>
 </table>
@@ -387,7 +401,15 @@
 </tr>
 <tr>
 <td><code>ITargetController</code></td>
-<td>Source of truth for an attack order's target — read from the owner, never from the message</td>
+<td>Backs the <code>Current</code> step when the click names nothing (<code>HasClientSelectedTarget</code> / <code>ClientSelectedTargetObjectId</code>), and supplies <code>MAX_TARGET_DISTANCE</code>, the bound every claimed target id is checked against</td>
+</tr>
+<tr>
+<td><code>AggressionDispatcher</code></td>
+<td><code>TryFindHighestThreatAgainst</code> resolves the <code>HighestThreat</code> step from the server's threat tables</td>
+</tr>
+<tr>
+<td><code>ICharacterDamageController.OnKilled</code></td>
+<td>Static kill event; a player's death dismisses their pet through <code>DismissPet</code></td>
 </tr>
 <tr>
 <td><code>IAbilityController</code></td>
@@ -436,7 +458,7 @@
 </tbody>
 </table>
 <h3 id="ingress-guarding">Ingress Guarding</h3>
-<p>Pet ingress uses per-connection operation keys with debounce + in-flight protection. Operation codes are scoped per action type (<code>Follow</code>, <code>Stay</code>, <code>Summon</code>, <code>Release</code>, <code>LoadPet</code>, <code>Attack</code>, <code>Stance</code>). For the character-spawn pet load path, guard release is deferred until the async operation completes (not at enqueue-time), preventing overlap windows for duplicate pet loads on rapid reconnect. For synchronous broadcast handlers (follow, stay, summon), guards are released in a <code>finally</code> block after the handler completes.</p>
+<p>Pet ingress uses per-connection operation keys with debounce + in-flight protection. Operation codes are scoped per action type (<code>Follow</code>, <code>Stay</code>, <code>Summon</code>, <code>Release</code>, <code>LoadPet</code>, <code>Attack</code>, <code>Stance</code>, <code>AttackPriority</code>). For the character-spawn pet load path, guard release is deferred until the async operation completes (not at enqueue-time), preventing overlap windows for duplicate pet loads on rapid reconnect. For synchronous broadcast handlers (follow, stay, summon), guards are released in a <code>finally</code> block after the handler completes.</p>
 <h3 id="async-worker-and-backpressure">Async Worker and Backpressure</h3>
 <p><code>TryEnqueueAsyncWork(...)</code> dispatches all async DB work through <code>IAsyncWorkerData</code>.</p>
 <p>Behavior:</p>
@@ -448,19 +470,20 @@
 </ul>
 <p>This prevents unbounded fire-and-forget tasks and preserves operation order per player.</p>
 <h3 id="persistence-model">Persistence Model</h3>
-<p><code>SavePetAsync(...)</code>:</p>
+<p>A <strong>live</strong> pet is not persisted from this system at all. <code>CharacterSystem.AppendPetData</code> snapshots the pet row, its attributes and its buffs as part of the owning character's save, which is what gets that state into the database before the character's session claim is released — and therefore before the destination scene server reads it.</p>
+<p><code>PersistPetDismissed(owner, pet)</code> — the only write this system makes:</p>
 <ul>
-<li>Is always preceded by <code>Pet.CaptureKnownAbilities()</code>, so abilities granted at summon time from the <code>PetAbilityTemplate</code> are persisted rather than lost on the next log in.</li>
-<li>Fetches the existing pet row for optimistic version increment.</li>
-<li>Persists <code>(characterID, templateID, abilities, spawned)</code> state with <code>version + 1</code>.</li>
-<li>Uses per-character keyed queueing to preserve operation order.</li>
-<li>Skips persistence and logs a warning if <code>templateID</code> is invalid (≤ 0).</li>
+<li>Runs <code>Pet.CaptureKnownAbilities()</code> first, so abilities granted at summon time from the <code>PetAbilityTemplate</code> are persisted rather than lost on the next log in.</li>
+<li>Stamps the row with <code>++owner.Version</code>: the counter only has to increase, not be contiguous, and sharing the owner's stream keeps this write ordered against the character saves.</li>
+<li>Skips the write and logs a warning if <code>templateID</code> is invalid (≤ 0) — the row then still lists the pet as out.</li>
+<li>Hands <code>SavePetDismissedAsync</code> to <code>EnqueuePersistence</code>, keyed by <code>characterID</code>, which writes <code>CharacterPetData(..., spawned: false)</code> through <code>ICharacterPetService.PersistAsync</code>.</li>
 </ul>
 <p><code>LoadAndSpawnPetAsync(...)</code>:</p>
 <ul>
 <li>Fetches the currently spawned pet record via <code>ICharacterPetService.FetchSpawnedAsync</code>.</li>
+<li>Fetches attributes and buffs stamped with the same version as that row (<code>FetchPersistedPetAttributesAsync</code>, <code>FetchPersistedPetBuffsAsync</code>); rows at an older version belong to a pet that has since been dismissed and are discarded.</li>
 <li>Marshals pet reconstruction/spawn back to the main thread via <code>TryEnqueueMainThread</code>.</li>
-<li>Re-validates connection, character, and pet template before spawning.</li>
+<li>Re-validates the connection, that <code>character.ID</code> still equals the <code>characterID</code> the fetch was for, and that <code>conn.FirstObject</code> is still that character's <code>NetworkObject</code> — the character object is pooled and may have been handed to a different player during the round trip — then resolves the template and spawns.</li>
 </ul>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
@@ -486,6 +509,22 @@
 <tr>
 <td>Pet attack</td>
 <td>Target a hostile, send a <code>PetAttackBroadcast</code>; verify the pet engages it. Target a friendly or the pet itself; verify the order is refused</td>
+</tr>
+<tr>
+<td>Attack priority order</td>
+<td>Reorder the steps in the pet panel, then attack with nothing pinned; verify the <code>Current</code> step is used, and with a pinned target that the pinned one wins under the default order</td>
+</tr>
+<tr>
+<td>Out-of-range target id</td>
+<td>Send a <code>PetAttackBroadcast</code> naming a spawned character beyond <code>TargetController.MAX_TARGET_DISTANCE</code> or in another scene; verify the step is skipped rather than honoured</td>
+</tr>
+<tr>
+<td>Attack priority confirm</td>
+<td>Send a <code>PetAttackPriorityBroadcast</code> with a non-permutation value; verify it is ignored and the order in force is broadcast back</td>
+</tr>
+<tr>
+<td>Owner death dismissal</td>
+<td>Kill a player with a pet out; verify the pet is despawned, <code>PetRemoveBroadcast</code> reaches the client, and the dismissal is persisted</td>
 </tr>
 <tr>
 <td>Pet stance</td>
@@ -516,12 +555,12 @@
 <td>Spawn a character with a previously saved pet; verify async load triggers and pet is instantiated with correct template and abilities</td>
 </tr>
 <tr>
-<td>Character despawn persistence</td>
-<td>Despawn a character with an active pet; verify pet state is captured and async save is queued with correct alive/spawned flag</td>
+<td>Character despawn teardown</td>
+<td>Despawn a character with an active pet; verify the pet is returned to the pool and the controller reference cleared, and that <strong>no</strong> pet write is issued from <code>PetSystem</code> — the preceding character save carries it</td>
 </tr>
 <tr>
 <td>Pet killed</td>
-<td>Trigger pet death; verify despawn persistence flow runs and <code>PetRemoveBroadcast</code> reaches client</td>
+<td>Trigger pet death; verify <code>PersistPetDismissed</code> writes <code>spawned = false</code>, <code>PetRemoveBroadcast</code> reaches the client, and the dismiss triggers fire</td>
 </tr>
 <tr>
 <td>Ability-driven summon</td>
@@ -533,7 +572,7 @@
 </tr>
 <tr>
 <td>Async persistence</td>
-<td>Check logs for successful <code>TryEnqueueAsyncWork</code> calls after release/despawn/death operations</td>
+<td>Check logs for <code>EnqueuePersistence</code> accepting <code>SavePetDismissedAsync</code> after release/owner-death/pet-death operations</td>
 </tr>
 <tr>
 <td>Main-thread queue draining</td>
@@ -552,8 +591,8 @@
 <td>Verify stale ingress guard entries are removed during periodic sweeps</td>
 </tr>
 <tr>
-<td>Optimistic concurrency</td>
-<td>Verify pet save logs a warning on version conflict or DB error</td>
+<td>Version-matched restore</td>
+<td>Dismiss a pet, summon a different one, and re-log; verify the new pet does not inherit the previous pet's attributes or buffs</td>
 </tr>
 </tbody>
 </table>
@@ -586,12 +625,33 @@
 ├─ 1. Validate connection and spawned object
 ├─ 2. Acquire ingress guard (debounce + in-flight)
 ├─ 3. Validate IPetController exists with active pet
-├─ 4. Read the owner's ITargetController.Current.Target
-│      (never taken from the message — a client cannot name an arbitrary victim)
-├─ 5. IsValidPetTarget: alive, not the owner, not the pet, hostile by faction
-├─ 6. CommandPetAttack → set AI target, clear any Stay, enter the attacking state
-└─ 7. Release ingress guard (finally)
+├─ 4. Decode petController.AttackPriority (falls back to PetAttackPriority.Default)
+├─ 5. Walk the three steps in order, stopping at the first valid target:
+│      ├── Pinned        → TryResolveFrameTarget(msg.PinnedTargetObjectID)
+│      ├── Current       → TryResolveFrameTarget(msg.HoveredTargetObjectID)
+│      │                   else the server's own ClientSelectedTargetObjectId
+│      └── HighestThreat → AggressionDispatcher.TryFindHighestThreatAgainst(owner, filter)
+│      TryResolveFrameTarget: id ≠ 0, spawned on the server, same scene as the owner,
+│      within TargetController.MAX_TARGET_DISTANCE of the OWNER (not the pet)
+├─ 6. IsValidPetTarget on whatever a step yields: alive, not the owner, not the pet,
+│      hostile by faction — an invalid result hands over to the next step
+├─ 7. CommandPetAttack → set AI target, clear any Stay, enter the attacking state
+└─ 8. Release ingress guard (finally)
 </code></pre>
+<h3 id="pet-attack-priority">Pet Attack Priority</h3>
+<pre><code>OnPetAttackPriorityBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection, spawned object, and CharacterStateValidation.CanAct
+├─ 2. Acquire ingress guard (AttackPriority)
+├─ 3. Validate IPetController exists (a live pet is NOT required)
+├─ 4. PetAttackPriority.IsValid(msg.Priority) → apply to the controller and,
+│      when one is out, to the Pet as well; anything else is ignored
+├─ 5. Broadcast PetAttackPriorityBroadcast with the order actually in force
+└─ 6. Release ingress guard (finally)
+</code></pre>
+<p>Session state only: nothing here touches the database. The client keeps the order in its own
+settings (<code>UITKPetControl</code>, key <code>PetAttackPriority</code>) and replays it on every summon, which is
+what makes it survive a log out.</p>
 <h3 id="pet-stance">Pet Stance</h3>
 <pre><code>OnPetStanceBroadcastReceived(conn, msg, channel)
 │
@@ -628,13 +688,14 @@
 ├─ 2. Acquire ingress guard (debounce + in-flight)
 ├─ 3. Validate database services available
 ├─ 4. Validate IPetController exists with active pet
-├─ 5. CaptureKnownAbilities, then capture an immutable DTO
-│      (characterID, templateID, abilities)
-├─ 6. Despawn pet network object to pool
-├─ 7. Clear pet owner and controller references, unsubscribe OnOwnerAttacked
-├─ 8. Broadcast PetRemoveBroadcast to owner
-├─ 9. Enqueue async SavePetAsync(spawned=false) keyed by characterID
-└─ 10. Release ingress guard (finally)
+├─ 5. DismissPet(player, petController, conn) — the shared dismissal path
+│      ├── PersistPetDismissed: CaptureKnownAbilities, then EnqueuePersistence
+│      │    (SavePetDismissedAsync, keyed by characterID) with ++owner.Version
+│      ├── Despawn pet network object to pool
+│      ├── Clear pet owner and controller references, unsubscribe OnOwnerAttacked
+│      ├── Broadcast PetRemoveBroadcast to owner
+│      └── Fire the server-side OnPetDismissTriggers
+└─ 6. Release ingress guard (finally)
 </code></pre>
 <h3 id="character-spawn--pet-load">Character Spawn → Pet Load</h3>
 <pre><code>CharacterSystem_OnSpawnCharacter(conn, character, scene)
@@ -667,23 +728,43 @@
 │
 └─ On enqueue failure: release guard immediately
 </code></pre>
-<h3 id="character-despawn--pet-save">Character Despawn → Pet Save</h3>
+<h3 id="character-despawn--pet-teardown">Character Despawn → Pet Teardown</h3>
 <pre><code>CharacterSystem_OnDespawnCharacter(conn, character)
 │
 ├─ 1. Validate character and IPetController
-├─ 2. Validate database services available
-├─ 3. Read pet health to determine alive/spawned state
-├─ 4. CaptureKnownAbilities, then capture an immutable DTO
-│      (characterID, templateID, abilities, spawned)
-├─ 5. Despawn pet network object to pool (if spawned)
-├─ 6. Clear the controller's pet reference and unsubscribe OnOwnerAttacked
-└─ 7. Enqueue async SavePetAsync(characterID, templateID, abilities, spawned)
+├─ 2. No live pet → just unsubscribe OnOwnerAttacked and return
+├─ 3. Despawn pet network object to pool (if spawned)
+└─ 4. Clear Pet.PetOwner / IPetController.Pet, unsubscribe OnOwnerAttacked
 </code></pre>
+<p>Deliberately writes nothing: the character save that precedes this event has already
+snapshotted the live pet through <code>CharacterSystem.AppendPetData</code>, and a second write from here
+would be an unordered race against the one that matters. Clearing the reference is what stops a
+later Summon or Follow re-tasking a pooled pet that no longer exists.</p>
+<h3 id="owner-killed--pet-dismissed">Owner Killed → Pet Dismissed</h3>
+<pre><code>ICharacterDamageController.OnKilled(killer, victim)
+│
+├─ 1. Ignore unless the victim is an IPlayerCharacter with a live pet
+├─ 2. Resolve the owner's connection (null when it is no longer active)
+└─ 3. DismissPet(owner, petController, conn)
+       ├── PersistPetDismissed (snapshots abilities first)
+       ├── Despawn the pet NetworkObject to the pool
+       ├── Clear Pet.PetOwner / IPetController.Pet, unsubscribe OnOwnerAttacked
+       ├── Broadcast PetRemoveBroadcast (only when there is a connection to tell)
+       └── InvokePetTriggers(OnPetDismissTriggers)
+</code></pre>
+<p><code>DismissPet</code> is the one path every dismissal takes: a voluntary <code>PetReleaseBroadcast</code> and a
+forced dismissal on the owner's death run exactly the same code, so both persist and notify
+identically. Without the death hook the summon outlived its owner, leashed to a corpse and
+still fighting whatever had killed it. A pet's <em>own</em> death is <code>CharacterSystem_OnPetKilled</code>'s
+concern, and NPC deaths are not this handler's at all.</p>
 <h3 id="pet-killed">Pet Killed</h3>
 <pre><code>CharacterSystem_OnPetKilled(conn, character)
 │
-├─ 1. Reuse CharacterSystem_OnDespawnCharacter flow (captures state + async save)
-└─ 2. Broadcast PetRemoveBroadcast to owner
+├─ 1. Read OnPetDismissTriggers BEFORE the teardown clears the controller's pet reference
+├─ 2. PersistPetDismissed (spawned = false; no character save is coming for a living owner)
+├─ 3. Reuse CharacterSystem_OnDespawnCharacter for the despawn and reference clearing
+├─ 4. Broadcast PetRemoveBroadcast to owner (when there is a connection)
+└─ 5. InvokePetTriggers(OnPetDismissTriggers)
 </code></pre>
 <h3 id="ability-driven-pet-summon">Ability-Driven Pet Summon</h3>
 <pre><code>AbilityObject_OnPetSummon(petAbilityTemplate, caster)
@@ -715,7 +796,7 @@
 ├─ Queue rejection/unavailability → logged, work skipped
 ├─ Async exceptions → caught and logged with character context
 ├─ Invalid templateID (≤ 0) → save skipped with warning
-├─ Optimistic concurrency conflict → logged with version details
+├─ Pet row write failure → logged with character ID and version
 ├─ Pooled object missing Pet component → returned to pool, spawn aborted
 └─ Broadcasts → only emitted after successful state transitions
 </code></pre>
@@ -733,8 +814,8 @@
 <td><code>PetStance</code> lives on the pet and the controller for the session. A player who sets Aggressive and logs out returns to the <code>Defensive</code> default. Persisting it needs a <code>character_pet</code> schema change.</td>
 </tr>
 <tr>
-<td>Pet health is not persisted</td>
-<td>A pet re-summoned after a log in returns at full health. <code>spawned</code> is persisted; the health value that decided it is not.</td>
+<td>Attack priority is not persisted server-side</td>
+<td>The order lives on <code>IPetController</code> and the <code>Pet</code> for the session. It survives a log out only because the client stores it (<code>UITKPetControl</code>, settings key <code>PetAttackPriority</code>) and replays it; a fresh client install starts at <code>PetAttackPriority.Default</code>.</td>
 </tr>
 </tbody>
 </table>

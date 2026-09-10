@@ -145,6 +145,7 @@
 <li>Self-hit avoidance with automatic re-raycast past the player's own collider</li>
 <li>Configurable physics layer mask for target filtering</li>
 <li>Event-driven notifications: <code>OnChangeTarget</code>, <code>OnUpdateTarget</code>, <code>OnClearTarget</code></li>
+<li>Client-side <strong>pinned target</strong> beside the hover target: <code>TogglePinnedTarget</code> / <code>TryPinTarget</code> / <code>ClearPinnedTarget</code>, with <code>OnPinTarget</code> / <code>OnUnpinTarget</code> events and a pure release rule in <code>PinnedTargetRules</code></li>
 <li>Lightweight <code>TargetInfo</code> value-type struct for zero-allocation target state</li>
 <li>Configurable tick rate (<code>TARGET_UPDATE_RATE</code>) to control update frequency</li>
 <li>Maximum target distance clamping (<code>MAX_TARGET_DISTANCE</code>)</li>
@@ -161,7 +162,7 @@
 <p>This is an integrated module within the FishMMO project. No separate installation or build steps are required. The target system is included automatically when the FishMMO Shared assembly is referenced.</p>
 <h2 id="quick-start-guide">Quick Start Guide</h2>
 <ol>
-<li>Ensure <code>PlayerCharacter</code> has a <code>TargetController</code> component (added automatically via <code>[RequireComponent]</code>).</li>
+<li>Ensure the character has a <code>TargetController</code> component (added automatically via <code>[RequireComponent]</code> on both <code>PlayerCharacter</code> and <code>NPC</code>).</li>
 <li>Configure the <code>LayerMask</code> field in the Inspector to include targetable physics layers.</li>
 <li>Subscribe to targeting events on <code>ITargetController</code>:
 <ul>
@@ -192,6 +193,11 @@
 <td><code>TARGET_UPDATE_RATE</code></td>
 <td><code>0.05f</code></td>
 <td>Seconds between target update ticks (client-side)</td>
+</tr>
+<tr>
+<td><code>PinnedTargetRules.RELEASE_DISTANCE</code></td>
+<td><code>75.0f</code></td>
+<td>Distance beyond which a pinned target is released; wider than acquisition so a chased target keeps its card</td>
 </tr>
 </tbody>
 </table>
@@ -319,6 +325,51 @@
 <td><code>TargetInfo UpdateTarget(Vector3, Vector3, float)</code></td>
 <td>Performs a raycast and returns updated target info</td>
 </tr>
+<tr>
+<td><code>PinnedTarget</code></td>
+<td><code>Transform</code></td>
+<td>The character the owning client pinned to its frame, or null; always null on the server</td>
+</tr>
+<tr>
+<td><code>OnPinTarget</code></td>
+<td><code>event Action&lt;Transform&gt;</code></td>
+<td>Fired on the owning client when a character is pinned</td>
+</tr>
+<tr>
+<td><code>OnUnpinTarget</code></td>
+<td><code>event Action&lt;Transform&gt;</code></td>
+<td>Fired when the pin is released; null when the target was destroyed</td>
+</tr>
+<tr>
+<td><code>TogglePinnedTarget</code></td>
+<td><code>bool TogglePinnedTarget()</code></td>
+<td>Pins the hovered character, or releases the pin when nothing (or the pinned character) is hovered</td>
+</tr>
+<tr>
+<td><code>TryPinTarget</code></td>
+<td><code>bool TryPinTarget(Transform)</code></td>
+<td>Pins a specific character; refused for non-characters, unspawned objects and oneself</td>
+</tr>
+<tr>
+<td><code>ClearPinnedTarget</code></td>
+<td><code>void ClearPinnedTarget()</code></td>
+<td>Releases the pin</td>
+</tr>
+<tr>
+<td><code>ClientSelectedTargetObjectId</code></td>
+<td><code>int</code></td>
+<td>Server-side: the <code>NetworkObject.ObjectId</code> the owning client last reported it is following, or 0</td>
+</tr>
+<tr>
+<td><code>HasClientSelectedTarget</code></td>
+<td><code>bool</code></td>
+<td>Server-side: whether a report has been received at all</td>
+</tr>
+<tr>
+<td><code>ServerSetClientSelectedTarget</code></td>
+<td><code>void ServerSetClientSelectedTarget(int)</code></td>
+<td>Records a verified report; ignored off-server</td>
+</tr>
 </tbody>
 </table>
 <h3 id="client-side-update-loop">Client-Side Update Loop</h3>
@@ -333,6 +384,20 @@
 </ul>
 </li>
 </ol>
+<h3 id="pinned-target">Pinned Target</h3>
+<p>The hover target is the right readout for action combat — abilities go where the player aims — but it vanishes the moment the pointer moves, which makes it useless for following one opponent through a fight. The pin is a second, client-only target that lives beside the hover target rather than replacing it:</p>
+<ol>
+<li>The <code>PinTarget</code> input action (<code>F</code> by default) calls <code>TogglePinnedTarget()</code>: it pins the character under the pointer, or releases the pin when the pointer is on nothing or on the pinned character itself.</li>
+<li>Only spawned characters other than the player can be pinned. Scenery and interactables stay hover-only, so pinning never gets between the player and a door.</li>
+<li>Each trace tick the controller asks <code>PinnedTargetRules.ShouldRelease</code> whether the pin still holds. It is released when the target is destroyed or despawned on this client, when it dies, or when it moves beyond <code>RELEASE_DISTANCE</code> (75 m, deliberately wider than the 50 m acquisition range so a target pinned at the edge does not flicker). Nothing else releases it — not the pointer, not a panel opening.</li>
+<li>The pinned target takes precedence in the advisory <code>TargetSelectionBroadcast</code>: on the trace tick
+the client reports whichever character its frame is following — the pinned one if there is one,
+else the hovered one, and 0 for scenery or nothing — rate-limited to one send every 0.2 s and
+only when the answer changed. The server verifies the claim and stores it as
+<code>ClientSelectedTargetObjectId</code>, so the streaming budget never evicts the character the player is
+tracking.</li>
+</ol>
+<p><strong>The pin is never a combat target.</strong> Ability acquisition remains a server-side lag-compensated raycast from the replicated aim; the pin only changes what the player is shown. <code>UITKTarget</code> draws it as a second card beside the hover card, <code>ClientNameplateDisplay</code> keeps its nameplate up, and the party and guild invite buttons fall back to it when nothing is hovered.</p>
 <h3 id="self-hit-avoidance">Self-Hit Avoidance</h3>
 <p>When the raycast hits the casting character itself, the controller fires a second raycast:</p>
 <ol>
@@ -344,11 +409,16 @@
 <h3 id="external-integration-points">External Integration Points</h3>
 <ul>
 <li><strong>Ability System</strong> — <code>AbilityController</code> calls <code>ITargetController.UpdateTarget()</code> to resolve the target before spawning ability objects. <code>AbilityObject.Spawn()</code> and <code>SetAbilitySpawnPosition()</code> use <code>TargetInfo</code> to determine projectile aim direction and ground-targeted ability placement.</li>
-<li><strong>UI System</strong> — Subscribes to <code>OnChangeTarget</code>, <code>OnUpdateTarget</code>, and <code>OnClearTarget</code> to display target frames, health bars, name labels, and outline highlights.</li>
+<li><strong>UI System</strong> — Subscribes to <code>OnChangeTarget</code>, <code>OnUpdateTarget</code>, and <code>OnClearTarget</code> to display target frames, health bars, name labels, and outline highlights; and to <code>OnPinTarget</code> / <code>OnUnpinTarget</code> for the pinned card.</li>
 <li><strong>PlayerCharacter</strong> — <code>TargetController</code> is a <code>[RequireComponent]</code> on <code>PlayerCharacter</code>, ensuring every player entity has targeting capability.</li>
+<li><strong>NPC</strong> — <code>TargetController</code> is also a <code>[RequireComponent]</code> on <code>NPC</code>. An NPC never runs the mouse path (it is owner-only and compiled out of dedicated servers); the server-side brain aims through <code>AIController.VirtualCameraRotation</code>, which <code>AbilityController</code> replicates as the NPC's aim, and <code>UpdateTarget()</code> traces from that aim exactly as it does for a player. Without the component the NPC's casts complete and spawn nothing — see issue #232 and <code>FishMMO &gt; AI &gt; Audit NPC Prefabs</code>. An <strong>immortal</strong> NPC (authored on <code>CharacterDamageController</code>, or a corpse) has no reason to target anything: <code>UpdateTarget()</code> short-circuits to a miss for it before any trace, and the repair/audit tooling leaves its mask alone.</li>
 </ul>
-<h3 id="cleanup">Cleanup</h3>
+<h3 id="reset-and-cleanup">Reset and cleanup</h3>
 <p><code>OnDestroying()</code> nulls all three event delegates (<code>OnChangeTarget</code>, <code>OnUpdateTarget</code>, <code>OnClearTarget</code>) and resets <code>Last</code> and <code>Current</code> to <code>default</code> to prevent dangling references.</p>
+<p><code>ResetState(bool)</code> is the pooling reset: it clears <code>Last</code> / <code>Current</code>, forgets the pin, drops the
+server's <code>ClientSelectedTargetObjectId</code> / <code>HasClientSelectedTarget</code>, and clears the client's send
+throttle — so a recycled character does not inherit the previous occupant's target or its
+selection report.</p>
 <h2 id="operational-checks">Operational Checks</h2>
 <table>
 <thead>
@@ -368,6 +438,16 @@
 <td>Target clear</td>
 <td>Move mouse away from all entities</td>
 <td><code>OnClearTarget</code> fires, UI hides target info</td>
+</tr>
+<tr>
+<td>Pin target</td>
+<td>Hover a character and press <code>F</code></td>
+<td><code>OnPinTarget</code> fires; the pinned card stays up while the pointer moves away</td>
+</tr>
+<tr>
+<td>Pin release</td>
+<td>Press <code>F</code> with nothing (or the pinned character) hovered; or let the target die, despawn or pass 75 m</td>
+<td><code>OnUnpinTarget</code> fires, the pinned card comes down</td>
 </tr>
 <tr>
 <td>Self-hit avoidance</td>
@@ -447,6 +527,7 @@ Frame N+3:
 <pre><code>Target/
 ├── ITargetController.cs    # Target controller interface
 ├── TargetController.cs      # Per-entity controller (CharacterBehaviour)
+├── PinnedTargetRules.cs     # Pure release rule for the pinned target, plus RELEASE_DISTANCE
 └── TargetInfo.cs            # Lightweight target data struct
 </code></pre>
 <h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>

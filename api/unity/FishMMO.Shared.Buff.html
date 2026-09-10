@@ -160,7 +160,7 @@ floating-point drift across prediction ticks.</p>
 
   <h3 id="FishMMO_Shared_Buff__ctor_System_Int32_System_UInt32_System_Single_System_Int32_System_Int32_" data-uid="FishMMO.Shared.Buff.#ctor(System.Int32,System.UInt32,System.Single,System.Int32,System.Int32)">
   Buff(int, uint, float, int, int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L203"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L238"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Creates a new buff instance from a fresh application.
@@ -208,7 +208,7 @@ matching <a class="xref" href="FishMMO.Shared.CooldownInstance.html">CooldownIns
 
   <h3 id="FishMMO_Shared_Buff__ctor_System_Int32_System_UInt32_System_UInt32_System_Single_System_Int32_System_Int32_" data-uid="FishMMO.Shared.Buff.#ctor(System.Int32,System.UInt32,System.UInt32,System.Single,System.Int32,System.Int32)">
   Buff(int, uint, uint, float, int, int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L241"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L280"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Restores a buff from serialized absolute-tick values (reconcile / payload restore).
@@ -361,6 +361,67 @@ intervals catch up without drifting the cadence to the late current tick.</p>
 
 
 
+  <h3 id="FishMMO_Shared_Buff_RemainingCharges" data-uid="FishMMO.Shared.Buff.RemainingCharges">
+  RemainingCharges
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L93"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>What is LEFT of a buff that is spent rather than merely timed — damage points a shield
+can still absorb, deflections a guard can still make. Zero for every buff that counts
+nothing.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int RemainingCharges</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_Buff_RemainingCharges_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+<b>The unit belongs to the template, not to this field.</b>
+<a class="xref" href="FishMMO.Shared.DamageNegationBuffTemplate.html">DamageNegationBuffTemplate</a> counts damage points and
+<a class="xref" href="FishMMO.Shared.DeflectBuffTemplate.html">DeflectBuffTemplate</a> counts deflections; a template that spends nothing
+leaves <a class="xref" href="FishMMO.Shared.BaseBuffTemplate.html#FishMMO_Shared_BaseBuffTemplate_InitialCharges">InitialCharges</a> at zero and never looks at this.
+One counter rather than one per template is what keeps the reconcile entry from growing
+a field every time a new consumable effect is authored — and the reconcile is where the
+cost of this really lives.
+</p>
+<p>
+<b>Predicted state, so it has to travel.</b> Spending happens on the server — the
+defender's own client does not resolve incoming hits — but REFILLING happens on the owner
+too: <code>BuffController</code> calls <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_RefreshCharges">RefreshCharges()</a> every time a buff is
+re-applied, which for a channelled block is every tick the button is held. Without an
+authoritative value coming back, the owner's pool would be topped up locally and never
+told what the server had spent, so its shield would read full while the server's was
+empty. It rides <a class="xref" href="FishMMO.Shared.BuffReconcileEntry.html#FishMMO_Shared_BuffReconcileEntry_RemainingCharges">RemainingCharges</a> for the same reason
+<a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_CumulativeTickMultiplier">CumulativeTickMultiplier</a> does: both are per-buff state the two peers can
+move independently.
+</p>
+<p>
+<b>It is not sent to observers.</b> <code>ObservedBuffEntry</code> carries the strip a peer
+DRAWS, and no observer resolves damage against somebody else's shield — the server does,
+and tells them the resulting health. Sending it would disclose exactly how much more a
+player has to hit through, which is information the game does not otherwise give.
+</p>
+</div>
+
+
+
+
+
   <h3 id="FishMMO_Shared_Buff_Stacks" data-uid="FishMMO.Shared.Buff.Stacks">
   Stacks
   <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L40"><i class="bi bi-code-slash"></i></a>
@@ -465,7 +526,7 @@ Incremented whenever the buff's state changes in a way that requires persistence
 
   <h3 id="FishMMO_Shared_Buff_Caster" data-uid="FishMMO.Shared.Buff.Caster">
   Caster
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L129"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L164"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The character to credit for this buff's periodic effects, or null when there is nobody
@@ -510,7 +571,7 @@ itself as non-null, so the plain test would hand out a dead object.
 
   <h3 id="FishMMO_Shared_Buff_IsAuthoritative" data-uid="FishMMO.Shared.Buff.IsAuthoritative">
   IsAuthoritative
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L111"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L146"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>True while the tick currently executing on this buff runs on the authoritative
@@ -551,7 +612,7 @@ the owner's first, non-replayed pass is still not authoritative. Set by
 
   <h3 id="FishMMO_Shared_Buff_IsReplaying" data-uid="FishMMO.Shared.Buff.IsReplaying">
   IsReplaying
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L97"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L132"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>True while this buff is ticking inside a prediction replay rather than for the first time.</p>
@@ -585,11 +646,48 @@ tick of poison counts a dozen times toward an achievement.</p>
 
 
 
+  <a id="FishMMO_Shared_Buff_IsSpent_" data-uid="FishMMO.Shared.Buff.IsSpent*"></a>
+
+  <h3 id="FishMMO_Shared_Buff_IsSpent" data-uid="FishMMO.Shared.Buff.IsSpent">
+  IsSpent
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L349"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>True when this buff counted charges and has none left — the &quot;disappears when the
+remaining amount hits 0&quot; half of a consumable shield.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool IsSpent { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_Buff_IsSpent_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Asks the TEMPLATE whether charges were ever the point. A buff whose template counts
+nothing sits at zero for its whole life and must not be mistaken for a spent one.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_Buff_Template_" data-uid="FishMMO.Shared.Buff.Template*"></a>
 
   <h3 id="FishMMO_Shared_Buff_Template" data-uid="FishMMO.Shared.Buff.Template">
   Template
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L63"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L98"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The template that defines this buff's behavior and properties.</p>
@@ -625,7 +723,7 @@ tick of poison counts a dozen times toward an achievement.</p>
 
   <h3 id="FishMMO_Shared_Buff_AddStack_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.AddStack(FishMMO.Shared.Core.ICharacter)">
   AddStack(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L436"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L529"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Adds a stack to the buff and applies stack effects to the target.</p>
@@ -658,7 +756,7 @@ tick of poison counts a dozen times toward an achievement.</p>
 
   <h3 id="FishMMO_Shared_Buff_Apply_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.Apply(FishMMO.Shared.Core.ICharacter)">
   Apply(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L416"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L509"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Applies the buff's effects to the target character.</p>
@@ -691,7 +789,7 @@ tick of poison counts a dozen times toward an achievement.</p>
 
   <h3 id="FishMMO_Shared_Buff_HasExpired_System_UInt32_" data-uid="FishMMO.Shared.Buff.HasExpired(System.UInt32)">
   HasExpired(uint)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L263"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L356"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns true when this buff has expired at the given tick.
@@ -726,11 +824,51 @@ duration &lt; 2^31 ticks (~828 days at 30 tps).</p>
 
 
 
+  <a id="FishMMO_Shared_Buff_RefreshCharges_" data-uid="FishMMO.Shared.Buff.RefreshCharges*"></a>
+
+  <h3 id="FishMMO_Shared_Buff_RefreshCharges" data-uid="FishMMO.Shared.Buff.RefreshCharges">
+  RefreshCharges()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L313"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Fills <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_RemainingCharges">RemainingCharges</a> from the template, at this buff's current stack count.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void RefreshCharges()</code></pre>
+  </div>
+
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_Buff_RefreshCharges_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Called on a fresh application and again whenever an existing buff is re-applied, so
+holding a block up refreshes the shield rather than continuing to spend a pool that is
+already half gone. Re-applying is the ONLY thing that refills it; nothing regenerates.
+</p>
+<p>
+Scales as <code>1 + Stacks</code>, the same multiplier <a class="xref" href="FishMMO.Shared.AttributeBuffTemplate.html">AttributeBuffTemplate</a>
+applies to its bonuses, so two applications of a stacking absorb shield hold twice the
+damage rather than the same amount twice. A template with no charges stays at zero
+whatever the stack count.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_Buff_RemainingSeconds_" data-uid="FishMMO.Shared.Buff.RemainingSeconds*"></a>
 
   <h3 id="FishMMO_Shared_Buff_RemainingSeconds_System_UInt32_" data-uid="FishMMO.Shared.Buff.RemainingSeconds(System.UInt32)">
   RemainingSeconds(uint)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L271"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L364"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Computes the remaining buff duration in seconds for the given tick.
@@ -768,7 +906,7 @@ Returns zero if the buff has already expired. Used by the UI duration slider.</p
 
   <h3 id="FishMMO_Shared_Buff_Remove_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.Remove(FishMMO.Shared.Core.ICharacter)">
   Remove(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L426"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L519"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes the buff's effects from the target character.</p>
@@ -801,7 +939,7 @@ Returns zero if the buff has already expired. Used by the UI duration slider.</p
 
   <h3 id="FishMMO_Shared_Buff_RemoveStack_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.RemoveStack(FishMMO.Shared.Core.ICharacter)">
   RemoveStack(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L447"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L540"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes a stack from the buff and removes stack effects from the target.</p>
@@ -834,7 +972,7 @@ Returns zero if the buff has already expired. Used by the UI duration slider.</p
 
   <h3 id="FishMMO_Shared_Buff_ResetDuration_System_UInt32_System_Single_" data-uid="FishMMO.Shared.Buff.ResetDuration(System.UInt32,System.Single)">
   ResetDuration(uint, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L356"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L449"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resets the expiry to <code>currentTick + durationTicks</code>, refreshing the buff's lifetime.</p>
@@ -868,7 +1006,7 @@ Returns zero if the buff has already expired. Used by the UI duration slider.</p
 
   <h3 id="FishMMO_Shared_Buff_ResetTickTime_System_UInt32_System_Single_" data-uid="FishMMO.Shared.Buff.ResetTickTime(System.UInt32,System.Single)">
   ResetTickTime(uint, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L365"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L458"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resets <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_NextTickTick">NextTickTick</a> to <code>currentTick + tickRateTicks</code>.</p>
@@ -902,7 +1040,7 @@ Returns zero if the buff has already expired. Used by the UI duration slider.</p
 
   <h3 id="FishMMO_Shared_Buff_SetCaster_FishMMO_Shared_Core_ICharacter_" data-uid="FishMMO.Shared.Buff.SetCaster(FishMMO.Shared.Core.ICharacter)">
   SetCaster(ICharacter)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L160"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L195"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Snapshots the character responsible for this buff.</p>
@@ -942,7 +1080,7 @@ did.</p>
 
   <h3 id="FishMMO_Shared_Buff_SetTickDelta_System_Single_" data-uid="FishMMO.Shared.Buff.SetTickDelta(System.Single)">
   SetTickDelta(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L183"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L218"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the cached tick-delta used by <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_RemainingSeconds_System_UInt32_">RemainingSeconds(uint)</a>. Called by
@@ -973,11 +1111,56 @@ Ignores non-positive values to preserve the last good delta.</p>
 
 
 
+  <a id="FishMMO_Shared_Buff_SpendCharges_" data-uid="FishMMO.Shared.Buff.SpendCharges*"></a>
+
+  <h3 id="FishMMO_Shared_Buff_SpendCharges_System_Int32_" data-uid="FishMMO.Shared.Buff.SpendCharges(System.Int32)">
+  SpendCharges(int)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L330"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Spends up to <code class="paramref">requested</code> charges and reports how many were available.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int SpendCharges(int requested)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>requested</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>How many charges the caller would like to spend.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>How many were spent.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_Buff_SpendCharges_System_Int32__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Never spends more than it holds and never goes negative, so a caller can hand it the whole
+incoming amount and read the return value as &quot;how much this buff absorbed&quot;. A buff that
+lands on zero is not removed here — <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_IsSpent">IsSpent</a> is what the caller tests,
+because removal has to happen outside the loop walking the buff container.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_Buff_TryTick_" data-uid="FishMMO.Shared.Buff.TryTick*"></a>
 
   <h3 id="FishMMO_Shared_Buff_TryTick_FishMMO_Shared_Core_ICharacter_System_UInt32_System_Single_System_Boolean_System_Boolean_" data-uid="FishMMO.Shared.Buff.TryTick(FishMMO.Shared.Core.ICharacter,System.UInt32,System.Single,System.Boolean,System.Boolean)">
   TryTick(ICharacter, uint, float, bool, bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L305"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/Buff/Buff.cs/#L398"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Tries to trigger a tick for the buff if <a class="xref" href="FishMMO.Shared.Buff.html#FishMMO_Shared_Buff_NextTickTick">NextTickTick</a> has been reached,

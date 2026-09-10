@@ -1246,7 +1246,7 @@ Pinned by <code>PredictionAuditRegressionTests.AttributeReconcile_RunsAfterBuffA
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_AddAttribute_FishMMO_Shared_CharacterAttribute_" data-uid="FishMMO.Shared.CharacterAttributeController.AddAttribute(FishMMO.Shared.CharacterAttribute)">
   AddAttribute(CharacterAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1212"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1263"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Adds a non-resource attribute instance to the controller if not already present.</p>
@@ -1279,7 +1279,7 @@ Pinned by <code>PredictionAuditRegressionTests.AttributeReconcile_RunsAfterBuffA
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_AddResourceAttribute_FishMMO_Shared_CharacterResourceAttribute_" data-uid="FishMMO.Shared.CharacterAttributeController.AddResourceAttribute(FishMMO.Shared.CharacterResourceAttribute)">
   AddResourceAttribute(CharacterResourceAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1401"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1452"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Adds a resource attribute instance to the controller if not already present.</p>
@@ -1312,7 +1312,7 @@ Pinned by <code>PredictionAuditRegressionTests.AttributeReconcile_RunsAfterBuffA
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_ApplyObservedAttributes_FishMMO_Shared_AttributeReconcileEntry___System_Boolean_" data-uid="FishMMO.Shared.CharacterAttributeController.ApplyObservedAttributes(FishMMO.Shared.AttributeReconcileEntry[],System.Boolean)">
   ApplyObservedAttributes(AttributeReconcileEntry[], bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2453"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2951"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Applies a set of authoritative attribute entries by template id.</p>
@@ -1362,11 +1362,119 @@ ever stops holding, this says so instead of the sheets quietly diverging.
 
 
 
+  <a id="FishMMO_Shared_CharacterAttributeController_ApplyObservedHealthDelta_" data-uid="FishMMO.Shared.CharacterAttributeController.ApplyObservedHealthDelta*"></a>
+
+  <h3 id="FishMMO_Shared_CharacterAttributeController_ApplyObservedHealthDelta_System_Int32_System_Boolean_" data-uid="FishMMO.Shared.CharacterAttributeController.ApplyObservedHealthDelta(System.Int32,System.Boolean)">
+  ApplyObservedHealthDelta(int, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2049"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Moves an observed character's health by the amount a combat report just named.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void ApplyObservedHealthDelta(int amount, bool restoresHealth)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>amount</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The amount reported, never negative.</p>
+</dd>
+    <dt><code>restoresHealth</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True for a heal; false for damage.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_CharacterAttributeController_ApplyObservedHealthDelta_System_Int32_System_Boolean__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+<b>The same fact used to arrive twice and one copy was thrown away.</b> A hit produces a
+<code>CombatEventBroadcast</code> to every observer carrying the exact post-mitigation health
+delta, and then, independently, a <a class="xref" href="FishMMO.Shared.CharacterResourcesBroadcast.html">CharacterResourcesBroadcast</a> carrying the
+resulting absolute. The first drove a floating number and nothing else; the bar waited for
+the second, which is up to a whole push interval behind. The reported amount IS the health
+delta — <code>CharacterDamageController.Damage</code> reports the number it passed to
+<code>ResourceInstance.Consume</code> — so an observer holding health and its maximum can move
+the bar the moment the report lands.
+</p>
+<p>
+<b>The resource push stays authoritative and this cannot fight it.</b> The push carries an
+ABSOLUTE value, so applying it after any number of deltas overwrites rather than compounds:
+the two can disagree for at most one push interval and the push always wins. That is what
+makes this safe against a duplicated or double-counted report, which would otherwise be
+unrecoverable on an unreliable channel.
+</p>
+<p>
+Clamped to the maximum this client holds, because a heal clamps server-side to the same
+number, and to zero, because health cannot go below it. Never called for the owner — its
+own reconcile is authoritative and arrives every tick.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Shared_CharacterAttributeController_ApplyObservedResourceFields_" data-uid="FishMMO.Shared.CharacterAttributeController.ApplyObservedResourceFields*"></a>
+
+  <h3 id="FishMMO_Shared_CharacterAttributeController_ApplyObservedResourceFields_FishMMO_Shared_CharacterResourcesBroadcast__" data-uid="FishMMO.Shared.CharacterAttributeController.ApplyObservedResourceFields(FishMMO.Shared.CharacterResourcesBroadcast@)">
+  ApplyObservedResourceFields(in CharacterResourcesBroadcast)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2008"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Applies the fields of an observer resource push that the message actually carried.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void ApplyObservedResourceFields(in CharacterResourcesBroadcast msg)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>msg</code> <a class="xref" href="FishMMO.Shared.CharacterResourcesBroadcast.html">CharacterResourcesBroadcast</a></dt>
+    <dd><p>The message as received, masked.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_CharacterAttributeController_ApplyObservedResourceFields_FishMMO_Shared_CharacterResourcesBroadcast___remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+<a class="xref" href="FishMMO.Shared.CharacterResourcesBroadcast.html#FishMMO_Shared_CharacterResourcesBroadcast_Mask">Mask</a> names which of the six values are present;
+a field whose bit is clear is absent from the wire and arrives as zero, so applying it
+unconditionally would empty a bar or — worse, for a maximum — stamp the resource's final
+value to zero and collapse every bar drawn against it. Everything omitted is left exactly
+as this client holds it, which is what the sender's omission means.
+</p>
+<p>
+The maxima travel only when they changed, and a new observer never depends on this stream
+for them: the spawn payload (<code>WritePayload</code>) sends every resource attribute's value
+and current value to every non-owner from live state at the moment the observer is added,
+so it is by construction at least as fresh as the last push.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_CharacterAttributeController_ApplyObservedResourceState_" data-uid="FishMMO.Shared.CharacterAttributeController.ApplyObservedResourceState*"></a>
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_ApplyObservedResourceState_System_Single_System_Int32_System_Single_System_Int32_System_Single_System_Int32_" data-uid="FishMMO.Shared.CharacterAttributeController.ApplyObservedResourceState(System.Single,System.Int32,System.Single,System.Int32,System.Single,System.Int32)">
   ApplyObservedResourceState(float, int, float, int, float, int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1873"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1948"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Applies a resource state snapshot to restore health, mana, stamina, and the regen schedule.
@@ -1419,7 +1527,7 @@ See the call site for why applying a zeroed schedule would be wrong.</p>
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_ApplyResourceState_FishMMO_Shared_CharacterAttributeResourceState_" data-uid="FishMMO.Shared.CharacterAttributeController.ApplyResourceState(FishMMO.Shared.CharacterAttributeResourceState)">
   ApplyResourceState(CharacterAttributeResourceState)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1882"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2113"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Applies a resource state (health, mana, stamina, regen delta) to the controller.</p>
@@ -1511,7 +1619,7 @@ Must be paired with <a class="xref" href="FishMMO.Shared.Core.ICharacterAttribut
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_ClearModifierSource_FishMMO_Shared_ModifierSource_" data-uid="FishMMO.Shared.CharacterAttributeController.ClearModifierSource(FishMMO.Shared.ModifierSource)">
   ClearModifierSource(ModifierSource)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1038"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1089"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Releases one contributor from every attribute on the sheet.</p>
@@ -1656,7 +1764,7 @@ If not propagating, callers should invoke the event directly instead.</p>
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_GetResourceState" data-uid="FishMMO.Shared.CharacterAttributeController.GetResourceState">
   GetResourceState()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1971"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2202"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Captures the current resource state as a snapshot for FishNet's Replicate/Reconcile
@@ -1692,7 +1800,7 @@ which is harmless for the delta serializer.</p>
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_InitializeAttributeDependents" data-uid="FishMMO.Shared.CharacterAttributeController.InitializeAttributeDependents">
   InitializeAttributeDependents()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1388"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1439"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes parent/child/dependency relationships for all non-resource attributes.</p>
@@ -1747,7 +1855,7 @@ Initializes all attributes and resource attributes from the CharacterAttributeDa
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_InitializeResourceAttributeDependents" data-uid="FishMMO.Shared.CharacterAttributeController.InitializeResourceAttributeDependents">
   InitializeResourceAttributeDependents()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1481"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1532"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes parent/child/dependency relationships for all resource attributes.</p>
@@ -1774,7 +1882,7 @@ Initializes all attributes and resource attributes from the CharacterAttributeDa
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_OnCreateReconcile_FishMMO_Shared_CharacterReconcileData__" data-uid="FishMMO.Shared.CharacterAttributeController.OnCreateReconcile(FishMMO.Shared.CharacterReconcileData@)">
   OnCreateReconcile(ref CharacterReconcileData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2520"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L3031"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Writes this controller's authoritative state into the reconcile data (server only).
@@ -1807,7 +1915,7 @@ Called once per tick after <a class="xref" href="FishMMO.Shared.IPredictableCont
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_OnReconcile_FishMMO_Shared_CharacterReconcileData_FishNet_Transporting_Channel_" data-uid="FishMMO.Shared.CharacterAttributeController.OnReconcile(FishMMO.Shared.CharacterReconcileData,FishNet.Transporting.Channel)">
   OnReconcile(CharacterReconcileData, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2557"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L3068"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Restores resource state and the full non-resource attribute snapshot
@@ -1862,7 +1970,7 @@ finer one depending on arrival order. See <a class="xref" href="FishMMO.Shared.O
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_OnReplicate_FishMMO_Shared_CharacterReplicateData__FishNet_Object_Prediction_ReplicateState_FishNet_Transporting_Channel_" data-uid="FishMMO.Shared.CharacterAttributeController.OnReplicate(FishMMO.Shared.CharacterReplicateData@,FishNet.Object.Prediction.ReplicateState,FishNet.Transporting.Channel)">
   OnReplicate(ref CharacterReplicateData, ReplicateState, Channel)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2014"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2245"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Advances deterministic resource regeneration for the current prediction tick.</p>
@@ -1901,7 +2009,7 @@ finer one depending on arrival order. See <a class="xref" href="FishMMO.Shared.O
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_OnStartNetwork" data-uid="FishMMO.Shared.CharacterAttributeController.OnStartNetwork">
   OnStartNetwork()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1419"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1470"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes the tick-based regen interval. Attribute state replication is handled
@@ -1929,7 +2037,7 @@ entirely through the unified reconcile pipeline — there is no per-tick flush s
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_PopulateInput_FishMMO_Shared_CharacterReplicateData__" data-uid="FishMMO.Shared.CharacterAttributeController.PopulateInput(FishMMO.Shared.CharacterReplicateData@)">
   PopulateInput(ref CharacterReplicateData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2004"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L2235"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attributes do not contribute owner input into <a class="xref" href="FishMMO.Shared.CharacterReplicateData.html">CharacterReplicateData</a>.</p>
@@ -1998,7 +2106,7 @@ entirely through the unified reconcile pipeline — there is no per-tick flush s
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_Regenerate_System_UInt32_" data-uid="FishMMO.Shared.CharacterAttributeController.Regenerate(System.UInt32)">
   Regenerate(uint)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1684"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1759"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Processes resource regeneration for health, mana, and stamina using the
@@ -2066,7 +2174,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_ResetState_System_Boolean_" data-uid="FishMMO.Shared.CharacterAttributeController.ResetState(System.Boolean)">
   ResetState(bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L867"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L878"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resets the state of all resource attributes by restoring their current values to their final values.</p>
@@ -2095,11 +2203,72 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
 
 
+  <a id="FishMMO_Shared_CharacterAttributeController_ResolveObservedHealthAfterDelta_" data-uid="FishMMO.Shared.CharacterAttributeController.ResolveObservedHealthAfterDelta*"></a>
+
+  <h3 id="FishMMO_Shared_CharacterAttributeController_ResolveObservedHealthAfterDelta_System_Single_System_Int32_System_Int32_System_Boolean_" data-uid="FishMMO.Shared.CharacterAttributeController.ResolveObservedHealthAfterDelta(System.Single,System.Int32,System.Int32,System.Boolean)">
+  ResolveObservedHealthAfterDelta(float, int, int, bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1978"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The health an observer should hold after a combat report of <code class="paramref">amount</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static float ResolveObservedHealthAfterDelta(float current, int max, int amount, bool restoresHealth)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>current</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>The health this client currently holds for the character.</p>
+</dd>
+    <dt><code>max</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The maximum this client currently holds.</p>
+</dd>
+    <dt><code>amount</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The reported amount, never negative.</p>
+</dd>
+    <dt><code>restoresHealth</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True for a heal; false for damage.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd><p>The health to hold, clamped to zero and <code class="paramref">max</code>.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_CharacterAttributeController_ResolveObservedHealthAfterDelta_System_Single_System_Int32_System_Int32_System_Boolean__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Pure, so the reconstruction can be asserted without a spawned character. It IS a
+reconstruction: the server reports the post-mitigation delta and clamps a heal to the same
+maximum the observer holds, so <code>min(max, old + amount)</code> reproduces the number the
+authoritative resource push will carry a few ticks later rather than approximating it.
+</p>
+<p>
+Both ends are clamped. Damage cannot take health below zero — the server's own
+<code>Consume</code> does not — and a heal cannot exceed the maximum, so an observer that has
+missed a maximum change is wrong by that change and not by an unbounded amount.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_CharacterAttributeController_SetAttribute_" data-uid="FishMMO.Shared.CharacterAttributeController.SetAttribute*"></a>
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_SetAttribute_System_Int32_System_Int32_System_Nullable_System_Int32__" data-uid="FishMMO.Shared.CharacterAttributeController.SetAttribute(System.Int32,System.Int32,System.Nullable{System.Int32})">
   SetAttribute(int, int, int?)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1064"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1115"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Sets the base value and optional external modifier of a non-resource attribute by template ID.</p>
@@ -2138,7 +2307,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_SetResourceAttribute_System_Int32_System_Int32_System_Single_System_Nullable_System_Int32__" data-uid="FishMMO.Shared.CharacterAttributeController.SetResourceAttribute(System.Int32,System.Int32,System.Single,System.Nullable{System.Int32})">
   SetResourceAttribute(int, int, float, int?)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1085"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1136"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Sets the base value, current value, and optional external modifier of a resource attribute by template ID.</p>
@@ -2180,7 +2349,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_TryGetAttribute_FishMMO_Shared_CharacterAttributeTemplate_FishMMO_Shared_CharacterAttribute__" data-uid="FishMMO.Shared.CharacterAttributeController.TryGetAttribute(FishMMO.Shared.CharacterAttributeTemplate,FishMMO.Shared.CharacterAttribute@)">
   TryGetAttribute(CharacterAttributeTemplate, out CharacterAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1133"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1184"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to retrieve a non-resource attribute by its template reference.</p>
@@ -2222,7 +2391,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_TryGetAttribute_System_Int32_FishMMO_Shared_CharacterAttribute__" data-uid="FishMMO.Shared.CharacterAttributeController.TryGetAttribute(System.Int32,FishMMO.Shared.CharacterAttribute@)">
   TryGetAttribute(int, out CharacterAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1145"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1196"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to retrieve a non-resource attribute by template ID.</p>
@@ -2264,7 +2433,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_TryGetHealthAttribute_FishMMO_Shared_CharacterResourceAttribute__" data-uid="FishMMO.Shared.CharacterAttributeController.TryGetHealthAttribute(FishMMO.Shared.CharacterResourceAttribute@)">
   TryGetHealthAttribute(out CharacterResourceAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1168"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1219"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to retrieve the health resource attribute.</p>
@@ -2303,7 +2472,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_TryGetManaAttribute_FishMMO_Shared_CharacterResourceAttribute__" data-uid="FishMMO.Shared.CharacterAttributeController.TryGetManaAttribute(FishMMO.Shared.CharacterResourceAttribute@)">
   TryGetManaAttribute(out CharacterResourceAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1179"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1230"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to retrieve the mana resource attribute.</p>
@@ -2342,7 +2511,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_TryGetResourceAttribute_FishMMO_Shared_CharacterAttributeTemplate_FishMMO_Shared_CharacterResourceAttribute__" data-uid="FishMMO.Shared.CharacterAttributeController.TryGetResourceAttribute(FishMMO.Shared.CharacterAttributeTemplate,FishMMO.Shared.CharacterResourceAttribute@)">
   TryGetResourceAttribute(CharacterAttributeTemplate, out CharacterResourceAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1157"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1208"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to retrieve a resource attribute by its template reference.</p>
@@ -2384,7 +2553,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_TryGetResourceAttribute_System_Int32_FishMMO_Shared_CharacterResourceAttribute__" data-uid="FishMMO.Shared.CharacterAttributeController.TryGetResourceAttribute(System.Int32,FishMMO.Shared.CharacterResourceAttribute@)">
   TryGetResourceAttribute(int, out CharacterResourceAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1202"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1253"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to retrieve a resource attribute by template ID.</p>
@@ -2426,7 +2595,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_TryGetStaminaAttribute_FishMMO_Shared_CharacterResourceAttribute__" data-uid="FishMMO.Shared.CharacterAttributeController.TryGetStaminaAttribute(FishMMO.Shared.CharacterResourceAttribute@)">
   TryGetStaminaAttribute(out CharacterResourceAttribute)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1190"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L1241"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to retrieve the stamina resource attribute.</p>
@@ -2465,7 +2634,7 @@ Anything that comes to depend on the lockout being exact must reconcile it first
 
   <h3 id="FishMMO_Shared_CharacterAttributeController_WritePayload_FishNet_Connection_NetworkConnection_FishNet_Serializing_Writer_" data-uid="FishMMO.Shared.CharacterAttributeController.WritePayload(FishNet.Connection.NetworkConnection,FishNet.Serializing.Writer)">
   WritePayload(NetworkConnection, Writer)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L746"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/CharacterAttribute/CharacterAttributeController.cs/#L750"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Writes all attribute and resource attribute base values to the network payload for client synchronization.
