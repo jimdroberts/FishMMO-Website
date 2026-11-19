@@ -92,11 +92,15 @@
 <blockquote>
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/README.md">View this file on GitHub</a></p>
 </blockquote>
-<p>A modular, open-source MMO framework built on <strong>Unity 6.4</strong>, <strong>FishNet</strong>, <strong>QUIC/WebTransport</strong>, and <strong>PostgreSQL</strong>.</p>
+<p>A modular, open-source MMO framework built on <strong>Unity 6.6</strong>, <strong>FishNet</strong>, <strong>QUIC/WebTransport</strong>, and <strong>PostgreSQL</strong>.</p>
 <hr>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
-<li><a href="#overview">Overview</a></li>
+<li><a href="#overview">Overview</a>
+<ul>
+<li><a href="#core-and-modules">Core and modules</a></li>
+</ul>
+</li>
 <li><a href="#supported-platforms">Supported Platforms</a></li>
 <li><a href="#prerequisites">Prerequisites</a></li>
 <li><a href="#installation-guide">Installation Guide</a>
@@ -108,7 +112,11 @@
 <li><a href="#5-open-the-unity-project">5. Open the Unity Project</a></li>
 </ul>
 </li>
-<li><a href="#database-setup">Database Setup</a></li>
+<li><a href="#database-setup">Database Setup</a>
+<ul>
+<li><a href="#starting-fresh-dropping-the-database">Starting Fresh (Dropping the Database)</a></li>
+</ul>
+</li>
 <li><a href="#unity-project-setup">Unity Project Setup</a>
 <ul>
 <li><a href="#build-world-scene-details">Build World Scene Details</a></li>
@@ -133,7 +141,7 @@
 <li><a href="#configure-pgbouncer">Configure pgBouncer</a></li>
 <li><a href="#configure-nginx">Configure NGINX</a></li>
 <li><a href="#nginx-stream-configuration-udp-game-traffic">NGINX Stream Configuration (UDP Game Traffic)</a></li>
-<li><a href="#tls-certificate-setup-for-game-servers">TLS Certificate Setup for Game Servers</a></li>
+<li><a href="#tls-certificates-lets-encrypt">TLS Certificates (Let's Encrypt)</a></li>
 </ul>
 </li>
 <li><a href="#web-server-configuration">Web Server Configuration</a>
@@ -154,7 +162,7 @@
 <li><a href="#optional-services">Optional Services</a>
 <ul>
 <li><a href="#fishmmo-discordbot">FishMMO-DiscordBot</a></li>
-<li><a href="#fishmmo-cms">FishMMO-CMS</a></li>
+<li><a href="#fishmmo-controlpanel">FishMMO-ControlPanel</a></li>
 </ul>
 </li>
 <li><a href="#client-setup">Client Setup</a>
@@ -166,6 +174,8 @@
 </li>
 <li><a href="#production-deployment">Production Deployment</a>
 <ul>
+<li><a href="#public-launch-checklist-single-host">Public Launch Checklist (Single Host)</a></li>
+<li><a href="#closed-beta-first-administrator-and-beta-codes">Closed Beta: First Administrator and Beta Codes</a></li>
 <li><a href="#linux-config-hardening">Linux Config Hardening</a></li>
 <li><a href="#firewall-configuration">Firewall Configuration</a></li>
 <li><a href="#systemd-services">Systemd Services</a></li>
@@ -195,7 +205,7 @@
 <tbody>
 <tr>
 <td><strong>FishMMO-Unity</strong></td>
-<td>Unity project containing client, server, and shared game code (1,247 C# files) — a unified client-side prediction pipeline with lag-compensated hit resolution, modular character visuals, tick-driven archetype AI with threat and pet systems, ECA trigger system</td>
+<td>Unity project containing client, server, and shared game code (about 3,600 C# files: the core and 18 optional modules) — a unified client-side prediction pipeline with lag-compensated hit resolution, modular character visuals, tick-driven archetype AI with threat and pet systems, ECA trigger system</td>
 </tr>
 <tr>
 <td><strong>FishMMO-Auth</strong></td>
@@ -203,7 +213,7 @@
 </tr>
 <tr>
 <td><strong>FishMMO-Database (FishMMO-DB)</strong></td>
-<td>PostgreSQL data-access layer using Entity Framework Core + Npgsql (55 entities/tables, 55 services)</td>
+<td>PostgreSQL data-access layer using Entity Framework Core + Npgsql (74 tables, 74 services)</td>
 </tr>
 <tr>
 <td><strong>FishMMO-WebTransport</strong></td>
@@ -215,7 +225,7 @@
 </tr>
 <tr>
 <td><strong>FishMMO-Dependencies</strong></td>
-<td>Centralised NuGet dependency aggregator (43 packages, netstandard2.1) — copies DLLs to Unity</td>
+<td>Centralised NuGet dependency aggregator (42 packages, netstandard2.1) — copies DLLs to Unity</td>
 </tr>
 <tr>
 <td><strong>FishMMO-Logger</strong></td>
@@ -231,7 +241,7 @@
 </tr>
 <tr>
 <td><strong>FishMMO-WebServers</strong></td>
-<td>ASP.NET Core 8.0 web services — IPFetch (8080), Patcher (8090), and WebGL static server (8000)</td>
+<td>ASP.NET Core 8.0 web services — IPFetch (8080), Patcher (8090), WebGL static server (8000), and the Control Panel (8100)</td>
 </tr>
 <tr>
 <td><strong>FishMMO-Patcher</strong></td>
@@ -246,8 +256,8 @@
 <td>Discord bot bridging in-game chat with a Discord guild</td>
 </tr>
 <tr>
-<td><strong>FishMMO-CMS</strong></td>
-<td>ASP.NET Core 8.0 account-management web API (registration, password/2FA self-service, admin account actions) — <strong>scaffold only, every handler is a TODO stub</strong></td>
+<td><strong>FishMMO-ControlPanel</strong></td>
+<td>ASP.NET Core 8.0 operator and player-services dashboard, under <code>FishMMO-WebServers/</code> — accounts, characters, moderation, support, server monitoring and control, maintenance, bandwidth and the daemon control plane, all against PostgreSQL</td>
 </tr>
 </tbody>
 </table>
@@ -258,6 +268,118 @@
 <li><strong>SceneServer</strong> — Runs gameplay simulation for individual world scenes (chat, combat, inventory, guilds, etc.).</li>
 </ul>
 <p>All three are launched from a single <code>GameServer</code> executable with a command-line argument (<code>LOGIN</code>, <code>WORLD</code>, or <code>SCENE</code>).</p>
+<h3 id="core-and-modules">Core and modules</h3>
+<p>The Unity code is split into a <strong>core</strong> and optional <strong>modules</strong>. The core is what every game needs: log in, create a
+character, enter a world scene, move, fight, chat and save. A module is a feature a game may leave out: delete its
+folder under <code>FishMMO-Unity/Assets/FishMMO/Modules/</code> and the game still compiles, builds and runs. Its database tables
+and rows stay in place, unused. The core never names a module; modules plug in through assembly attributes
+(<code>GameModule</code>, <code>CharacterPart</code>, <code>CharacterPersistence</code>, <code>HarmRelation</code>, <code>OperatorCommandProvider</code>) and Addressables
+labels (<code>SceneServer_Systems</code> for server systems, <code>ClientWorldGUI_Panels</code> for windows).</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>What it is</th>
+<th>Remove together with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ability Crafting</td>
+<td>Crafting new abilities at an ability crafter</td>
+<td></td>
+</tr>
+<tr>
+<td>Archetypes</td>
+<td>A player's archetype: set, announced, saved, checked</td>
+<td></td>
+</tr>
+<tr>
+<td>Commerce</td>
+<td>Merchants, mail, corpse loot, player trade</td>
+<td></td>
+</tr>
+<tr>
+<td>Factions</td>
+<td>Faction standings, the aggression toggle</td>
+<td></td>
+</tr>
+<tr>
+<td>Housing</td>
+<td>Plots, building, rent, guests, the house vault</td>
+<td></td>
+</tr>
+<tr>
+<td>Leaderboards</td>
+<td>PvP and PvE boards</td>
+<td></td>
+</tr>
+<tr>
+<td>Matchmaking</td>
+<td>Group finder, dungeon finder and instances, arenas</td>
+<td></td>
+</tr>
+<tr>
+<td>Quests</td>
+<td>Quests, the quest log, quest givers</td>
+<td></td>
+</tr>
+<tr>
+<td>Social</td>
+<td>Friends, party, guild</td>
+<td></td>
+</tr>
+<tr>
+<td>Staff and Support</td>
+<td><code>/gm</code>, <code>/admin</code>, the staff console, reports and tickets</td>
+<td></td>
+</tr>
+<tr>
+<td>Travel</td>
+<td>Waypoint discovery and fast travel</td>
+<td></td>
+</tr>
+<tr>
+<td>World Simulation</td>
+<td>Sky, time, weather, climate, biomes, the atlas</td>
+<td>All world modules</td>
+</tr>
+<tr>
+<td>Water</td>
+<td>Sea, shores, rivers, lakes, lava</td>
+<td>All world modules</td>
+</tr>
+<tr>
+<td>Terrain</td>
+<td>GPU drawing of trees, props, grass and scatter</td>
+<td>World Test Bed, World Design, Naming</td>
+</tr>
+<tr>
+<td>Ambient Life</td>
+<td>Birds, sea life, motes, leaves, site effects</td>
+<td></td>
+</tr>
+<tr>
+<td>Naming</td>
+<td>The name generator</td>
+<td>World Design</td>
+</tr>
+<tr>
+<td>World Design</td>
+<td>The world generator and its editor tools (editor only)</td>
+<td></td>
+</tr>
+<tr>
+<td>World Test Bed</td>
+<td>The world test bed's probes (development only)</td>
+<td>World Design, Naming</td>
+</tr>
+</tbody>
+</table>
+<p>Without the world modules a world scene is lit by its own sun under a plain sky colour, and the scene's Unity terrain
+draws itself. Each module's README lists the seams it uses and what it leaves in the core; the layout, the seams and the
+removal check (the module gate) are in
+<a href="FishMMO-Unity/Assets/FishMMO/README.html">FishMMO-Unity/Assets/FishMMO/README.md</a>.</p>
 <h3 id="networking-architecture">Networking Architecture</h3>
 <p>FishMMO uses <strong>QUIC/WebTransport</strong> (RFC 9000) as its sole transport protocol — there is no TCP or WebSocket fallback for game traffic:</p>
 <table>
@@ -359,7 +481,7 @@
 <tbody>
 <tr>
 <td>Unity</td>
-<td>6.4 (6000.4.10f1)</td>
+<td>6.6 (6000.6.8f1)</td>
 </tr>
 <tr>
 <td>.NET SDK</td>
@@ -388,7 +510,7 @@
 <ul>
 <li><strong>Git</strong> for cloning the repository</li>
 <li><strong>.NET 8.0 SDK</strong></li>
-<li><strong>Unity Hub</strong> with <strong>Unity 6.4</strong> (the installer can install these for you)</li>
+<li><strong>Unity Hub</strong> with <strong>Unity 6.6 (6000.6.8f1)</strong> (the installer can install these for you)</li>
 <li><strong>CMake 3.20+</strong> and a C++17 compiler (for building the WebTransport native library)</li>
 <li><strong>OpenSSL 3+</strong> development headers (libssl-dev / openssl-devel)</li>
 <li><strong>PostgreSQL 14+</strong> (the installer can install this for you)</li>
@@ -417,8 +539,8 @@ dotnet run --project FishMMO-Installer
 </code></pre>
 <p>Or run the compiled binary directly:</p>
 <ul>
-<li><strong>Windows:</strong> <code>FishMMO-Installer\bin\Debug\net8.0\FishMMO-Installer.exe</code></li>
-<li><strong>Linux:</strong> <code>./FishMMO-Installer/bin/Debug/net8.0/FishMMO-Installer</code></li>
+<li><strong>Windows:</strong> <code>Builds\FishMMO-Installer\Debug\net8.0\FishMMO-Installer.exe</code></li>
+<li><strong>Linux:</strong> <code>./Builds/FishMMO-Installer/Debug/net8.0/FishMMO-Installer</code></li>
 </ul>
 <blockquote>
 <p><strong>Windows:</strong> Run from an elevated PowerShell (Administrator) for system-level installs.
@@ -433,7 +555,8 @@ dotnet run --project FishMMO-Installer
 2 : Database              — PostgreSQL, PgBouncer, DB management
 3 : Web Server            — NGINX, Let's Encrypt SSL, Firewall, Services
 4 : Unity &amp; Build         — Unity Hub, Unity Editor, C# project builds
-5 : Configuration         — appsettings.json setup
+5 : Configuration         — appsettings.json, secrets &amp; environment
+6 : Uninstall             — remove PostgreSQL or the secrets file
 0 : Quit
 </code></pre>
 <h4 id="sub-menu-runtime--tooling">Sub-Menu: Runtime &amp; Tooling</h4>
@@ -443,7 +566,7 @@ dotnet run --project FishMMO-Installer
 0 : Back
 </code></pre>
 <h4 id="sub-menu-database">Sub-Menu: Database</h4>
-<pre><code>1 : Configure Database Secrets (DB credentials — username, password, host)
+<pre><code>1 : Configure Secrets &amp; Environment (database, mail, service — one file)
 2 : Install PostgreSQL
 3 : Install PgBouncer (Connection Pooler)
 4 : Install FishMMO Database (User/Schema/Initial Migration)
@@ -452,16 +575,26 @@ dotnet run --project FishMMO-Installer
 7 : Delete FishMMO Database (DANGEROUS!)
 8 : Configure PgBouncer (generate pgbouncer.ini + userlist.txt, Linux)
 9 : Configure Server Keys (gate secret, HMAC key, KEK → database)
+A : Create Admin Account (Control Panel sign-in, two-factor; needs 9 first)
 0 : Back
 </code></pre>
 <h4 id="sub-menu-web-server">Sub-Menu: Web Server</h4>
 <pre><code>1 : Install NGINX (Web Server/Reverse Proxy)
 2 : Install/Renew Let's Encrypt Certificate (NGINX)
 3 : Deploy FishMMO nginx.conf (from FishMMO-Setup/)
-4 : Configure Firewall Rules (open ports 80, 443)
-5 : Register FishMMO Web Servers as Services (systemd / NSSM)
+4 : Configure Firewall Rules (open 443/tcp, 7770-7999/udp)
+5 : Register FishMMO Web Servers as Services
+6 : Install/Renew Local Development Certificates (Linux)
+7 : Point DNS Records at This Host (Porkbun)
 0 : Back
 </code></pre>
+<ul>
+<li><strong>1</strong> also installs the NGINX stream module (<code>nginx-mod-stream</code> / <code>libnginx-mod-stream</code>), which forwards the game's UDP ports.</li>
+<li><strong>2</strong> asks which challenge to use. On Linux, <strong>DNS through the Porkbun API</strong> (the default) needs no open port 80 and no nginx yet, and issues one wildcard certificate (<code>example.com</code> + <code>*.example.com</code>) for every host. <strong>HTTP</strong> needs nginx already serving <code>/.well-known/acme-challenge/</code> on port 80 and every host name listed. Both issue with <code>--reuse-key</code> (see <a href="#client-tls-certificate-pinning">Client TLS Certificate Pinning</a>), copy the certificate to the game servers and install the renewal hook and timer — see <a href="#tls-certificates-lets-encrypt">TLS Certificates</a>.</li>
+<li><strong>3</strong> asks for your root domain and substitutes it for the template's <code>fishmmo.com</code>, then for the <strong>LAN address</strong> NGINX listens on for the UDP game ports (default: this machine's address on the default route, e.g. <code>192.168.1.2</code>). That must be the address the router forwards UDP 7770-7999 to, and it must stay fixed (static address or DHCP reservation). It cannot be <code>0.0.0.0</code>: the game servers use the same port numbers on <code>127.0.0.1</code>, which <code>0.0.0.0</code> includes. It refuses to run until the certificate exists, installs the stream module if missing, raises NGINX's open-file limit, runs <code>gen-fishmmo-stream-config.sh</code> with that address, restarts NGINX and checks UDP 7770 is listening.</li>
+<li><strong>6</strong> issues a 13-day <code>localhost</code> certificate from a local development CA, for running everything on one machine without a domain. It is never needed for a public deployment, and option 2 retires it.</li>
+<li><strong>7</strong> creates or updates the <code>A</code> records <code>api</code>, <code>play</code>, <code>game</code> and <code>panel</code> (or names you give) at Porkbun with this server's public IPv4 address (detected through Porkbun, or entered), using the API keys stored by option 2. It shows the planned changes and asks before applying; the bare domain, <code>www</code> and all other records are left alone, and a name that is a <code>CNAME</code> is reported rather than changed. The same command, <code>sudo /etc/letsencrypt/fishmmo-porkbun-hook.py records</code>, can run on a timer to follow a changing home IP.</li>
+</ul>
 <h4 id="sub-menu-unity--build">Sub-Menu: Unity &amp; Build</h4>
 <pre><code>1 : Install Unity Hub
 2 : Install Unity Editor (+Modules)
@@ -470,9 +603,14 @@ dotnet run --project FishMMO-Installer
 0 : Back
 </code></pre>
 <h4 id="sub-menu-configuration">Sub-Menu: Configuration</h4>
-<pre><code>1 : Configure appsettings.json (web servers — IPFetch, Patcher, WebGL)
-2 : Configure Discord Bot
-3 : Configure CMS
+<pre><code>1 : Configure Web Server Settings (IPFetch, Patcher, WebGL, Control Panel)
+2 : Configure Discord Bot Settings
+3 : Configure Secrets &amp; Environment (database, mail, service — one file)
+0 : Back
+</code></pre>
+<h4 id="sub-menu-uninstall">Sub-Menu: Uninstall</h4>
+<pre><code>1 : Uninstall PostgreSQL completely (DELETES EVERY ACCOUNT AND CHARACTER!)
+2 : Delete Secrets &amp; Environment File (every FishMMO process loses its credentials)
 0 : Back
 </code></pre>
 <h4 id="cli--non-interactive-mode">CLI / Non-Interactive Mode</h4>
@@ -508,14 +646,15 @@ FishMMO-Installer --log-file /path/to.log    # Tee log output to a file
 <pre><code class="lang-json">{
   &quot;components&quot;: [&quot;dotnet-sdk&quot;, &quot;postgresql&quot;, &quot;nginx&quot;, &quot;firewall&quot;, &quot;systemd-services&quot;],
   &quot;configureFirewall&quot;: true,
-  &quot;firewallPorts&quot;: [80, 443, &quot;7770-7999/udp&quot;],
+  &quot;firewallPorts&quot;: [443, &quot;7770-7999/udp&quot;],
   &quot;registerSystemdServices&quot;: true,
   &quot;validateAfterInstall&quot;: true
 }
 </code></pre>
 <p><code>firewallPorts</code> entries are either a bare port number (TCP) or a string with an optional range and protocol: <code>443</code>, <code>&quot;443/tcp&quot;</code>, <code>&quot;7770-7999/udp&quot;</code>. Ranges are inclusive and the protocol defaults to <code>tcp</code> when omitted.</p>
 <p><strong>Available component names for CLI use</strong> (<code>--list-components</code> prints this list):
-<code>dotnet-ef</code>, <code>aspnet-runtime</code>, <code>vs-build-tools</code>, <code>postgresql</code>, <code>pgbouncer</code>, <code>fishmmo-db</code>, <code>nginx</code>, <code>letsencrypt</code>, <code>unity-hub</code>, <code>unity-editor</code>, <code>build-projects</code>, <code>build-unity</code>, <code>appsettings</code>, <code>create-migration</code>, <code>firewall</code>, <code>systemd-services</code>, <code>all</code></p>
+<code>dotnet-ef</code>, <code>aspnet-runtime</code>, <code>vs-build-tools</code>, <code>postgresql</code>, <code>pgbouncer</code>, <code>fishmmo-db</code>, <code>nginx</code>, <code>letsencrypt</code>, <code>dev-certificates</code>, <code>unity-hub</code>, <code>unity-editor</code>, <code>build-projects</code>, <code>build-unity</code>, <code>appsettings</code>, <code>create-migration</code>, <code>firewall</code>, <code>systemd-services</code>, <code>all</code></p>
+<p><code>dev-certificates</code> is deliberately excluded from <code>all</code>. There is no component for <em>Deploy FishMMO nginx.conf</em>; use the menu (Web Server → 3).</p>
 <blockquote>
 <p><strong>Pre-flight checks</strong> automatically run before any CLI-mode installation, verifying internet connectivity, disk space, memory, admin/sudo access, and port conflicts.</p>
 </blockquote>
@@ -551,9 +690,9 @@ FishMMO-Installer --log-file /path/to.log    # Tee log output to a file
   &quot;components&quot;: [&quot;dotnet-ef&quot;, &quot;aspnet-runtime&quot;, &quot;postgresql&quot;, &quot;pgbouncer&quot;,
     &quot;fishmmo-db&quot;, &quot;nginx&quot;, &quot;letsencrypt&quot;, &quot;firewall&quot;, &quot;systemd-services&quot;, &quot;appsettings&quot;],
   &quot;configureFirewall&quot;: true,
-  &quot;firewallPorts&quot;: [80, 443, &quot;7770-7999/udp&quot;],
+  &quot;firewallPorts&quot;: [443, &quot;7770-7999/udp&quot;],
   &quot;registerSystemdServices&quot;: true,
-  &quot;webServers&quot;: [&quot;ipfetch&quot;, &quot;patcher&quot;, &quot;webgl&quot;],
+  &quot;webServers&quot;: [&quot;ipfetch&quot;, &quot;patcher&quot;, &quot;webgl&quot;, &quot;controlpanel&quot;],
   &quot;validateAfterInstall&quot;: true
 }
 </code></pre>
@@ -614,7 +753,7 @@ FishMMO-Installer --log-file /path/to.log    # Tee log output to a file
 <tr>
 <td>7</td>
 <td>Database</td>
-<td>Configure Database Secrets (DB credentials)</td>
+<td>Configure Secrets &amp; Environment (DB credentials)</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -656,30 +795,30 @@ FishMMO-Installer --log-file /path/to.log    # Tee log output to a file
 <tr>
 <td>13</td>
 <td>Web Server</td>
-<td>Install NGINX</td>
+<td>Install NGINX (with the stream module)</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
 <tr>
 <td>14</td>
 <td>Web Server</td>
-<td>Deploy FishMMO nginx.conf</td>
-<td>Yes</td>
-<td>Yes</td>
+<td>Install/Renew Let's Encrypt Certificate (<strong>before</strong> step 15)</td>
+<td>Optional</td>
+<td>Yes, for a public server</td>
 </tr>
 <tr>
 <td>15</td>
 <td>Web Server</td>
-<td>Configure Firewall Rules</td>
+<td>Deploy FishMMO nginx.conf (asks for your domain)</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
 <tr>
 <td>16</td>
 <td>Web Server</td>
-<td>Install/Renew Let's Encrypt Certificate</td>
-<td>Optional</td>
-<td>Optional</td>
+<td>Configure Firewall Rules</td>
+<td>Yes</td>
+<td>Yes</td>
 </tr>
 <tr>
 <td>17</td>
@@ -691,13 +830,14 @@ FishMMO-Installer --log-file /path/to.log    # Tee log output to a file
 <tr>
 <td>18</td>
 <td>Configuration</td>
-<td>Configure appsettings.json (web servers)</td>
+<td>Configure Web Server Settings</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
 </tbody>
 </table>
 <blockquote>
+<p><strong>The certificate comes before the nginx config (steps 14 → 15).</strong> Every HTTPS server block in <code>nginx.conf</code> names the certificate, so <code>nginx -t</code> cannot pass until it exists, and the deploy step refuses to run without it. On Linux the DNS challenge (the default) needs no nginx and no open port 80, so nothing has to be bootstrapped. The HTTP challenge needs nginx answering on port 80 first; see <a href="#tls-certificates-lets-encrypt">TLS Certificates</a>.</p>
 <p><strong>&quot;Configure Server Keys&quot; (step 12) is required.</strong> Without the gate secret, KEK, and connection token HMAC key in the database, game servers and web servers will refuse to start. This step runs <code>SecurityKeyInstaller</code> which generates all three keys and stores them in the <code>deployment_secrets</code> and <code>connection_token_keys</code> tables.</p>
 <p><strong>After the Installer, open Unity and run these Editor tools</strong> (see <a href="#unity-project-setup">Unity Project Setup</a>):</p>
 <ul>
@@ -714,9 +854,9 @@ FishMMO-Installer --log-file /path/to.log    # Tee log output to a file
 <li><code>FishMMO-WebServers/IPFetchASP.NET</code> — login server discovery API</li>
 <li><code>FishMMO-WebServers/PatcherASP.NET</code> — patch delivery server</li>
 <li><code>FishMMO-WebServers/WebGLServerASP.NET</code> — WebGL static file server</li>
+<li><code>FishMMO-WebServers/FishMMO-ControlPanel</code> — operator and player-services dashboard</li>
 <li><code>FishMMO-AppHealthMonitor</code> — server health monitor daemon</li>
 <li><code>FishMMO-DiscordBot</code> — Discord chat bridge bot</li>
-<li><code>FishMMO-CMS</code> — account-management web API (scaffold)</li>
 </ul>
 </blockquote>
 <h3 id="4-build-the-webtransport-c-library">4. Build the WebTransport C++ Library</h3>
@@ -828,7 +968,7 @@ the system OpenSSL either (TLS comes from the quictls copy inside msquic)</li>
 <ol>
 <li>Open <strong>Unity Hub</strong></li>
 <li>Click <strong>ADD</strong> → Select the <code>FishMMO-Unity</code> directory</li>
-<li>Open the project with <strong>Unity 6.4</strong></li>
+<li>Open the project with <strong>Unity 6.6 (6000.6.8f1)</strong></li>
 <li>Wait for the initial asset import and script compilation to complete</li>
 <li>Follow the <a href="#unity-project-setup">Unity Project Setup</a> section below</li>
 </ol>
@@ -856,6 +996,17 @@ GRANT ALL ON SCHEMA public TO fishmmo;
 <pre><code class="lang-bash">cd FishMMO-Database/FishMMO-DB-Migrator
 dotnet run
 </code></pre>
+<h3 id="starting-fresh-dropping-the-database">Starting Fresh (Dropping the Database)</h3>
+<p>To discard every account, character and key and rebuild the schema from the current entity model (for example before a launch):</p>
+<ol>
+<li><strong>Stop everything that connects</strong>: game servers, web servers, the Control Panel, the AppHealthMonitor and Discord bot, and Unity Play Mode. <code>DROP DATABASE</code> refuses while sessions are open.</li>
+<li><strong>Empty <code>Migrations/</code></strong> at the repository root (it is gitignored, so nothing tracked is lost). The next step only scaffolds a new <code>Initial</code> migration when that folder is empty; otherwise it applies whatever chain is there, which may no longer match the model.</li>
+<li><strong>Installer → Database → 7 — Delete FishMMO Database.</strong> Needs the PostgreSQL superuser password; type <code>DELETE</code> to confirm. The application role and PgBouncer's auth file are left alone.</li>
+<li><strong>Installer → Database → 4 — Install FishMMO Database.</strong> Scaffolds <code>Initial</code> from the current model and applies it as the superuser.</li>
+<li><strong>Installer → Database → 9 — Configure Server Keys.</strong> A new database has no gate secret, KEK or connection-token key, and every server refuses to start without them.</li>
+<li><strong>Unity → FishMMO Dashboard → Game Settings → Client Secret → Fetch from Database</strong>, then <strong>Write Secret to File</strong>. The gate secret changed, so regenerate <code>ClientApiSecret.generated.cs</code> and <strong>rebuild every client</strong>; an old client is refused by IPFetch and the Patcher (<code>401</code>, &quot;signature mismatch&quot; in their log).</li>
+<li><strong>Installer → Database → A — Create Admin Account.</strong> See <a href="#closed-beta-first-administrator-and-beta-codes">Closed Beta: First Administrator and Beta Codes</a>.</li>
+</ol>
 <h3 id="creating-new-migrations">Creating New Migrations</h3>
 <p>When your data model changes, create a new migration via the Installer (Database menu, option <code>5</code> — <em>Create New Database Migration</em>) or manually:</p>
 <pre><code class="lang-bash">cd FishMMO-Database/FishMMO-DB
@@ -990,21 +1141,20 @@ export FISHMMO_DB_PASSWORD=super_secret
 </blockquote>
 <h3 id="build-world-scene-details">Build World Scene Details</h3>
 <p>This caches important game world details (spawn points, teleporters, boundaries, scene metadata) for both clients and servers. <strong>Run this whenever you add or modify a scene.</strong></p>
-<p><strong>Unity Menu:</strong> <code>FishMMO → Rebuild World Scene Details</code>, or <code>FishMMO → FishMMO Dashboard</code> → <strong>World Scene Details</strong> in the World category</p>
+<p><strong>FishMMO Dashboard</strong> (<code>FishMMO → FishMMO Dashboard</code>, Ctrl+Shift+D): <strong>World → World Scene Details → Rebuild World Scene Details</strong></p>
 <p>This generates <code>WorldSceneDetailsCache</code> assets that are loaded at runtime by the WorldServer and SceneServer for scene routing and character placement.</p>
-<p><strong>World map bake.</strong> <code>FishMMO → World Map → Bake Maps</code> renders a map definition and image for every
-world scene, and <code>FishMMO → World Map → Remove Baked Maps</code> deletes them again. A <strong>client</strong>
-Addressables build does both for you: it bakes, rebuilds the world scene details cache so it
-references the baked definitions, builds the bundles, then removes the bake and rebuilds the cache
-once more, leaving the project as it found it. <strong>Server builds skip both</strong> — a server never draws a
+<p><strong>World map bake.</strong> <code>FishMMO Dashboard → World → World Map → Bake Maps</code> renders a map definition and image for every
+world scene, replacing what is there, and <code>FishMMO Dashboard → World → World Map → Remove Baked Maps</code> deletes them
+again. A <strong>client</strong> Addressables build bakes only the scenes whose map is missing or older than the scene file, rebuilds the world scene details cache so
+it references the baked definitions, builds the bundles, then removes the addressable group and rebuilds the cache
+without the references. The maps stay for the next build. <strong>Server builds skip all of it</strong> — a server never draws a
 map. A bake that fails is logged as a warning and does not fail the build; the world map simply
 falls back to a plain background without its image.</p>
-<p>Everything the bake produces is build output and is gitignored — <code>Assets/Prefabs/Shared/WorldMaps/</code>,
+<p>Everything the bake produces is a per-machine cache and is gitignored — <code>Assets/Generated/</code>,
 <code>Assets/AddressableAssetsData/AssetGroups/ClientWorldMaps.asset*</code> and their
-<code>Schemas/ClientWorldMaps_*</code> — so a bake must never be committed. If a manual bake (or an interrupted
-client build) leaves one behind, <code>WorldMapDefinitionTests.TheCommittedCache_CarriesNoBakeLeftovers</code>
-fails and names the fix: run <code>FishMMO → World Map → Remove Baked Maps</code>, then
-<code>FishMMO → Rebuild World Scene Details</code>.</p>
+<code>Schemas/ClientWorldMaps_*</code> — so a bake must never be committed. If an interrupted client build leaves the
+committed cache pointing at a bake, <code>WorldMapDefinitionTests.TheCommittedCache_CarriesNoBakeLeftovers</code>
+fails; run <code>FishMMO Dashboard → World → World Scene Details → Rebuild World Scene Details</code>.</p>
 <h3 id="versioning">Versioning</h3>
 <p>Manage the project's semantic versioning from the <strong>FishMMO Dashboard</strong>.</p>
 <p><strong>Unity Menu:</strong> <code>FishMMO → FishMMO Dashboard</code> (Ctrl+Shift+D) → Select <strong>Version</strong> in the Core category</p>
@@ -1129,6 +1279,13 @@ fails and names the fix: run <code>FishMMO → World Map → Remove Baked Maps</
 <blockquote>
 <p><strong>Client Addressables builds bake the world maps</strong> before building bundles and remove them afterwards — see <a href="#build-world-scene-details">Build World Scene Details</a>. Server builds do neither.</p>
 </blockquote>
+<p><strong>How Addressables content is organized.</strong> The committed groups hold only what the game asks for by name, and every build works out the rest itself.</p>
+<ul>
+<li><strong>Entries are roots:</strong> scenes, the permanent label sets (<code>Shared_Static_Permanent</code> — templates and shared prefabs, constant data both sides load at launch; <code>Client_Static_Permanent</code> — shaders, fonts, UI; <code>Server_Static_Permanent</code> — NavMeshes and server catalogues), AssetReference targets, and assets loaded by address. A scene's own content (prop prefabs, look materials and textures, terrain chunks, details) is <em>not</em> an entry: it travels in the scene's bundle and loads and unloads with the scene. Generating a scene registers only the scene, its NavMesh and any AssetReference targets.</li>
+<li><strong>Duplicates are isolated at build time.</strong> Before bundling, the build simulates itself (<code>AddressablesBuildPlan</code>: which groups it includes — server builds drop every <code>Client</code> group, client builds every <code>Server</code> group — and how each group splits into bundles; PackSeparately is one bundle per entry). Every implicit dependency two or more bundles would each copy is registered in the temporary <code>Build_Shared_Dependencies</code> group, packed by the set of bundles that use it, and removed after the build (gitignored, like <code>Generated_Biome_Art</code>).</li>
+<li><strong>The server ships nothing visual.</strong> Server content builds remove materials, shaders, image textures, sprites and fonts (<code>ServerContentPacking</code>); meshes, TerrainData (with its control maps), TerrainLayers, animation, NavMesh and gameplay data stay. A server build of 34 GB on 2026-11-06 was 46 GB (uncompressed) of look textures copied into hundreds of scene bundles; this is what removes them.</li>
+<li><strong>Addressables Dashboard:</strong> <em>Analyze</em> simulates the client and the server build and reports, per build, entries, bundles and shared dependencies, plus AssetReference targets that are not addressable (they fail at run time), redundant entries, label mismatches, address collisions and stale entries. Only missing AssetReference targets, collisions and stale entries block <em>Build</em>. <em>Fix All</em> registers missing AssetReference targets, corrects labels and resolves collisions. <em>Smart Group</em> routes prefabs, assets and scenes (never materials, textures or models — they travel with what uses them), routes the Default Group's project assets, and offers to remove redundant entries.</li>
+</ul>
 <p><strong>Headless builds and the build-target switch.</strong> A CLI build (<code>-batchmode -executeMethod</code>) that has to switch build target used to be rejected for running while scripts were compiling, producing no artifact — and re-running the identical command immediately afterwards succeeded, because by then the target already matched and no switch happened. <code>SwitchActiveBuildTarget</code> is synchronous and already recompiles for the new target, and the <code>AssetDatabase.Refresh(ForceUpdate)</code> that follows settles the define symbols; the extra <code>ForceEditorScriptRecompile</code> on top of that queued a <em>further</em> compile, and under <code>-executeMethod</code> nothing turns the editor loop over until the method returns, so it stayed pending for the rest of the invocation. That recompile is now skipped in batch mode — interactive Dashboard builds keep it, where the editor loop can service it. <code>RunCliBuild</code> also fails fast, naming the reason, if scripts somehow are still compiling: nothing on that thread can advance a pending compile in batch mode, so waiting cannot help and sleeping would block the very thread that runs compilation.</p>
 <p><strong>A batch-mode build never reports success without a player.</strong> The two failure modes above were both silent in the same way, and the shared guard that starts every build could still reproduce it: when scripts are compiling, <code>CustomBuildTool</code> declines to start and returns. Interactively that is right — it warns, offers a dialog, and the player tries again. Under <code>-batchmode</code> nothing services the pending compile and nothing surfaces the warning, so the process exited <code>0</code> having produced no player, while Addressables had already run and written real bundles; the output directory still held the <em>previous</em> build, and the only way to notice was to compare a timestamp. Adding a single editor script is enough to trigger it, because the recompile outlives the Addressables step and the guard then fires. In batch mode that path now logs an error naming the cause and exits <code>1</code>.</p>
 <p><strong>Headless builds need an explicit output path.</strong> <code>BuildExecutor</code> falls back to <code>EditorUtility.SaveFolderPanel</code> when it is not given a root path, and under <code>-batchmode</code> that returns an empty string and cancels the player build — while Addressables has <em>already</em> run and written real bundles, and the process still exits <code>0</code>. The result is a build that reports success and produces no player. <code>RunCliBuild</code> therefore resolves an output path before building: <code>-fishmmoOutputPath &lt;dir&gt;</code> when supplied, otherwise <code>Builds/Server</code> or <code>Builds/Client</code> (chosen by the entry point invoked) in the <strong>parent of the editor's working directory</strong> — the repository root when Unity is launched from <code>FishMMO-Unity/</code>. Because that default depends on the working directory, CI should pass the path explicitly.</p>
@@ -1238,26 +1395,26 @@ fails and names the fix: run <code>FishMMO → World Map → Remove Baked Maps</
 <hr>
 <h2 id="configuration">Configuration</h2>
 <h3 id="constantscs--client-domains">Constants.cs — Client Domains</h3>
-<p>The file <a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Constants.cs"><code>FishMMO-Unity/Assets/Scripts/Shared/Implementation/Constants.cs</code></a> contains domain endpoints used by the client to connect to your infrastructure.</p>
-<p>These values are <strong>not literals in <code>Constants.cs</code></strong> — each one reads from <code>GeneratedHostConfig</code>, an IL-embedded generated class whose real values are substituted at build time by CI or the FishMMO-Installer. The committed sentinel values are intentionally invalid, and the build validator blocks release builds that still contain them.</p>
+<p>The file <a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Constants.cs"><code>FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Constants.cs</code></a> contains domain endpoints used by the client to connect to your infrastructure.</p>
+<p>These values are <strong>not literals in <code>Constants.cs</code></strong> — each one reads from <code>HostConfig</code>, a tracked class whose sentinel defaults are overridden by the gitignored, generated <code>HostConfig.generated.cs</code> (written by the dashboard, or substituted at build time by CI or the FishMMO-Installer). A fresh clone has no generated file and still compiles; the sentinel values are intentionally invalid, and the build validator blocks release builds that still contain them.</p>
 <pre><code class="lang-csharp">public static class Configuration
 {
     /// Unified API Host URL. NGINX routes to the correct backend by path.
-    public static readonly string APIHost = GeneratedHostConfig.ApiHost;
+    public static readonly string APIHost = HostConfig.ApiHost;
 
     /// Game server hostname. Clients connect to this host via QUIC/WebTransport (UDP).
     /// NGINX forwards game traffic at Layer 4 to loopback-bound game servers.
-    public static readonly string GameHost = GeneratedHostConfig.GameHost;
+    public static readonly string GameHost = HostConfig.GameHost;
 
     /// Launcher HTML/news page URL.
-    public static readonly string LauncherHtmlUrl = GeneratedHostConfig.LauncherHtmlUrl;
+    public static readonly string LauncherHtmlUrl = HostConfig.LauncherHtmlUrl;
 }
 </code></pre>
 <table>
 <thead>
 <tr>
 <th>Field</th>
-<th><code>GeneratedHostConfig</code> source</th>
+<th><code>HostConfig</code> source</th>
 <th>Purpose</th>
 </tr>
 </thead>
@@ -1284,14 +1441,14 @@ fails and names the fix: run <code>FishMMO → World Map → Remove Baked Maps</
 </tr>
 </tbody>
 </table>
-<p>Write these values from the Unity Editor via <strong>FishMMO Dashboard → Game Settings</strong>, which regenerates <code>HostConfig.generated.cs</code>. <code>GeneratedHostConfig</code> also carries <code>PlayHost</code> (WebGL/player-facing hostname) and <code>RootDomain</code> (TLS certs and email).</p>
+<p>Write these values from the Unity Editor via <strong>FishMMO Dashboard → Game Settings</strong>, which regenerates <code>HostConfig.generated.cs</code>. <code>HostConfig</code> also carries <code>PlayHost</code> (WebGL/player-facing hostname) and <code>RootDomain</code> (TLS certs and email).</p>
 <blockquote>
 <p>For local development, point the hosts at <code>https://localhost/</code> and <code>localhost</code>, or configure your hosts file. Prefer the <code>GlobalSettings</code> override mechanism (see <code>ApiHostResolver</code>) over editing generated constants for one-off testing. When running without NGINX, set <code>APIHost</code> to your web server's address directly and <code>GameHost</code> to the game server's address.</p>
 </blockquote>
 <h3 id="server-configuration-files">Server Configuration Files</h3>
 <p>Each server type reads a <code>.cfg</code> file from its working directory. Templates are in <code>FishMMO-Setup/Development/</code> and <code>FishMMO-Setup/Production/</code>.</p>
 <blockquote>
-<p>Only the templates under <code>FishMMO-Setup/</code> are tracked. The <code>.cfg</code> files a server actually reads are per-deployment copies and are gitignored, so edits to them never reach source control — change the template, not the copy. In the Editor, <code>Constants.GetWorkingDirectory()</code> resolves to the repository root, so running a server from Play Mode drops <code>LoginServer.cfg</code>, <code>WorldServer.cfg</code>, and <code>SceneServer.cfg</code> there; the root <code>.gitignore</code> excludes those three paths by name. Runtime <code>appsettings.json</code> for the web servers is copied to <code>$(OutDir)</code> / <code>$(PublishDir)</code>, both under <code>bin/</code>, which the general <code>[Bb]in/</code> rule already covers.</p>
+<p>Only the templates under <code>FishMMO-Setup/</code> are tracked. The <code>.cfg</code> files a server actually reads are per-deployment copies and are gitignored, so edits to them never reach source control — change the template, not the copy. In the Editor, <code>Constants.GetWorkingDirectory()</code> resolves to the repository root, so running a server from Play Mode drops <code>LoginServer.cfg</code>, <code>WorldServer.cfg</code>, and <code>SceneServer.cfg</code> there; the root <code>.gitignore</code> excludes those three paths by name. Runtime <code>appsettings.json</code> for the web servers is copied to <code>$(OutDir)</code> / <code>$(PublishDir)</code>, both under <code>Builds/&lt;project&gt;/</code>, which the root <code>/Builds/</code> ignore rule covers.</p>
 </blockquote>
 <h4 id="loginservercfg">LoginServer.cfg</h4>
 <pre><code class="lang-ini">ServerName=LoginServer
@@ -1391,9 +1548,29 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 <td><code>https://play.fishmmo.com</code></td>
 </tr>
 <tr>
-<td><code>Smtp:Host</code> / <code>Smtp:Port</code> / <code>Smtp:Username</code> / <code>Smtp:Password</code> / <code>Smtp:FromAddress</code> / <code>Smtp:FromName</code> / <code>Smtp:UseSsl</code></td>
-<td>LoginServer only — verification-email relay. Port 465 = implicit TLS (<code>UseSsl=true</code>); port 587 = STARTTLS (<code>UseSsl=false</code>)</td>
-<td>Prod: <code>localhost</code> / <code>465</code> / — / — / <code>noreply@fishmmo.com</code> / <code>FishMMO</code> / <code>true</code>; Dev ships <code>587</code> / <code>false</code></td>
+<td><code>VerifyEmail</code> / <code>VerifySms</code> / <code>VerifyDiscord</code></td>
+<td>LoginServer only — which channels send an account-verification code. Any one code verifies. <strong>All three off</strong> verifies every account at creation (two-factor enrolment still happens). A missing value counts as <code>true</code>. Must match the Control Panel's <code>Verification</code> section</td>
+<td>Prod: <code>false</code> / <code>false</code> / <code>false</code> (admission is by beta code)</td>
+</tr>
+<tr>
+<td><code>BetaMode</code> / <code>BetaPrograms</code></td>
+<td>LoginServer only — closed test. With <code>BetaMode=true</code>, creating an account needs a beta code of one of <code>BetaPrograms</code> (comma-separated program keys), and sign-in refuses accounts below GameMaster that hold none. Staff are never refused. Must match the Control Panel's <code>Beta</code> section. See <a href="#closed-beta-first-administrator-and-beta-codes">Closed Beta</a></td>
+<td>Prod: <code>true</code> / <code>closed_beta</code>; Dev: <code>false</code></td>
+</tr>
+<tr>
+<td><code>Smtp:Host</code> / <code>Smtp:Port</code> / <code>Smtp:Username</code> / <code>Smtp:Password</code> / <code>Smtp:FromAddress</code> / <code>Smtp:FromName</code> / <code>Smtp:UseSsl</code> / <code>Smtp:DrainQueue</code></td>
+<td>LoginServer only — verification-email relay. The LoginServer only <strong>enqueues</strong> mail; the Control Panel sends it unless <code>Smtp:DrainQueue=true</code>. <code>UseSsl=true</code> performs STARTTLS on port 587; port 465 (implicit TLS) is <strong>not supported</strong> by this sender</td>
+<td><code>localhost</code> / <code>587</code> / — / — / <code>noreply@fishmmo.com</code> / <code>FishMMO</code> / <code>true</code> (Dev: <code>false</code>) / <code>false</code></td>
+</tr>
+<tr>
+<td><code>AuthMaxPendingConnections</code></td>
+<td>Connections allowed to be mid-authentication at once. On the LoginServer a handshake past it joins the login queue, so this is the queue's threshold; unset there, it is <code>AuthSrpVerifyChannelCapacity + AuthSrpProofChannelCapacity</code>. A player at the two-factor prompt does not count against it; the whole pending set, prompts included, is held to ten times the cap instead. Commented out in the templates</td>
+<td><code>1000</code> Login (500 + 500) / <code>10000</code> World, Scene</td>
+</tr>
+<tr>
+<td><code>AuthTwoFactorWindowSeconds</code></td>
+<td>LoginServer only — seconds a player has to answer each two-factor prompt before the connection is dropped. Clamped 30–600. Not in the templates</td>
+<td><code>120</code></td>
 </tr>
 <tr>
 <td><code>LoginQueueUpdateRateSeconds</code></td>
@@ -1408,7 +1585,7 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 <tr>
 <td><code>LoginQueueAdmissionRatePerSecond</code></td>
 <td>LoginServer only — admission rate from the queue</td>
-<td><code>5.0</code></td>
+<td><code>50.0</code></td>
 </tr>
 <tr>
 <td><code>LoginQueueTimeoutSeconds</code></td>
@@ -1422,10 +1599,10 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 <p><strong>IPv6 is not supported at the native QUIC layer.</strong> The <code>EnableIPv6</code> and <code>IPv6Address</code> keys appear commented out in the templates and are reserved for future implementation — IPv6 clients must reach the servers through an IPv6-enabled NGINX L4 proxy.</p>
 </blockquote>
 <blockquote>
-<p>The Production login-queue defaults (<code>500</code> / <code>5.0</code> / <code>300</code>) are conservative, sized for roughly 500 concurrent players. The template's own tuning note suggests <code>1000–8000</code>, <code>10–20/s</code>, and <code>120–600s</code> for a launch-scale deployment.</p>
+<p>The Production login-queue defaults (<code>500</code> / <code>50.0</code> / <code>300</code>) are conservative, sized for roughly 500 concurrent players. The template's own tuning note suggests a queue of <code>1000–8000</code> and a timeout of <code>120–600s</code> for a launch-scale deployment, and raising the admission rate only alongside more SRP proof workers: 50/s sits under what the proof stage completes on the default two workers (near 100/s), so the queue drains into the pipeline without refilling the cap.</p>
 </blockquote>
 <blockquote>
-<p><strong>Certificate paths are required on every game server.</strong> <code>CertificatePath</code> and <code>PrivateKeyPath</code> must point to valid PEM files on each server. NGINX cannot terminate QUIC TLS — it only forwards raw UDP. If certificates are missing, the server will fail to start or clients will be unable to connect. See <a href="#tls-certificate-setup-for-game-servers">TLS Certificate Setup for Game Servers</a>.</p>
+<p><strong>Certificate paths are required on every game server.</strong> <code>CertificatePath</code> and <code>PrivateKeyPath</code> must point to valid PEM files on each server. NGINX cannot terminate QUIC TLS — it only forwards raw UDP. If certificates are missing, the server will fail to start or clients will be unable to connect. See <a href="#tls-certificates-lets-encrypt">TLS Certificate Setup for Game Servers</a>.</p>
 </blockquote>
 <blockquote>
 <p><strong>Production:</strong> Edit the <code>Production/</code> templates before building. Each SceneServer needs a unique port if running multiple instances (e.g., 7790, 7791, 7792...).</p>
@@ -1460,8 +1637,36 @@ PrivateKeyPath=/etc/fishmmo/certs/privkey.pem
 </tr>
 </tbody>
 </table>
+<h4 id="editing-the-cfgs-from-the-build-dashboard">Editing the CFGs from the Build dashboard</h4>
+<p><strong>FishMMO Dashboard → Build → Server CFG Setup</strong> edits the three templates of the selected Working Environment
+(<code>FishMMO-Setup/&lt;environment&gt;/LoginServer.cfg</code>, <code>WorldServer.cfg</code>, <code>SceneServer.cfg</code>). It edits those same files; there
+is no separate copy of CFG values in EditorPrefs.</p>
+<ul>
+<li><strong>Keys come from the templates</strong>, so a new CFG setting appears without a new dashboard control. Booleans are toggles,
+numbers are numeric fields, everything else is text. Comments become tooltips, and a search box filters the names.</li>
+<li><strong>Secrets are masked:</strong> password, HMAC and secret values, even when they look like numbers.</li>
+<li><strong>Add setting</strong> takes optional or custom keys. <strong>Remove</strong> deletes every duplicate spelling of a key, so an older
+duplicate cannot take effect again.</li>
+<li><strong>Saving:</strong> a valid change saves when a toggle flips or an edit is committed (Enter or focus loss). An invalid value
+reports an error and leaves the file alone. <strong>Reload from disk</strong> discards pending changes; edits made outside the
+dashboard are detected, not overwritten.</li>
+<li><strong>The file stays as written:</strong> comments, key order, blank lines, newline style and the UTF-8 BOM are kept, and the
+file is replaced atomically. Parsing matches the servers: <code>#</code>/<code>;</code> comments, split on the first <code>=</code>, keys
+case-insensitive, the last duplicate wins.</li>
+<li><strong>Checks:</strong> basic port and client-count checks, and Production cannot turn on <code>AutoVerifyAccounts</code> (the same rule the
+server enforces at startup). The servers' own startup validation is still the full check.</li>
+<li>The <strong>Fast registration: auto-verify accounts</strong> toggle writes <code>AutoVerifyAccounts</code> in LoginServer.cfg. It skips
+verification for new registrations in development; it does not create accounts at login.</li>
+</ul>
+<p><strong>Existing server builds:</strong> choose the build folder that holds the three CFGs (the default is
+<code>Builds/Server/Linux Server/FishMMO GameServer Linux</code>), then <strong>Apply CFGs to existing server build</strong>. Every setting and
+destination file is checked before anything is copied. Restart the servers afterwards; a CFG-only change needs no
+player rebuild. Pick the environment that matches the build. If you change <code>ServerName</code>, change AppHealthMonitor's
+<code>PulseServerName</code> to match (the field's tooltip says so; the dashboard does not edit the monitor's JSON).</p>
+<p>The section covers only the three game-server CFGs. Web server <code>appsettings*.json</code>, the monitor's JSON and the generated
+client host, certificate and secret settings keep their own tools. Tests: <code>Assets/FishMMO/Tests/UnitTests/ServerCfgDashboardTests.cs</code>.</p>
 <h3 id="logging-configuration">Logging Configuration</h3>
-<p><code>logging.json</code> at <a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Setup/logging.json"><code>FishMMO-Setup/logging.json</code></a> is the canonical copy. Five .NET projects copy it into their output directory as part of the build — AppHealthMonitor, IpFetchServer, Patcher, WebGLServer and FishMMO-Installer — and the Unity <strong>server</strong> builds copy it alongside the <code>.cfg</code> files via <code>BuildExecutor.CopyConfigurationFiles()</code>. FishMMO-CMS and FishMMO-DiscordBot do <strong>not</strong> pick it up; configure their logging separately.</p>
+<p><code>logging.json</code> at <a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Setup/logging.json"><code>FishMMO-Setup/logging.json</code></a> is the canonical copy. Five .NET projects copy it into their output directory as part of the build — AppHealthMonitor, IpFetchServer, Patcher, WebGLServer and FishMMO-Installer — and the Unity <strong>server</strong> builds copy it alongside the <code>.cfg</code> files via <code>BuildExecutor.CopyConfigurationFiles()</code>. FishMMO-ControlPanel and FishMMO-DiscordBot do <strong>not</strong> pick it up; configure their logging separately.</p>
 <pre><code class="lang-json">{
   &quot;LoggingManager&quot;: {
     &quot;ConsoleAllowedLevels&quot;: [&quot;Info&quot;, &quot;Warning&quot;, &quot;Error&quot;, &quot;Critical&quot;],
@@ -1532,16 +1737,17 @@ that could not be served.</li>
 <pre><code>FishMMO-Setup/
 ├── logging.json                              # Shared logging — all projects
 ├── nginx.conf                                # NGINX reverse-proxy config (L4 UDP + L7 HTTP)
+├── gen-fishmmo-stream-config.sh              # Generates the per-port UDP stream blocks (stream.d/)
 ├── Development/                              # Dev / local configurations
 │   ├── .env.example                          # Template for FISHMMO_* environment variables
 │   ├── appsettings.json                      # Unity server Npgsql (dev)
 │   ├── appsettings.AppHealthMonitor.json      # Process supervisor config
-│   ├── appsettings.DiscordBot.json           # Discord token + Npgsql
+│   ├── appsettings.DiscordBot.json           # Discord bot (guild, relay, Npgsql; token is env-only)
 │   ├── appsettings.IpFetchServer.json        # IP-fetch web server base
 │   ├── appsettings.IpFetchServer.Development.json  # Dev overrides (DB connection string)
 │   ├── appsettings.Patcher.json              # Patch delivery web server
 │   ├── appsettings.WebGLServer.json          # Static asset web server
-│   ├── appsettings.CMS.json                  # CMS web app
+│   ├── appsettings.ControlPanel.json         # Control Panel web app
 │   ├── appsettings.Database.json             # Npgsql pool / retry template
 │   ├── install-config.full.json              # Full production install template
 │   ├── install-config.quickstart.json         # Minimal dev install template
@@ -1549,17 +1755,17 @@ that could not be served.</li>
 │   ├── LoginServer.cfg / WorldServer.cfg / SceneServer.cfg
 ├── Production/                                # Production configurations
 │   ├── README.md                             # Production deployment notes
-│   ├── appsettings.json                      # Unity server Npgsql
+│   ├── appsettings.json                      # Unity server Npgsql (port 6432, PgBouncer)
 │   ├── appsettings.AppHealthMonitor.json      # Process supervisor config
-│   ├── appsettings.DiscordBot.json           # Discord token + Npgsql
+│   ├── appsettings.DiscordBot.json           # Discord bot (guild, relay, Npgsql; token is env-only)
 │   ├── appsettings.IpFetchServer.Production.json  # Prod overrides (empty — must set env vars)
 │   ├── appsettings.Patcher.json              # Patch delivery web server
 │   ├── appsettings.WebGLServer.json          # Static asset web server
-│   ├── appsettings.CMS.json                  # CMS web app
+│   ├── appsettings.ControlPanel.json         # Control Panel web app
 │   ├── LoginServer.cfg / WorldServer.cfg / SceneServer.cfg
 </code></pre>
 <blockquote>
-<p><strong>Not in this repository:</strong> <code>nginx.conf</code> and the deployment docs below also reference two operator-supplied shell scripts — <code>gen-fishmmo-stream-config.sh</code> (NGINX UDP stream config generator) and the certbot deploy hook <code>certbot-fishmmo.sh</code>. Neither is shipped here; the documented behaviour is the contract they must satisfy.</p>
+<p><strong>Deployment scripts.</strong> <code>gen-fishmmo-stream-config.sh</code> is shipped here and installed to <code>/usr/local/bin/</code> by the Installer's <em>Deploy FishMMO nginx.conf</em> (see <a href="#nginx-stream-configuration-udp-game-traffic">NGINX Stream Configuration</a>). The certbot deploy hook is generated by the Installer itself (<code>/etc/letsencrypt/renewal-hooks/deploy/fishmmo-certificates</code>), as is the Porkbun DNS hook (<code>/etc/letsencrypt/fishmmo-porkbun-hook.py</code>, source in <code>FishMMO-Installer/FishMMO-Installer/Resources/</code>); see <a href="#tls-certificates-lets-encrypt">TLS Certificates</a>.</p>
 </blockquote>
 <p><strong>How it works:</strong> Each project's <code>.csproj</code> copies the appropriate file from <code>FishMMO-Setup/</code> into its build output directory, renaming it to <code>appsettings.json</code> (or <code>logging.json</code>). At runtime, applications resolve config with a <strong>working-directory-first</strong> pattern: if a modified file exists in the working directory, it overrides the bundled copy. Environment variables (prefixed <code>FISHMMO_</code> or using <code>__</code> separator) provide the highest-priority overrides.</p>
 <p><strong>Unity Npgsql example</strong> (<a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Setup/Development/appsettings.json"><code>Development/appsettings.json</code></a>):</p>
@@ -1574,15 +1780,14 @@ that could not be served.</li>
 </code></pre>
 <p><strong>Production Npgsql example</strong> (<a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Setup/Production/appsettings.json"><code>Production/appsettings.json</code></a>):</p>
 <pre><code class="lang-json">{
-  &quot;_comment&quot;: &quot;Non-sensitive defaults only. Username and Password are resolved from FISHMMO_DB_USERNAME / FISHMMO_DB_PASSWORD env vars or /etc/fishmmo/db-secrets.env (chmod 600). NEVER put credentials in this file.&quot;,
   &quot;Npgsql&quot;: {
     &quot;Database&quot;: &quot;fishmmo&quot;,
     &quot;Host&quot;: &quot;127.0.0.1&quot;,
-    &quot;Port&quot;: &quot;5432&quot;
+    &quot;Port&quot;: &quot;6432&quot;
   }
 }
 </code></pre>
-<p>If using PgBouncer, change <code>Npgsql.Port</code> to <code>6432</code> (see <a href="#configure-pgbouncer">Configure pgBouncer</a>).</p>
+<p>Both templates point the game servers at PgBouncer on <code>6432</code>. On a host without PgBouncer, change <code>Npgsql.Port</code> to <code>5432</code> (see <a href="#configure-pgbouncer">Configure pgBouncer</a>). The Discord bot always uses <code>5432</code>.</p>
 <p><strong>Database pool and retry configuration</strong> (<a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Setup/Development/appsettings.Database.json"><code>Development/appsettings.Database.json</code></a>) — sets <code>CommandTimeout: 10</code>, <code>ConnectionTimeout: 15</code>, <code>MinPoolSize: 5</code>, <code>MaxPoolSize: 100</code>, Npgsql retry policy (3 retries, 20ms base, 10ms jitter), optional query performance tracking, and <code>ConnectionPoolHealth</code> thresholds (warn at 70%, critical at 85%, checked every 60s).</p>
 <blockquote>
 <p><strong>Security:</strong> Never commit <code>appsettings.json</code> with real passwords. Use environment variables for secrets in production (see <a href="#database-setup">Database Setup</a> for environment variable override syntax).</p>
@@ -1614,7 +1819,7 @@ FishMMO-Installer --configure-server-secrets default
 <p><strong>Without a KEK:</strong> If the <code>signing_key_kek</code> row is missing from the <code>deployment_secrets</code> table, the LoginServer will log a warning and tokens will not be issued. Client authentication will fail on World/Scene servers. Run the Installer's <strong>Database &gt; Configure Server Keys</strong> to populate it.</p>
 </blockquote>
 <h4 id="auth-protocol-constants">Auth Protocol Constants</h4>
-<p>The authentication library has several compile-time security constants (in <code>BaseAuthenticatorCore</code> and <code>SrpAuthenticatorCore</code>, under <code>FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/</code>):</p>
+<p>The authentication library's security limits (in <code>BaseAuthenticatorCore</code> and <code>SrpAuthenticatorCore</code>, under <code>FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/</code>, with the pending-authentication timing rules in <code>Core/PendingAuthRules.cs</code>). All are compile-time constants except the two the host sets from configuration, <code>MaxPendingAuthConnections</code> and <code>TwoFactorWindowSeconds</code>:</p>
 <table>
 <thead>
 <tr>
@@ -1628,20 +1833,26 @@ FishMMO-Installer --configure-server-secrets default
 <tr>
 <td><code>AuthStaleTtlSeconds</code></td>
 <td>15</td>
-<td><code>BaseAuthenticatorCore</code></td>
-<td>Stale-auth sweep interval</td>
+<td><code>BaseAuthenticatorCore</code> (<code>PendingAuthRules.ProgressTtlSeconds</code>)</td>
+<td>Seconds an authenticating connection may go without progress before it is purged. Machine work only; the two-factor prompt has its own window</td>
 </tr>
 <tr>
 <td><code>AuthHardDeadlineSeconds</code></td>
 <td>60</td>
+<td><code>BaseAuthenticatorCore</code> (<code>PendingAuthRules.AuthenticatingCapSeconds</code>)</td>
+<td>Seconds into one authenticating phase after which progress no longer extends it, so a stall mid-SRP is dropped within cap + TTL</td>
+</tr>
+<tr>
+<td><code>TwoFactorWindowSeconds</code></td>
+<td>120 (30–600)</td>
 <td><code>BaseAuthenticatorCore</code></td>
-<td>Hard authentication deadline</td>
+<td>Seconds a player has to answer each two-factor prompt; every prompt gets the whole window. Configurable as <code>AuthTwoFactorWindowSeconds</code></td>
 </tr>
 <tr>
 <td><code>MaxPendingAuthConnections</code></td>
-<td>10,000</td>
+<td>1,000 Login / 10,000 World, Scene</td>
 <td><code>BaseAuthenticatorCore</code></td>
-<td>Concurrent pending auth cap</td>
+<td>Concurrent pending auth cap, configurable as <code>AuthMaxPendingConnections</code>; on the Login Server the login queue threshold, derived from the SRP channel capacities when unset. Two-factor prompts do not count against it</td>
 </tr>
 <tr>
 <td><code>HandshakeIpWindowSeconds</code></td>
@@ -1694,7 +1905,7 @@ FishMMO-Installer --configure-server-secrets default
 <li><p><strong>Install Required Modules:</strong></p>
 <ul>
 <li>Go to the <strong>Installs</strong> tab.</li>
-<li>Click the gear icon next to your Unity 6.4 version → <strong>Add Modules</strong>.</li>
+<li>Click the gear icon next to your Unity 6.6 version → <strong>Add Modules</strong>.</li>
 <li>Install:
 <ul>
 <li><strong>Linux Build Support (IL2CPP and Mono)</strong></li>
@@ -1730,81 +1941,94 @@ host    fishmmo   fishmmo   127.0.0.1/32   md5
 <li>Query logging for audit trails</li>
 </ul>
 <h3 id="configure-pgbouncer">Configure pgBouncer</h3>
-<p>PgBouncer is a lightweight PostgreSQL connection pooler that sits between your game servers and PostgreSQL, reducing connection overhead. Each game server opens many short-lived connections — PgBouncer multiplexes these onto a smaller pool of persistent connections.</p>
+<p>PgBouncer is a lightweight PostgreSQL connection pooler that sits between your game servers and PostgreSQL, reducing connection overhead. Each game server opens many short-lived connections; PgBouncer multiplexes them onto a smaller pool of persistent server connections. It listens on loopback <code>127.0.0.1:6432</code>; PostgreSQL stays on <code>5432</code>.</p>
 <h4 id="installation">Installation</h4>
 <p>Use the Installer (Database menu, option <code>3</code> — <em>Install PgBouncer</em>):</p>
 <ul>
 <li><strong>Linux:</strong> Package manager install + <code>systemctl enable --now pgbouncer</code></li>
 <li><strong>Windows:</strong> <code>winget</code> (preferred) or Chocolatey fallback</li>
 </ul>
-<h4 id="configuration-1">Configuration</h4>
-<p>After installation, configure PgBouncer to pool connections to your FishMMO database.</p>
-<p><strong>Linux:</strong> The installer's &quot;Configure PgBouncer&quot; option (Database menu, option <code>8</code>) generates <code>pgbouncer.ini</code> and <code>userlist.txt</code> for you. Otherwise, manually edit <code>/etc/pgbouncer/pgbouncer.ini</code>.</p>
-<p><strong>Windows:</strong> Edit <code>pgbouncer.ini</code> in the install directory.</p>
-<h5 id="pgbouncerini">pgbouncer.ini</h5>
+<h4 id="configuration-linux">Configuration (Linux)</h4>
+<p>Either tool writes <code>/etc/pgbouncer/pgbouncer.ini</code> and <code>/etc/pgbouncer/userlist.txt</code> (owned by <code>pgbouncer</code>, mode <code>0600</code>), restarts the service, and tests a <code>SELECT 1</code> through it, restoring the previous files if that fails:</p>
+<ul>
+<li><strong>One command, using the existing application credentials</strong> (no PostgreSQL superuser password needed):
+<pre><code class="lang-bash">sudo python3 FishMMO-Installer/scripts/configure-local-pgbouncer.py          # show the plan
+sudo python3 FishMMO-Installer/scripts/configure-local-pgbouncer.py --apply  # apply it
+</code></pre>
+It reads <code>/etc/fishmmo/db-secrets.env</code>, copies the role's SCRAM verifier (or, failing that, its password) into <code>userlist.txt</code>, and switches the <strong>Development</strong> templates and existing local build outputs to <code>6432</code>.</li>
+<li><strong>Installer → Database → 8 — Configure PgBouncer.</strong> Asks for the PostgreSQL superuser and offers <strong><code>auth_query</code></strong> mode, in which PgBouncer looks passwords up through a dedicated <code>fishmmo_pgb_auth</code> role and a <code>public.pgbouncer_auth_query()</code> function, so <code>userlist.txt</code> holds only that role's credential.</li>
+</ul>
+<p>The script generates:</p>
 <pre><code class="lang-ini">[databases]
 fishmmo = host=127.0.0.1 port=5432 dbname=fishmmo
 
 [pgbouncer]
 listen_addr = 127.0.0.1
 listen_port = 6432
-
-auth_type = md5
+auth_type = scram-sha-256
 auth_file = /etc/pgbouncer/userlist.txt
-
 pool_mode = transaction
-default_pool_size = 20
-min_pool_size = 5
-max_client_conn = 200
-max_db_connections = 50
-
-server_idle_timeout = 300
-client_idle_timeout = 0
-query_timeout = 30
-
-log_connections = 0
-log_disconnections = 0
-log_pooler_errors = 1
-
-admin_users = fishmmo
-stats_users = fishmmo
+max_client_conn = 1000
+default_pool_size = 25
+reserve_pool_size = 5
+reserve_pool_timeout = 3
+ignore_startup_parameters = extra_float_digits
 </code></pre>
-<h5 id="userlisttxt">userlist.txt</h5>
-<pre><code>&quot;fishmmo&quot; &quot;your_secure_password&quot;
-</code></pre>
+<p><strong>Windows:</strong> edit <code>pgbouncer.ini</code> in the install directory by hand along the same lines.</p>
+<h4 id="which-processes-use-it">Which processes use it</h4>
+<table>
+<thead>
+<tr>
+<th>Process</th>
+<th>Port</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Game servers (Login, World, Scene)</td>
+<td><code>6432</code></td>
+<td>Both <code>FishMMO-Setup/{Development,Production}/appsettings.json</code> templates</td>
+</tr>
+<tr>
+<td>IPFetch, Patcher, Control Panel, AppHealthMonitor</td>
+<td><code>6432</code></td>
+<td>Their Development templates (the Production files overlay them)</td>
+</tr>
+<tr>
+<td><strong>Discord bot</strong></td>
+<td><strong><code>5432</code></strong></td>
+<td>Its verification listener holds a <code>LISTEN</code>, which is session state that transaction pooling drops, so notifications would never arrive. Never point it at PgBouncer</td>
+</tr>
+<tr>
+<td>Migrations, the Installer, <code>psql</code> admin work</td>
+<td><code>5432</code></td>
+<td>DDL and long sessions belong on PostgreSQL directly</td>
+</tr>
+</tbody>
+</table>
+<p>Transaction pooling is safe for the rest because no FishMMO query relies on session state: Npgsql runs with <code>MaxAutoPrepare=0</code> (no server-side prepared statements) and <code>NoResetOnClose</code> (see <code>NpgsqlDbConfiguration</code>). An <code>FISHMMO_DB_PORT</code> environment variable, or a port in <code>/etc/fishmmo/db-secrets.env</code>, overrides the JSON for every process that reads it — keep it out of the shared file if the Discord bot loads that file too.</p>
 <blockquote>
-<p>On Linux, generate the password hash:</p>
-<pre><code class="lang-bash">psql -c &quot;SELECT concat('\&quot;', usename, '\&quot; \&quot;', passwd, '\&quot;') FROM pg_shadow WHERE usename = 'fishmmo';&quot; postgres
-</code></pre>
+<p><strong>After dropping the database</strong> (see <a href="#starting-fresh-dropping-the-database">Starting Fresh</a>): <code>auth_file</code> mode keeps working, because the role and its password survive. <code>auth_query</code> mode does not, because <code>pgbouncer_auth_query()</code> lived inside the dropped database: rerun Database → 8.</p>
 </blockquote>
-<h5 id="update-appsettingsjson">Update appsettings.json</h5>
-<p>Point your game servers at PgBouncer (port <code>6432</code>) instead of PostgreSQL directly:</p>
-<pre><code class="lang-json">{
-  &quot;Npgsql&quot;: {
-    &quot;Port&quot;: &quot;6432&quot;
-  }
-}
-</code></pre>
-<h5 id="verify">Verify</h5>
-<p><strong>Linux:</strong></p>
-<pre><code class="lang-bash">sudo systemctl status pgbouncer
-sudo systemctl restart pgbouncer
-# Test connection through PgBouncer
-psql -h 127.0.0.1 -p 6432 -U fishmmo -d fishmmo
-</code></pre>
-<p><strong>Windows:</strong></p>
-<pre><code class="lang-powershell">sc.exe query pgbouncer
+<h4 id="verify">Verify</h4>
+<pre><code class="lang-bash">sudo systemctl status pgbouncer --no-pager
+psql -h 127.0.0.1 -p 6432 -U &lt;app-role&gt; -d fishmmo -c 'SELECT 1'
+sudo journalctl -u pgbouncer -n 50 --no-pager   # on failure
 </code></pre>
 <h3 id="configure-nginx">Configure NGINX</h3>
 <p>NGINX is the <strong>single public-facing reverse proxy</strong> for all FishMMO traffic. Every backend server binds to <code>127.0.0.1</code> (loopback) and NGINX forwards public traffic to them — backend servers are never directly reachable from the internet. The configuration in <code>FishMMO-Setup/nginx.conf</code> implements a dual-layer architecture:</p>
 <ul>
-<li><strong>Layer 7 (HTTP/HTTPS):</strong> Terminates TLS for <code>api.fishmmo.com</code> and <code>play.fishmmo.com</code>, then reverse-proxies requests to the loopback-bound ASP.NET web servers.</li>
-<li><strong>Layer 4 (UDP Stream):</strong> Forwards raw QUIC/UDP packets to loopback-bound game servers. <strong>NGINX does not and cannot terminate QUIC TLS</strong> — the game servers receive the encrypted QUIC packets directly and must have their own certificates.</li>
+<li><strong>Layer 7 (HTTP/HTTPS):</strong> Terminates TLS for <code>api.</code>, <code>play.</code> and <code>panel.</code> and reverse-proxies to the loopback-bound ASP.NET web servers.</li>
+<li><strong>Layer 4 (UDP Stream):</strong> Forwards raw QUIC/UDP datagrams to the loopback-bound game servers. <strong>NGINX does not and cannot terminate QUIC TLS</strong> — the game servers receive the encrypted QUIC packets directly and terminate TLS themselves with the certificate in their <code>.cfg</code>.</li>
 </ul>
 <blockquote>
-<p><strong>Critical:</strong> Because NGINX only forwards UDP at Layer 4, <strong>every game server must be provisioned with valid TLS certificates</strong> via the <code>CertificatePath</code> and <code>PrivateKeyPath</code> settings in its <code>.cfg</code> file. NGINX's Let's Encrypt integration covers the HTTP hostnames only. See <a href="#tls-certificate-setup-for-game-servers">TLS Certificate Setup for Game Servers</a> for the full procedure.</p>
+<p><strong>Why QUIC/WebTransport works through NGINX.</strong> WebTransport runs over HTTP/3, which is QUIC, which is UDP. NGINX's <code>stream</code> module proxies UDP datagrams at Layer 4 without looking inside them, so the QUIC handshake, its TLS 1.3, and the WebTransport session all happen end-to-end between the client (native or browser) and the game server. NGINX only keeps a per-client mapping (client address ↔ an upstream socket), which is why each port block uses <code>reuseport</code> (every datagram of one client goes through the same worker and therefore the same upstream socket) and why <code>proxy_timeout</code> must outlive the QUIC idle timeout. The game server sees <code>127.0.0.1</code> as the peer, so the real client IP travels in the one-time connection token issued by IPFetch. The browser needs nothing extra: the game host's certificate is a normal publicly trusted one, so <code>serverCertificateHashes</code> is not used.</p>
 </blockquote>
-<p><strong>NGINX upstream routing table:</strong></p>
+<blockquote>
+<p><strong>Critical:</strong> Because NGINX only forwards UDP at Layer 4, <strong>every game server must be provisioned with valid TLS certificates</strong> via <code>CertificatePath</code> and <code>PrivateKeyPath</code> in its <code>.cfg</code> file. The Installer's Let's Encrypt action does this for you; see <a href="#tls-certificates-lets-encrypt">TLS Certificates</a>.</p>
+</blockquote>
+<p><strong>NGINX routing table</strong> (<code>example.com</code> stands for your domain; the template uses <code>fishmmo.com</code>):</p>
 <table>
 <thead>
 <tr>
@@ -1817,28 +2041,35 @@ psql -h 127.0.0.1 -p 6432 -U fishmmo -d fishmmo
 </thead>
 <tbody>
 <tr>
-<td><code>api.fishmmo.com</code></td>
+<td><code>api.example.com</code></td>
 <td>HTTPS</td>
-<td>TLS termination → reverse proxy</td>
+<td>TLS termination → reverse proxy (<code>/loginserver</code>, <code>/latest_version</code>, patch downloads)</td>
 <td>IPFetch (<code>127.0.0.1:8080</code>) + Patcher (<code>127.0.0.1:8090</code>)</td>
 <td>loopback</td>
 </tr>
 <tr>
-<td><code>play.fishmmo.com</code></td>
-<td>HTTPS</td>
+<td><code>play.example.com</code></td>
+<td>HTTPS (+ HTTP/3 on UDP 443)</td>
 <td>TLS termination → reverse proxy</td>
 <td>WebGL Static Server (<code>127.0.0.1:8000</code>)</td>
 <td>loopback</td>
 </tr>
 <tr>
-<td><code>game.fishmmo.com</code></td>
-<td>UDP (QUIC)</td>
+<td><code>panel.example.com</code></td>
+<td>HTTPS</td>
+<td>TLS termination → reverse proxy</td>
+<td>Control Panel (<code>127.0.0.1:8100</code>)</td>
+<td>loopback</td>
+</tr>
+<tr>
+<td><code>game.example.com</code></td>
+<td>UDP (QUIC) 7770-7999</td>
 <td>L4 stream forward</td>
 <td>Game Servers (<code>127.0.0.1:7770-7999</code>)</td>
 <td>loopback</td>
 </tr>
 <tr>
-<td><code>game.fishmmo.com:443</code></td>
+<td><code>game.example.com:443</code></td>
 <td>TCP</td>
 <td>Returns 444 (close)</td>
 <td>—</td>
@@ -1847,27 +2078,42 @@ psql -h 127.0.0.1 -p 6432 -U fishmmo -d fishmmo
 </tbody>
 </table>
 <blockquote>
-<p><strong>If a backend server is on a different machine than NGINX:</strong> Change the <code>proxy_pass</code> (HTTP) or stream <code>server</code> block (UDP) to target that machine's network IP instead of <code>127.0.0.1</code>, and update the server's <code>.cfg</code> <code>Address</code> accordingly.</p>
+<p><strong>If a backend server is on a different machine than NGINX:</strong> Change the <code>upstream</code> (HTTP) or regenerate the stream blocks with <code>BACKEND_IP</code> (UDP) to target that machine's network IP instead of <code>127.0.0.1</code>, and update the server's <code>.cfg</code> <code>Address</code> accordingly.</p>
 </blockquote>
-<p>Deploy the nginx config via the Installer (Web Server menu, option <code>3</code>) or manually:</p>
-<pre><code class="lang-bash">sudo cp FishMMO-Setup/nginx.conf /etc/nginx/nginx.conf
-sudo nginx -t &amp;&amp; sudo nginx -s reload
+<h4 id="deploying-the-config">Deploying the config</h4>
+<p>Use the Installer (<strong>Web Server → 3</strong>, after the certificate exists). It:</p>
+<ol>
+<li>asks for your root domain and replaces the template's <code>fishmmo.com</code> with it (host names and the <code>/etc/letsencrypt/live/&lt;domain&gt;/</code> certificate paths);</li>
+<li>refuses to continue if <code>/etc/letsencrypt/live/&lt;domain&gt;/fullchain.pem</code> does not exist yet;</li>
+<li>makes sure the stream module is loaded — it writes <code>/etc/nginx/modules.d/fishmmo-stream.conf</code> on Arch, whose <code>nginx-mod-stream</code> package ships only the <code>.so</code>;</li>
+<li>installs the config (backing up the old one once as <code>nginx.conf.pre-fishmmo.bak</code>) and runs <code>nginx -t</code>;</li>
+<li>installs and runs <code>gen-fishmmo-stream-config.sh</code>, then reloads NGINX.</li>
+</ol>
+<p>By hand, the equivalent is:</p>
+<pre><code class="lang-bash">sudo pacman -S nginx-mod-stream            # Debian/Ubuntu: libnginx-mod-stream; Fedora: nginx-mod-stream
+# Arch only: the module package does not load itself
+echo 'load_module /usr/lib/nginx/modules/ngx_stream_module.so;' | sudo tee /etc/nginx/modules.d/fishmmo-stream.conf
+sed 's/fishmmo\.com/example.com/g' FishMMO-Setup/nginx.conf | sudo tee /etc/nginx/nginx.conf &gt;/dev/null
+sudo install -m 755 FishMMO-Setup/gen-fishmmo-stream-config.sh /usr/local/bin/
+sudo /usr/local/bin/gen-fishmmo-stream-config.sh    # runs nginx -t and reloads
 </code></pre>
+<p>Notes on the template:</p>
+<ul>
+<li><strong>No <code>user</code> directive.</strong> The worker account is the distribution's build default (<code>http</code> on Arch, <code>www-data</code> on Debian, <code>nginx</code> on Fedora); naming one fails on every other distribution.</li>
+<li><strong><code>reuseport</code> appears once per address:port.</strong> NGINX refuses a second <code>listen 443 ssl reuseport</code> with <em>duplicate listen options</em>.</li>
+<li><strong>No OCSP stapling.</strong> Let's Encrypt ended its OCSP service in 2025, so <code>ssl_stapling</code> only produced warnings.</li>
+<li><strong>HTTP/3 for <code>play.</code></strong> listens on UDP 443 (<code>listen 443 quic</code>). It is optional: open UDP 443 to use it, otherwise browsers stay on HTTP/2.</li>
+</ul>
 <h3 id="nginx-stream-configuration-udp-game-traffic">NGINX Stream Configuration (UDP Game Traffic)</h3>
-<p>Game traffic uses UDP ports <strong>7770-7999</strong> forwarded at Layer 4 through NGINX's stream module. Each port gets its own <code>server {}</code> block. By default, streams forward to <strong><code>127.0.0.1</code></strong> — the game servers are expected to be on the same machine, bound to loopback.</p>
+<p>Game traffic uses UDP ports <strong>7770-7999</strong> forwarded at Layer 4 through NGINX's stream module. Each port gets its own <code>server {}</code> block in <code>/etc/nginx/stream.d/</code>, which <code>nginx.conf</code> includes. By default, streams forward to <strong><code>127.0.0.1</code></strong> — the game servers are expected to be on the same machine, bound to loopback.</p>
 <blockquote>
-<p><strong>NGINX does not terminate TLS for these streams.</strong> It forwards the raw encrypted QUIC packets. Each game server terminates its own QUIC/TLS session, so certificates must be configured in every server's <code>.cfg</code> file (see <a href="#tls-certificate-setup-for-game-servers">TLS Certificate Setup for Game Servers</a>).</p>
+<p><strong>NGINX does not terminate TLS for these streams.</strong> It forwards the raw encrypted QUIC packets. Each game server terminates its own QUIC/TLS session.</p>
 </blockquote>
-<h4 id="auto-generating-stream-configs">Auto-Generating Stream Configs</h4>
-<p><code>FishMMO-Setup/nginx.conf</code> includes <code>/etc/nginx/stream.d/*.conf</code> and expects those per-port configs to be produced by a generator script installed at <code>/usr/local/bin/gen-fishmmo-stream-config.sh</code>:</p>
+<h4 id="generating-the-stream-blocks">Generating the stream blocks</h4>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Setup/gen-fishmmo-stream-config.sh"><code>FishMMO-Setup/gen-fishmmo-stream-config.sh</code></a> writes them. The Installer installs it as <code>/usr/local/bin/gen-fishmmo-stream-config.sh</code> and runs it during <em>Deploy FishMMO nginx.conf</em>; rerun it as root after changing port ranges:</p>
 <pre><code class="lang-bash">sudo /usr/local/bin/gen-fishmmo-stream-config.sh
 </code></pre>
-<blockquote>
-<p><strong>The script is not shipped in this repository</strong> — it is a deployment-side artifact you provide. The contract below is what <code>nginx.conf</code> assumes of it; write the generator to match, or hand-write the <code>stream.d/*.conf</code> files.</p>
-</blockquote>
-<p>The generator should:</p>
 <ul>
-<li>Generates individual <code>.conf</code> files in <code>/etc/nginx/stream.d/</code> for each port</li>
 <li><strong>Port ranges:</strong>
 <ul>
 <li><strong>7770-7779</strong> — Login Servers</li>
@@ -1897,6 +2143,11 @@ sudo nginx -t &amp;&amp; sudo nginx -s reload
 <td>IP where game servers are listening — change only if servers run on a different machine</td>
 </tr>
 <tr>
+<td><code>LISTEN_IP</code></td>
+<td><code>auto</code></td>
+<td>Address NGINX listens on. <code>auto</code> = this host's LAN address (the source address of the default route), which is what the router forwards to, so it must be fixed (static address or DHCP reservation). <code>0.0.0.0</code> is refused while the game servers are on this host — see below</td>
+</tr>
+<tr>
 <td><code>LOGIN_START</code> / <code>LOGIN_END</code></td>
 <td><code>7770</code> / <code>7779</code></td>
 <td>Login server port range</td>
@@ -1913,49 +2164,95 @@ sudo nginx -t &amp;&amp; sudo nginx -s reload
 </tr>
 <tr>
 <td><code>PROXY_TIMEOUT</code></td>
-<td><code>30s</code></td>
-<td>UDP session idle timeout — how long NGINX keeps a session mapping alive after the last packet</td>
+<td><code>130s</code></td>
+<td>How long NGINX keeps a client's UDP session mapping after its last datagram</td>
+</tr>
+<tr>
+<td><code>ENABLE_IPV6</code></td>
+<td><code>0</code></td>
+<td><code>1</code> adds a <code>listen [::]:PORT udp reuseport;</code> to each block</td>
+</tr>
+<tr>
+<td><code>NO_RELOAD</code></td>
+<td><code>0</code></td>
+<td><code>1</code> validates but does not reload NGINX</td>
 </tr>
 </tbody>
 </table>
-<ul>
-<li>Use atomic temp-directory-then-replace so a failed run cannot leave partial configs</li>
-<li>Validate generated configs with <code>nginx -t</code> before replacing live files</li>
-</ul>
+<p>It writes the new files to a temporary directory, swaps them in, and runs <code>nginx -t</code>; if the test fails it restores the previous files, so a bad run cannot leave NGINX unloadable.</p>
 <p><strong>Configuration applied per port:</strong></p>
 <pre><code class="lang-nginx">server {
-    listen 7770 udp;
+    listen 192.168.1.2:7770 udp reuseport;   # this host's LAN address, never 0.0.0.0
     proxy_pass 127.0.0.1:7770;
-    proxy_timeout 30s;
+    proxy_timeout 130s;
     proxy_upload_rate 100m;
     proxy_download_rate 100m;
 }
 </code></pre>
 <blockquote>
-<p><strong>Size <code>PROXY_TIMEOUT</code> against real sessions, not against <code>StaleSceneTimeout</code>.</strong> <code>StaleSceneTimeout</code> is a scene-unload timer measured in <strong>minutes</strong> and has nothing to do with connection idleness — it only decides how long an <strong>empty</strong> scene stays loaded. <code>proxy_timeout</code> must simply outlive a legitimate gap between datagrams (the 30s default is deliberately generous), but setting it far higher leaves NGINX holding session mappings for connections the server has already freed, wasting memory and file descriptors.</p>
-<p><strong>The stream module has no health checking</strong>, not even passive. If a game server crashes, NGINX keeps forwarding datagrams to the dead upstream until the stream config is regenerated and reloaded. See the comment block at the top of <code>FishMMO-Setup/nginx.conf</code> for external health-check patterns (systemd timer, cron, or Consul Template).</p>
+<p><strong><code>PROXY_TIMEOUT</code> must outlive the QUIC idle timeout.</strong> The transport negotiates a 120 s idle timeout (<code>WT_DEFAULT_IDLE_TIMEOUT_MS</code>) and sends no keep-alives, so a player idling at character select can be silent for longer than a minute while the connection is still alive. With a shorter <code>proxy_timeout</code> NGINX forgets the mapping: the server's next packets go nowhere, and the client's next packet arrives from a new upstream port. <code>StaleSceneTimeout</code> is unrelated — it is the number of <strong>minutes</strong> an empty scene stays loaded.</p>
+<p><strong>NGINX listens on the LAN address, not <code>0.0.0.0</code>.</strong> The game servers bind the same port numbers on <code>127.0.0.1</code>. <code>0.0.0.0:7770</code> includes <code>127.0.0.1:7770</code>, so with a wildcard listen the game servers cannot bind at all (<code>Address already in use</code>), and while none is running NGINX forwards every datagram back to itself until it logs <code>worker_connections are not enough</code>. Two specific addresses (<code>192.168.1.2:7770</code> for NGINX, <code>127.0.0.1:7770</code> for the game server) coexist, and loopback traffic reaches only the game server. The generator refuses a wildcard listen with a local backend.</p>
 </blockquote>
 <blockquote>
-<p><strong>Multi-machine deployment:</strong> If game servers run on a separate machine from NGINX, set <code>BACKEND_IP</code> to that machine's IP and update each server's <code>.cfg</code> <code>Address</code> to bind to its own network interface instead of <code>127.0.0.1</code>.</p>
+<p><strong><code>reuseport</code> is required for QUIC.</strong> Without it, any worker may pick up a datagram, and a second worker creates its own upstream socket for the same client, so the game server sees the client's source port change mid-connection.</p>
 </blockquote>
-<p>Reload with zero downtime:</p>
-<pre><code class="lang-bash">sudo nginx -s reload
+<blockquote>
+<p><strong><code>reuseport</code> multiplies sockets: raise NGINX's open-file limit.</strong> Each worker gets its own socket per port, so the master opens workers × ports sockets (12 CPUs × 230 ports ≈ 2,800) — more than systemd's default limit. The reload then fails with <code>socket() ... (24: Too many open files)</code> in <code>/var/log/nginx/error.log</code>, while <code>systemctl reload</code> still reports success and NGINX keeps the old configuration (only port 80, no UDP). The deploy step installs <code>/etc/systemd/system/nginx.service.d/fishmmo-limits.conf</code> (<code>LimitNOFILE=65535</code>), and <code>nginx.conf</code> sets <code>worker_rlimit_nofile 65535</code>. The limit is read when the master starts, so it takes a <code>systemctl restart nginx</code>, not a reload. The generator now confirms after a reload that the first login port is actually listening.</p>
+<p><strong>The stream module has no health checking</strong>, not even passive. If a game server crashes, NGINX keeps forwarding datagrams to the dead port until the server is restarted (the AppHealthMonitor does this). Do not probe game ports with a UDP &quot;connect&quot;: it succeeds whether or not anything listens.</p>
+</blockquote>
+<blockquote>
+<p><strong>Multi-machine deployment:</strong> If game servers run on a separate machine from NGINX, run the generator with <code>BACKEND_IP</code> set to that machine's IP and update each server's <code>.cfg</code> <code>Address</code> to bind to its own network interface instead of <code>127.0.0.1</code>.</p>
+</blockquote>
+<h3 id="tls-certificates-lets-encrypt">TLS Certificates (Let's Encrypt)</h3>
+<blockquote>
+<p><strong>This is not optional.</strong> Every HTTPS host and every game server needs a publicly trusted certificate. NGINX terminates TLS for <code>api.</code>, <code>play.</code> and <code>panel.</code>; each LoginServer, WorldServer and SceneServer terminates its own QUIC/TLS using <code>CertificatePath</code> and <code>PrivateKeyPath</code> in its <code>.cfg</code>. Browsers will not open a WebTransport session to a game host without a valid certificate for its name.</p>
+</blockquote>
+<p>One certificate covers everything: <code>example.com</code> and <code>*.example.com</code>. NGINX reads it from <code>/etc/letsencrypt/live/example.com/</code>; the game servers read a copy from <code>/etc/fishmmo/certs/</code>, because <code>/etc/letsencrypt/live</code> is root-only.</p>
+<h4 id="requesting-it-installer--web-server--2">Requesting it (Installer → Web Server → 2)</h4>
+<p>On Linux the action asks which challenge to use:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>DNS through the Porkbun API</strong> (default)</th>
+<th><strong>HTTP on port 80</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Needs</td>
+<td>A Porkbun API key with DNS permission, and <strong>API Access</strong> turned on for the domain (Porkbun → Domain Management → the domain → Details)</td>
+<td>NGINX already serving <code>/.well-known/acme-challenge/</code> from <code>/var/www/certbot</code> on port 80, reachable from the internet</td>
+</tr>
+<tr>
+<td>Covers</td>
+<td><code>example.com</code> + <code>*.example.com</code></td>
+<td>Each host you list</td>
+</tr>
+<tr>
+<td>Order</td>
+<td>Before NGINX is configured, so nothing has to be bootstrapped</td>
+<td>NGINX must answer on port 80 first, but the FishMMO <code>nginx.conf</code> cannot load without the certificate: start from a minimal port-80 config, then deploy the full one</td>
+</tr>
+</tbody>
+</table>
+<p>For the DNS route it installs <code>certbot</code> and <code>dig</code>, stores the keys root-only in <code>/etc/letsencrypt/fishmmo-porkbun.ini</code>, installs the hook as <code>/etc/letsencrypt/fishmmo-porkbun-hook.py</code>, and runs:</p>
+<pre><code class="lang-bash">sudo certbot certonly --cert-name example.com --manual --preferred-challenges dns \
+  --manual-auth-hook &quot;/etc/letsencrypt/fishmmo-porkbun-hook.py auth&quot; \
+  --manual-cleanup-hook &quot;/etc/letsencrypt/fishmmo-porkbun-hook.py cleanup&quot; \
+  -d example.com -d '*.example.com' --agree-tos -m you@example.com \
+  --non-interactive --keep-until-expiring --reuse-key
 </code></pre>
-<h3 id="tls-certificate-setup-for-game-servers">TLS Certificate Setup for Game Servers</h3>
-<blockquote>
-<p><strong>This is not optional.</strong> NGINX cannot terminate QUIC/TLS for game traffic — it only forwards raw UDP packets at Layer 4. Every LoginServer, WorldServer, and SceneServer <strong>must</strong> have valid TLS certificates configured in its <code>.cfg</code> file (<code>CertificatePath</code> and <code>PrivateKeyPath</code>). Without certificates, game servers will fail to start or clients will be unable to connect.</p>
-</blockquote>
-<p>Unlike a typical web setup where NGINX terminates all TLS, <strong>each FishMMO game server terminates its own QUIC/TLS session on loopback</strong>. NGINX forwards raw UDP packets at Layer 4 without inspecting or decrypting them. This means:</p>
-<ul>
-<li>Game data is <strong>end-to-end encrypted</strong> — NGINX never sees plaintext game traffic.</li>
-<li>TLS certificates must be <strong>present on each game server machine</strong> (by default, the same machine as NGINX).</li>
-<li>The real client IP is recovered via a <strong>one-time connection token</strong> from the HTTP API (IPFetch issues a SHA-256 hashed token, the client passes it in the QUIC handshake), since the game server only sees NGINX's <code>127.0.0.1</code> as the source address.</li>
-</ul>
-<blockquote>
-<p><strong>Multi-machine:</strong> If game servers run on separate machines, copy the certificates to each machine and update the <code>CertificatePath</code>/<code>PrivateKeyPath</code> in each server's <code>.cfg</code> file. NGINX itself does not need certs for the game ports (it only forwards UDP).</p>
-</blockquote>
-<h4 id="certificate-files">Certificate Files</h4>
-<p>Game servers read PEM certificates from the paths in their <code>.cfg</code> file. The defaults are:</p>
+<p>The hook creates the <code>_acme-challenge</code> TXT record through the Porkbun API, waits until every authoritative Porkbun nameserver serves it, and deletes it afterwards. Certbot saves the hook commands in <code>/etc/letsencrypt/renewal/example.com.conf</code>, so renewals repeat the challenge unattended. Run it once with <em>staging</em> to check the API keys without spending Let's Encrypt's rate limit.</p>
+<p><strong><code>--reuse-key</code> matters.</strong> The release client pins the certificate's public key (see <a href="#client-tls-certificate-pinning">Client TLS Certificate Pinning</a>). By default certbot generates a new key at every renewal, which would lock every shipped client out about every 60 days.</p>
+<h4 id="game-server-copy-and-renewal">Game server copy and renewal</h4>
+<p>The same action then:</p>
+<ol>
+<li>creates the <code>fishmmo-certs</code> group and adds the account that runs the game servers (log in again, or restart the service, to pick up the membership);</li>
+<li>installs a deploy hook at <code>/etc/letsencrypt/renewal-hooks/deploy/fishmmo-certificates</code>, which checks the renewed certificate is unexpired and matches its key, copies <code>fullchain.pem</code> and <code>privkey.pem</code> into a new <code>/etc/fishmmo/certs/release.*</code> directory (<code>root:fishmmo-certs</code>, files <code>0640</code>), switches the <code>current</code> symlink atomically, and reloads NGINX on renewal;</li>
+<li>runs the hook once, and enables <code>certbot.timer</code> / <code>certbot-renew.timer</code> (or installs <code>fishmmo-certbot-renew.timer</code>);</li>
+<li>removes the development-certificate marker if <a href="#sub-menu-web-server">option 6</a> had been used, so that option can never overwrite the real certificate.</li>
+</ol>
 <table>
 <thead>
 <tr>
@@ -1966,44 +2263,19 @@ sudo nginx -t &amp;&amp; sudo nginx -s reload
 <tbody>
 <tr>
 <td>Full chain certificate</td>
-<td><code>/etc/fishmmo/certs/fullchain.pem</code></td>
+<td><code>/etc/fishmmo/certs/fullchain.pem</code> → <code>current/fullchain.pem</code></td>
 </tr>
 <tr>
 <td>Private key</td>
-<td><code>/etc/fishmmo/certs/privkey.pem</code></td>
+<td><code>/etc/fishmmo/certs/privkey.pem</code> → <code>current/privkey.pem</code></td>
 </tr>
 </tbody>
 </table>
-<p><strong>Permissions:</strong> <code>chmod 640</code>, owned by the <code>fishmmo</code> service user.</p>
-<h4 id="initial-certificate-setup-lets-encrypt">Initial Certificate Setup (Let's Encrypt)</h4>
-<pre><code class="lang-bash"># Install certbot and obtain a wildcard certificate
-sudo certbot certonly --manual --preferred-challenges dns \
-  -d fishmmo.com -d '*.fishmmo.com'
-
-# Create the game server cert directory
-sudo mkdir -p /etc/fishmmo/certs
-
-# Install the certbot deploy hook (auto-copies renewed certs)
-sudo install -m 755 certbot-fishmmo.sh \
-  /etc/letsencrypt/renewal-hooks/deploy/fishmmo.sh
-
-# Run the hook manually for first setup
-sudo /etc/letsencrypt/renewal-hooks/deploy/fishmmo.sh
-</code></pre>
-<h4 id="certificate-renewal">Certificate Renewal</h4>
 <blockquote>
-<p><strong>The deploy hook is not shipped in this repository</strong> — you supply <code>certbot-fishmmo.sh</code>. What follows is the contract it must satisfy for the game servers to pick up renewed certificates.</p>
+<p><strong>Restart the game servers after a renewal.</strong> MsQuic reads the certificate once at startup and the hook does not interrupt running sessions. With <code>--reuse-key</code> the key does not change, so clients keep working either way, but a server still holding the old certificate will serve it until it expires.</p>
 </blockquote>
-<p>The certbot deploy hook runs automatically after each successful certificate renewal. It must:</p>
-<ol>
-<li><strong>Validates</strong> the renewed certificate (checks existence, non-empty, not expired)</li>
-<li><strong>Copies</strong> <code>fullchain.pem</code> and <code>privkey.pem</code> to <code>/etc/fishmmo/certs/</code></li>
-<li><strong>Sets ownership</strong> and permissions (<code>640</code>, user <code>fishmmo</code>)</li>
-<li><strong>Reloads NGINX</strong> with zero downtime</li>
-<li><strong>Restarts game servers</strong> (MsQuic reads certs once at startup — a restart is required to pick up renewed certs)</li>
-</ol>
 <blockquote>
-<p><strong>Important:</strong> MsQuic does not auto-reload TLS certificates. After certificate renewal, game servers must be restarted. For zero-downtime rolling restart, use systemd template units with the certbot hook's built-in restart logic.</p>
+<p><strong>Multi-machine:</strong> copy <code>/etc/fishmmo/certs/</code> to each game server machine (keep the private key <code>0640</code>, readable only by the server account's group). NGINX itself needs no certificate for the game ports.</p>
 </blockquote>
 <hr>
 <h2 id="web-server-configuration">Web Server Configuration</h2>
@@ -2019,7 +2291,7 @@ sudo /etc/letsencrypt/renewal-hooks/deploy/fishmmo.sh
 <p><strong>In Production:</strong> The server <strong>refuses to start</strong> if the <code>client_gate_secret</code> row is not present in the <code>deployment_secrets</code> table.
 <strong>In Development:</strong> Logs a warning and passes all requests through.
 <strong>WebGL Server:</strong> Does not use ClientGate (static content, publicly accessible).</p>
-<p>The gate secret is generated and stored by the FishMMO-Installer's SecurityKeyInstaller (Database menu &gt; Configure Server Keys, or CLI <code>--configure-server-secrets &lt;regions&gt;</code>). The client-side copy is obtained from the <strong>FishMMO Dashboard → Game Settings → Client Secret</strong> section in the Unity Editor.</p>
+<p>The gate secret is generated and stored by the FishMMO-Installer's SecurityKeyInstaller (Database menu &gt; Configure Server Keys, or CLI <code>--configure-server-secrets &lt;regions&gt;</code>). The client-side copy is written by the <strong>FishMMO Dashboard → Game Settings → Client Secret</strong> section in the Unity Editor: <strong>Fetch from Database</strong> reads <code>deployment_secrets.client_gate_secret</code> through the servers' own database configuration (and says whether it differs from the written file), <strong>Write Secret to File</strong> writes <code>ClientApiSecret.generated.cs</code> (gitignored). A client built with any other secret gets <code>401</code> from IPFetch and the Patcher on every request.</p>
 <h3 id="web-server-security--environment-variables">Web Server Security &amp; Environment Variables</h3>
 <p>All three web servers (IPFetch, Patcher, WebGL) run on Kestrel bound to <strong><code>127.0.0.1</code> (localhost only)</strong> — they are designed to sit behind NGINX. NGINX handles TLS termination and public exposure; the web servers themselves never accept connections from the public internet. This is enforced at the Kestrel level, not just by firewall rules.</p>
 <p><strong>Key environment variables:</strong></p>
@@ -2046,7 +2318,7 @@ sudo /etc/letsencrypt/renewal-hooks/deploy/fishmmo.sh
 <ul>
 <li>The <code>client_gate_secret</code> row must exist in the <code>deployment_secrets</code> table (IPFetch, Patcher)</li>
 <li>Trusted proxy IPs/networks must be configured in <code>ForwardedHeaders</code> (or set <code>ForwardedHeaders:AllowUnconfigured=true</code> to bypass)</li>
-<li>Npgsql connection must use <code>Ssl Mode=Require</code> or stricter (IPFetch)</li>
+<li><code>ConnectionStrings:NpgsqlConnection</code>, <strong>if set</strong>, must say <code>Ssl Mode=Require</code> (IPFetch, Patcher, Control Panel), unless <code>ConnectionStrings:AllowInsecureNpgsql=true</code>. The servers do not connect through that string — the connection is built from the <code>Npgsql</code> section plus <code>FISHMMO_DB_*</code> / <code>/etc/fishmmo/db-secrets.env</code> — so leave it unset and the check does not apply. A loopback database or PgBouncer needs no TLS.</li>
 </ul>
 <p><strong>Web server port bindings</strong> (all localhost):</p>
 <table>
@@ -2072,6 +2344,11 @@ sudo /etc/letsencrypt/renewal-hooks/deploy/fishmmo.sh
 <td>WebGL Server</td>
 <td><code>WebServer:HttpPort</code></td>
 <td>8000</td>
+</tr>
+<tr>
+<td>Control Panel</td>
+<td><code>WebServer:HttpPort</code></td>
+<td>8100</td>
 </tr>
 </tbody>
 </table>
@@ -2138,12 +2415,19 @@ Start-Process GameServer.exe -ArgumentList &quot;SCENE&quot;
 <h3 id="starting-web-servers">Starting Web Servers</h3>
 <p>All web servers load <code>appsettings.json</code> and <code>logging.json</code> from <code>FishMMO-Setup/</code> (copied to the build output at build time). Place a modified copy in the working directory for local overrides.</p>
 <p><strong>For production,</strong> install them as OS services via the <a href="FishMMO-Installer/README.html">FishMMO-Installer</a>:</p>
-<pre><code class="lang-bash"># Linux (systemd) — registers fishmmo-ipfetch, fishmmo-patcher, fishmmo-webgl
+<pre><code class="lang-bash"># Linux (systemd) — registers fishmmo-ipfetch, fishmmo-patcher, fishmmo-webgl, fishmmo-controlpanel
 FishMMO-Installer --component systemd-services
 </code></pre>
-<p>This configures automatic startup, crash recovery, environment variables (<code>FISHMMO_ENVIRONMENT=Production</code>, <code>FISHMMO_DB_PASSWORD</code>, etc.), and log file capture. It requires each web server to have been published first — the installer looks for <code>FishMMO-WebServers/&lt;project&gt;/bin/Release/net8.0/publish</code> and skips any server it cannot find there.</p>
+<p>This configures automatic startup, crash recovery, environment variables (<code>FISHMMO_ENVIRONMENT=Production</code>, <code>FISHMMO_DB_PASSWORD</code>, etc.), and log file capture. It requires each web server to have been <strong>published</strong> first — the installer looks for <code>Builds/&lt;project&gt;/Release/net8.0/publish</code> and skips any server it cannot find there. <em>Build all C# Projects</em> only builds; publish them yourself:</p>
+<pre><code class="lang-bash">dotnet publish FishMMO-WebServers/IPFetchASP.NET/IpFetchServer/IpFetchServer.csproj -c Release
+dotnet publish FishMMO-WebServers/PatcherASP.NET/Patcher/Patcher.csproj -c Release
+dotnet publish FishMMO-WebServers/WebGLServerASP.NET/WebGLServer/WebGLServer.csproj -c Release
+dotnet publish FishMMO-WebServers/FishMMO-ControlPanel/ControlPanel/ControlPanel.csproj -c Release
+</code></pre>
+<p>The output lands in <code>Builds/IpFetchServer/</code>, <code>Builds/Patcher/</code>, <code>Builds/WebGLServer/</code> and <code>Builds/ControlPanel/</code> respectively (<code>Release/net8.0/publish/</code>).</p>
+<p><strong>The WebGL (WebGPU) client</strong> is served from the WebGL server's <code>wwwroot/</code> folder next to its executable: copy the <em>contents</em> of the Unity web build output (<code>index.html</code>, <code>Build/</code>, <code>TemplateData/</code>, <code>StreamingAssets/</code>) into <code>Builds/WebGLServer/Release/net8.0/publish/wwwroot/</code> and restart <code>fishmmo-webgl</code>. The server sends the cross-origin isolation headers (<code>COOP: same-origin</code>, <code>COEP: require-corp</code>) Unity needs, and a Content-Security-Policy whose <code>connect-src</code> allows <code>https://&lt;GameHost&gt;:*</code> (WebTransport to every game port) plus the <code>ContentSecurityPolicy:ConnectOrigins</code> list — set both <code>GameHost</code> and <code>ConnectOrigins</code> in <code>appsettings.WebGLServer.json</code> to your domain.</p>
 <blockquote>
-<p><strong>Linux only.</strong> <code>systemd-services</code> is a no-op on Windows. The installer contains an NSSM-based Windows service registration path (<code>FishMMO-IpFetch</code>, <code>FishMMO-Patcher</code>, <code>FishMMO-WebGL</code>), but it is not currently reachable from any CLI component name — configure Windows services via NSSM manually. See the <a href="FishMMO-Installer/README.html">Installer README</a> for details.</p>
+<p><strong>Linux only.</strong> On Windows both the menu entry (Web Server → 5) and the <code>systemd-services</code> component only log a reminder. The installer contains an NSSM-based Windows registration path (<code>FishMMO-IpFetch</code>, <code>FishMMO-Patcher</code>, <code>FishMMO-WebGL</code>), but nothing calls it yet — configure Windows services with NSSM by hand. See the <a href="FishMMO-Installer/README.html">Installer README</a> for details.</p>
 </blockquote>
 <p><strong>For development:</strong></p>
 <blockquote>
@@ -2183,8 +2467,11 @@ Port=7791
 <p>Both <code>world_servers.locked</code> / <code>world_servers.shutdown_at_utc</code> and the matching <code>scene_servers</code>
 columns are the <strong>authority</strong> for a server's lifecycle state. Servers never write them on their
 own: each one reads its own row back on every pulse (~5s) and adopts what it finds. Anything that
-can write those rows therefore controls the servers — the in-game commands below, a CMS, or plain
-<code>psql</code> — exactly as <code>kick_requests</code> already works for accounts.</p>
+can write those rows therefore controls the servers — the in-game commands below, the Control Panel, or plain
+<code>psql</code> — exactly as <code>kick_requests</code> already works for accounts.
+A scheduled shutdown is counted down from the seconds remaining that the database reports on
+that read, on each server's monotonic clock, never by comparing the stored instant with the
+host's wall clock — so a host whose clock is wrong neither stops early nor misses a warning.</p>
 <p><strong>Locking drains, it does not evict.</strong> A locked server keeps the players it has and stops
 receiving new ones: a locked world refuses logins, and a locked scene server is skipped by the
 world server's open-world routing and stops taking scene-load requests. Instance routing
@@ -2240,7 +2527,9 @@ scheduled admits nobody.</p>
 </tr>
 </tbody>
 </table>
-<p><code>lockworld</code> / <code>unlockworld</code> are accepted as aliases of <code>lockserver</code> / <code>unlockserver</code>.</p>
+<p><code>lockworld</code> / <code>unlockworld</code> are accepted as aliases of <code>lockserver</code> / <code>unlockserver</code>. These are
+part of the wider operator command set described in <a href="#in-game-operator-commands-and-the-staff-console">In-game operator commands and the staff
+console</a> below.</p>
 <h4 id="player-commands-for-instanced-content">Player commands for instanced content</h4>
 <p>A party may hold <strong>one</strong> dungeon instance at a time, so a run that is finished with — or that
 went wrong — otherwise blocks the party from starting anything else until it empties and ages
@@ -2299,9 +2588,161 @@ leadership now moves off a holder who is not logged in anywhere, once they have 
 enough that it cannot be confused with the gap while somebody walks through a teleporter. See
 <code>leadershipAbsenceGraceSeconds</code> on the scene server's <code>PartySystem</code> asset, which must comfortably
 exceed the slowest scene load on the shard.</p>
-<p>Commands are refused silently to anyone below <code>AccessLevel.Admin</code> — the server gives no
+<p>Operator commands are refused silently to anyone below their level — the server gives no
 indication the command exists, so an unprivileged player cannot probe for command names — but
-every refused attempt is logged at warning level with the character and account that tried it.</p>
+every refused attempt is logged at warning level and written to the operator audit log with the
+character and account that tried it.</p>
+<h3 id="in-game-operator-commands-and-the-staff-console">In-game operator commands and the staff console</h3>
+<p>Two command sets, each registered <strong>once</strong> at its access level, with every sub-command in one
+table: <code>/gm</code> at <code>AccessLevel.GameMaster</code> (2) and <code>/admin</code> at <code>AccessLevel.Admin</code> (3). One
+registration means one access check, and the audit hook sits on that check, so <strong>every command —
+including refusals — is written to <code>admin_audit_log</code></strong> before it runs. <code>/gm help</code> and
+<code>/admin help</code> list the commands by category; <code>help &lt;command&gt;</code> prints its usage.</p>
+<p><strong>Game masters cannot change the game.</strong> Nothing under <code>/gm</code> creates currency or items, changes
+an attribute, heals, revives or kills: a game master account that could would be an exploit waiting
+for one stolen password. Those are <code>/admin</code>, and a test pins that no game master file calls
+anything an administrator file declares. Administrators hold every <code>/gm</code> command as well.</p>
+<table>
+<thead>
+<tr>
+<th><code>/gm</code> command</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>who</code></td>
+<td>Characters this scene server holds</td>
+</tr>
+<tr>
+<td><code>where &lt;character&gt;</code> / <code>info &lt;character&gt;</code></td>
+<td>Scene and coordinates; account, level, dead / in combat / muted</td>
+</tr>
+<tr>
+<td><code>seen &lt;character&gt;</code></td>
+<td>Database lookup, online or not, anywhere in the shard, with both mutes</td>
+</tr>
+<tr>
+<td><code>chars &lt;account&gt;</code> / <code>account &lt;account&gt;</code></td>
+<td>An account's characters; its level, sign-in history, ban and mute (no email)</td>
+</tr>
+<tr>
+<td><code>goto</code> / <code>summon</code> / <code>return &lt;character&gt;</code></td>
+<td>Move to a character, bring them to you, send a summoned character back. Same scene instance only</td>
+</tr>
+<tr>
+<td><code>gotopos &lt;x&gt; &lt;y&gt; &lt;z&gt;</code> / <code>unstuck &lt;character&gt;</code></td>
+<td>Move yourself to coordinates; move a character to the nearest respawn point in their scene</td>
+</tr>
+<tr>
+<td><code>msg</code> / <code>warn &lt;character&gt; &lt;text&gt;</code></td>
+<td>A private System-channel message or formal warning, signed with your character name</td>
+</tr>
+<tr>
+<td><code>kick &lt;character&gt;</code></td>
+<td>Kick request for the account (every session)</td>
+</tr>
+<tr>
+<td><code>mute</code> / <code>muteaccount &lt;character&gt; &lt;duration&gt; [reason]</code></td>
+<td>Chat mute on one character, or on every character of its account. Commands still work, so a muted player can <code>/helpme</code></td>
+</tr>
+<tr>
+<td><code>unmute</code> / <code>unmuteaccount &lt;character&gt;</code></td>
+<td>Lift one mute; the other, if any, stays</td>
+</tr>
+<tr>
+<td><code>tempban &lt;account&gt; &lt;duration&gt; &lt;reason&gt;</code></td>
+<td>Ban that lifts itself. Revokes sessions and kicks. Never shortens a longer ban</td>
+</tr>
+<tr>
+<td><code>unban &lt;account&gt;</code></td>
+<td>Lift a ban. Game masters may lift temporary bans only</td>
+</tr>
+<tr>
+<td><code>tickets [unassigned\|mine\|all]</code> / <code>ticket &lt;id&gt;</code></td>
+<td>The support queue, and one ticket with its latest messages and staff notes</td>
+</tr>
+<tr>
+<td><code>claim</code> / <code>unclaim &lt;id&gt;</code></td>
+<td>Take a ticket (moves it to InProgress), or hand it back</td>
+</tr>
+<tr>
+<td><code>reply</code> / <code>note &lt;id&gt; &lt;text&gt;</code> / <code>resolve &lt;id&gt; &lt;resolution&gt;</code></td>
+<td>Player-visible reply, staff-only note, resolution. <strong>The text is withheld from the audit row</strong> — it lives on the ticket</td>
+</tr>
+<tr>
+<td><code>console</code></td>
+<td>Opens the staff console (below)</td>
+</tr>
+</tbody>
+</table>
+<p>Durations are <code>30m</code>, <code>2h</code>, <code>7d</code>, <code>1w</code> (a bare number is minutes). <strong>A game master's mute or ban is
+capped at 30 days and always ends</strong>; only an administrator may use <code>perm</code> for a mute, and
+permanent bans are <code>/admin ban</code>.</p>
+<table>
+<thead>
+<tr>
+<th><code>/admin</code> command</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status</code>, <code>lockserver</code> … <code>stopshutdownscene</code>, <code>announce</code></td>
+<td>Server control, as above</td>
+</tr>
+<tr>
+<td><code>access &lt;account&gt; &lt;level&gt;</code></td>
+<td>Set an access level below your own</td>
+</tr>
+<tr>
+<td><code>ban &lt;account&gt; &lt;reason&gt;</code></td>
+<td>Permanent ban (replaces a temporary one)</td>
+</tr>
+<tr>
+<td><code>gold [character]</code></td>
+<td>Currency balance</td>
+</tr>
+<tr>
+<td><code>setgold</code> / <code>givegold</code> / <code>takegold [character] &lt;amount&gt;</code></td>
+<td>Change a balance. Written to the economy ledger as <code>AdminAdjustment</code></td>
+</tr>
+<tr>
+<td><code>giveitem [character] &lt;amount&gt; &lt;item name or template id&gt;</code></td>
+<td>Grant items through the normal reward path</td>
+</tr>
+<tr>
+<td><code>heal</code> / <code>revive</code> / <code>kill</code> / <code>god [character]</code></td>
+<td>Full heal; revive in place; kill with no kill credit; toggle immortality until the next scene change</td>
+</tr>
+<tr>
+<td><code>attr &lt;character&gt; &lt;attribute&gt;</code> / <code>setattr [character] &lt;value&gt; &lt;attribute&gt;</code></td>
+<td>Read or set an attribute's base value (currency is refused — use <code>setgold</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><code>[character]</code> may be left out to act on yourself; a word in that position is always a character
+name, never silently yourself. Every <code>/admin</code> character and economy command acts only on
+characters this scene server holds, through the live controllers, so the change reaches the player
+at once and persists the normal way. The currency they use is <code>currencyTemplate</code> on the
+<code>SceneServerSystem</code> asset.</p>
+<p><strong>Mutes and temporary bans are database columns</strong> — <code>accounts.muted</code>, <code>muted_until</code>, <code>muted_by</code>,
+<code>mute_reason</code>, <code>banned_until</code>, <code>banned_by</code>, <code>ban_reason</code>, and the four mute columns on
+<code>characters</code> — added by the <code>AddModerationColumns</code> migration. A mute is read when a character
+loads and applied at once on the scene server that set it; elsewhere it takes effect at the
+character's next load. An expired mute simply stops applying. A temporary ban is lifted at the
+first sign-in attempt after it ends. If the mute read fails (for example, the migration has not
+been applied) the character loads <strong>unmuted</strong> and a warning is logged, rather than locking every
+player out.</p>
+<p><strong>The staff console</strong> (<code>/gm console</code>) is an in-game panel for all of the above: a roster of every
+character in your scene instance with per-row actions, the support ticket queue with ticket
+detail and actions, and a form for every command, with a log of the server's replies. <strong>The client
+ships the console empty</strong> — no command names, arguments or help text are in the build. The server
+sends the catalogue only to GameMaster and above, and only in answer to <code>/gm console</code>. Every action
+the console takes is an ordinary chat command, gated and audited as if typed. Its roster and ticket
+reads are separate requests, re-authorised on arrival against the level this server loaded; a
+refused read is audited like a refused command, and allowed reads are not audited (as in the
+Control Panel).</p>
 <blockquote>
 <p><strong>Note on automatic restarts.</strong> The AppHealthMonitor restarts server processes. A world server
 deregisters itself on a graceful shutdown, so it comes back clean; a scene server clears its own
@@ -2310,22 +2751,25 @@ a scheduled shutdown will be followed by a restart unless you stop the monitor f
 </blockquote>
 <hr>
 <h2 id="fishmmo-apphealthmonitor">FishMMO-AppHealthMonitor</h2>
-<p>The AppHealthMonitor is a daemon that monitors, auto-restarts, and health-checks your server processes. It performs <strong>process liveness checks, TCP/UDP/WebSocket port probes, CPU and memory threshold monitoring, exponential-backoff restarts, and circuit breaker protection</strong>.</p>
+<p>The AppHealthMonitor is a daemon that monitors, auto-restarts, and health-checks your server processes. It performs <strong>process liveness checks, a database pulse check for the game servers, TCP/UDP port probes for anything else, CPU and memory threshold monitoring, exponential-backoff restarts, and circuit breaker protection</strong>. With database credentials it also joins the control plane: it reports what it supervises and carries out the start, stop and restart commands an operator queues for its host from the Control Panel.</p>
 <h3 id="build">Build</h3>
 <pre><code class="lang-bash">cd FishMMO-AppHealthMonitor
 dotnet build -c Release
 </code></pre>
 <h3 id="configure-appsettingsjson">Configure appsettings.json</h3>
-<p>Place <code>appsettings.json</code> in the AppHealthMonitor's working directory:</p>
+<p>Place <code>appsettings.json</code> in the AppHealthMonitor's working directory, or start from the shipped templates in <code>FishMMO-Setup/{Development,Production}/appsettings.AppHealthMonitor.json</code>:</p>
 <pre><code class="lang-json">{
   &quot;Headless&quot;: false,
   &quot;Applications&quot;: [
     {
       &quot;Name&quot;: &quot;LoginServer&quot;,
       &quot;ApplicationExePath&quot;: &quot;/path/to/GameServer&quot;,
-      &quot;MonitoredPort&quot;: 7770,
-      &quot;PortTypes&quot;: [&quot;TCP&quot;, &quot;UDP&quot;],
       &quot;LaunchArguments&quot;: &quot;LOGIN&quot;,
+      &quot;MonitoredPort&quot;: 0,
+      &quot;PortTypes&quot;: [&quot;DatabasePulse&quot;],
+      &quot;PulseTier&quot;: &quot;login&quot;,
+      &quot;PulseServerName&quot;: &quot;LoginServer&quot;,
+      &quot;PulseStaleSeconds&quot;: 90,
       &quot;CheckIntervalSeconds&quot;: 30,
       &quot;LaunchDelaySeconds&quot;: 2,
       &quot;InitialHealthCheckDelaySeconds&quot;: 30,
@@ -2339,9 +2783,12 @@ dotnet build -c Release
     {
       &quot;Name&quot;: &quot;WorldServer&quot;,
       &quot;ApplicationExePath&quot;: &quot;/path/to/GameServer&quot;,
-      &quot;MonitoredPort&quot;: 7780,
-      &quot;PortTypes&quot;: [&quot;TCP&quot;, &quot;UDP&quot;],
       &quot;LaunchArguments&quot;: &quot;WORLD&quot;,
+      &quot;MonitoredPort&quot;: 0,
+      &quot;PortTypes&quot;: [&quot;DatabasePulse&quot;],
+      &quot;PulseTier&quot;: &quot;world&quot;,
+      &quot;PulseServerName&quot;: &quot;WorldServer&quot;,
+      &quot;PulseStaleSeconds&quot;: 90,
       &quot;CheckIntervalSeconds&quot;: 30,
       &quot;LaunchDelaySeconds&quot;: 2,
       &quot;InitialHealthCheckDelaySeconds&quot;: 30,
@@ -2355,9 +2802,12 @@ dotnet build -c Release
     {
       &quot;Name&quot;: &quot;SceneServer&quot;,
       &quot;ApplicationExePath&quot;: &quot;/path/to/GameServer&quot;,
-      &quot;MonitoredPort&quot;: 7790,
-      &quot;PortTypes&quot;: [&quot;TCP&quot;, &quot;UDP&quot;],
       &quot;LaunchArguments&quot;: &quot;SCENE&quot;,
+      &quot;MonitoredPort&quot;: 0,
+      &quot;PortTypes&quot;: [&quot;DatabasePulse&quot;],
+      &quot;PulseTier&quot;: &quot;scene&quot;,
+      &quot;PulseServerName&quot;: &quot;SceneServer&quot;,
+      &quot;PulseStaleSeconds&quot;: 90,
       &quot;CheckIntervalSeconds&quot;: 30,
       &quot;LaunchDelaySeconds&quot;: 2,
       &quot;InitialHealthCheckDelaySeconds&quot;: 30,
@@ -2371,9 +2821,9 @@ dotnet build -c Release
     {
       &quot;Name&quot;: &quot;IPFetch Server&quot;,
       &quot;ApplicationExePath&quot;: &quot;/path/to/IpFetchServer&quot;,
+      &quot;LaunchArguments&quot;: &quot;&quot;,
       &quot;MonitoredPort&quot;: 0,
       &quot;PortTypes&quot;: [],
-      &quot;LaunchArguments&quot;: &quot;&quot;,
       &quot;CheckIntervalSeconds&quot;: 30,
       &quot;LaunchDelaySeconds&quot;: 2,
       &quot;InitialHealthCheckDelaySeconds&quot;: 30,
@@ -2387,6 +2837,9 @@ dotnet build -c Release
   ]
 }
 </code></pre>
+<blockquote>
+<p><strong>Do not port-probe a game server.</strong> WebTransport is QUIC over UDP, so there is no TCP listener on a game port: a <code>TCP</code> check fails against a healthy server, and because every configured check must pass, the monitor restarts healthy servers until it gives up. A <code>UDP</code> check cannot compensate — it succeeds when the local send completes and never waits for a reply, so it reports a dead server healthy — and QUIC answers only a valid Initial packet, so it cannot be probed without a handshake. The game servers are checked with <code>DatabasePulse</code> instead: the age of the server's own pulse row, as the database measures it. The pulse check <strong>fails open</strong> — an unreadable database or a server not registered yet reports healthy — because otherwise a database outage would make every pulse look stale at once and every daemon would restart every server together.</p>
+</blockquote>
 <table>
 <thead>
 <tr>
@@ -2413,11 +2866,23 @@ dotnet build -c Release
 </tr>
 <tr>
 <td><code>MonitoredPort</code></td>
-<td>Must match the port in the corresponding <code>.cfg</code> file. <code>0</code> = process-only monitoring.</td>
+<td>Port for a <code>TCP</code>/<code>UDP</code> probe. <code>0</code> = no port probe (the game servers use the pulse instead).</td>
 </tr>
 <tr>
 <td><code>PortTypes</code></td>
-<td>Health check protocol(s): <code>TCP</code>, <code>UDP</code>, <code>WebSocket</code>.</td>
+<td>Health checks, every one of which must pass: any of <code>TCP</code>, <code>UDP</code>, <code>DatabasePulse</code>. Empty = process-only monitoring.</td>
+</tr>
+<tr>
+<td><code>PulseTier</code></td>
+<td>With <code>DatabasePulse</code>: <code>login</code>, <code>world</code> or <code>scene</code>, the server table to read.</td>
+</tr>
+<tr>
+<td><code>PulseServerName</code></td>
+<td>With <code>DatabasePulse</code>: the name the server registers under (its own <code>ServerName</code> setting); defaults to <code>Name</code>. Matched by name, not address or port.</td>
+</tr>
+<tr>
+<td><code>PulseStaleSeconds</code></td>
+<td>With <code>DatabasePulse</code>: pulse age, as the database measures it, above which the server counts as down. Default <code>90</code> (three missed 30 s beats).</td>
 </tr>
 <tr>
 <td><code>CheckIntervalSeconds</code></td>
@@ -2461,15 +2926,11 @@ dotnet build -c Release
 </tr>
 <tr>
 <td><code>HealthCheckHost</code></td>
-<td>Host the port probe connects to. <code>127.0.0.1</code> for loopback-bound servers.</td>
+<td>Host a port probe connects to. <code>127.0.0.1</code> for loopback-bound servers.</td>
 </tr>
 <tr>
 <td><code>PortCheckTimeoutMs</code></td>
-<td>TCP/UDP probe timeout. Production templates use <code>2000</code>.</td>
-</tr>
-<tr>
-<td><code>WebSocketCheckTimeoutMs</code></td>
-<td>WebSocket probe timeout. Production templates use <code>5000</code>.</td>
+<td>TCP/UDP probe timeout. A pulse read gets the larger of this and 5 s, since it is a database round trip. Production templates use <code>2000</code>.</td>
 </tr>
 <tr>
 <td><code>GracefulShutdownTimeoutSeconds</code></td>
@@ -2481,12 +2942,12 @@ dotnet build -c Release
 </tr>
 <tr>
 <td><code>LaunchDelaySeconds</code></td>
-<td>Delay before launching the process.</td>
+<td>Delay before launching the next process in the list.</td>
 </tr>
 </tbody>
 </table>
 <blockquote>
-<p>The example above is trimmed for readability. The shipped templates in <code>FishMMO-Setup/{Development,Production}/appsettings.AppHealthMonitor.json</code> also set <code>CpuThresholdPercent</code>, <code>MemoryThresholdMB</code>, <code>ResourceCheckFailureThreshold</code>, <code>HealthCheckHost</code>, <code>PortCheckTimeoutMs</code>, <code>WebSocketCheckTimeoutMs</code>, and <code>ForceKillTimeoutSeconds</code> — start from those rather than from this snippet. The Production template sets <code>&quot;Headless&quot;: true</code> and paths under <code>/opt/fishmmo/</code>.</p>
+<p>The example above is trimmed for readability. The shipped templates also set <code>CpuThresholdPercent</code>, <code>MemoryThresholdMB</code>, <code>ResourceCheckFailureThreshold</code>, <code>HealthCheckHost</code>, <code>PortCheckTimeoutMs</code> and <code>ForceKillTimeoutSeconds</code> — start from those rather than from this snippet. The Production template sets <code>&quot;Headless&quot;: true</code> and paths under <code>/opt/fishmmo/</code>. See <a href="FishMMO-AppHealthMonitor/README.html">FishMMO-AppHealthMonitor/README.md</a> for the pulse check and the control plane.</p>
 </blockquote>
 <h3 id="console-commands-headless--false">Console Commands (Headless = false)</h3>
 <table>
@@ -2568,20 +3029,23 @@ sudo systemctl enable --now apphealthmonitor
 <pre><code class="lang-bash">cd FishMMO-DiscordBot
 dotnet build FishMMO-DiscordBot.sln -c Release
 </code></pre>
-<p>Create <code>appsettings.json</code> in the output directory:</p>
+<p>The build copies the templates into the output directory as <code>appsettings.json</code> (Development)
+and <code>appsettings.Production.json</code>; an <code>appsettings.json</code> in the working directory overrides them:</p>
 <pre><code class="lang-json">{
   &quot;Discord&quot;: {
-    &quot;Token&quot;: &quot;&quot;,
     &quot;DefaultGuildId&quot;: 0
   },
-  &quot;ConnectionStrings&quot;: {
-    &quot;Npgsql&quot;: &quot;Host=localhost;Port=5432;Database=fishmmo;Username=;Password=;&quot;
+  &quot;Npgsql&quot;: {
+    &quot;Host&quot;: &quot;127.0.0.1&quot;,
+    &quot;Port&quot;: &quot;5432&quot;,
+    &quot;Database&quot;: &quot;fishmmo&quot;,
+    &quot;Schema&quot;: &quot;public&quot;
   },
   &quot;ChatPollingIntervalSeconds&quot;: 5,
-  &quot;BridgeMessageMaxLength&quot;: 2000,
+  &quot;BridgeMessageMaxLength&quot;: 128,
   &quot;RateLimiting&quot;: {
-    &quot;MaxMessagesPerWindow&quot;: 10,
-    &quot;WindowSeconds&quot;: 60
+    &quot;MaxMessagesPerWindow&quot;: 5,
+    &quot;WindowSeconds&quot;: 10
   }
 }
 </code></pre>
@@ -2594,16 +3058,16 @@ dotnet build FishMMO-DiscordBot.sln -c Release
 </thead>
 <tbody>
 <tr>
-<td><code>Discord:Token</code></td>
-<td>Bot token. <strong>Set via the <code>Discord__Token</code> environment variable</strong> — an empty token fails at startup, and the token must never be committed.</td>
+<td><code>FISHMMO_DISCORD_TOKEN</code> (environment)</td>
+<td>Bot token. <strong>Environment only</strong> — there is no config key for it, the bot refuses to connect without it, and it must never be committed.</td>
 </tr>
 <tr>
 <td><code>Discord:DefaultGuildId</code></td>
-<td>Discord guild snowflake. <code>0</code> disables it; dynamic channel creation from game chat needs a real ID.</td>
+<td>Discord guild snowflake. <code>0</code> disables it; dynamic channel creation from game chat and verification DMs need a real ID.</td>
 </tr>
 <tr>
-<td><code>ConnectionStrings:Npgsql</code></td>
-<td>PostgreSQL connection. Set via <code>ConnectionStrings__Npgsql</code> in production.</td>
+<td><code>Npgsql</code></td>
+<td>Non-sensitive database settings, read by FishMMO-DB's <code>NpgsqlDbConfiguration</code> as every FishMMO process reads them; <code>FISHMMO_DB_HOST</code> / <code>FISHMMO_DB_PORT</code> / <code>FISHMMO_DB_NAME</code> override them. The credentials come only from <code>FISHMMO_DB_USERNAME</code> / <code>FISHMMO_DB_PASSWORD</code> or <code>/etc/fishmmo/db-secrets.env</code>.</td>
 </tr>
 <tr>
 <td><code>ChatPollingIntervalSeconds</code></td>
@@ -2611,11 +3075,11 @@ dotnet build FishMMO-DiscordBot.sln -c Release
 </tr>
 <tr>
 <td><code>BridgeMessageMaxLength</code></td>
-<td>Maximum bridged message length (default <code>2000</code>, Discord's limit).</td>
+<td>Maximum bridged message length (default <code>128</code>, the game's <code>ChatBroadcast.MaxTextLength</code>; clients discard anything longer).</td>
 </tr>
 <tr>
 <td><code>RateLimiting:MaxMessagesPerWindow</code> / <code>WindowSeconds</code></td>
-<td>Per-window message cap (defaults <code>10</code> per <code>60</code> seconds).</td>
+<td>Per-window message cap (defaults <code>5</code> per <code>10</code> seconds).</td>
 </tr>
 </tbody>
 </table>
@@ -2623,20 +3087,34 @@ dotnet build FishMMO-DiscordBot.sln -c Release
 <h4 id="run">Run</h4>
 <pre><code class="lang-bash">dotnet run --project FishMMO-DiscordBot/FishMMO-DiscordBot.csproj
 </code></pre>
-<h3 id="fishmmo-cms">FishMMO-CMS</h3>
-<p>An ASP.NET Core 8.0 web API for <strong>account management</strong> — the out-of-game counterpart to the in-game authentication the LoginServer performs. It exposes player self-service routes under <code>api/Account</code> (<code>register</code>, <code>verify</code>, <code>change-password</code>, <code>2fa/setup</code>) and operator routes under <code>api/Admin</code> (<code>accounts/search</code>, <code>ban</code>, <code>unban</code>, <code>access-level</code>, <code>revoke-tokens</code>, <code>reset-2fa</code>, <code>force-password-reset</code>).</p>
+<h3 id="fishmmo-controlpanel">FishMMO-ControlPanel</h3>
+<p>An ASP.NET Core 8.0 <strong>Game Control Panel / Admin Dashboard</strong>, living alongside the other web
+services at <code>FishMMO-WebServers/FishMMO-ControlPanel/</code>. It is the out-of-game counterpart to
+the in-game authentication the LoginServer performs and to the <code>/admin</code> chat commands: account
+self-service and management, character management, live server monitoring, and per-server
+lifecycle control gated on <code>AccessLevel</code>.</p>
 <blockquote>
-<p><strong>This is not a news CMS.</strong> The launcher's news panel is fetched from <code>Constants.Configuration.LauncherHtmlUrl</code>, baked at build time from <code>GeneratedHostConfig.LauncherHtmlUrl</code> (CI substitutes <code>FISHMMO_ROOT_DOMAIN</code>). Nothing in this project serves it.</p>
+<p><strong>This is not a news CMS.</strong> The launcher's news panel is fetched from <code>Constants.Configuration.LauncherHtmlUrl</code>, baked at build time from <code>HostConfig.LauncherHtmlUrl</code> (CI substitutes <code>FISHMMO_ROOT_DOMAIN</code>). Nothing in this project serves it.</p>
 </blockquote>
 <blockquote>
-<p><strong>Status: scaffold — do not deploy.</strong> The routes exist and are reachable, but <strong>every handler body is a <code>TODO</code> stub</strong> returning a canned success response. There is no database wiring, no auth service registration, no persistence, no caller authentication on <code>api/Account</code>, and <strong>no authorization at all on <code>api/Admin</code></strong> — any caller could invoke every administrative route. Keep it off any network until those are implemented.</p>
+<p><strong>Status: every page the sidebar offers is built against PostgreSQL.</strong> Sign-in (browser-side
+SRP and mandatory two-factor above Player), registration, self-service, character and account
+administration and moderation, the audit log, chat log search, support tickets, guilds and
+parties, the server board with lock and shutdown control, maintenance windows, scene
+instances, per-server bandwidth, the daemon control plane (start, stop and restart through a
+database command queue the AppHealthMonitor polls), and platform health, secrets and queues.
+There is no fake login and no fixture mode: the design mock was deleted. Authorization fails
+closed, and every privileged write and staff read is recorded in <code>admin_audit_log</code>. See
+<a href="FishMMO-WebServers/FishMMO-ControlPanel/README.html">the Control Panel README</a> for the design.</p>
 </blockquote>
-<pre><code class="lang-bash">cd FishMMO-CMS
-dotnet build FishMMO-CMS.slnx -c Release
-dotnet run --project FishMMO-CMS.Server
+<pre><code class="lang-bash">cd FishMMO-WebServers/FishMMO-ControlPanel
+./run-local.sh            # preflight, publish, and serve on http://localhost:8100
+# or by hand:
+dotnet build FishMMO-ControlPanel.slnx -c Release
+dotnet run --project ControlPanel
 </code></pre>
-<p>Configuration is layered: the build copies <code>FishMMO-Setup/Development/appsettings.CMS.json</code> (and the Production variant) into the output directory, then <code>./appsettings.json</code> and <code>./appsettings.{Environment}.json</code> in the working directory override it. Edit the templates under <code>FishMMO-Setup/</code>, not the copies in <code>bin/</code>. Swagger UI is served at <code>/swagger</code> in the Development environment only.</p>
-<p>See <a href="FishMMO-CMS/README.html">FishMMO-CMS/README.md</a> for the full endpoint table and implementation status.</p>
+<p>Configuration is layered: the build copies <code>FishMMO-Setup/Development/appsettings.ControlPanel.json</code> (and the Production variant) into the output directory, then <code>./appsettings.json</code> and <code>./appsettings.{Environment}.json</code> in the working directory override it. Edit the templates under <code>FishMMO-Setup/</code>, not the copies in <code>Builds/ControlPanel/</code>. Swagger UI is served at <code>/swagger</code> in the Development environment only.</p>
+<p>See <a href="FishMMO-WebServers/FishMMO-ControlPanel/README.html">FishMMO-WebServers/FishMMO-ControlPanel/README.md</a> for running it, the endpoint tables, the design decisions it enforces, and implementation status.</p>
 <hr>
 <h2 id="client-setup">Client Setup</h2>
 <h3 id="building-the-client">Building the Client</h3>
@@ -2652,14 +3130,14 @@ dotnet run --project FishMMO-CMS.Server
 </blockquote>
 <h3 id="client-launcher-flow">Client Launcher Flow</h3>
 <ol>
-<li><p><strong>Launcher starts</strong> — Fetches the news HTML from <code>Constants.Configuration.LauncherHtmlUrl</code> (baked at build time from <code>GeneratedHostConfig.LauncherHtmlUrl</code>, which CI substitutes from <code>FISHMMO_ROOT_DOMAIN</code>) and extracts the configured <code>div</code> class. <code>IHtmlContentFetcher</code> yields the <strong>parsed node</strong>, not formatted text: UI Toolkit's rich text has no link tag, so a news link cannot be markup inside a label — it has to become a real element that can receive a click, which means the view walks the tree itself rather than being handed a formatted string. Every href is routed through <code>LauncherLinkPolicy</code>, which parses the URI and allows only absolute <code>http</code>/<code>https</code> before it reaches <code>Application.OpenURL</code>. News is cosmetic and does <strong>not</strong> block the version check.</p>
+<li><p><strong>Launcher starts</strong> — Fetches the news HTML from <code>Constants.Configuration.LauncherHtmlUrl</code> (baked at build time from <code>HostConfig.LauncherHtmlUrl</code>, which CI substitutes from <code>FISHMMO_ROOT_DOMAIN</code>) and extracts the configured <code>div</code> class. <code>IHtmlContentFetcher</code> yields the <strong>parsed node</strong>, not formatted text: UI Toolkit's rich text has no link tag, so a news link cannot be markup inside a label — it has to become a real element that can receive a click, which means the view walks the tree itself rather than being handed a formatted string. Every href is routed through <code>LauncherLinkPolicy</code>, which parses the URI and allows only absolute <code>http</code>/<code>https</code> before it reaches <code>Application.OpenURL</code>. News is cosmetic and does <strong>not</strong> block the version check.</p>
 <p><code>IsNewsUrlConfigured</code> decides whether the request is worth issuing at all. An empty URL and a <code>FISHMMO_SENTINEL_PLACEHOLDER</code> the build never substituted mean the same thing — no feed — so both are treated alike, the same sentinel convention <code>ClientCertificatePinning</code> uses to screen unsubstituted values out of the pin set; without it a working copy fetched a host that cannot resolve and reported a failure on every run for a feed that was never configured. On both that path and a genuine fetch failure the pane is filled with <code>ClientLauncher.newsFallbackSummary</code>, a serialized <code>[TextArea]</code> field a deployment can reword without a code change. It is filled rather than hidden because hiding it collapsed the panel into a header stacked directly on a footer, which reads as a broken window rather than as a launcher with no news today.</p>
 </li>
 <li><p><strong>Version check</strong> — Queries <code>{APIHost}latest_version?from={clientVersion}</code>. If a patch is available, the launcher downloads it into <code>{patch directory}/{from}-{to}.zip</code> (see <code>Launcher.PatchDirectory</code> below; <code>&lt;install root&gt;/Patches</code> by default), verifies it against the <code>sha256</code> the server reported, then hands off to the external Updater and quits so the Updater can replace the client binaries. Download progress carries a <code>DownloadStats</code> snapshot — bytes transferred against the manifest's expected total, current throughput, and an ETA — so the bar shows a real total from its first frame rather than waiting on response headers. If <code>Launcher.AutoUpdate</code> is off, the launcher parks on an <strong>Update</strong> button with the patch size instead of starting a download the player has not agreed to. If the server reports <code>patch_available: false</code>, the launcher enters <code>PatchUnavailable</code> — retrying cannot help, the player needs a full reinstall.</p>
 </li>
 <li><p><strong>Play</strong> — The launcher loads the <code>ClientPostboot</code> scene, calls <code>StartBootstrap()</code> on its <code>ClientPostbootSystem</code>, and unloads its own scene.</p>
 </li>
-<li><p><strong>Login</strong> — Client connects to the LoginServer discovered via <code>api.fishmmo.com/LoginServer</code>.</p>
+<li><p><strong>Login</strong> — Client connects to the LoginServer discovered via <code>https://api.fishmmo.com/loginserver</code> (lowercase: NGINX's <code>location</code> match is case-sensitive). IPFetch returns only ports; the client always connects to <code>GameHost</code>.</p>
 </li>
 <li><p><strong>QUIC/WebTransport Handshake</strong> — X25519 ECDH key agreement + stateless cookie challenge → AES-256-GCM encrypted session.</p>
 </li>
@@ -3286,12 +3764,39 @@ front of — and a player who found the empty window would reasonably report it 
 channel picker and the instance panel are reached from the game menu instead, because both are rare,
 deliberate acts rather than windows a player flicks in and out of.</p>
 <h3 id="client-tls-certificate-pinning">Client TLS Certificate Pinning</h3>
-<p>The client pins TLS certificates to prevent man-in-the-middle attacks on API and WebTransport connections. Pins are <strong>IL-embedded at compile time</strong> via <code>FishMMO-Unity/Assets/Scripts/Client/Security/CertificatePins.generated.cs</code> -- no separate configuration file is needed.</p>
+<p>The client pins TLS certificates to prevent man-in-the-middle attacks on API and WebTransport connections. Pins are <strong>IL-embedded at compile time</strong> via <code>FishMMO-Unity/Assets/FishMMO/Client/Security/CertificatePins.generated.cs</code> -- no separate configuration file is needed.</p>
 <blockquote>
 <p><strong>Development builds:</strong> Empty pins are allowed (TOFU / trust-on-first-use mode).
 <strong>Release builds:</strong> At least 2 pins (active + backup) are <strong>required</strong>. The build will fail if fewer than 2 valid pins are configured or if sentinel placeholders are still present.</p>
 </blockquote>
-<p><strong>Generating pins via Unity Editor:</strong> Use the <strong>FishMMO Dashboard → Game Settings → Certificate Pins</strong> section. <strong>Fetch Pins</strong> connects to your live hosts over TLS and extracts SPKI SHA-256 hashes; <strong>Write Pins to File</strong> saves them to <code>CertificatePins.generated.cs</code>. This embeds the pins at compile time -- no separate config file or CI substitution is needed. Only hosts serving HTTPS on port 443 can be fetched — QUIC-only game hostnames will fail.</p>
+<p><strong>Where the pins come from: FishMMO Dashboard → Game Settings → Certificate Pins.</strong> A pin is the base64 SHA-256 of a public key (its SPKI). The client needs two:</p>
+<ol>
+<li><strong>The live pin</strong> — the key of the certificate the servers present. Either:
+<ul>
+<li><strong>Fetch Pins</strong> opens a TLS connection to the API host (or a Custom Host) on port 443 and hashes the key it presents. Only hosts serving HTTPS on 443 work; QUIC-only game names fail. From the server's own LAN this fails too when the router has no hairpin NAT (most home routers): <code>api.&lt;domain&gt;</code> resolves to the public address, which the router does not loop back.</li>
+<li><strong>Pin from Certificate File…</strong> reads the deployed certificate instead — <code>/etc/fishmmo/certs/fullchain.pem</code> (readable by the <code>fishmmo-certs</code> group) or <code>/etc/letsencrypt/live/&lt;domain&gt;/fullchain.pem</code>. It needs no network and gives the same pin, so use it when the editor runs on the server.</li>
+</ul>
+</li>
+<li><strong>The backup pin</strong> — the key of a spare key pair kept <strong>offline</strong>, never on the server. If the live key is lost or compromised, the certificate is reissued for the spare key and every shipped client keeps connecting. The live certificate cannot reveal it, so it is added under <strong>Backup Pins</strong>:
+<ul>
+<li><strong>Generate Backup Key…</strong> creates an EC P-256 key (the same type as the Let's Encrypt key), saves it as an unencrypted PKCS#8 PEM with mode 600 wherever you choose <strong>outside the repository</strong> (it refuses paths inside it and never overwrites), and adds its pin. Move that file somewhere offline (password manager, USB drive) and delete the local copy.</li>
+<li><strong>Add from Key/Certificate File…</strong> takes a key made elsewhere (<code>openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out fishmmo-backup.key</code>), its public key, or a certificate.</li>
+<li><strong>Paste Pin</strong> accepts the base64 value directly.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Write Pins to File</strong> writes both into <code>values.Pins</code> in <code>CertificatePins.generated.cs</code>; backup entries carry a <code>// backup</code> comment so the Dashboard loads them back into the backup list (the client treats every pin alike), and a later Fetch or rewrite keeps them. Fewer than two pins still writes, with a warning, and a release build then refuses to build.</p>
+<p><strong>Pins and Let's Encrypt.</strong> A pin is the hash of the certificate's <em>public key</em>, so it survives renewal only if the key does: the Installer issues with <code>--reuse-key</code> for that reason (see <a href="#tls-certificates-lets-encrypt">TLS Certificates</a>). Certbot records the choice as <code>reuse_key = True</code> in <code>/etc/letsencrypt/renewal/&lt;domain&gt;.conf</code>; keep it there, never pass <code>--new-key</code>, and never delete the lineage, or every shipped native client stops connecting.</p>
+<p><strong>Switching to the backup key</strong> (live key lost or compromised): bring the backup key to the server, issue a certificate for it from a CSR with the same DNS hooks, and install its files where the lineage's are:</p>
+<pre><code class="lang-bash">sudo openssl req -new -key fishmmo-backup-key.pem -subj &quot;/CN=example.com&quot; \
+  -addext &quot;subjectAltName=DNS:example.com,DNS:*.example.com&quot; -out backup.csr
+sudo certbot certonly --csr backup.csr --manual --preferred-challenges dns \
+  --manual-auth-hook &quot;/etc/letsencrypt/fishmmo-porkbun-hook.py auth&quot; \
+  --manual-cleanup-hook &quot;/etc/letsencrypt/fishmmo-porkbun-hook.py cleanup&quot; \
+  --cert-path backup-cert.pem --fullchain-path backup-fullchain.pem --chain-path backup-chain.pem
+</code></pre>
+<p>Certbot does not renew a certificate issued from a CSR, so repeat the request before it expires (90 days) until a regular lineage uses the key. Then generate a new backup key, and ship a client carrying the new pair of pins before the next emergency.</p>
+<p><strong>Pinning applies to native clients.</strong> A browser does its own certificate validation and WebTransport offers no pinning, so the WebGL/WebGPU client relies on the public CA; the release-build gate still requires the two pins for every target.</p>
 <p>To generate SPKI pin hashes manually from your certificate:</p>
 <pre><code class="lang-bash"># From a live server
 openssl s_client -connect api.fishmmo.com:443 -servername api.fishmmo.com &lt;/dev/null 2&gt;/dev/null \
@@ -3308,6 +3813,54 @@ openssl x509 -in cert.pem -pubkey -noout \
 </code></pre>
 <hr>
 <h2 id="production-deployment">Production Deployment</h2>
+<h3 id="public-launch-checklist-single-host">Public Launch Checklist (Single Host)</h3>
+<p>Everything on one Linux machine behind a home or office router, playable in the browser (WebGPU) and with native clients, admission by beta code. <code>example.com</code> stands for your domain. Every client and server addresses the hosts <strong>by name</strong>, never by IP, so a changed IP is one DNS update.</p>
+<ol>
+<li><p><strong>DNS (Porkbun).</strong> Point <code>api</code>, <code>play</code>, <code>game</code> and <code>panel</code> at the public IPv4 with <code>A</code> records: Installer → Web Server → 7 does it through the Porkbun API (after the certificate step has stored the keys, or it asks for them), shows the changes first, and leaves the bare domain and every other record alone. Rerun it when the ISP changes the address. If the ISP changes your IP, run a dynamic-DNS client that speaks Porkbun's API (<code>ddclient</code> does) against the same records. While there, create an API key with DNS permission and turn on <strong>API Access</strong> for the domain; the certificate step uses it. A <code>game.</code> record behind a proxying CDN would not work: QUIC is UDP and must reach the host directly.</p>
+</li>
+<li><p><strong>Network.</strong> Forward TCP 443 and UDP 7770-7999 (and optionally UDP 443; not TCP 80, which the DNS challenge does not need) from the router to the host, open the same in <code>ufw</code>, and rule out CGNAT — see <a href="#firewall-configuration">Firewall Configuration</a>.</p>
+</li>
+<li><p><strong>Database.</strong> For a launch, start from an empty schema: <a href="#starting-fresh-dropping-the-database">Starting Fresh</a>. Then make sure PgBouncer answers on 6432: <a href="#configure-pgbouncer">Configure pgBouncer</a>.</p>
+</li>
+<li><p><strong>Certificate.</strong> Installer → Web Server → 2, DNS challenge, root domain <code>example.com</code>, the account that will run the game servers. Try staging first. See <a href="#tls-certificates-lets-encrypt">TLS Certificates</a>.</p>
+</li>
+<li><p><strong>NGINX.</strong> Installer → Web Server → 1 (installs the stream module), then → 3 with the same root domain. <code>sudo ss -ulpn | grep ':7770'</code> should now show nginx.</p>
+</li>
+<li><p><strong>Domain in the Production templates</strong>, before building anything. They ship with <code>fishmmo.com</code>:</p>
+<ul>
+<li><code>LoginServer.cfg</code> — <code>AllowedOrigins=https://play.example.com</code>, <code>Smtp:FromAddress</code></li>
+<li><code>appsettings.IpFetchServer.Production.json</code>, <code>appsettings.Patcher.json</code> — <code>Cors:AllowedOrigins</code></li>
+<li><code>appsettings.WebGLServer.json</code> — <code>GameHost</code> (<code>game.example.com</code>) and <code>ContentSecurityPolicy:ConnectOrigins</code> (<code>https://api.example.com</code>)</li>
+<li><code>appsettings.ControlPanel.json</code> — <code>AllowedHosts</code> (<code>panel.example.com</code>)</li>
+</ul>
+<p><code>sed -i 's/fishmmo\.com/example.com/g' FishMMO-Setup/Production/*.cfg FishMMO-Setup/Production/*.json</code> does all of them.</p>
+</li>
+<li><p><strong>Unity → FishMMO Dashboard → Game Settings.</strong> Host Config: API Host <code>https://api.example.com/</code>, Game Host <code>game.example.com</code>, Play Host <code>play.example.com</code>, Root Domain <code>example.com</code>, then <em>Write Host Config</em>. Client Secret: <em>Write Secret to File</em> (after the database keys exist). Certificate Pins: the live pin with <em>Pin from Certificate File…</em> (<code>/etc/fishmmo/certs/fullchain.pem</code>; <em>Fetch Pins</em> fails from the server's own LAN without hairpin NAT), a backup with <em>Generate Backup Key…</em> (store the key offline), then <em>Write Pins to File</em> — see <a href="#client-tls-certificate-pinning">Client TLS Certificate Pinning</a>.</p>
+</li>
+<li><p><strong>Build.</strong></p>
+<ul>
+<li>Server: Build Type <em>Server</em>, OS Target <em>Linux</em>, Environment <em>Production</em> → Build Addressables → Build Game. It copies the Production <code>.cfg</code> files and <code>appsettings.json</code> beside the executable.</li>
+<li>Web servers: <code>dotnet publish -c Release</code> each (see <a href="#starting-web-servers">Starting Web Servers</a>), then Installer → Web Server → 5.</li>
+<li>Browser client: Build Type <em>Client</em>, OS Target <em>WebGL</em> (the web build renders with WebGPU), Environment <em>Production</em> → Build Addressables → Build Game, and copy the output into the WebGL server's <code>wwwroot/</code>. Players need a browser with both WebGPU and WebTransport (current desktop Chrome or Edge).</li>
+</ul>
+</li>
+<li><p><strong>Run the game servers</strong> with the AppHealthMonitor (Production template, <code>Headless: true</code>) or the systemd units under <a href="#systemd-services">Systemd Services</a>: Login, then World, then Scene. The account that runs them must be in <code>fishmmo-certs</code>.</p>
+</li>
+<li><p><strong>First administrator and beta codes:</strong> see the next section.</p>
+</li>
+<li><p><strong>Check from outside the LAN</strong> (a phone on mobile data): <code>https://play.example.com</code> loads and the browser console shows the WebTransport session to <code>game.example.com:7770</code>; <code>curl -sI https://api.example.com/latest_version</code> answers from IPFetch/Patcher (a refusal from the client gate is the expected answer to <code>curl</code>); <code>https://panel.example.com</code> shows the sign-in page.</p>
+</li>
+</ol>
+<h3 id="closed-beta-first-administrator-and-beta-codes">Closed Beta: First Administrator and Beta Codes</h3>
+<p>The Production templates ship with verification off and the beta gate on: <code>LoginServer.cfg</code> has <code>VerifyEmail/VerifySms/VerifyDiscord=false</code>, <code>BetaMode=true</code>, <code>BetaPrograms=closed_beta</code>, and <code>appsettings.ControlPanel.json</code> has <code>Verification</code> all <code>false</code> and <code>Beta: { Enabled: true, Programs: [&quot;closed_beta&quot;] }</code>. Keep the two files in step. New accounts are verified at creation, still enrol in two-factor authentication, and cannot be created without a code; sign-in refuses players who hold no code. Staff (GameMaster and above) are never refused.</p>
+<p>A fresh database has no accounts and no codes, and registering needs a code that only an administrator can mint. The installer makes the first administrator:</p>
+<ol>
+<li><strong>Installer → Database → A — Create Admin Account</strong> (after <strong>9 — Configure Server Keys</strong>, which creates the TOTP master key it needs). It asks for an account name, email, age and password (the game's own rules), then creates the account in one transaction: Admin, verified, email as its channel, and enrolled in two-factor authentication, with the change written to the audit log (source <code>installer</code>). It connects with the servers' own database credentials, so no superuser password is asked for. It never touches an existing account; promote one from the panel instead.</li>
+<li><strong>Add the authenticator and save the recovery codes.</strong> They are shown once: a QR code in the terminal when <code>qrencode</code> is installed (<code>sudo pacman -S qrencode</code>), the key for manual entry, the <code>otpauth://</code> URI and the recovery codes. Nothing is written to disk, and the screen is cleared after you confirm you saved them.</li>
+<li>Sign in at <code>https://panel.example.com</code> with the account name, the password and a code from the authenticator. The same account signs in to the game, and the beta gate never refuses it.</li>
+<li><strong>Mint codes:</strong> Administration → <strong>Beta codes</strong>. Choose the program (<code>closed_beta</code>), how many codes, how many accounts each admits, an optional expiry and a reason; confirm with a fresh two-factor code. The codes are shown <strong>once</strong>, with Copy and Download — save them before leaving the page. The same page lists codes per program and revokes a code.</li>
+</ol>
+<p>Players enter the code on the game's <strong>Register</strong> screen or on the panel's registration page. An account created before the gate was switched on can redeem a code later in the panel. To open the game to everyone, set <code>BetaMode=false</code> and <code>Beta:Enabled=false</code> and restart the LoginServer and the panel.</p>
 <h3 id="linux-config-hardening">Linux Config Hardening</h3>
 <p>The installer applies several hardening measures for production Linux deployments:</p>
 <ul>
@@ -3319,23 +3872,61 @@ openssl x509 -in cert.pem -pubkey -noout \
 <h3 id="firewall-configuration">Firewall Configuration</h3>
 <p>The installer can automate host firewall rules for the ports NGINX requires:</p>
 <ul>
-<li><strong>Linux:</strong> Uses <code>ufw</code> (preferred) or <code>firewalld</code> — adds rules for ports 80/tcp and 443/tcp.</li>
+<li><strong>Linux:</strong> Uses <code>ufw</code> (preferred) or <code>firewalld</code>. The menu entry adds 443/tcp and the UDP game range 7770-7999, and deliberately not 80/tcp; an install config opens the ports in its <code>firewallPorts</code> (the <code>full</code> template includes <code>7770-7999/udp</code>), or add them by hand as below. The host firewall is only half of it: behind a router the same ports must also be forwarded (below).</li>
 <li><strong>Windows:</strong> Uses <code>netsh advfirewall</code> — adds inbound rules for the same ports.</li>
 <li><strong>Menu:</strong> Web Server → <code>4</code> | <strong>CLI:</strong> <code>--component firewall</code> or <code>install-config.json</code> <code>&quot;configureFirewall&quot;: true</code></li>
 </ul>
 <p><strong>Standard deployment (NGINX on same machine as backend servers):</strong></p>
 <p>Only NGINX's public ports need to be open. Backend servers bind to loopback and are invisible to the public network:</p>
-<pre><code class="lang-bash"># HTTP/HTTPS (the only ports that need to be publicly accessible)
-sudo ufw allow 80/tcp
+<pre><code class="lang-bash"># HTTPS (the only TCP port that needs to be publicly accessible)
 sudo ufw allow 443/tcp
+
+# Only with the HTTP challenge: port 80 for Let's Encrypt and the HTTP → HTTPS redirect.
+# With the DNS challenge leave it closed; nothing unencrypted is then reachable.
+# sudo ufw allow 80/tcp
 
 # UDP game ports — NGINX listens publicly, forwards to loopback game servers
 sudo ufw allow 7770:7999/udp
+
+# Optional: HTTP/3 for play.&lt;domain&gt; (nginx listens with `listen 443 quic`)
+sudo ufw allow 443/udp
 </code></pre>
+<p><strong>Behind a home or office router</strong> the same ports must also be forwarded from the router's WAN side to the server's LAN address (give the server a fixed LAN IP or a DHCP reservation first):</p>
+<table>
+<thead>
+<tr>
+<th>Protocol</th>
+<th>Port(s)</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TCP</td>
+<td>443</td>
+<td>HTTPS for <code>api.</code>, <code>play.</code>, <code>panel.</code></td>
+</tr>
+<tr>
+<td>TCP</td>
+<td>80</td>
+<td>Only with the HTTP challenge (and its HTTP → HTTPS redirect); leave closed with the DNS challenge</td>
+</tr>
+<tr>
+<td>UDP</td>
+<td>7770-7999 (at least 7770, 7780 and 7790 up to your last scene server)</td>
+<td>QUIC game traffic</td>
+</tr>
+<tr>
+<td>UDP</td>
+<td>443</td>
+<td>Optional, HTTP/3</td>
+</tr>
+</tbody>
+</table>
+<p>Two things to check with the ISP before relying on it: <strong>CGNAT</strong> (if the router's WAN address differs from the public address <code>curl -4 https://ifconfig.me</code> reports, inbound connections cannot reach you at all) and whether inbound <strong>TCP 80</strong> is blocked (only the HTTP challenge needs it). Many routers do not loop a request for your own public address back to the LAN (&quot;hairpin NAT&quot;), so test from outside — a phone on mobile data — or temporarily map the host names to the LAN IP in <code>/etc/hosts</code> on the machine you test from.</p>
 <p><strong>Multi-machine deployment (NGINX on separate machine from backend servers):</strong></p>
 <p>Only the NGINX machine opens public ports. Backend servers only need to accept connections from NGINX's IP (private network):</p>
-<pre><code class="lang-bash"># On the NGINX machine:
-sudo ufw allow 80/tcp
+<pre><code class="lang-bash"># On the NGINX machine (add 80/tcp only for the HTTP challenge):
 sudo ufw allow 443/tcp
 sudo ufw allow 7770:7999/udp
 
@@ -3344,7 +3935,7 @@ sudo ufw allow from &lt;nginx-ip&gt; to any port 8000,8080,8090 proto tcp
 sudo ufw allow from &lt;nginx-ip&gt; to any port 7770:7999 proto udp
 </code></pre>
 <blockquote>
-<p>Backend HTTP ports (<code>8000</code>, <code>8080</code>, <code>8090</code>) should <strong>never</strong> be opened to the public — NGINX is the only entry point.</p>
+<p>Backend HTTP ports (<code>8000</code>, <code>8080</code>, <code>8090</code>, <code>8100</code>) should <strong>never</strong> be opened to the public — NGINX is the only entry point.</p>
 </blockquote>
 <h3 id="systemd-services">Systemd Services</h3>
 <p>All FishMMO server components are designed to run as systemd services. Reference units:</p>
@@ -3415,10 +4006,11 @@ sudo systemctl enable --now apphealthmonitor
 <li><strong><code>fishmmo-ipfetch.service</code></strong> — IPFetch Web Server on port 8080</li>
 <li><strong><code>fishmmo-patcher.service</code></strong> — Patcher Web Server on port 8090</li>
 <li><strong><code>fishmmo-webgl.service</code></strong> — WebGL Web Server on port 8000</li>
+<li><strong><code>fishmmo-controlpanel.service</code></strong> — Control Panel on port 8100</li>
 </ul>
-<p>The generated service units set <code>Environment=ASPNETCORE_ENVIRONMENT=Production</code> and <code>Environment=FISHMMO_ENVIRONMENT=Production</code>, plus <code>Restart=always</code> / <code>RestartSec=5</code> and <code>After=network.target postgresql.service</code>. <strong><code>User=</code> is set to the account that ran the installer</strong>, not a dedicated service user — edit the unit if you want the servers to run as <code>fishmmo</code>. Each server must have been published to <code>bin/Release/net8.0/publish</code> first; the installer skips any it cannot find. Application secrets (gate secret, KEK, connection token HMAC key) are <strong>not</strong> set via environment variables or env files -- they are loaded from the database at startup by each server. Database credentials can be provided via <code>EnvironmentFile=-/etc/fishmmo/db-secrets.env</code> or the <code>FISHMMO_DB_*</code> environment variables.</p>
+<p>The generated service units set <code>Environment=ASPNETCORE_ENVIRONMENT=Production</code> and <code>Environment=FISHMMO_ENVIRONMENT=Production</code>, plus <code>Restart=always</code> / <code>RestartSec=5</code> and <code>After=network.target postgresql.service</code>. <strong><code>User=</code> is set to the account that ran the installer</strong>, not a dedicated service user — edit the unit if you want the servers to run as <code>fishmmo</code>. Each server must have been published to <code>Builds/&lt;project&gt;/Release/net8.0/publish</code> first; the installer skips any it cannot find. Application secrets (gate secret, KEK, connection token HMAC key) are <strong>not</strong> set via environment variables or env files -- they are loaded from the database at startup by each server. Database credentials can be provided via <code>EnvironmentFile=-/etc/fishmmo/db-secrets.env</code> or the <code>FISHMMO_DB_*</code> environment variables.</p>
 <pre><code class="lang-bash"># Verify after installer-generated registration:
-systemctl status fishmmo-ipfetch fishmmo-patcher fishmmo-webgl
+systemctl status fishmmo-ipfetch fishmmo-patcher fishmmo-webgl fishmmo-controlpanel
 </code></pre>
 <h3 id="port-reference">Port Reference</h3>
 <table>
@@ -3445,6 +4037,13 @@ systemctl status fishmmo-ipfetch fishmmo-patcher fishmmo-webgl
 <td>TCP</td>
 <td><code>0.0.0.0</code></td>
 <td>Public</td>
+</tr>
+<tr>
+<td>443</td>
+<td>NGINX (HTTP/3 for <code>play.</code>)</td>
+<td>UDP</td>
+<td><code>0.0.0.0</code></td>
+<td>Public (optional)</td>
 </tr>
 <tr>
 <td>5432</td>
@@ -3502,32 +4101,35 @@ systemctl status fishmmo-ipfetch fishmmo-patcher fishmmo-webgl
 <td><code>127.0.0.1</code></td>
 <td>Via NGINX reverse proxy only</td>
 </tr>
+<tr>
+<td>8100</td>
+<td>Control Panel</td>
+<td>TCP (HTTP)</td>
+<td><code>127.0.0.1</code></td>
+<td>Via NGINX reverse proxy only (<code>panel.</code>)</td>
+</tr>
 </tbody>
 </table>
 <blockquote>
 <p><strong>All backend services bind to loopback by default.</strong> NGINX is the only component with public-facing listeners. Desktop/native clients connect to NGINX's public IP for both HTTP APIs and UDP game traffic — from the client's perspective, it talks to <code>api.fishmmo.com:443</code> and <code>game.fishmmo.com:7770</code>; NGINX transparently proxies to the loopback-bound backend. If a backend server runs on a different machine, change its bind address and the corresponding NGINX upstream/stream target.</p>
 </blockquote>
 <h3 id="certbot-deploy-hook-tls-renewal">Certbot Deploy Hook (TLS Renewal)</h3>
-<p>A certbot deploy hook handles the TLS certificate lifecycle. <strong>The script is operator-supplied — it is not shipped in this repository</strong> — and must perform the following:</p>
-<pre><code>┌────────────────────────────────────────────────────┐
-│ certbot renew → new certs in /etc/letsencrypt/    │
-│     ↓                                              │
-│ certbot-fishmmo.sh (deploy hook)                   │
-│     ├─ Validate renewed certificate                │
-│     ├─ Copy certs → /etc/fishmmo/certs/            │
-│     ├─ chown fishmmo:fishmmo, chmod 640            │
-│     ├─ nginx -s reload (zero-downtime)             │
-│     └─ systemctl restart fishmmo-login fishmmo-world │
-│        + fishmmo-scene@* (rolling restart)          │
-└────────────────────────────────────────────────────┘
+<p>The Installer's Let's Encrypt action generates and installs the hook; there is nothing to write by hand. See <a href="#game-server-copy-and-renewal">Game server copy and renewal</a> for what it does.</p>
+<pre><code>┌──────────────────────────────────────────────────────────────┐
+│ certbot.timer → certbot renew                                │
+│   └─ DNS challenge: fishmmo-porkbun-hook.py auth / cleanup    │
+│ → new files in /etc/letsencrypt/live/&lt;domain&gt;/ (same key)    │
+│     ↓                                                        │
+│ /etc/letsencrypt/renewal-hooks/deploy/fishmmo-certificates   │
+│     ├─ check unexpired, check cert matches key               │
+│     ├─ copy → /etc/fishmmo/certs/release.*/ (root:fishmmo-certs 0640) │
+│     ├─ switch the 'current' symlink atomically               │
+│     └─ nginx -t &amp;&amp; systemctl reload nginx                    │
+│ Game servers: restart them yourself (MsQuic loads at start)  │
+└──────────────────────────────────────────────────────────────┘
 </code></pre>
-<p><strong>Install the hook:</strong></p>
-<pre><code class="lang-bash">sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-sudo install -m 755 certbot-fishmmo.sh \
-  /etc/letsencrypt/renewal-hooks/deploy/fishmmo.sh
-</code></pre>
-<p><strong>Test the renewal pipeline:</strong></p>
-<pre><code class="lang-bash">sudo certbot renew --dry-run --deploy-hook /etc/letsencrypt/renewal-hooks/deploy/fishmmo.sh
+<p><strong>Test the renewal pipeline</strong> (uses the staging server, changes nothing live):</p>
+<pre><code class="lang-bash">sudo certbot renew --dry-run
 </code></pre>
 <hr>
 <h2 id="architecture">Architecture</h2>
@@ -3623,7 +4225,7 @@ sudo install -m 755 certbot-fishmmo.sh \
 <h3 id="gameplay-simulation">Gameplay Simulation</h3>
 <p>Combat and movement run through one prediction pipeline rather than per-subsystem ones. The
 details are in
-<a href="FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/Prediction/README.html"><code>Assets/Scripts/Shared/Implementation/Entity/Prediction/README.md</code></a>;
+<a href="FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/Prediction/README.html"><code>Assets/FishMMO/Shared/Implementation/Entity/Prediction/README.md</code></a>;
 the shape is:</p>
 <table>
 <thead>
@@ -3660,7 +4262,7 @@ the shape is:</p>
 </tbody>
 </table>
 <p>Behaviour is pinned by roughly <strong>2,100 test methods across 221 fixtures</strong>
-(<a href="FishMMO-Unity/Assets/UnitTests/README.html"><code>Assets/UnitTests/README.md</code></a>), including a
+(<a href="FishMMO-Unity/Assets/FishMMO/Tests/UnitTests/README.html"><code>Assets/FishMMO/Tests/UnitTests/README.md</code></a>), including a
 closed-loop fixture that composes both halves of the lag-compensation derivation across a spread
 of round-trip times and asserts the server resolves to the position the shooter was rendering.</p>
 <h3 id="flow-diagram">Flow Diagram</h3>
@@ -3677,7 +4279,7 @@ of round-trip times and asserts the server resolves to the position the shooter 
         IPFetch[&quot;IPFetch Server&lt;br/&gt;:8080&lt;br/&gt;&lt;i&gt;Login server discovery&lt;/i&gt;&quot;]
         Patcher[&quot;Patcher Server&lt;br/&gt;:8090&lt;br/&gt;&lt;i&gt;Patch delivery&lt;/i&gt;&quot;]
         WebGL[&quot;WebGL Server&lt;br/&gt;:8000&lt;br/&gt;&lt;i&gt;Static file serving&lt;/i&gt;&quot;]
-        CMS[&quot;CMS Server&lt;br/&gt;&lt;i&gt;Account management API&lt;br/&gt;(scaffold — stubs only)&lt;/i&gt;&quot;]
+        Panel[&quot;Control Panel&lt;br/&gt;:8100&lt;br/&gt;&lt;i&gt;Admin dashboard + account API&lt;/i&gt;&quot;]
     end
 
     subgraph GameServers[&quot;Game Servers (GameServer executable)&quot;]
@@ -3714,7 +4316,7 @@ of round-trip times and asserts the server resolves to the position the shooter 
     SSL --&gt;|&quot;UDP stream :7770&quot;| Login
     SSL --&gt;|&quot;UDP stream :7780&quot;| World
     SSL --&gt;|&quot;UDP stream :7790+&quot;| Scene1
-    SSL --&gt;|&quot;api/Account&lt;br/&gt;api/Admin&quot;| CMS
+    SSL --&gt;|&quot;panel.fishmmo.com&quot;| Panel
 
     Player -.-&gt;|&quot;Direct UDP/QUIC&lt;br/&gt;(only if NGINX on&lt;br/&gt;separate machine)&quot;| Login
     Player -.-&gt;|&quot;Direct UDP/QUIC&lt;br/&gt;(only if NGINX on&lt;br/&gt;separate machine)&quot;| World
@@ -3727,6 +4329,7 @@ of round-trip times and asserts the server resolves to the position the shooter 
     PgBouncer --&gt; PostgreSQL
 
     IPFetch --&gt; PostgreSQL
+    Panel --&gt; PostgreSQL
     World --&gt; Scene1
     World --&gt; SceneN
 
@@ -3735,6 +4338,7 @@ of round-trip times and asserts the server resolves to the position the shooter 
     HealthMon -.-&gt;|&quot;Monitor &amp; restart&quot;| Scene1
     HealthMon -.-&gt;|&quot;Monitor &amp; restart&quot;| SceneN
     HealthMon -.-&gt;|&quot;Monitor &amp; restart&quot;| IPFetch
+    Panel -.-&gt;|&quot;planned: telemetry + commands&quot;| HealthMon
 
     DiscordBot --&gt;|&quot;Chat API&quot;| Scene1
 
@@ -3746,6 +4350,12 @@ of round-trip times and asserts the server resolves to the position the shooter 
 <hr>
 <h2 id="license">License</h2>
 <p>This project is licensed under the <strong>MIT License</strong>. See <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">LICENSE</a> for details.</p>
+<p>The MIT License covers first-party FishMMO code. Third-party components in this repository and in
+the builds made from it (for example FishNet, Kinematic Character Controller, MsQuic, quictls,
+Npgsql, Entity Framework Core and the other NuGet libraries) remain under their own licences. They
+are listed, with their licence texts, in <a href="https://github.com/jimdroberts/FishMMO/blob/main/THIRD-PARTY-NOTICES.md">THIRD-PARTY-NOTICES.md</a>; the
+per-product files that ship with each build are generated into <a href="https://github.com/jimdroberts/FishMMO/tree/main/Licenses">Licenses/</a> by
+<code>python3 Licenses/generate_notices.py</code> from <code>Licenses/components.json</code>.</p>
 
 </article>
 

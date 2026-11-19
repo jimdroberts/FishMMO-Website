@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_AbilityAddBroadcastSerializer" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer" class="text-break">
-Class AbilityAddBroadcastSerializer  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L128"><i class="bi bi-code-slash"></i></a>
+Class AbilityAddBroadcastSerializer  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L292"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -166,7 +166,7 @@ length prefix stays packed too — a count of a handful is one byte.</p>
 
   <h3 id="FishMMO_Shared_AbilityAddBroadcastSerializer_MAX_EVENTS" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.MAX_EVENTS">
   MAX_EVENTS
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L140"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L304"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Hard cap on the crafted event ids carried by one <a class="xref" href="FishMMO.Shared.AbilityAddBroadcast.html">AbilityAddBroadcast</a>.</p>
@@ -201,6 +201,65 @@ out — the count is read straight off the wire and is otherwise unbounded.</p>
 
 
 
+
+  <h3 id="FishMMO_Shared_AbilityAddBroadcastSerializer_MaxAbilities" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.MaxAbilities">
+  MaxAbilities
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L335"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Upper bound accepted for a crafted-ability array length, against a corrupt stream.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const int MaxAbilities = 8192</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_AbilityAddBroadcastSerializer_MaxAbilities_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+The weakest anchor of the seven bounds added here, and worth being honest about. The
+other arrays are one entry per authored template and so are bounded, however loosely, by
+the content in the project. These are crafted ability INSTANCES — each a database row
+with its own <code>ID</code> — and a player assembles them from combinations of templates, so
+the count is bounded by nothing in the codebase: no cap on crafting, no cap in the
+controller, and <code>Constants.Configuration.MaximumPlayerHotkeys</code> (12) bounds only what
+can be BOUND to a key, not what can be owned.
+</p>
+<p>
+So this is a clearly-labelled generous ceiling, not a derived limit, and it is set high
+deliberately: the failure mode of a bound that is too low is that a dedicated player's
+login sync silently drops the abilities past it, and abilities are the one thing on this
+list that cost real time to acquire. Eight thousand instances is a long way past any
+plausible collection and still a trivial allocation, which is the trade this bound is
+making — it exists only to keep a corrupt length from turning into a multi-gigabyte
+<code>new AbilityAddBroadcast[...]</code>.
+</p>
+<p>
+If crafted abilities ever gain a real per-character cap, this should be re-anchored to it
+rather than left as a guess.
+</p>
+<p>
+Server → client, so the realistic trigger is a mangled or truncated stream rather than a
+hostile client.
+</p>
+</div>
+
+
+
+
   <h2 class="section" id="methods">Methods
 </h2>
 
@@ -209,7 +268,7 @@ out — the count is read straight off the wire and is otherwise unbounded.</p>
 
   <h3 id="FishMMO_Shared_AbilityAddBroadcastSerializer_ReadAbilityAddBroadcast_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.ReadAbilityAddBroadcast(FishNet.Serializing.Reader)">
   ReadAbilityAddBroadcast(Reader)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L164"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L359"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Reads an <a class="xref" href="FishMMO.Shared.AbilityAddBroadcast.html">AbilityAddBroadcast</a>. An empty event array reads back as an empty array, never null.</p>
@@ -242,11 +301,55 @@ out — the count is read straight off the wire and is otherwise unbounded.</p>
 
 
 
+  <a id="FishMMO_Shared_AbilityAddBroadcastSerializer_ReadAbilityAddBroadcastArray_" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.ReadAbilityAddBroadcastArray*"></a>
+
+  <h3 id="FishMMO_Shared_AbilityAddBroadcastSerializer_ReadAbilityAddBroadcastArray_FishNet_Serializing_Reader_" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.ReadAbilityAddBroadcastArray(FishNet.Serializing.Reader)">
+  ReadAbilityAddBroadcastArray(Reader)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L421"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads an array of <a class="xref" href="FishMMO.Shared.AbilityAddBroadcast.html">AbilityAddBroadcast</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static AbilityAddBroadcast[] ReadAbilityAddBroadcastArray(this Reader reader)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>reader</code> <span class="xref">Reader</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Shared.AbilityAddBroadcast.html">AbilityAddBroadcast</a>[]</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_AbilityAddBroadcastSerializer_ReadAbilityAddBroadcastArray_FishNet_Serializing_Reader__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A length past <a class="xref" href="FishMMO.Shared.AbilityAddBroadcastSerializer.html#FishMMO_Shared_AbilityAddBroadcastSerializer_MaxAbilities">MaxAbilities</a> cannot be allocated and cannot be resynchronised
+past either — and less so here than anywhere else in this file, because each element is
+variable length (its own event count), so the bytes to skip are not even computable from
+the rejected count. The array comes back empty. Only the sender's own -1, which is not a
+length at all, means null.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Shared_AbilityAddBroadcastSerializer_WriteAbilityAddBroadcast_" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.WriteAbilityAddBroadcast*"></a>
 
   <h3 id="FishMMO_Shared_AbilityAddBroadcastSerializer_WriteAbilityAddBroadcast_FishNet_Serializing_Writer_FishMMO_Shared_AbilityAddBroadcast_" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.WriteAbilityAddBroadcast(FishNet.Serializing.Writer,FishMMO.Shared.AbilityAddBroadcast)">
   WriteAbilityAddBroadcast(Writer, AbilityAddBroadcast)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L143"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L338"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Writes an <a class="xref" href="FishMMO.Shared.AbilityAddBroadcast.html">AbilityAddBroadcast</a>. A null event array travels as length 0.</p>
@@ -272,6 +375,48 @@ out — the count is read straight off the wire and is otherwise unbounded.</p>
 
 
 
+
+
+
+
+  <a id="FishMMO_Shared_AbilityAddBroadcastSerializer_WriteAbilityAddBroadcastArray_" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.WriteAbilityAddBroadcastArray*"></a>
+
+  <h3 id="FishMMO_Shared_AbilityAddBroadcastSerializer_WriteAbilityAddBroadcastArray_FishNet_Serializing_Writer_FishMMO_Shared_AbilityAddBroadcast___" data-uid="FishMMO.Shared.AbilityAddBroadcastSerializer.WriteAbilityAddBroadcastArray(FishNet.Serializing.Writer,FishMMO.Shared.AbilityAddBroadcast[])">
+  WriteAbilityAddBroadcastArray(Writer, AbilityAddBroadcast[])
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Network/Character/AbilityBroadcasts.cs/#L398"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Writes an array of <a class="xref" href="FishMMO.Shared.AbilityAddBroadcast.html">AbilityAddBroadcast</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static void WriteAbilityAddBroadcastArray(this Writer writer, AbilityAddBroadcast[] value)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>writer</code> <span class="xref">Writer</span></dt>
+    <dd></dd>
+    <dt><code>value</code> <a class="xref" href="FishMMO.Shared.AbilityAddBroadcast.html">AbilityAddBroadcast</a>[]</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Shared_AbilityAddBroadcastSerializer_WriteAbilityAddBroadcastArray_FishNet_Serializing_Writer_FishMMO_Shared_AbilityAddBroadcast____remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Explicit because the element carries <code>[UseGlobalCustomSerializer]</code>. That attribute
+tells FishNet the element has a hand-written serializer, and codegen then declines to
+synthesise one for the ARRAY as well — it emits nothing and says nothing at build time.
+The gap only appears when a broadcast carrying the array is actually sent, as
+&quot;Write method not found for AbilityAddBroadcast[]&quot;, by which point the send has already failed.
+A null array is written as length -1 so it round-trips as null rather than as empty.</p>
+</div>
 
 
 

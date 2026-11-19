@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class KnockbackHitAction | FishMMO Documentation ">
       
-      <meta name="description" content="Action that applies a knockback force to a target character, pushing them away from the source. Uses the KCC motor&#39;s velocity system for collision-aware knockback instead of direct Transform.position manipulation, which would bypass prediction, reconciliation and collision detection.  The displacement is SERVER ONLY — see the note in  for why this is the one feedback action that did not move to EcaAuthority.MayPredict. The victim&#39;s own client receives it through the reconcile, and the attacker&#39;s client plays a cosmetic flinch () in the meantime.">
+      <meta name="description" content="Action that applies a knockback force to a target character, pushing them away from the source.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_KnockbackHitAction" data-uid="FishMMO.Shared.KnockbackHitAction" class="text-break">
-Class KnockbackHitAction  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/KnockbackHitAction.cs/#L20"><i class="bi bi-code-slash"></i></a>
+Class KnockbackHitAction  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/ECA/Actions/Character/KnockbackHitAction.cs/#L51"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,16 +97,7 @@ Class KnockbackHitAction  <a class="header-action link-secondary" title="View so
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Action that applies a knockback force to a target character, pushing them away from the source.
-Uses the KCC motor's velocity system for collision-aware knockback instead of direct
-Transform.position manipulation, which would bypass prediction, reconciliation and collision
-detection.</p>
-<p>
-The displacement is SERVER ONLY — see the note in <a class="xref" href="FishMMO.Shared.KnockbackHitAction.html#FishMMO_Shared_KnockbackHitAction_Execute_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_">Execute(ICharacter, EventData)</a> for why this is the
-one feedback action that did not move to <code>EcaAuthority.MayPredict</code>. The victim's own
-client receives it through the reconcile, and the attacker's client plays a cosmetic flinch
-(<a class="xref" href="FishMMO.Shared.Core.EventData.html">PlayPredictedReaction(EventData)</a>) in the meantime.
-</p>
+  <div class="markdown summary"><p>Action that applies a knockback force to a target character, pushing them away from the source.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -146,6 +137,9 @@ public class KnockbackHitAction : BaseAction, IAction</code></pre>
     </div>
     <div>
       <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_IsPresentation">BaseAction.IsPresentation</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_ReappliesOnReplay">BaseAction.ReappliesOnReplay</a>
     </div>
     <div>
       <a class="xref" href="FishMMO.Shared.Core.BaseAction.html#FishMMO_Shared_Core_BaseAction_IsServer_FishMMO_Shared_Core_ICharacter_">BaseAction.IsServer(ICharacter)</a>
@@ -194,6 +188,27 @@ public class KnockbackHitAction : BaseAction, IAction</code></pre>
 
 
 
+  <h2 id="FishMMO_Shared_KnockbackHitAction_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+<b>Direction follows the attack</b> (<a class="xref" href="FishMMO.Shared.KnockbackHitAction.html#FishMMO_Shared_KnockbackHitAction_Direction">Direction</a>, <a class="xref" href="FishMMO.Shared.KnockbackDirection.html">ResolveOrigin(KnockbackDirection, bool, bool, bool, AbilitySpawnTarget)</a>). An area of effect is a
+blast radius and pushes everyone it catches away from its centre; a projectile pushes along its own flight, so a
+victim facing the shot is driven backwards; a melee swing pushes away from the one swinging. It used to push along
+the ability object's forward in every case, which sent everyone in a blast the same way, and did nothing at all for
+an ability with no object (a self-centred area), because there was no forward to read.
+</p>
+<p>
+<b>Who moves.</b> A player is moved through its KCC motor (a velocity impulse the motor resolves against collision,
+prediction and reconciliation). An NPC — monsters and wildlife alike — is moved through its server brain
+(<a class="xref" href="FishMMO.Shared.Core.INPCBrain.html#FishMMO_Shared_Core_INPCBrain_ApplyKnockback_UnityEngine_Vector3_">ApplyKnockback(Vector3)</a>), which slides the NavMesh agent, so it can be shoved along the ground
+but never through a wall or off the mesh. Both are horizontal for an NPC; a player keeps the full direction.
+</p>
+<p>
+The displacement is SERVER ONLY — see the note in <a class="xref" href="FishMMO.Shared.KnockbackHitAction.html#FishMMO_Shared_KnockbackHitAction_Execute_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_">Execute(ICharacter, EventData)</a> for why this is the
+one feedback action that did not move to <code>EcaAuthority.MayPredict</code>. The victim's own
+client receives it through the reconcile (or the NPC's transform stream), and the attacker's client plays a
+cosmetic flinch (<a class="xref" href="FishMMO.Shared.Core.ICharacter.html">PlayPredictedReaction(ICharacter, EventData, float)</a>) in the meantime.
+</p>
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -201,9 +216,74 @@ public class KnockbackHitAction : BaseAction, IAction</code></pre>
 
 
 
+  <h3 id="FishMMO_Shared_KnockbackHitAction_DefaultDeceleration" data-uid="FishMMO.Shared.KnockbackHitAction.DefaultDeceleration">
+  DefaultDeceleration
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/ECA/Actions/Character/KnockbackHitAction.cs/#L66"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>How fast a knockback bleeds off, metres per second per second: the NPC brain's law
+(<code>AIController.KnockbackDeceleration</code>) and the attacker's predicted shove
+(<a class="xref" href="FishMMO.Shared.CharacterHitReaction.html#FishMMO_Shared_CharacterHitReaction_Shove_UnityEngine_Vector3_System_Single_System_Single_">Shove(Vector3, float, float)</a>), so the shove drawn now is the slide the server makes.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const float DefaultDeceleration = 24</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Shared_KnockbackHitAction_Direction" data-uid="FishMMO.Shared.KnockbackHitAction.Direction">
+  Direction
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/ECA/Actions/Character/KnockbackHitAction.cs/#L72"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Which way the victim is pushed. <a class="xref" href="FishMMO.Shared.KnockbackDirection.html#FishMMO_Shared_KnockbackDirection_Auto">Auto</a> decides from the attack's shape.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;Which way the victim is pushed. Auto: area = away from the blast centre, projectile = along its flight, melee = away from the caster.&quot;)]
+public KnockbackDirection Direction</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Shared.KnockbackDirection.html">KnockbackDirection</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
   <h3 id="FishMMO_Shared_KnockbackHitAction_ForceValue" data-uid="FishMMO.Shared.KnockbackHitAction.ForceValue">
   ForceValue
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/KnockbackHitAction.cs/#L28"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/ECA/Actions/Character/KnockbackHitAction.cs/#L59"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The value provider that determines the initial knockback force applied to the target.</p>
@@ -211,7 +291,7 @@ public class KnockbackHitAction : BaseAction, IAction</code></pre>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">[Tooltip(&quot;The value provider that determines the initial knockback force.&quot;)]
+    <pre><code class="lang-csharp hljs">[Tooltip(&quot;The value provider that determines the initial knockback force (metres per second of push).&quot;)]
 [SerializeReference]
 public IFloatValueProvider ForceValue</code></pre>
   </div>
@@ -241,12 +321,10 @@ public IFloatValueProvider ForceValue</code></pre>
 
   <h3 id="FishMMO_Shared_KnockbackHitAction_Execute_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.KnockbackHitAction.Execute(FishMMO.Shared.Core.ICharacter,FishMMO.Shared.Core.EventData)">
   Execute(ICharacter, EventData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Actions/Character/KnockbackHitAction.cs/#L37"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/ECA/Actions/Character/KnockbackHitAction.cs/#L180"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Applies a knockback effect to the target character if they are not immortal.
-Knockback is applied as a single-tick velocity impulse through the KCC motor,
-ensuring deterministic prediction, server reconciliation, and collision awareness.</p>
+  <div class="markdown level1 summary"><p>Applies a knockback effect to the target character if they are not immortal.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 

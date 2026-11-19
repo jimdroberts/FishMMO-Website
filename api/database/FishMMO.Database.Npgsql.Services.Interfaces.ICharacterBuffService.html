@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Interface ICharacterBuffService | FishMMO Documentation ">
       
-      <meta name="description" content="Service interface for managing character buffs.">
+      <meta name="description" content="Service interface for reading character buffs, and for tombstoning them on character deletion.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterBuffService" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ICharacterBuffService" class="text-break">
-Interface ICharacterBuffService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterBuffService.cs/#L13"><i class="bi bi-code-slash"></i></a>
+Interface ICharacterBuffService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ICharacterBuffService.cs/#L18"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,12 +97,12 @@ Interface ICharacterBuffService  <a class="header-action link-secondary" title="
   <dl><dt>Assembly</dt><dd>FishMMO-DB.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Service interface for managing character buffs.</p>
+  <div class="markdown summary"><p>Service interface for reading character buffs, and for tombstoning them on character deletion.</p>
 </div>
   <div class="markdown conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public interface ICharacterBuffService : IPersistManyAction&lt;CharacterBuffData&gt;, IDeleteByKeyVersionedAction&lt;long&gt;, IFetchCollectionByKeyAction&lt;long, CharacterBuffData&gt;</code></pre>
+    <pre><code class="lang-csharp hljs">public interface ICharacterBuffService : IDeleteByKeyVersionedAction&lt;long&gt;, IFetchCollectionByKeyAction&lt;long, CharacterBuffData&gt;</code></pre>
   </div>
 
 
@@ -115,9 +115,6 @@ Interface ICharacterBuffService  <a class="header-action link-secondary" title="
     <dt>Inherited Members</dt>
     <dd>
     <div>
-      <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.Actions.IPersistManyAction-1.html#FishMMO_Database_Npgsql_Services_Interfaces_Actions_IPersistManyAction_1_PersistAsync_System_Collections_Generic_IEnumerable__0__System_Threading_CancellationToken_">IPersistManyAction&lt;CharacterBuffData&gt;.PersistAsync(IEnumerable&lt;CharacterBuffData&gt;, CancellationToken)</a>
-    </div>
-    <div>
       <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.Actions.IDeleteByKeyVersionedAction-1.html#FishMMO_Database_Npgsql_Services_Interfaces_Actions_IDeleteByKeyVersionedAction_1_DeleteAsync__0_System_Int64_System_Threading_CancellationToken_">IDeleteByKeyVersionedAction&lt;long&gt;.DeleteAsync(long, long, CancellationToken)</a>
     </div>
     <div>
@@ -129,8 +126,13 @@ Interface ICharacterBuffService  <a class="header-action link-secondary" title="
 
 
   <h2 id="FishMMO_Database_Npgsql_Services_Interfaces_ICharacterBuffService_remarks">Remarks</h2>
-  <div class="markdown level0 remarks"><p>Buff persistence and deletion should be version-gated via the logical <code>Version</code>
-so stale updates are rejected and newer authoritative updates win.</p>
+  <div class="markdown level0 remarks"><p><b>There is deliberately no write here.</b> A character's buffs are written as one set with
+its character row — <a class="xref" href="FishMMO.Database.Data.CharacterData.html#FishMMO_Database_Data_CharacterData_Buffs">Buffs</a>, applied by
+<code>ICharacterService.PersistOwnedAsync</code>, <code>PersistAsync</code> and <code>PersistManyAsync</code> —
+because the row's version is the only per-character ordering that can make &quot;delete what the
+set no longer names&quot; safe against saves landing out of order. The per-row upsert that used to
+be here could only add and overwrite, so an expired or dismissed buff came back at the next
+login; a second writer beside the set would reopen exactly that.</p>
 </div>
 
 

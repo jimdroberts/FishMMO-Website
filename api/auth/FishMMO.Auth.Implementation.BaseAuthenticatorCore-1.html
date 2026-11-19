@@ -178,7 +178,7 @@ IP resolution) by implementing the abstract members, then call
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1__ctor_FishMMO_Auth_Core_IAccountManager__0__" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.#ctor(FishMMO.Auth.Core.IAccountManager{`0})">
   BaseAuthenticatorCore(IAccountManager&lt;TConnection&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L168"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L226"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes the core with the required account manager.</p>
@@ -214,12 +214,12 @@ IP resolution) by implementing the abstract members, then call
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthHardDeadlineSeconds" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.AuthHardDeadlineSeconds">
   AuthHardDeadlineSeconds
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L33"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L40"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Hard deadline in seconds for any single authentication attempt.
-<a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_RefreshAuthTtl__0_">RefreshAuthTtl(TConnection)</a> will not extend a connection's TTL beyond this
-absolute limit from its original start time, preventing unbounded TTL extension.</p>
+  <div class="markdown level1 summary"><p>Seconds into one authenticating phase after which <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_RefreshAuthTtl__0_">RefreshAuthTtl(TConnection)</a> no longer
+extends it, preventing unbounded TTL extension. See
+<a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html#FishMMO_Auth_Core_PendingAuthRules_AuthenticatingCapSeconds">AuthenticatingCapSeconds</a>.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -247,10 +247,11 @@ absolute limit from its original start time, preventing unbounded TTL extension.
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthStaleTtlSeconds" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.AuthStaleTtlSeconds">
   AuthStaleTtlSeconds
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L26"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L33"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Authentication TTL in seconds. Connections that do not complete auth within this window are purged.</p>
+  <div class="markdown level1 summary"><p>Seconds an authenticating connection may go without progress before it is purged. See
+<a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html#FishMMO_Auth_Core_PendingAuthRules_ProgressTtlSeconds">ProgressTtlSeconds</a>.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -271,6 +272,10 @@ absolute limit from its original start time, preventing unbounded TTL extension.
 
 
 
+  <h4 class="section" id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthStaleTtlSeconds_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Machine work only. A connection waiting on the player's two-factor code is bounded by
+<a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TwoFactorWindowSeconds">TwoFactorWindowSeconds</a> instead.</p>
+</div>
 
 
 
@@ -278,10 +283,12 @@ absolute limit from its original start time, preventing unbounded TTL extension.
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthSweepMaxRemovals" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.AuthSweepMaxRemovals">
   AuthSweepMaxRemovals
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L65"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L113"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Maximum stale auth entries purged per sweep.</p>
+  <div class="markdown level1 summary"><p>Maximum stale auth entries purged per sweep. The sweep runs every tick and only ever
+looks at the oldest entries, so this bounds one tick's disconnect work, not coverage:
+whatever is left is at the head for the next tick.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -307,17 +314,17 @@ absolute limit from its original start time, preventing unbounded TTL extension.
 
 
 
-  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthSweepMaxScan" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.AuthSweepMaxScan">
-  AuthSweepMaxScan
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_DefaultMaxPendingAuthConnections" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.DefaultMaxPendingAuthConnections">
+  DefaultMaxPendingAuthConnections
   <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L62"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Maximum stale auth entries scanned per sweep.</p>
+  <div class="markdown level1 summary"><p>Default for <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxPendingAuthConnections">MaxPendingAuthConnections</a>.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">protected const int AuthSweepMaxScan = 256</code></pre>
+    <pre><code class="lang-csharp hljs">public const int DefaultMaxPendingAuthConnections = 10000</code></pre>
   </div>
 
 
@@ -338,9 +345,40 @@ absolute limit from its original start time, preventing unbounded TTL extension.
 
 
 
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_DefaultTwoFactorWindowSeconds" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.DefaultTwoFactorWindowSeconds">
+  DefaultTwoFactorWindowSeconds
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L43"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Default for <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TwoFactorWindowSeconds">TwoFactorWindowSeconds</a>; see <a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html#FishMMO_Auth_Core_PendingAuthRules_DefaultTwoFactorWindowSeconds">DefaultTwoFactorWindowSeconds</a>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const float DefaultTwoFactorWindowSeconds = 120</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandshakeIpBurstLimit" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.HandshakeIpBurstLimit">
   HandshakeIpBurstLimit
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L56"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L103"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Maximum Phase-2 handshake completions accepted from one IP inside
@@ -378,7 +416,7 @@ meaningfully weakening the sustained per-IP throttle the limiter exists for.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandshakeIpWindowSeconds" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.HandshakeIpWindowSeconds">
   HandshakeIpWindowSeconds
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L44"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L91"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Duration of the per-IP Phase-2 handshake measurement window.
@@ -412,10 +450,10 @@ while allowing a burst of near-simultaneous completions from one IP.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandshakeRateLimitSweepMaxRemovals" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.HandshakeRateLimitSweepMaxRemovals">
   HandshakeRateLimitSweepMaxRemovals
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L71"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L116"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Maximum entries removed per handshake rate-limit sweep.</p>
+  <div class="markdown level1 summary"><p>Maximum closed windows removed per handshake rate-limit sweep.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -441,40 +479,9 @@ while allowing a burst of near-simultaneous completions from one IP.</p>
 
 
 
-  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandshakeRateLimitSweepMaxScan" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.HandshakeRateLimitSweepMaxScan">
-  HandshakeRateLimitSweepMaxScan
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L68"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Maximum entries scanned per handshake rate-limit sweep.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">protected const int HandshakeRateLimitSweepMaxScan = 4096</code></pre>
-  </div>
-
-
-
-
-  <h4 class="section">Field Value</h4>
-  <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
-
-
-
-
-
-
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxGlobalHandshakesPerSecond" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.MaxGlobalHandshakesPerSecond">
   MaxGlobalHandshakesPerSecond
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L59"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L106"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Maximum X25519 handshakes accepted in a single 1-second window.</p>
@@ -502,37 +509,6 @@ while allowing a burst of near-simultaneous completions from one IP.</p>
 
 
 
-
-  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxPendingAuthConnections" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.MaxPendingAuthConnections">
-  MaxPendingAuthConnections
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L36"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Maximum number of concurrent pending authentication connections.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">protected const int MaxPendingAuthConnections = 10000</code></pre>
-  </div>
-
-
-
-
-  <h4 class="section">Field Value</h4>
-  <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
-
-
-
-
-
-
   <h2 class="section" id="properties">Properties
 </h2>
 
@@ -541,7 +517,7 @@ while allowing a burst of near-simultaneous completions from one IP.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AccountManager" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.AccountManager">
   AccountManager
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L151"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L197"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The account manager for this authenticator.</p>
@@ -573,7 +549,7 @@ while allowing a burst of near-simultaneous completions from one IP.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ExpectedGameVersion" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.ExpectedGameVersion">
   ExpectedGameVersion
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L159"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L205"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Expected game version string (e.g. &quot;0.1.0&quot;). Set by the server host before
@@ -608,7 +584,7 @@ are rejected with <a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationRe
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_IsWorkerIdle" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.IsWorkerIdle">
   IsWorkerIdle
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L249"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L302"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns true when no async worker operations are in-flight.
@@ -642,7 +618,7 @@ channel emptiness. Default returns true.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_LogPrefix" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.LogPrefix">
   LogPrefix
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L162"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L208"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Log source tag used in all log messages emitted by this core.</p>
@@ -670,15 +646,207 @@ channel emptiness. Default returns true.</p>
 
 
 
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxPendingAuthConnections_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.MaxPendingAuthConnections*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxPendingAuthConnections" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.MaxPendingAuthConnections">
+  MaxPendingAuthConnections
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L77"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Maximum number of connections allowed to be mid-authentication at once. A handshake
+that would exceed it is offered to <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnHandshakeDeferred__0_">OnHandshakeDeferred(TConnection)</a> (the login queue)
+and dropped when that declines.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int MaxPendingAuthConnections { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxPendingAuthConnections_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Only connections still authenticating count; a player at the two-factor prompt does not,
+and the whole pending set, prompts included, is instead held to
+<a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html#FishMMO_Auth_Core_PendingAuthRules_PendingCeilingMultiplier">PendingCeilingMultiplier</a> times this (see
+<a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html#FishMMO_Auth_Core_PendingAuthRules_AdmitsNewPending_System_Int32_System_Int32_System_Int32_">AdmitsNewPending(int, int, int)</a>). Tracking ends when a connection
+authenticates (<a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_EndAuthTracking__0_">EndAuthTracking(TConnection)</a>), is purged, or runs out of time. Set by the
+host from configuration before connections are accepted; values below 1 are raised to 1.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_NowSeconds_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.NowSeconds*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_NowSeconds" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.NowSeconds">
+  NowSeconds
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L220"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The core's clock: seconds on this process's monotonic clock. Every duration the core
+times — the pending-authentication limits, the two-factor window, the rate limits and
+debounces — reads it here.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected virtual double NowSeconds { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_NowSeconds_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Only differences between readings mean anything. Virtual so a test can move time forward
+past a two-factor window or a debounce without waiting for it; nothing else overrides it,
+and an override must never run backwards.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_PendingAuthCount_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.PendingAuthCount*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_PendingAuthCount" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.PendingAuthCount">
+  PendingAuthCount
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L796"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Connections currently mid-authentication, awaiting a second factor included.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int PendingAuthCount { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TwoFactorWindowSeconds_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.TwoFactorWindowSeconds*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TwoFactorWindowSeconds" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.TwoFactorWindowSeconds">
+  TwoFactorWindowSeconds
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L55"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Seconds a player has to answer one two-factor prompt before the connection is dropped.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public float TwoFactorWindowSeconds { get; set; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.single">float</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TwoFactorWindowSeconds_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Every prompt gets the whole window: the first, and each re-prompt after a counted wrong
+code. Set by the host from configuration; values are brought into
+[<a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html#FishMMO_Auth_Core_PendingAuthRules_MinTwoFactorWindowSeconds">MinTwoFactorWindowSeconds</a>, <a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html#FishMMO_Auth_Core_PendingAuthRules_MaxTwoFactorWindowSeconds">MaxTwoFactorWindowSeconds</a>]
+(see <a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html#FishMMO_Auth_Core_PendingAuthRules_ClampTwoFactorWindow_System_Double_">ClampTwoFactorWindow(double)</a>). A change applies to prompts
+already on screen too.</p>
+</div>
+
+
+
+
   <h2 class="section" id="methods">Methods
 </h2>
+
+
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BeginAwaitingTwoFactor_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.BeginAwaitingTwoFactor*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BeginAwaitingTwoFactor__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.BeginAwaitingTwoFactor(`0)">
+  BeginAwaitingTwoFactor(TConnection)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L717"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Puts a connection on the two-factor prompt: from now it has
+<a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TwoFactorWindowSeconds">TwoFactorWindowSeconds</a> to send a code, and nothing but a code starts
+the clock again.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected void BeginAwaitingTwoFactor(TConnection conn)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The connection being prompted.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BeginAwaitingTwoFactor__0__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Call immediately before sending the prompt — <code>TwoFactorRequired</code>, or a re-prompt
+after a counted attempt — so every prompt the player sees carries a full window. Does
+nothing for a connection no longer tracked; it is already being dropped.</p>
+</div>
+
+
 
 
   <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BroadcastAuthResult_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.BroadcastAuthResult*"></a>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BroadcastAuthResult__0_FishMMO_Auth_Core_ClientAuthenticationResult_System_Boolean_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.BroadcastAuthResult(`0,FishMMO.Auth.Core.ClientAuthenticationResult,System.Boolean)">
   BroadcastAuthResult(TConnection, ClientAuthenticationResult, bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L819"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L911"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Broadcasts an authentication result to a single connection.</p>
@@ -717,7 +885,7 @@ channel emptiness. Default returns true.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BroadcastCookieChallenge__0_System_Byte___" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.BroadcastCookieChallenge(`0,System.Byte[])">
   BroadcastCookieChallenge(TConnection, byte[])
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L785"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L877"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Sends a cookie-challenge <code>ServerHandshake</code> response to the client.
@@ -754,7 +922,7 @@ Called on the network-receive thread — must be non-blocking.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_BroadcastServerHandshake__0_System_Byte___System_UInt16_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.BroadcastServerHandshake(`0,System.Byte[],System.UInt16)">
   BroadcastServerHandshake(TConnection, byte[], ushort)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L795"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L887"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Sends the final <code>ServerHandshake</code> response (with the server's X25519 public key)
@@ -795,7 +963,7 @@ Called on the network-receive thread — must be non-blocking.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ClearTransientAuthState_System_Int32_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.ClearTransientAuthState(System.Int32)">
   ClearTransientAuthState(int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L696"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L743"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears transient per-connection authenticator TTL tracking state.</p>
@@ -828,7 +996,7 @@ Called on the network-receive thread — must be non-blocking.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_DisconnectConnection__0_System_Boolean_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.DisconnectConnection(`0,System.Boolean)">
   DisconnectConnection(TConnection, bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L802"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L894"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Disconnects the specified connection.</p>
@@ -860,11 +1028,57 @@ Called on the network-receive thread — must be non-blocking.</p>
 
 
 
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_EndAuthTracking_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.EndAuthTracking*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_EndAuthTracking__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.EndAuthTracking(`0)">
+  EndAuthTracking(TConnection)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L765"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Ends pending-authentication tracking for a connection that has just authenticated.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void EndAuthTracking(TConnection conn)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The connection that authenticated.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_EndAuthTracking__0__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Called by the host when it applies a successful authentication result. Until this
+existed nothing ended tracking on success: every authenticated connection went on
+holding one of the <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_MaxPendingAuthConnections">MaxPendingAuthConnections</a> slots until its TTL ran
+out, and the stale sweep then found it authenticated and logged it as a recycled
+connection — a warning for every successful sign-in that stayed connected for longer
+than <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthStaleTtlSeconds">AuthStaleTtlSeconds</a>.</p>
+<p>
+Removes only the entry that belongs to <code class="paramref">conn</code>, so a late call for a
+connection whose client ID has since been recycled cannot end the new connection's
+tracking.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_EnqueueMainThread_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.EnqueueMainThread*"></a>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_EnqueueMainThread__0_System_Action_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.EnqueueMainThread(`0,System.Action)">
   EnqueueMainThread(TConnection, Action)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L811"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L903"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Enqueues an action to be executed on the main/UI thread.
@@ -902,7 +1116,7 @@ Non-Unity implementations may execute immediately or use their own dispatcher.</
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_GetConnectionAddress__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.GetConnectionAddress(`0)">
   GetConnectionAddress(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L771"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L863"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns the remote IP address (or equivalent string identifier) for the connection.
@@ -940,7 +1154,7 @@ Used for cookie challenge IP binding and rate limiting.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_GetConnectionClientId__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.GetConnectionClientId(`0)">
   GetConnectionClientId(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L777"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L869"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns the numeric client ID for the connection (e.g., FishNet <code>ClientId</code>).
@@ -978,7 +1192,7 @@ Used as the key for TTL tracking dictionaries.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_HandleConnectionStopped__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.HandleConnectionStopped(`0)">
   HandleConnectionStopped(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L727"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L819"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called by the hosting transport layer when a connection has been disconnected.
@@ -1012,7 +1226,7 @@ Purges all authenticator state for the connection without disconnecting (already
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_InitializeWorkers_System_Threading_CancellationToken_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.InitializeWorkers(System.Threading.CancellationToken)">
   InitializeWorkers(CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L180"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L238"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Generates a fresh cookie HMAC key and starts protocol-specific workers.
@@ -1046,7 +1260,7 @@ Must be called before accepting connections.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_InitializeWorkersCore_System_Threading_CancellationToken_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.InitializeWorkersCore(System.Threading.CancellationToken)">
   InitializeWorkersCore(CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L191"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L249"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Subclass-specific worker initialization: create channels and start worker tasks.
@@ -1076,11 +1290,49 @@ Called after the base generates the cookie key.</p>
 
 
 
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_IsAuthPending_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.IsAuthPending*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_IsAuthPending__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.IsAuthPending(`0)">
+  IsAuthPending(TConnection)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L793"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Whether <code class="paramref">conn</code> has completed its handshake and is still authenticating
+or awaiting its second factor — in the hands of this core's time limits.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool IsAuthPending(TConnection conn)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_IsConnectionAuthenticated_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.IsConnectionAuthenticated*"></a>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_IsConnectionAuthenticated__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.IsConnectionAuthenticated(`0)">
   IsConnectionAuthenticated(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L765"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L857"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns whether this connection has already completed authentication.
@@ -1118,7 +1370,7 @@ Called on the network-receive thread — must be thread-safe and non-blocking.</
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnAuthSweep" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.OnAuthSweep">
   OnAuthSweep()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L259"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L312"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Override for subclass-specific logic that runs alongside the stale-auth sweep.</p>
@@ -1145,7 +1397,7 @@ Called on the network-receive thread — must be thread-safe and non-blocking.</
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnHandshakeDeferred__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.OnHandshakeDeferred(`0)">
   OnHandshakeDeferred(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L269"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L322"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Invoked when a handshake cannot be admitted because the pending authentication
@@ -1187,7 +1439,7 @@ should NOT be disconnected; return <code>false</code> (default) to drop the hand
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnHandshakeReceived__0_System_Byte___System_Byte___System_String_System_UInt16_System_UInt16_System_String_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.OnHandshakeReceived(`0,System.Byte[],System.Byte[],System.String,System.UInt16,System.UInt16,System.String)">
   OnHandshakeReceived(TConnection, byte[], byte[], string, ushort, ushort, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L435"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L488"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Processes an incoming client handshake. Must be called from the transport layer
@@ -1198,7 +1450,7 @@ Runs with no blocking I/O — safe to call on a network-receive thread.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public void OnHandshakeReceived(TConnection conn, byte[] publicKey, byte[] cookie, string connectionToken, ushort minVersion, ushort maxVersion, string gameVersion = &quot;&quot;)</code></pre>
+    <pre><code class="lang-csharp hljs">public bool OnHandshakeReceived(TConnection conn, byte[] publicKey, byte[] cookie, string connectionToken, ushort minVersion, ushort maxVersion, string gameVersion = &quot;&quot;)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -1224,6 +1476,14 @@ Runs with no blocking I/O — safe to call on a network-receive thread.</p>
     <dd></dd>
   </dl>
 
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> when this call completed the key agreement and the connection is now tracked
+as pending authentication; <code>false</code> for a cookie challenge, a refusal, a deferral to
+the login queue, or a duplicate.</p>
+</dd>
+  </dl>
 
 
 
@@ -1231,6 +1491,14 @@ Runs with no blocking I/O — safe to call on a network-receive thread.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnHandshakeReceived__0_System_Byte___System_Byte___System_String_System_UInt16_System_UInt16_System_String__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The return value is the hand-off between the host's handshake timeout and this core. A
+host bounds a new connection until its handshake completes; once this returns
+<code>true</code> the connection is tracked here as pending authentication and the limits in
+<a class="xref" href="FishMMO.Auth.Core.PendingAuthRules.html">PendingAuthRules</a> bound it, so the host must stop timing the handshake.
+Timing it on until authentication made the handshake timeout a limit on the whole
+sign-in, two-factor prompt included.</p>
+</div>
 
 
 
@@ -1239,7 +1507,7 @@ Runs with no blocking I/O — safe to call on a network-receive thread.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnPurgeConnectionState__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.OnPurgeConnectionState(`0)">
   OnPurgeConnectionState(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L738"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L830"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Override for subclass-specific cleanup during connection purge.
@@ -1274,7 +1542,7 @@ Called before <code>AccountManager.RemoveConnectionAccount</code> but after
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_OnTick" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.OnTick">
   OnTick()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L254"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L307"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Override for subclass-specific per-tick logic (e.g., additional periodic sweeps).</p>
@@ -1301,7 +1569,7 @@ Called before <code>AccountManager.RemoveConnectionAccount</code> but after
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_PurgeConnectionAuthState__0_System_Boolean_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.PurgeConnectionAuthState(`0,System.Boolean)">
   PurgeConnectionAuthState(TConnection, bool)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L712"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L804"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Purges all authenticator state for a connection and optionally disconnects it.
@@ -1338,12 +1606,12 @@ TTL tracking is cleared before disconnect to prevent races.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_RefreshAuthTtl__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.RefreshAuthTtl(`0)">
   RefreshAuthTtl(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L676"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L698"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Resets the TTL timestamp for a tracked connection to <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime.utcnow">UtcNow</a>.
-Call from async workers at meaningful progress points to prevent premature sweeping.
-Refuses to refresh beyond <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthHardDeadlineSeconds">AuthHardDeadlineSeconds</a> from original start.</p>
+  <div class="markdown level1 summary"><p>Records progress on an authenticating connection, restarting its
+<a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthStaleTtlSeconds">AuthStaleTtlSeconds</a> TTL. Call from async workers at meaningful progress
+points to prevent premature sweeping.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -1365,6 +1633,15 @@ Refuses to refresh beyond <a class="xref" href="FishMMO.Auth.Implementation.Base
 
 
 
+  <h4 class="section" id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_RefreshAuthTtl__0__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Refused once the current authenticating phase has run for
+<a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_AuthHardDeadlineSeconds">AuthHardDeadlineSeconds</a>, and ignored while the connection is awaiting its
+second factor: that phase is bounded by <a class="xref" href="FishMMO.Auth.Implementation.BaseAuthenticatorCore-1.html#FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TwoFactorWindowSeconds">TwoFactorWindowSeconds</a> alone, and a
+verification of an earlier code finishing late must not take it off its window. Refreshes
+only a connection that is still tracked; it used to write the timestamp unconditionally,
+so a refresh landing after tracking had ended re-created an entry with no connection
+behind it.</p>
+</div>
 
 
 
@@ -1373,7 +1650,7 @@ Refuses to refresh beyond <a class="xref" href="FishMMO.Auth.Implementation.Base
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ResolveRateLimitKey__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.ResolveRateLimitKey(`0)">
   ResolveRateLimitKey(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L752"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L844"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Resolves a rate-limit key for a connection.
@@ -1411,11 +1688,46 @@ Default: returns the normalized remote IP address.</p>
 
 
 
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ResumeAuthentication_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.ResumeAuthentication*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ResumeAuthentication__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.ResumeAuthentication(`0)">
+  ResumeAuthentication(TConnection)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L731"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Returns a connection to <a class="xref" href="FishMMO.Auth.Core.PendingAuthPhase.html#FishMMO_Auth_Core_PendingAuthPhase_Authenticating">Authenticating</a> with a fresh
+phase: the player's code has arrived and the servers are checking it, which is machine
+work again and bounded like it.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected void ResumeAuthentication(TConnection conn)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The connection whose code is being checked.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ShutdownWorkers_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.ShutdownWorkers*"></a>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ShutdownWorkers" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.ShutdownWorkers">
   ShutdownWorkers()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L198"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L256"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Gracefully shuts down all async workers and zeroes sensitive key material.
@@ -1444,7 +1756,7 @@ channel writers for graceful worker exit.</p>
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_ShutdownWorkersCore" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.ShutdownWorkersCore">
   ShutdownWorkersCore()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L226"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L279"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Subclass-specific worker shutdown: complete channel writers, null channel references,
@@ -1472,7 +1784,7 @@ and clear subclass-specific state. Called BEFORE the base zeroes the cookie key.
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_Tick" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.Tick">
   Tick()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L236"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L289"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Runs the stale-auth TTL sweep and the handshake rate-limit sweep.
@@ -1500,10 +1812,11 @@ Must be called periodically by the hosting environment (e.g., every server tick 
 
   <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TrackAuthStart__0_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.TrackAuthStart(`0)">
   TrackAuthStart(TConnection)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L647"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L669"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Starts auth TTL tracking for a connection if not already tracked.
+  <div class="markdown level1 summary"><p>Starts pending-authentication tracking for a connection whose handshake is completing, in
+<a class="xref" href="FishMMO.Auth.Core.PendingAuthPhase.html#FishMMO_Auth_Core_PendingAuthPhase_Authenticating">Authenticating</a>. A client ID already tracked is restarted.
 Returns <code>false</code> if the pending authentication cap has been reached.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
@@ -1523,6 +1836,49 @@ Returns <code>false</code> if the pending authentication cap has been reached.</
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
     <dd><p><code>true</code> if tracking was started; <code>false</code> if the cap was reached.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TryGetPendingAuthPhase_" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.TryGetPendingAuthPhase*"></a>
+
+  <h3 id="FishMMO_Auth_Implementation_BaseAuthenticatorCore_1_TryGetPendingAuthPhase__0_FishMMO_Auth_Core_PendingAuthPhase__" data-uid="FishMMO.Auth.Implementation.BaseAuthenticatorCore`1.TryGetPendingAuthPhase(`0,FishMMO.Auth.Core.PendingAuthPhase@)">
+  TryGetPendingAuthPhase(TConnection, out PendingAuthPhase)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Auth/FishMMO-ServerAuth/Implementation/Auth/BaseAuthenticatorCore.cs/#L780"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The phase a connection's pending authentication is in, when it has completed its
+handshake and not yet authenticated.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool TryGetPendingAuthPhase(TConnection conn, out PendingAuthPhase phase)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>conn</code> <span class="xref">TConnection</span></dt>
+    <dd><p>The connection.</p>
+</dd>
+    <dt><code>phase</code> <a class="xref" href="FishMMO.Auth.Core.PendingAuthPhase.html">PendingAuthPhase</a></dt>
+    <dd><p>Its phase, when pending.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p><code>true</code> when <code class="paramref">conn</code> is pending here.</p>
 </dd>
   </dl>
 

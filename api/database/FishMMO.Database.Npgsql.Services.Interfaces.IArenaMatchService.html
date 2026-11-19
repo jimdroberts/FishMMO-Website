@@ -117,7 +117,7 @@ loaded, recording its progress and its result.</p>
 
 
   <h2 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_remarks">Remarks</h2>
-  <div class="markdown level0 remarks"><p>Matches are <em>created</em> by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormArenaMatchAsync_System_Int64_System_String_System_Int32_System_Int32_System_Int32_System_Int32_System_DateTime_System_Int32_FishMMO_Database_Data_ArenaRatingSource_FishMMO_Database_Data_ArenaComposeOptions_System_Threading_CancellationToken_">TryFormArenaMatchAsync(long, string, int, int, int, int, DateTime, int, ArenaRatingSource, ArenaComposeOptions, CancellationToken)</a>,
+  <div class="markdown level0 remarks"><p>Matches are <em>created</em> by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormArenaMatchAsync_System_Int64_System_String_System_Int32_System_Int32_System_Int32_System_Int32_System_TimeSpan_System_Int32_FishMMO_Database_Data_ArenaRatingSource_FishMMO_Database_Data_ArenaComposeOptions_System_Threading_CancellationToken_">TryFormArenaMatchAsync(long, string, int, int, int, int, TimeSpan, int, ArenaRatingSource, ArenaComposeOptions, CancellationToken)</a>,
 inside the transaction that takes the players out of the queue; nothing here creates one.
 The hosting scene server is not necessarily the one that formed the match, so everything it
 needs to run it is read back from these rows.</p>
@@ -130,34 +130,38 @@ needs to run it is read back from these rows.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_CancelAbandonedAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.CancelAbandonedAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_CancelAbandonedAsync_System_DateTime_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.CancelAbandonedAsync(System.DateTime,System.Int32,System.Threading.CancellationToken)">
-  CancelAbandonedAsync(DateTime, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L76"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_CancelAbandonedAsync_System_TimeSpan_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.CancelAbandonedAsync(System.TimeSpan,System.Int32,System.Threading.CancellationToken)">
+  CancelAbandonedAsync(TimeSpan, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L87"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Cancels matches that had not ended by <code class="paramref">createdBeforeUtc</code> and whose
+  <div class="markdown level1 summary"><p>Cancels matches older than <code class="paramref">olderThan</code> that have not ended and whose
 instance no longer exists.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; CancelAbandonedAsync(DateTime createdBeforeUtc, int maxRows = 64, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; CancelAbandonedAsync(TimeSpan olderThan, int maxRows = 64, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>createdBeforeUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
-    <dd></dd>
+    <dt><code>olderThan</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
+    <dd><p>How long a match must have existed before it can be judged abandoned.</p>
+</dd>
     <dt><code>maxRows</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd></dd>
+    <dd><p>Upper bound on matches cancelled in one call.</p>
+</dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
-    <dd></dd>
+    <dd><p>Cancellation token.</p>
+</dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
-    <dd></dd>
+    <dd><p>Matches cancelled.</p>
+</dd>
   </dl>
 
 
@@ -166,10 +170,17 @@ instance no longer exists.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_CancelAbandonedAsync_System_DateTime_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>A match whose instance failed to load, or whose hosting server died at any point, would
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_CancelAbandonedAsync_System_TimeSpan_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+A match whose instance failed to load, or whose hosting server died at any point, would
 otherwise hold every seat's character out of both finders forever. Called from every
-scene server's stale sweep, so it does not depend on the server that lost the match.</p>
+scene server's stale sweep, so it does not depend on the server that lost the match.
+</p>
+<p>
+Aged by the database's clock, which also stamped the match's creation: the sweeping
+server is rarely the one that formed the match. Served by the partial index on unfinished
+matches, so a sweep reads the handful of matches still open, not the whole history.
+</p>
 </div>
 
 
@@ -343,7 +354,7 @@ dungeon open cannot enter an arena. The forming transaction re-asserts it per se
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_FetchRecentForCharacterAsync_System_Int64_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.FetchRecentForCharacterAsync(System.Int64,System.Int32,System.Threading.CancellationToken)">
   FetchRecentForCharacterAsync(long, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L79"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L90"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>A character's most recent matches, newest first, each with their own seat.</p>
@@ -384,7 +395,7 @@ dungeon open cannot enter an arena. The forming transaction re-asserts it per se
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_MarkSeatVacatedAsync_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.MarkSeatVacatedAsync(System.Int64,System.Int64,System.Threading.CancellationToken)">
   MarkSeatVacatedAsync(long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L85"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L96"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Marks a seat vacated so the backfill may fill it, keeping the leaver's row for history.</p>
@@ -426,7 +437,7 @@ dungeon open cannot enter an arena. The forming transaction re-asserts it per se
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_ReseatAsync_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.ReseatAsync(System.Int64,System.Int64,System.Threading.CancellationToken)">
   ReseatAsync(long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L92"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L108"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Re-seats a vacated character who came back inside the reconnect grace, if their seat was not
@@ -451,7 +462,7 @@ filled meanwhile.</p>
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;&gt;</dt>
-    <dd><p>True when the seat was vacated and is theirs again.</p>
+    <dd><p>True when the seat was vacated, the team had room, and the seat is theirs again.</p>
 </dd>
   </dl>
 
@@ -461,30 +472,36 @@ filled meanwhile.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_ReseatAsync_System_Int64_System_Int64_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>&quot;Not filled&quot; is counted: the team must have fewer seated players than the match's team size,
+under the match row's lock, which the backfill takes too — so a backfill and a reconnect
+racing for the last seat cannot both have it.</p>
+</div>
 
 
 
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_SetBackfillWindowAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.SetBackfillWindowAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_SetBackfillWindowAsync_System_Int64_System_Nullable_System_DateTime__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.SetBackfillWindowAsync(System.Int64,System.Nullable{System.DateTime},System.Threading.CancellationToken)">
-  SetBackfillWindowAsync(long, DateTime?, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L95"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_SetBackfillWindowAsync_System_Int64_System_Nullable_System_TimeSpan__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.SetBackfillWindowAsync(System.Int64,System.Nullable{System.TimeSpan},System.Threading.CancellationToken)">
+  SetBackfillWindowAsync(long, TimeSpan?, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L120"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Opens (or closes, with null) the window during which vacated seats may be backfilled.</p>
+  <div class="markdown level1 summary"><p>Opens, for <code class="paramref">window</code> from now, the window during which vacated seats may
+be backfilled; or closes it, with null.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;bool&gt;&gt; SetBackfillWindowAsync(long matchId, DateTime? untilUtc, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;bool&gt;&gt; SetBackfillWindowAsync(long matchId, TimeSpan? window, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>matchId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
     <dd></dd>
-    <dt><code>untilUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>?</dt>
+    <dt><code>window</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a>?</dt>
     <dd></dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd></dd>
@@ -502,6 +519,12 @@ filled meanwhile.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_SetBackfillWindowAsync_System_Int64_System_Nullable_System_TimeSpan__System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The end is stamped by the database's clock because it is read by the backfill
+transactions of every other scene server, which compare it with the database's clock; a
+moment computed by the hosting server would shift the window by the difference between
+the two machines' clocks.</p>
+</div>
 
 
 
@@ -510,7 +533,7 @@ filled meanwhile.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_SetRankedAsync_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.SetRankedAsync(System.Int64,System.Int64,System.Threading.CancellationToken)">
   SetRankedAsync(long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L101"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L126"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Stamps a match as ranked in a season. Called once, right after it forms, before it goes live.</p>
@@ -551,7 +574,7 @@ filled meanwhile.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IArenaMatchService_UpdateMemberRatingDeltasAsync_System_Int64_System_Collections_Generic_IReadOnlyList_System_ValueTuple_System_Int64_System_Int32___System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IArenaMatchService.UpdateMemberRatingDeltasAsync(System.Int64,System.Collections.Generic.IReadOnlyList{System.ValueTuple{System.Int64,System.Int32}},System.Threading.CancellationToken)">
   UpdateMemberRatingDeltasAsync(long, IReadOnlyList&lt;(long characterId, int ratingDelta)&gt;, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L98"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IArenaMatchService.cs/#L123"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Writes the rating change each seat earned in a ranked match.</p>

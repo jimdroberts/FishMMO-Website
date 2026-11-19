@@ -131,9 +131,10 @@
 <h3 id="fishmmo-serverauth">FishMMO-ServerAuth</h3>
 <p>The server-side authenticator infrastructure — engine-independent cores, collections, account managers, and request types.</p>
 <ul>
-<li><strong>Bounded Concurrent Collections</strong> — <code>ArrivalOrderTracker&lt;TKey&gt;</code> (insertion-ordered TTL tracker), <code>ExpiringKeyTracker&lt;TKey&gt;</code> (debounce/rate-limit tracker), and <code>LastSeenCacheTracker&lt;TKey, TValue&gt;</code> (LRU-style last-seen cache).</li>
+<li><strong>Bounded Concurrent Collections</strong> — <code>ArrivalOrderTracker&lt;TKey&gt;</code> (insertion-ordered TTL tracker), <code>ExpiringKeyTracker&lt;TKey&gt;</code> (debounce/rate-limit tracker), <code>LastSeenCacheTracker&lt;TKey, TValue&gt;</code> (LRU-style last-seen cache), <code>FixedWindowCounter&lt;TKey&gt;</code> (per-key count over a window that opens at the key's first event; the per-username lockouts and the per-IP handshake burst limit), and <code>PendingAuthTracker&lt;TConnection&gt;</code> (connections between handshake and authentication, in two deadline-ordered lists). All take monotonic seconds (the core's <code>NowSeconds</code>), never <code>DateTime.UtcNow</code>: each times a local duration, and a stepped wall clock held every key inside its window for the size of the step. They have no <code>DateTime</code> overloads, so a caller cannot mix the two clocks.</li>
+<li><strong>PendingAuthRules</strong> — the pending-authentication time limits as pure functions: <code>Authenticating</code> (machine work: 15 s without progress, progress stops extending it 60 s into the phase) and <code>AwaitingTwoFactor</code> (one fixed window per prompt, default 120 s, clamped to 30–600 s), plus the pending cap rules (<code>AdmitsNewPending</code>, <code>DefaultLoginPendingCap</code>).</li>
 <li><strong>Account Manager Interfaces</strong> — <code>IAccountManager&lt;TConnection&gt;</code> for auth-state transitions, <code>ISrpAccountManager&lt;TConnection&gt;</code> for SRP session storage, and <code>ITokenAccountManager&lt;TConnection&gt;</code> for token-authenticated connection registration.</li>
-<li><strong>BaseAuthenticatorCore&lt;TConnection&gt;</strong> — Abstract engine-independent base for all server authenticators. Handles the X25519 ECDH cookie-challenge/handshake pipeline, stale-auth TTL sweeps, per-IP and global handshake rate limiting, and connection auth-state tracking. Subclass by implementing the abstract transport callbacks.</li>
+<li><strong>BaseAuthenticatorCore&lt;TConnection&gt;</strong> — Abstract engine-independent base for all server authenticators. Handles the X25519 ECDH cookie-challenge/handshake pipeline, the pending-authentication cap (with an <code>OnHandshakeDeferred</code> hook a login queue overrides) and its timeouts, per-IP and global handshake rate limiting, and connection auth-state tracking. Subclass by implementing the abstract transport callbacks.</li>
 <li><strong>SrpAuthenticatorCore&lt;TConnection&gt;</strong> — LoginServer authenticator. Extends <code>BaseAuthenticatorCore</code> with bounded-channel SRP verify/proof workers, TOTP two-factor authentication, kick-request debouncing, per-IP/per-account rate limiting, and auth token issuance. Subclass to supply database operations and transport broadcasts.</li>
 <li><strong>TokenAuthenticatorCore&lt;TConnection&gt;</strong> — World/Scene server authenticator. Extends <code>BaseAuthenticatorCore</code> with a bounded-channel token auth worker that decrypts, verifies, and revocation-checks client-supplied tokens. Subclass to supply the signing-key lookup and revocation check.</li>
 <li><strong>Account Managers</strong> — Concrete <code>AccountManager</code>, <code>SrpAccountManager</code>, and <code>TokenAccountManager</code> for per-connection encryption data and SRP/token session storage.</li>
@@ -150,7 +151,7 @@
 <h2 id="features--capabilities--security-features">Features / Capabilities / Security Features</h2>
 <h3 id="engine-independent-authenticator-cores">Engine-independent authenticator cores:</h3>
 <ul>
-<li><code>BaseAuthenticatorCore&lt;TConnection&gt;</code> — stateless HMAC cookie challenge, X25519 ECDH key agreement, stale-auth TTL sweeps (bounded scan/remove), per-IP debounce, and global handshake-per-second cap.</li>
+<li><code>BaseAuthenticatorCore&lt;TConnection&gt;</code> — stateless HMAC cookie challenge, X25519 ECDH key agreement, a pending-authentication cap (<code>MaxPendingAuthConnections</code>; a handshake past it goes to <code>OnHandshakeDeferred</code> or is dropped), pending-authentication timeouts swept head-first (at most 64 purged per tick), a per-IP handshake burst limit (8 completions per 2 s window), and a global cap of 500 handshakes per second.</li>
 <li><code>SrpAuthenticatorCore&lt;TConnection&gt;</code> — bounded-channel SRP verify/proof workers, per-IP SRP rate limiting, account-verify debouncing, TOTP two-factor gate (semaphore-limited concurrency, per-username failure lockout), kick-request tracking, and auth token issuance with hash persistence.</li>
 <li><code>TokenAuthenticatorCore&lt;TConnection&gt;</code> — bounded-channel token auth worker with timing-equalization dummy-key path and revocation check.</li>
 <li><code>ClientAuthenticatorCore</code> — full client-side auth state machine with cookie echo, ECDH, SRP verify/proof, TOTP, token path, and zeroing key material cleanup. Separates <em>connection ended</em> (<code>OnDisconnected</code>) from <em>handshake again on the same connection</em> (<code>OnRehandshakeRequired</code>) — see <a href="#re-handshaking-on-a-live-connection">Re-handshaking on a live connection</a>.</li>
@@ -182,6 +183,7 @@
 <li>Per-username failure counting and lockout (<code>MaxTotpFailuresPerUsername</code>, <code>TotpUsernameLockoutDuration</code>).</li>
 <li>Semaphore-limited concurrent verifications (<code>MaxConcurrentTotpVerifications</code>).</li>
 <li>Per-attempt attempt cap before force-disconnect (<code>MaxTotpAttempts</code>).</li>
+<li>One answer window per prompt (<code>TwoFactorWindowSeconds</code>, default 120 s); a player at the prompt is not counted against the pending cap. When the window runs out, or the last allowed code is wrong, the server sends <code>TwoFactorExpired</code> before closing the connection; the client's <code>LastResultAnsweredTwoFactorCode</code> tells the two apart.</li>
 <li>TOTP secret generation, AES-GCM encryption/decryption, otpauth URI generation, and code validation helpers in <code>CryptoHelper</code>.</li>
 </ul>
 <h3 id="2fa-and-account-verification">2FA and account verification:</h3>
@@ -205,6 +207,8 @@
 <li><code>ArrivalOrderTracker&lt;TKey&gt;</code> — insertion-order-preserving tracker backed by a <code>LinkedList</code>+<code>Dictionary</code>; O(1) peek/pop oldest.</li>
 <li><code>ExpiringKeyTracker&lt;TKey&gt;</code> — TTL-based debounce/rate-limit tracker; <code>TryBegin</code> rejects duplicate attempts within the debounce window.</li>
 <li><code>LastSeenCacheTracker&lt;TKey, TValue&gt;</code> — last-seen LRU-style cache with per-sweep TTL expiry; used to cache resolved connection IPs.</li>
+<li><code>FixedWindowCounter&lt;TKey&gt;</code> — per-key event count over a window that opens at the key's first event and never moves; windows are kept in opening order, so the sweep reads only the oldest and every closed window is reached. Backs the per-username TOTP and login lockouts and the per-IP handshake burst limit.</li>
+<li><code>PendingAuthTracker&lt;TConnection&gt;</code> — connections between handshake and authentication, one list per <code>PendingAuthPhase</code>, each in deadline order; the stale sweep reads only the two heads.</li>
 </ul>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
@@ -267,8 +271,8 @@ dotnet build FishMMO-Auth/FishMMO-ServerAuth/FishMMO-ServerAuth.csproj -c Releas
     protected override Task&lt;bool&gt; CheckIsOnlineAsync(string username) { /* DB check */ }
     protected override Task&lt;bool&gt; CheckHasPendingKickAsync(string username) { /* DB check */ }
     protected override Task PersistKickRequestAsync(string username) { /* DB write */ }
-    protected override Task PersistTokenHashAsync(string username, string tokenHash, int expirationMinutes) { /* DB write */ }
-    protected override Task&lt;bool&gt; VerifyTotpCodeAsync(string username, string totpCode, byte[] totpMasterKey) { /* DB + TOTP verify */ }
+    protected override Task&lt;bool&gt; PersistTokenHashAsync(string username, string tokenHash, int expirationMinutes) { /* DB write; false refuses with ServerBusy */ }
+    protected override Task&lt;TwoFactorVerifyOutcome&gt; VerifyTotpCodeAsync(string username, string totpCode, byte[] totpMasterKey) { /* DB + TOTP verify */ }
     protected override Task&lt;bool&gt; TryResendVerificationEmailIfExpiredAsync(string username, DateTime? verifyCodeExpiresUtc) { /* DB + mail */ }
 }
 
@@ -324,8 +328,8 @@ auth.HandleConnectionStopped(conn);
     protected override void SendTokenAuth(byte[] encryptedToken, uint seq) { /* send broadcast */ }
     protected override void SendSrpVerify(byte[] encUser, byte[] encEphemeral, uint seq) { /* send broadcast */ }
     protected override void SendSrpProof(byte[] encProof, uint seq) { /* send broadcast */ }
-    protected override void SendCreateAccount(byte[] encUser, byte[] encEmail, byte[] encAge, byte[] encSalt, byte[] encVerifier, uint seq) { /* send broadcast */ }
-    protected override void SendAccountVerify(byte[] encUser, byte[] encCode, uint seq) { /* send broadcast */ }
+    protected override void SendCreateAccount(byte[] encUser, byte[] encEmail, byte[] encAge, byte[] encSalt, byte[] encVerifier, byte[] encProfile, uint seq) { /* send broadcast */ }
+    protected override void SendAccountVerify(byte[] encUser, byte[] encCode, uint seq, VerificationCodeChannel channel) { /* send broadcast */ }
     protected override void SendTwoFactorVerify(byte[] encCode, uint seq) { /* send broadcast */ }
     protected override void Disconnect() { /* disconnect transport */ }
     protected override void OnAuthResultCallback(ClientAuthenticationResult result) { /* notify UI */ }
@@ -377,6 +381,8 @@ CryptographicOperations.ZeroMemory(rawToken);
 <p><code>BaseAuthenticatorCore</code> (both server cores):</p>
 <ul>
 <li><code>ExpectedGameVersion</code> — when non-empty, a client whose <code>ClientHandshake.GameVersion</code> differs is rejected with <code>ClientAuthenticationResult.VersionMismatch</code>. Empty (the default) skips the check.</li>
+<li><code>MaxPendingAuthConnections</code> — how many connections may be authenticating at once (default <code>10000</code>; values below 1 become 1). Connections at the two-factor prompt do not count toward it, but the whole pending set, prompts included, is capped at 10 times it. <code>PendingAuthRules.DefaultLoginPendingCap</code> derives a login server's default from its SRP channels (verify + proof capacity, <code>1000</code> with the defaults), which is what the game's login server uses when none is configured.</li>
+<li><code>TwoFactorWindowSeconds</code> — seconds a player has to answer one two-factor prompt (default <code>120</code>, clamped to <code>30</code>–<code>600</code>). Applies to prompts already on screen too.</li>
 </ul>
 <p>Operational configuration expectations:</p>
 <ul>
@@ -464,7 +470,11 @@ CryptographicOperations.ZeroMemory(rawToken);
     AB --&gt; AC[Client: SendTwoFactorVerify]
     AC --&gt; AD[Server: OnTwoFactorVerifyReceived]
     AD --&gt; AE{TOTP valid?}
-    AE --&gt;|No| Q
+    AE --&gt;|No, attempts left| AF[BroadcastAuthResult TwoFactorInvalid — fresh window]
+    AF --&gt; AC
+    AE --&gt;|No, last attempt| AG[BroadcastAuthResult TwoFactorExpired]
+    AB --&gt;|Window runs out| AG
+    AG --&gt; Q
     AE --&gt;|Yes| AA
     AA --&gt; R
 </code></pre>
@@ -501,10 +511,14 @@ CryptographicOperations.ZeroMemory(rawToken);
   FishMMO-ServerAuth/                            — Server auth (netstandard2.1)
     FishMMO-ServerAuth.csproj                    — Depends on AuthShared + srp + Channels
     Core/
+      MonotonicClock.cs                          — Internal Stopwatch clock for local durations
+      PendingAuthRules.cs                        — Pending-auth phases, time limits and cap rules
       Collections/
         ArrivalOrderTracker.cs                   — Insertion-order TTL tracker (LinkedList + Dict)
         ExpiringKeyTracker.cs                    — TTL debounce / rate-limit tracker
+        FixedWindowCounter.cs                    — Per-key fixed-window counter, head-first sweep
         LastSeenCacheTracker.cs                  — Last-seen LRU cache with TTL sweep
+        PendingAuthTracker.cs                    — Two-phase pending-auth tracker, deadline order
       Interfaces/
         IAccountManager.cs                       — Auth-state transitions + encryption data
         ISrpAccountManager.cs                    — SRP session storage and sweep

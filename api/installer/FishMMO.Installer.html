@@ -95,13 +95,20 @@
 Classes
 </h3>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.AdminAccountInstaller.html">AdminAccountInstaller</a></dt>
+      <dd><p>Creates an Administrator account from the console: Database ▸ Create Admin Account.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Installer.AppSettingsInstaller.html">AppSettingsInstaller</a></dt>
       <dd><p>Interactive wizard that creates or updates appsettings.json and related
 configuration files with secure file permissions (chmod 600 on Linux).
 Also generates environment-variable export files so passwords never need
 to live in plain-text JSON at rest.</p>
 <p>Supported components:</p>
-<ul><li>IPFetch Web Server — WebServer.HttpPort + ConnectionStrings.NpgsqlConnection</li><li>Patcher Web Server — WebServer.HttpPort + Patches.DirectoryName</li><li>WebGL Web Server — WebServer.HttpPort</li><li>Discord Bot — Discord.Token + Discord.DefaultGuildId + ConnectionStrings.Npgsql + rate-limiting</li><li>CMS Server — ConnectionStrings.DefaultConnection</li></ul>
+<ul><li>IPFetch Web Server — WebServer.HttpPort + ConnectionStrings.NpgsqlConnection</li><li>Patcher Web Server — WebServer.HttpPort + Patches.DirectoryName</li><li>WebGL Web Server — WebServer.HttpPort</li><li>Control Panel Web Server — WebServer.HttpPort + ConnectionStrings.NpgsqlConnection</li><li>Discord Bot — Discord.DefaultGuildId + Npgsql (host, port, database, schema) + chat bridge + rate-limiting.
+  Its token and database credentials are secrets and live only in the shared secrets file
+  (<a class="xref" href="FishMMO.Installer.SecretsEnvironmentInstaller.html">SecretsEnvironmentInstaller</a>).</li></ul>
 <p>Supported outputs:</p>
 <ul><li>appsettings.json — base configuration, chmod 600</li><li>appsettings.Development.json / appsettings.Production.json — environment overrides, chmod 600</li><li>fish shell snippet — ~/.config/fish/conf.d/fishmmo-secrets.fish, chmod 600</li><li>systemd / .env file — fishmmo-secrets.env in target directory, chmod 600</li></ul>
 <p>Database credentials (Username/Password) are NOT stored in appsettings.json.
@@ -124,8 +131,12 @@ dry-run (--dry-run), validate (--validate), help (--help), and version (--versio
     </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Installer.DatabaseSecretsInstaller.html">DatabaseSecretsInstaller</a></dt>
-      <dd><p>Interactive wizard for configuring database connection parameters.
-On Linux, sudo is used automatically when /etc/fishmmo/ requires root.</p>
+      <dd><p>The write path for the platform secrets file, and the shell snippet exporters that share it.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.DevelopmentCertificateInstaller.html">DevelopmentCertificateInstaller</a></dt>
+      <dd><p>Local Linux TLS setup without public DNS, ACME, or nginx.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -163,6 +174,11 @@ Linux: ufw first, firewalld fallback. Windows: netsh.</p>
       <dt><a class="xref" href="FishMMO.Installer.FirewallPortSpecJsonConverter.html">FirewallPortSpecJsonConverter</a></dt>
       <dd><p>Reads a <a class="xref" href="FishMMO.Installer.FirewallPortSpec.html">FirewallPortSpec</a> from a JSON number (single TCP port)
 or a JSON string (port, range, and optional protocol). Writes the canonical string form.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.GameServerCertificateInstaller.html">GameServerCertificateInstaller</a></dt>
+      <dd><p>Deploys a Certbot lineage for non-root game servers, including subsequent renewals.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -262,6 +278,11 @@ Linux-only; on Windows the installer prints a hint and exits.</p>
 </dd>
     </dl>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.PostgreSQLUninstallPlan.html">PostgreSQLUninstallPlan</a></dt>
+      <dd><p>An ordered, fully resolved uninstall. Built without touching anything.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Installer.PreFlightChecker.html">PreFlightChecker</a></dt>
       <dd><p>Validates system readiness before any install operation begins.
 Checks internet, disk, RAM, admin access, and port conflicts.
@@ -288,6 +309,11 @@ The scan is dynamic and includes new projects automatically when added.</p>
 </dd>
     </dl>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.SecretsEnvironmentInstaller.html">SecretsEnvironmentInstaller</a></dt>
+      <dd><p>The one place FishMMO's secrets and environment variables are configured.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Installer.SecurityKeyInstaller.html">SecurityKeyInstaller</a></dt>
       <dd><p>Generates cryptographic keys for FishMMO deployments and stores them
 directly in the database using a superuser connection. No env files to
@@ -297,6 +323,7 @@ copy between machines — every server loads its keys from the DB at startup.</p
 <li>Gate secret → deployment_secrets table (key='client_gate_secret')</li>
 <li>Connection token HMAC key → connection_token_keys table (key_id='shared')</li>
 <li>Signing key KEK → deployment_secrets table (key='signing_key_kek')</li>
+<li>TOTP master KEK → deployment_secrets table (key='totp_master_kek')</li>
 </ul>
 <p>Client build files (ClientApiSecret.generated.cs, etc.) are generated
 separately from within the Unity Editor (FishMMO &gt; Security &gt; Fetch Client Secrets).</p>
@@ -309,7 +336,23 @@ FISHMMO_PG_SUPERUSER_PASSWORD environment variable).</p>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Installer.SystemdServiceInstaller.html">SystemdServiceInstaller</a></dt>
       <dd><p>Generates and installs systemd unit files for FishMMO ASP.NET web servers
-(IPFetch, Patcher, WebGL). On Windows, logs a reminder and skips.</p>
+(IPFetch, Patcher, WebGL, Control Panel). On Windows, logs a reminder and skips.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.UninstallInstaller.html">UninstallInstaller</a></dt>
+      <dd><p>The Uninstall screens: removing PostgreSQL, and deleting the secrets file.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.UninstallPlanner.html">UninstallPlanner</a></dt>
+      <dd><p>Builds the uninstall plan for PostgreSQL. Pure: it reads nothing, runs nothing, and deletes
+nothing.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.UninstallStep.html">UninstallStep</a></dt>
+      <dd><p>One step of an uninstall, in the order it must run.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -360,6 +403,21 @@ Interfaces
     <h3 id="enums">
 Enums
 </h3>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.PackageManagerKind.html">PackageManagerKind</a></dt>
+      <dd><p>The Linux package managers PostgreSQL can have been installed with.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.UninstallPlatform.html">UninstallPlatform</a></dt>
+      <dd><p>The operating system an uninstall plan targets.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Installer.UninstallStepKind.html">UninstallStepKind</a></dt>
+      <dd><p>How a planned step is carried out.</p>
+</dd>
+    </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Installer.UnityBuildInstaller.UnityBuildKind.html">UnityBuildInstaller.UnityBuildKind</a></dt>
       <dd><p>Identifies a build flavor for the Unity CLI dispatcher.</p>

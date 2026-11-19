@@ -254,7 +254,7 @@ recover from connection-level failures.
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DeleteAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteAsync(System.Int64,System.Threading.CancellationToken)">
   DeleteAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L575"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L766"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes a single scene row by its database ID.</p>
@@ -278,7 +278,7 @@ recover from connection-level failures.
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
-    <dd><p>DatabaseResult indicating success, or NotFound when the row is already gone.</p>
+    <dd><p>DatabaseResult indicating success, including when the row is already gone (see remarks).</p>
 </dd>
   </dl>
 
@@ -307,7 +307,7 @@ removing something it has already stopped using.
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DeleteBySceneServerAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteBySceneServerAsync(System.Int64,System.Threading.CancellationToken)">
   DeleteBySceneServerAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L595"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L806"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes all scenes for a scene server.</p>
@@ -351,9 +351,9 @@ failures are automatically retried. Returns 0 rows deleted if no scenes exist (i
 
   <a id="FishMMO_Database_Npgsql_Services_SceneService_DeleteByStaleSceneServersAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteByStaleSceneServersAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DeleteByStaleSceneServersAsync_System_Int64_System_DateTime_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteByStaleSceneServersAsync(System.Int64,System.DateTime,System.Int32,System.Threading.CancellationToken)">
-  DeleteByStaleSceneServersAsync(long, DateTime, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1002"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DeleteByStaleSceneServersAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteByStaleSceneServersAsync(System.Int64,System.Double,System.Int32,System.Threading.CancellationToken)">
+  DeleteByStaleSceneServersAsync(long, double, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1272"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes this world server's scene rows whose owning scene server has stopped pulsing,
@@ -362,7 +362,7 @@ or is no longer registered at all.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;int&gt;&gt; DeleteByStaleSceneServersAsync(long worldServerId, DateTime pulseOlderThanUtc, int maxRows = 256, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;int&gt;&gt; DeleteByStaleSceneServersAsync(long worldServerId, double pulseStaleSeconds, int maxRows = 256, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -370,8 +370,12 @@ or is no longer registered at all.</p>
     <dt><code>worldServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
     <dd><p>World server whose rows to reap.</p>
 </dd>
-    <dt><code>pulseOlderThanUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
-    <dd><p>A scene server that has not pulsed since this instant is treated as gone.</p>
+    <dt><code>pulseStaleSeconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a></dt>
+    <dd><p>A scene server whose last pulse is at least this many seconds old, by the database clock
+that stamped it, is treated as gone. An age rather than an instant for the reason given
+on <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteStaleUnreadyAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken_">DeleteStaleUnreadyAsync(long, double, int, CancellationToken)</a>: an instant computed from the caller's clock
+shifted the cutoff by however far that host had drifted from the database, and a world
+server running a minute fast reaped every scene of every healthy scene server.</p>
 </dd>
     <dt><code>maxRows</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd><p>Upper bound on rows removed in one call.</p>
@@ -394,7 +398,7 @@ or is no longer registered at all.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_DeleteByStaleSceneServersAsync_System_Int64_System_DateTime_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_DeleteByStaleSceneServersAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>A scene server only deletes its own rows on a graceful shutdown, so a crash leaves
 every scene it hosted advertised as Ready forever. Those rows are actively harmful
 rather than merely stale: the world server routes players to them, sending clients to
@@ -403,9 +407,10 @@ port — answers as a server that does not have the scene. Either way the client
 bounced back, re-routed from the same row, and bounced again, with nothing in the loop
 that ages out.</p>
 <p>
-Rows whose <code>scene_server_id</code> is 0 are skipped: those are queued or loading scenes
-that have not been assigned a host yet, and belong to
-<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteStaleUnreadyAsync_System_Int64_System_DateTime_System_Int32_System_Threading_CancellationToken_">DeleteStaleUnreadyAsync(long, DateTime, int, CancellationToken)</a>.
+Rows whose <code>scene_server_id</code> is 0 are skipped: those are queued scenes that no scene
+server has taken yet, and belong to <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteStaleUnreadyAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken_">DeleteStaleUnreadyAsync(long, double, int, CancellationToken)</a>. A Loading row
+names the server that claimed it (see <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DequeueAsync_System_Int64_System_Threading_CancellationToken_">DequeueAsync(long, CancellationToken)</a>), so the loads a dead
+scene server had taken go with the rest of its scenes.
 </p>
 </div>
 
@@ -416,7 +421,7 @@ that have not been assigned a host yet, and belong to
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DeleteByWorldServerAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteByWorldServerAsync(System.Int64,System.Threading.CancellationToken)">
   DeleteByWorldServerAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L614"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L825"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes all scenes for a world server.</p>
@@ -458,20 +463,65 @@ failures are automatically retried. Returns 0 rows deleted if no scenes exist (i
 
 
 
-  <a id="FishMMO_Database_Npgsql_Services_SceneService_DeleteStaleUnreadyAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteStaleUnreadyAsync*"></a>
+  <a id="FishMMO_Database_Npgsql_Services_SceneService_DeleteManyAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteManyAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DeleteStaleUnreadyAsync_System_Int64_System_DateTime_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteStaleUnreadyAsync(System.Int64,System.DateTime,System.Int32,System.Threading.CancellationToken)">
-  DeleteStaleUnreadyAsync(long, DateTime, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L956"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DeleteManyAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteManyAsync(System.Collections.Generic.IReadOnlyCollection{System.Int64},System.Threading.CancellationToken)">
+  DeleteManyAsync(IReadOnlyCollection&lt;long&gt;, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L786"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Deletes scene rows for a world server that never reached <a class="xref" href="FishMMO.Database.Data.Enums.SceneStatus.html#FishMMO_Database_Data_Enums_SceneStatus_Ready">Ready</a>
-and are older than <code class="paramref">olderThanUtc</code>.</p>
+  <div class="markdown level1 summary"><p>Deletes several scene rows by their database IDs in one statement.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;int&gt;&gt; DeleteStaleUnreadyAsync(long worldServerId, DateTime olderThanUtc, int maxRows = 256, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;int&gt;&gt; DeleteManyAsync(IReadOnlyCollection&lt;long&gt; sceneIds, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sceneIds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlycollection-1">IReadOnlyCollection</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;</dt>
+    <dd><p>Scene rows to delete. Non-positive and duplicate ids are ignored.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
+    <dd><p>The number of rows deleted.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_DeleteManyAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Idempotent, for the reason given on <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteAsync_System_Int64_System_Threading_CancellationToken_">DeleteAsync(long, CancellationToken)</a>.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_SceneService_DeleteStaleUnreadyAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteStaleUnreadyAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DeleteStaleUnreadyAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DeleteStaleUnreadyAsync(System.Int64,System.Double,System.Int32,System.Threading.CancellationToken)">
+  DeleteStaleUnreadyAsync(long, double, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1218"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Deletes scene rows for a world server that never reached <a class="xref" href="FishMMO.Database.Data.Enums.SceneStatus.html#FishMMO_Database_Data_Enums_SceneStatus_Ready">Ready</a>
+and are at least <code class="paramref">minAgeSeconds</code> old.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;int&gt;&gt; DeleteStaleUnreadyAsync(long worldServerId, double minAgeSeconds, int maxRows = 256, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -479,8 +529,10 @@ and are older than <code class="paramref">olderThanUtc</code>.</p>
     <dt><code>worldServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
     <dd><p>World server whose rows to reap.</p>
 </dd>
-    <dt><code>olderThanUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
-    <dd><p>Rows created strictly before this instant are eligible.</p>
+    <dt><code>minAgeSeconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a></dt>
+    <dd><p>Rows older than this, by the database clock, are eligible. An age rather than an instant
+because <code>time_created</code> is stamped by the database clock, and a cutoff computed from
+the caller's own clock would shift by however far that host has drifted from it.</p>
 </dd>
     <dt><code>maxRows</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd><p>Upper bound on rows removed in one call, so a large backlog is drained across several sweeps rather than in one long transaction.</p>
@@ -503,13 +555,15 @@ and are older than <code class="paramref">olderThanUtc</code>.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_DeleteStaleUnreadyAsync_System_Int64_System_DateTime_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_DeleteStaleUnreadyAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>Nothing else removes a Pending, Loading or Failed row. That is not merely untidy:
 such a row keeps its <code>character_id</code>, and a character pointed at one can never
-finish entering the world. A Loading row orphaned by a scene server that died between
-dequeue and load still has <code>scene_server_id = 0</code>, so
-<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteBySceneServerAsync_System_Int64_System_Threading_CancellationToken_">DeleteBySceneServerAsync(long, CancellationToken)</a> does not match it on that server's restart, and
-it survives indefinitely. Reaping by age is what bounds both.</p>
+finish entering the world. A Pending row that no scene server ever takes has no owner
+to remove it, and a row that failed to load is left behind by the server that tried.
+Reaping by age is what bounds both. (A Loading row now names its claimant — see
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DequeueAsync_System_Int64_System_Threading_CancellationToken_">DequeueAsync(long, CancellationToken)</a> — so one orphaned by a scene server that died mid-load is
+removed on that server's restart or by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteByStaleSceneServersAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken_">DeleteByStaleSceneServersAsync(long, double, int, CancellationToken)</a>
+first; this sweep is the backstop.)</p>
 <p>
 Ready rows are deliberately untouched: they represent live scene instances and are
 removed by the scene server that owns them when it unloads them or shuts down.
@@ -521,21 +575,24 @@ removed by the scene server that owns them when it unloads them or shuts down.
 
   <a id="FishMMO_Database_Npgsql_Services_SceneService_DequeueAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DequeueAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DequeueAsync_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DequeueAsync(System.Threading.CancellationToken)">
-  DequeueAsync(CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L378"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_DequeueAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.DequeueAsync(System.Int64,System.Threading.CancellationToken)">
+  DequeueAsync(long, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L476"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Dequeues the next pending scene load request and marks it as loading.</p>
+  <div class="markdown level1 summary"><p>Claims the oldest pending scene load request for a scene server and marks it as loading.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;SceneData&gt;&gt; DequeueAsync(CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;(SceneData Scene, double AgeSeconds)&gt;&gt; DequeueAsync(long sceneServerId, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
+    <dt><code>sceneServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>The scene server taking the row, which will host the instance. Must be positive.</p>
+</dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
 </dd>
@@ -543,8 +600,9 @@ removed by the scene server that owns them when it unloads them or shuts down.
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.SceneData.html">SceneData</a>&gt;&gt;</dt>
-    <dd><p>DatabaseResult containing scene data if a pending scene was found and dequeued, or error information on failure.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;(<a class="xref" href="FishMMO.Database.Data.SceneData.html">SceneData</a> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetuple-fishmmo.database.data.scenedata,system.double-.scene">Scene</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetuple-fishmmo.database.data.scenedata,system.double-.ageseconds">AgeSeconds</a>)&gt;&gt;</dt>
+    <dd><p>DatabaseResult containing the claimed scene and its age in seconds by the database
+clock, or error information on failure.</p>
 </dd>
   </dl>
 
@@ -554,66 +612,39 @@ removed by the scene server that owns them when it unloads them or shuts down.
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_DequeueAsync_System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Uses FromSqlRaw with FOR UPDATE SKIP LOCKED and execution strategy wrapping to ensure transient database
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_DequeueAsync_System_Int64_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Uses FOR UPDATE SKIP LOCKED and execution strategy wrapping to ensure transient database
 failures are automatically retried. Atomically updates status from Pending to Loading to prevent race conditions.
-Returns failure with error code <code>NO_PENDING_SCENES</code> when no pending scenes exist.</p>
-</div>
-
-
-
-
-  <a id="FishMMO_Database_Npgsql_Services_SceneService_EnqueueAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.EnqueueAsync*"></a>
-
-  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_EnqueueAsync_System_Int64_System_String_FishMMO_Database_Data_Enums_SceneType_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.EnqueueAsync(System.Int64,System.String,FishMMO.Database.Data.Enums.SceneType,System.Int64,System.Threading.CancellationToken)">
-  EnqueueAsync(long, string, SceneType, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L94"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Enqueues a new scene load request.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;long&gt;&gt; EnqueueAsync(long worldServerId, string sceneName, SceneType sceneType, long characterId = 0, CancellationToken cancellationToken = default)</code></pre>
-  </div>
-
-  <h4 class="section">Parameters</h4>
-  <dl class="parameters">
-    <dt><code>worldServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>World server ID.</p>
-</dd>
-    <dt><code>sceneName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd><p>Scene name.</p>
-</dd>
-    <dt><code>sceneType</code> <a class="xref" href="FishMMO.Database.Data.Enums.SceneType.html">SceneType</a></dt>
-    <dd><p>Scene type.</p>
-</dd>
-    <dt><code>characterId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>Character ID (optional, for instances).</p>
-</dd>
-    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
-    <dd><p>Cancellation token.</p>
-</dd>
-  </dl>
-
-  <h4 class="section">Returns</h4>
-  <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;&gt;</dt>
-    <dd><p>DatabaseResult containing scene ID on success, or error information on failure.</p>
-</dd>
-  </dl>
-
-
-
-
-
-
-
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_EnqueueAsync_System_Int64_System_String_FishMMO_Database_Data_Enums_SceneType_System_Int64_System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Uses SaveChangesAsync with execution strategy wrapping to ensure transient database failures
-are automatically retried.
-Uses BaseService execution wrappers for automatic transient failure retry and centralized exception mapping.</p>
+Returns failure with error code <code>NOT_FOUND</code> when no pending scenes exist.</p>
+<p>
+The age is how long ago the row was queued, measured by the database clock that stamped
+<code>time_created</code>. It is the only form of the row's creation time a scene server can
+compare with anything: <code>time_created</code> itself is a database-clock instant, and the
+scene server's own clock may disagree with it by any amount. Never negative.
+</p>
+<p>
+<b>Retry-safe.</b> The claim is written onto the row: <code>scene_server_id</code> names the
+claimant, and <code>scene_handle</code> carries a claim token taken once per call, outside the
+retried statement. A retry after a reply lost past the commit finds the row its first
+attempt claimed by (claimant, token, Loading) and returns it, rather than claiming a
+second row and leaving the first in Loading, owned by nobody, until the world server
+reaped it five minutes later. <code>scene_handle</code> means nothing on a row that is not yet
+Ready — the process-local handle does not exist until the scene is loaded — and
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_SetReadyAsync_System_Int64_System_Int64_System_Int64_System_String_System_Int64_System_Threading_CancellationToken_">SetReadyAsync(long, long, long, string, long, CancellationToken)</a> replaces the token with the real handle. The token is
+told apart from a handle by the row's status (Loading), not by its value: a 64-bit
+scene handle stored bit for bit can be negative too.
+</p>
+<p>
+Naming the claimant at dequeue also means a Loading row is no longer anonymous:
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteBySceneServerAsync_System_Int64_System_Threading_CancellationToken_">DeleteBySceneServerAsync(long, CancellationToken)</a> (a scene server's restart and shutdown cleanup)
+and <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteByStaleSceneServersAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken_">DeleteByStaleSceneServersAsync(long, double, int, CancellationToken)</a> (the world server's dead-host sweep)
+now remove the loads a stopped scene server had taken, instead of leaving them to the
+age-based <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DeleteStaleUnreadyAsync_System_Int64_System_Double_System_Int32_System_Threading_CancellationToken_">DeleteStaleUnreadyAsync(long, double, int, CancellationToken)</a>.
+</p>
+<p>
+One row per call on purpose, not a batch: the per-pulse budget is a handful of rows and
+is decided by the caller between claims.
+</p>
 </div>
 
 
@@ -623,7 +654,7 @@ Uses BaseService execution wrappers for automatic transient failure retry and ce
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_EnqueueForPartyAsync_System_Int64_System_String_FishMMO_Database_Data_Enums_SceneType_System_Int64_System_Int64_System_Int32_System_Boolean_System_Collections_Generic_IReadOnlyList_System_Int64__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.EnqueueForPartyAsync(System.Int64,System.String,FishMMO.Database.Data.Enums.SceneType,System.Int64,System.Int64,System.Int32,System.Boolean,System.Collections.Generic.IReadOnlyList{System.Int64},System.Threading.CancellationToken)">
   EnqueueForPartyAsync(long, string, SceneType, long, long, int, bool, IReadOnlyList&lt;long&gt;, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L209"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L254"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Enqueues an instance for a character only while no member of their party already holds
@@ -662,8 +693,8 @@ party even after whoever opened it has left or logged out.</p>
 </dd>
     <dt><code>partyCharacterIds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;</dt>
     <dd><p>Every character whose existing instance should block this insert — the party's members,
-including the requester. An empty or null list makes this equivalent to
-<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_EnqueueAsync_System_Int64_System_String_FishMMO_Database_Data_Enums_SceneType_System_Int64_System_Threading_CancellationToken_">EnqueueAsync(long, string, SceneType, long, CancellationToken)</a>.</p>
+including the requester. An empty or null list, with no party, makes this an unguarded
+insert — still one row per request.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
@@ -718,7 +749,7 @@ physics scene and a scene row until its own idle timeout expired.
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_EnqueueIfUnderOutstandingLimitAsync_System_Int64_System_String_FishMMO_Database_Data_Enums_SceneType_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.EnqueueIfUnderOutstandingLimitAsync(System.Int64,System.String,FishMMO.Database.Data.Enums.SceneType,System.Int32,System.Threading.CancellationToken)">
   EnqueueIfUnderOutstandingLimitAsync(long, string, SceneType, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L135"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L166"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Enqueues a scene load only while fewer than <code class="paramref">maxOutstanding</code> loads of
@@ -756,8 +787,9 @@ instances gets them in parallel. Values below 1 are treated as 1.</p>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;&gt;</dt>
     <dd><p>The new row's ID, or <code>0</code> when <code class="paramref">maxOutstanding</code> loads of the same
-(world, scene, type) are already outstanding and no row was created. Failure results
-carry the database error.</p>
+(world, scene, type) are already outstanding and no row was created. A retry after a lost
+reply returns the ID of the row its first attempt created. Failure results carry the
+database error.</p>
 </dd>
   </dl>
 
@@ -769,8 +801,8 @@ carry the database error.</p>
 
   <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_EnqueueIfUnderOutstandingLimitAsync_System_Int64_System_String_FishMMO_Database_Data_Enums_SceneType_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>For the world server's open-world routing, which asks for a scene on every routing
-cycle for as long as anyone is still waiting on it. <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_EnqueueAsync_System_Int64_System_String_FishMMO_Database_Data_Enums_SceneType_System_Int64_System_Threading_CancellationToken_">EnqueueAsync(long, string, SceneType, long, CancellationToken)</a> inserts
-unconditionally, so a zone that takes twenty seconds to load — an entirely ordinary
+cycle for as long as anyone is still waiting on it. The uncapped enqueue this replaced
+inserted unconditionally, so a zone that takes twenty seconds to load — an entirely ordinary
 cold start — collected a fresh request every two seconds while it did. Scene servers
 dequeue those and load them: ten stacked copies of one open-world zone, each with its
 own physics scene, each sitting empty and therefore not eligible for stale unload
@@ -793,7 +825,7 @@ them.
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_FetchAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.FetchAsync(System.Int64,System.Threading.CancellationToken)">
   FetchAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L838"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1049"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches an entity for the given key.</p>
@@ -833,7 +865,7 @@ them.
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_FetchAvailableAsync_System_Int64_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.FetchAvailableAsync(System.Int64,System.String,System.Int32,System.Threading.CancellationToken)">
   FetchAvailableAsync(long, string, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L860"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1097"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Gets list of ready scenes for a world server and scene name with available capacity.</p>
@@ -886,7 +918,7 @@ Filters by Ready status and character_count less than maxClients. Returns empty 
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_FetchCharacterInstanceAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_Int64_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.FetchCharacterInstanceAsync(System.Int64,FishMMO.Database.Data.Enums.SceneType,System.Int64,System.String,System.Threading.CancellationToken)">
   FetchCharacterInstanceAsync(long, SceneType, long, string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L633"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L844"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Gets the instance a character opened for one particular scene.</p>
@@ -959,7 +991,7 @@ neither be routed to it nor create a replacement until it unloaded on its own.
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_FetchCharacterInstancesAsync_System_Collections_Generic_IReadOnlyList_System_Int64__FishMMO_Database_Data_Enums_SceneType_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.FetchCharacterInstancesAsync(System.Collections.Generic.IReadOnlyList{System.Int64},FishMMO.Database.Data.Enums.SceneType,System.Int64,System.Int64,System.Threading.CancellationToken)">
   FetchCharacterInstancesAsync(IReadOnlyList&lt;long&gt;, SceneType, long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L666"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L877"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches every enterable instance owned by any of the given characters on one world
@@ -1025,7 +1057,7 @@ a row this does not show it.
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_FetchJoinableInstancesAsync_System_Int64_System_String_System_Int32_FishMMO_Database_Data_Enums_SceneType_System_Int32_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.FetchJoinableInstancesAsync(System.Int64,System.String,System.Int32,FishMMO.Database.Data.Enums.SceneType,System.Int32,System.Int32,System.Threading.CancellationToken)">
   FetchJoinableInstancesAsync(long, string, int, SceneType, int, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L731"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L942"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Lists the instances of one dungeon, at one difficulty, that anybody may join.</p>
@@ -1093,7 +1125,7 @@ there, and they would open a second copy.
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_FetchManyAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.FetchManyAsync(System.Int64,System.Threading.CancellationToken)">
   FetchManyAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L882"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1119"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Fetches many items for the given key.</p>
@@ -1129,11 +1161,61 @@ there, and they would open a second copy.
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_SceneService_FetchWithAgesAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.FetchWithAgesAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_FetchWithAgesAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.FetchWithAgesAsync(System.Collections.Generic.IReadOnlyCollection{System.Int64},System.Threading.CancellationToken)">
+  FetchWithAgesAsync(IReadOnlyCollection&lt;long&gt;, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1071"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads several scene rows by ID, each with its age in seconds by the database clock.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;IReadOnlyList&lt;(SceneData Scene, double AgeSeconds)&gt;&gt;&gt; FetchWithAgesAsync(IReadOnlyCollection&lt;long&gt; sceneIds, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sceneIds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlycollection-1">IReadOnlyCollection</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;</dt>
+    <dd><p>Scene rows to read. Non-positive and duplicate ids are ignored.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;(<a class="xref" href="FishMMO.Database.Data.SceneData.html">SceneData</a> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetuple-fishmmo.database.data.scenedata,system.double-.scene">Scene</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetuple-fishmmo.database.data.scenedata,system.double-.ageseconds">AgeSeconds</a>)&gt;&gt;&gt;</dt>
+    <dd><p>The rows that exist, in no particular order. An id with no row is absent from the result,
+which is the answer &quot;that row is gone&quot; — distinct from a failed result, which answers
+nothing.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_FetchWithAgesAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>For the world server's instance routing, which used to read one row per waiting connection
+even when a whole party waited on the same instance. The age is for the same reason as on
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneService_DequeueAsync_System_Int64_System_Threading_CancellationToken_">DequeueAsync(long, CancellationToken)</a>: it is measured by the clock that stamped the row, so the
+caller's own clock never enters the comparison.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_SceneService_PulseAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.PulseAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_PulseAsync_System_Int64_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.PulseAsync(System.Int64,System.Int32,System.Threading.CancellationToken)">
   PulseAsync(long, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L547"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L738"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the character count for a scene (heartbeat).</p>
@@ -1188,7 +1270,7 @@ pulse — and that population is the number the world server routes and load-bal
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_PulseBatchAsync_System_Collections_Generic_List_System_ValueTuple_System_Int64_System_Int32___System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.PulseBatchAsync(System.Collections.Generic.List{System.ValueTuple{System.Int64,System.Int32}},System.Int32,System.Threading.CancellationToken)">
   PulseBatchAsync(List&lt;(long sceneId, int characterCount)&gt;, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L900"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1162"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the character count for multiple scenes in a single batched operation.</p>
@@ -1236,7 +1318,7 @@ pulse — and that population is the number the world server routes and load-bal
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_SetInstancePrivacyAsync_System_Int64_System_Int64_System_Int64_System_Boolean_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.SetInstancePrivacyAsync(System.Int64,System.Int64,System.Int64,System.Boolean,System.Threading.CancellationToken)">
   SetInstancePrivacyAsync(long, long, long, bool, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L793"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1004"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Shows or hides one instance in the dungeon finder's public list.</p>
@@ -1290,9 +1372,9 @@ nothing instead of flipping another party's dungeon.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_SceneService_SetReadyAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.SetReadyAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_SetReadyAsync_System_Int64_System_Int64_System_Int64_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.SetReadyAsync(System.Int64,System.Int64,System.Int64,System.String,System.Int32,System.Threading.CancellationToken)">
-  SetReadyAsync(long, long, long, string, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L471"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_SetReadyAsync_System_Int64_System_Int64_System_Int64_System_String_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.SetReadyAsync(System.Int64,System.Int64,System.Int64,System.String,System.Int64,System.Threading.CancellationToken)">
+  SetReadyAsync(long, long, long, string, long, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L662"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Sets the loading scene identified by <code class="paramref">sceneId</code> to ready status,
@@ -1301,7 +1383,7 @@ recording which scene server hosts it and under which runtime handle.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; SetReadyAsync(long sceneId, long sceneServerId, long worldServerId, string sceneName, int sceneHandle, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; SetReadyAsync(long sceneId, long sceneServerId, long worldServerId, string sceneName, long sceneHandle, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -1318,8 +1400,8 @@ recording which scene server hosts it and under which runtime handle.</p>
     <dt><code>sceneName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd><p>Scene name, validated against the row as a consistency check.</p>
 </dd>
-    <dt><code>sceneHandle</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>The hosting process's scene-manager handle, recorded for diagnostics only. Instances are identified across processes by <code class="paramref">sceneId</code>.</p>
+    <dt><code>sceneHandle</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>The hosting process's scene-manager handle (the 64-bit raw data, stored bit for bit), recorded for diagnostics only. Instances are identified across processes by <code class="paramref">sceneId</code>.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
@@ -1339,7 +1421,7 @@ recording which scene server hosts it and under which runtime handle.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_SetReadyAsync_System_Int64_System_Int64_System_Int64_System_String_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_SetReadyAsync_System_Int64_System_Int64_System_Int64_System_String_System_Int64_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>Only updates the named scene while it is in Loading status; the update is idempotent
 for a row already made ready by the same server and handle (in-call retry safety).</p>
 <p>
@@ -1354,11 +1436,58 @@ scene instance created for somebody else.
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_SceneService_SumCharacterCountAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.SumCharacterCountAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_SumCharacterCountAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.SumCharacterCountAsync(System.Int64,System.Threading.CancellationToken)">
+  SumCharacterCountAsync(long, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L1137"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Sums the character count of a world server's Ready scenes.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;int&gt;&gt; SumCharacterCountAsync(long worldServerId, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>worldServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>World server whose population to count.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
+    <dd><p>The total, 0 when there are no Ready scenes.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_SumCharacterCountAsync_System_Int64_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The same rows <code>FetchManyAsync</code> returns, added up by the database. The world server's
+population count needs only the total, and reading every scene row to add it up grew with
+the scene count on every routing cycle.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_SceneService_UpdateStatusAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.UpdateStatusAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_SceneService_UpdateStatusAsync_System_Int64_FishMMO_Database_Data_Enums_SceneStatus_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.UpdateStatusAsync(System.Int64,FishMMO.Database.Data.Enums.SceneStatus,System.Threading.CancellationToken)">
   UpdateStatusAsync(long, SceneStatus, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L444"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L569"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the status of a scene.</p>
@@ -1398,6 +1527,55 @@ scene instance created for somebody else.
   <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_UpdateStatusAsync_System_Int64_FishMMO_Database_Data_Enums_SceneStatus_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>Uses ExecuteSqlRawAsync with execution strategy wrapping to ensure transient database
 failures are automatically retried. Returns entity not found exception if scene doesn't exist.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_SceneService_UpdateStatusManyAsync_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.UpdateStatusManyAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_SceneService_UpdateStatusManyAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__FishMMO_Database_Data_Enums_SceneStatus_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.SceneService.UpdateStatusManyAsync(System.Collections.Generic.IReadOnlyCollection{System.Int64},FishMMO.Database.Data.Enums.SceneStatus,System.Threading.CancellationToken)">
+  UpdateStatusManyAsync(IReadOnlyCollection&lt;long&gt;, SceneStatus, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Scene/SceneService.cs/#L639"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Sets the status of several scenes in one statement.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;int&gt;&gt; UpdateStatusManyAsync(IReadOnlyCollection&lt;long&gt; sceneIds, SceneStatus status, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>sceneIds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlycollection-1">IReadOnlyCollection</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;</dt>
+    <dd><p>Scene rows to update. Non-positive and duplicate ids are ignored.</p>
+</dd>
+    <dt><code>status</code> <a class="xref" href="FishMMO.Database.Data.Enums.SceneStatus.html">SceneStatus</a></dt>
+    <dd><p>New scene status.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
+    <dd><p>The number of rows updated. A row that no longer exists is simply not counted.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_SceneService_UpdateStatusManyAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__FishMMO_Database_Data_Enums_SceneStatus_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>For a sweep that fails several expired loads at once, which used to cost one round trip
+and one queued work item per row.</p>
 </div>
 
 

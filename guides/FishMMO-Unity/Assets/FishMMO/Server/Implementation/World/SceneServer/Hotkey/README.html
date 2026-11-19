@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Hotkey System | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Hotkey System | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/Hotkey/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="hotkey-system">Hotkey System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/Hotkey/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Server-side authority for player hotkey bindings on the SceneServer, handling single and batch set requests with slot validation, ingress debounce protection, in-memory runtime mutation, an authoritative echo of every request, and claim-gated persistence.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#persistence">Persistence</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Hotkey system is the SceneServer authority for player hotkey bindings. It receives single and batch hotkey set requests from clients, validates slot boundaries, initializes per-character hotkey storage when needed, and applies updates to the character runtime state.</p>
+<p>This subsystem is intentionally lightweight:</p>
+<ul>
+<li>Main-thread request validation and in-memory mutation, answered with the server's authoritative slot values.</li>
+<li>A resident's changed bar is staged and written by a periodic pump; a departing character's bar is written by the character system's own save-and-release. See <a href="#persistence">Persistence</a>.</li>
+</ul>
+<p>The source of truth for active hotkey bindings is the runtime list on <code>IPlayerCharacter.Hotkeys</code>; the <code>character_hotkeys</code> rows are loaded into it at login.</p>
+<h2 id="persistence">Persistence</h2>
+<p>Every change stages the character's whole bar (<code>IHotkeySystemRuntimeData.StageHotkeyWrite</code>), newest-only per character. Two writers take it from there, and every write is <strong>ownership-gated</strong>: it quotes the session claim the character is held under and lands only while that claim is still held (<code>ICharacterHotkeyService.PersistOwnedAsync</code>, <code>CharacterWriteGate</code>).</p>
+<ul>
+<li><strong>The pump</strong> (<code>persistFlushIntervalSeconds</code>, default 5 s) drains the stage and writes each bar under the claim held for its character <em>at the drain</em>, captured on the main thread from <code>SessionTokens</code> and carried with the write. A staged bar whose character holds no claim here is dropped: the character has left (its departure wrote the live bar) or was evicted (its bar is not ours to write). A bar that did not land complete is re-staged from the live bar at the next pass — unless the gate refused it (<code>HotkeySystem.RestagesAfter</code>), which no retry can change.</li>
+<li><strong>The departure.</strong> <code>CharacterSystem</code> writes a departing character's whole live bar inside the save-and-release, before the release (<code>IHotkeySystemRuntimeData.TakeDepartingBar</code>, via <code>AppendDepartureSubEntities</code>): logout, transfer, the end of a combat-logout linger, a linger reclaimed, and the shutdown flush. It used to be flushed from <code>OnDisconnect</code> as a write of its own, which only the ordered lane kept ahead of the release, and from this system's teardown — which runs <em>before</em> the character system's shutdown flush releases every claim. Gated, a bar that lands after its release is refused and lost, not merely late, so neither happens any more.</li>
+</ul>
+<p>Rows are versioned by <code>NextHotkeyVersion</code> (UTC ticks, monotonic). Every slot is written, empty ones included, because the upsert has no delete path. A stored bar newer than the one being written is skipped as superseded rather than failing the batch, which may carry many characters' bars.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.6 (6000.6.8f1)</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Single hotkey update via <code>HotkeySetBroadcast</code> with full connection, character, and slot validation</li>
+<li>Batch hotkey update via <code>HotkeySetMultipleBroadcast</code> with per-entry independent validation (invalid entries are skipped; valid entries still apply)</li>
+<li>Automatic per-character hotkey list initialization seeded with <code>Constants.Configuration.MaximumPlayerHotkeys</code> entries</li>
+<li>Multiple hotkey bars without a bar anywhere on the server: <code>MaximumPlayerHotkeys</code> is <code>HotkeyBarCount * HotkeySlotsPerBar</code> (both game settings in <code>Constants.Configuration</code>), and a slot index is <code>bar * HotkeySlotsPerBar + position</code>. The server, the wire and the <code>character_hotkeys</code> rows all work in that flat index; only the client draws bars. Raising <code>HotkeyBarCount</code> is safe on a live game (new bars are appended); changing <code>HotkeySlotsPerBar</code> re-deals stored bindings and is not.</li>
+<li>Slot range validation (<code>0 &lt;= slot &lt; hotkeyCount</code>) and hotkey type enum range validation (<code>0..MaxHotkeyType</code>)</li>
+<li><code>ReferenceID</code> lower-bound validation (rejects values below <code>-1</code>) and ownership validation of the item, equipment slot or ability a binding names (<code>IsHotkeyReferenceValid</code>)</li>
+<li>Ingress debounce protection per connection per operation type via <code>IngressGuard</code></li>
+<li>Configurable debounce window, bulk update cap, sweep interval, entry TTL, and sweep removal limit</li>
+<li>Bounded periodic cleanup of stale ingress guard entries via <code>OnUpdate</code> sweep</li>
+<li>Graceful failure semantics: an invalid single request changes nothing; invalid batch entries are skipped while valid ones apply</li>
+<li>Every request is answered, accepted or refused (validation, <code>CanAct</code>, debounce), with the server's authoritative value: <code>HotkeySetBroadcast</code> for the one slot, <code>HotkeySetMultipleBroadcast</code> for the whole bar. The client applies a binding locally the moment the icon is dropped, so a refusal answered in silence would leave it showing a binding the server never took until the next login</li>
+<li>Login-time prune (<code>ICharacterSystem.OnConnect</code>, before the bar is sent): bindings whose item or ability no longer exists are cleared and the bar is staged; any bar still staged from an earlier session is dropped first</li>
+<li><code>ForgetAbilityBindings</code> clears every binding of a forgotten ability (matched on type and id), stages the bar and echoes it</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.6 (6000.6.8f1)</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>IHotkeySystem</code>, <code>IngressGuard</code>, broadcast types, and <code>IHotkeySystemRuntimeData</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>HotkeySystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>IHotkeySystem</code>).</li>
+<li>Verify that <code>HotkeySystemRuntimeData</code> is registered as the <code>IHotkeySystemRuntimeData</code> data container (declared via <code>[RequiresDataContainer(typeof(HotkeySystemRuntimeData))]</code>).</li>
+<li>On initialize, <code>HotkeySystem</code> registers broadcast handlers for <code>HotkeySetBroadcast</code> and <code>HotkeySetMultipleBroadcast</code>, subscribes <code>ICharacterSystem.OnConnect</code> for the login-time prune, and registers the persistence pump (<code>persistFlushIntervalSeconds</code>).</li>
+<li>On deinitialize, it unregisters the broadcast handlers, the <code>OnConnect</code> subscription and the pump, and clears the ingress guard state. It writes nothing: the character system's shutdown flush writes every resident's live bar under its claim, before the release.</li>
+<li>Clients send <code>HotkeySetBroadcast</code> for single updates or <code>HotkeySetMultipleBroadcast</code> for batch updates; the server validates and applies them to the character's runtime hotkey list.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td>int</td>
+<td>75</td>
+<td>Minimum milliseconds between hotkey requests per connection</td>
+</tr>
+<tr>
+<td><code>maxBulkHotkeyUpdates</code></td>
+<td>int</td>
+<td>64</td>
+<td>Maximum hotkey updates accepted in one bulk request</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>Seconds between bounded ingress guard cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Seconds before stale ingress guard entries are removed</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum stale ingress guard entries removed per sweep</td>
+</tr>
+<tr>
+<td><code>persistFlushIntervalSeconds</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>Seconds between runs of the persistence pump that writes staged bars (min 1.0)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="validation-constants">Validation Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MaxHotkeyType</code></td>
+<td>4</td>
+<td>Highest valid <code>ReferenceButtonType</code> enum byte value</td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, ingress guard checks, hotkey list mutation, echo, staging, the pump's drain and claim capture, login prune, sweep cleanup</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Ownership-gated bar writes (<code>PersistHotkeysAsync</code> → <code>ICharacterHotkeyService.PersistOwnedAsync</code>), keyed by character</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-handlers">Broadcast Handlers</h3>
+<p><code>HotkeySystem</code> registers the following server-side broadcast handlers on initialize:</p>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HotkeySetBroadcast</code></td>
+<td><code>OnServerHotkeySetBroadcastReceived</code></td>
+<td>Single hotkey slot update</td>
+</tr>
+<tr>
+<td><code>HotkeySetMultipleBroadcast</code></td>
+<td><code>OnServerHotkeySetMultipleBroadcastReceived</code></td>
+<td>Batch hotkey slot update</td>
+</tr>
+</tbody>
+</table>
+<h3 id="single-update-path">Single Update Path</h3>
+<p><code>OnServerHotkeySetBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Resolves the requesting character (<code>TryBeginPlayerRequest</code> with <code>PlayerRequestGate.SkipCanAct</code>).</li>
+<li>Checks <code>CharacterStateValidation.CanAct</code> here, so a refusal can be answered: refused → echoes the slot.</li>
+<li>Acquires ingress debounce guard (<code>SetSingle</code> operation); refused → echoes the slot.</li>
+<li>Calls <code>TryApplyHotkey(...)</code> to validate and apply the hotkey data; on success stages the bar for the pump.</li>
+<li>Echoes the slot's authoritative value (<code>AcknowledgeHotkey</code>) whether or not it applied.</li>
+<li>Releases ingress guard in <code>finally</code> block.</li>
+</ol>
+<h3 id="batch-update-path">Batch Update Path</h3>
+<p><code>OnServerHotkeySetMultipleBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Resolves the requesting character (<code>TryBeginPlayerRequest</code> with <code>PlayerRequestGate.SkipCanAct</code>) and validates the batch payload (non-null, at least one entry).</li>
+<li>Checks <code>CharacterStateValidation.CanAct</code>; refused → echoes the whole bar.</li>
+<li>Acquires ingress debounce guard (<code>SetMultiple</code> operation); refused → echoes the whole bar.</li>
+<li>Clamps iteration count to <code>maxBulkHotkeyUpdates</code>.</li>
+<li>Calls <code>TryApplyHotkey(...)</code> independently per entry — one malformed entry does not fail the batch.</li>
+<li>Stages the bar if any entry applied, then echoes the whole bar once (<code>AcknowledgeAllHotkeys</code>).</li>
+<li>Releases ingress guard in <code>finally</code> block.</li>
+</ol>
+<h3 id="internal-helpers">Internal Helpers</h3>
+<h4 id="ensurehotkeysinitializediplayercharacter"><code>EnsureHotkeysInitialized(IPlayerCharacter)</code></h4>
+<p>Creates and seeds the character hotkey list with <code>Constants.Configuration.MaximumPlayerHotkeys</code> default entries when the list is null.</p>
+<h4 id="tryapplyhotkeyiplayercharacter-hotkeydata"><code>TryApplyHotkey(IPlayerCharacter, HotkeyData)</code></h4>
+<ol>
+<li>Ensures hotkeys are initialized.</li>
+<li>Validates hotkey type is within defined enum range (<code>0..MaxHotkeyType</code>).</li>
+<li>Validates <code>ReferenceID &gt;= -1</code>.</li>
+<li>Validates slot index is within bounds (<code>0 &lt;= slot &lt; Hotkeys.Count</code>).</li>
+<li>A clear (<code>Type</code> 0, or the unset <code>ReferenceID</code>) is always accepted and written as the empty binding.</li>
+<li>Otherwise validates that the character owns what the binding names (<code>IsHotkeyReferenceValid</code>, shared with the login prune): an occupied inventory or equipment slot, or a known ability by its instance id; a bank binding is never valid.</li>
+<li>Creates a normalized <code>HotkeyData</code> value and assigns it to the target slot.</li>
+<li>Returns <code>true</code> on success, <code>false</code> on any validation failure.</li>
+</ol>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Invalid single requests change nothing and are answered with the slot's authoritative value (nothing is echoed for a slot index out of range).</li>
+<li>Invalid entries in batch requests are skipped; valid entries still apply; the whole bar is echoed.</li>
+<li>Ingress debounce rejects rapid-fire requests from the same connection per operation type, and the rejection is answered the same way.</li>
+<li>A pump write that did not land complete is re-staged from the live bar at the next pass, unless the ownership gate refused it (<code>RestagesAfter</code>).</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>HotkeySystem</code> logs &quot;Initialized&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Runtime data container available</td>
+<td>Verify <code>IHotkeySystemRuntimeData</code> resolves from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Single hotkey set</td>
+<td>Send <code>HotkeySetBroadcast</code> with valid slot/type; confirm <code>IPlayerCharacter.Hotkeys[slot]</code> is updated</td>
+</tr>
+<tr>
+<td>Batch hotkey set</td>
+<td>Send <code>HotkeySetMultipleBroadcast</code> with mixed valid/invalid entries; confirm valid slots update and invalid entries are skipped</td>
+</tr>
+<tr>
+<td>Slot boundary rejection</td>
+<td>Send a hotkey set with slot index out of range; confirm no mutation occurs and no slot is echoed (there is none to echo)</td>
+</tr>
+<tr>
+<td>Type range rejection</td>
+<td>Send a hotkey set with <code>Type &gt; MaxHotkeyType</code>; confirm no mutation occurs and the slot's stored value is echoed back</td>
+</tr>
+<tr>
+<td>ReferenceID rejection</td>
+<td>Send a hotkey set with <code>ReferenceID &lt; -1</code>; confirm no mutation occurs</td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid consecutive requests from the same connection; confirm excess requests are refused and answered with the authoritative slot</td>
+</tr>
+<tr>
+<td>Bulk cap enforcement</td>
+<td>Send a batch with more entries than <code>maxBulkHotkeyUpdates</code>; confirm only the first N are processed</td>
+</tr>
+<tr>
+<td>Ingress sweep cleanup</td>
+<td>Wait for sweep interval; confirm stale guard entries are removed without errors</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm broadcast handlers are unregistered and ingress guard is cleared</td>
+</tr>
+<tr>
+<td>Departure writes the bar</td>
+<td>Rebind a slot and log out within the pump interval; confirm the new binding is in <code>character_hotkeys</code> after the release, written by the save-and-release</td>
+</tr>
+<tr>
+<td>Claim gate</td>
+<td>Stage a bar, release the character's claim before the pump runs; confirm the pump drops the bar (no claim) and a write quoting the released claim is refused as <code>FORBIDDEN</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|set hotkey| Sys[HotkeySystem]
+    Sys --&gt;|validate slot + binding| Sys
+    Sys --&gt;|persist| DB[(PostgreSQL Hotkeys)]
+    Sys --&gt;|ack| Client
+    Client --&gt;|load on login| Sys
+</code></pre>
+<h3 id="single-hotkey-set">Single Hotkey Set</h3>
+<pre><code>OnServerHotkeySetBroadcastReceived(conn, msg, channel)
+│
+├─ 1. TryBeginPlayerRequest (SkipCanAct) → IPlayerCharacter
+├─ 2. CanAct → refused: AcknowledgeHotkey(slot)
+├─ 3. Acquire ingress guard (SetSingle)
+│      └── Debounce window active → AcknowledgeHotkey(slot)
+├─ 4. TryApplyHotkey(playerCharacter, msg.HotkeyData)
+│      ├── EnsureHotkeysInitialized(playerCharacter)
+│      ├── Validate Type &lt;= MaxHotkeyType
+│      ├── Validate ReferenceID &gt;= -1
+│      ├── Validate 0 &lt;= slot &lt; Hotkeys.Count
+│      ├── Clear → empty binding; else IsHotkeyReferenceValid (ownership)
+│      └── Assign normalized HotkeyData to slot → StageHotkeyPersist
+├─ 5. AcknowledgeHotkey(slot) (applied or not)
+└─ 6. Release ingress guard (finally)
+</code></pre>
+<h3 id="batch-hotkey-set">Batch Hotkey Set</h3>
+<pre><code>OnServerHotkeySetMultipleBroadcastReceived(conn, msg, channel)
+│
+├─ 1. TryBeginPlayerRequest (SkipCanAct); batch non-null, count &gt;= 1
+├─ 2. CanAct → refused: AcknowledgeAllHotkeys
+├─ 3. Acquire ingress guard (SetMultiple)
+│      └── Debounce window active → AcknowledgeAllHotkeys
+├─ 4. Clamp iteration to min(msg.Hotkeys.Length, maxBulkHotkeyUpdates)
+├─ 5. For each entry: TryApplyHotkey(playerCharacter, subMsg.HotkeyData)
+│      ├── Validate type, referenceID, slot range and ownership
+│      └── Assign normalized HotkeyData to slot (or skip on failure)
+├─ 6. Any applied → StageHotkeyPersist; AcknowledgeAllHotkeys (one echo)
+└─ 7. Release ingress guard (finally)
+</code></pre>
+<h3 id="ingress-sweep-onupdate">Ingress Sweep (OnUpdate)</h3>
+<pre><code>OnUpdate(deltaTime)
+│
+├─ 1. Resolve IHotkeySystemRuntimeData
+└─ 2. IngressGuard.Sweep(sweepInterval, entryTtl, maxRemovals)
+       └── Drain stale entries with bounded cleanup
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>Hotkey/
+├── HotkeySystem.cs              # Network handlers, ingress protection, and hotkey validation/application logic
+├── HotkeySystemRuntimeData.cs   # Ingress guard, the per-character write stage, row building (BuildRows, NextHotkeyVersion), TakeDepartingBar
+└── README.md
+</code></pre>
+<h3 id="related-core-contract">Related Core Contract</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/Hotkey/IHotkeySystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/Hotkey/IHotkeySystemRuntimeData.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── HotkeySystem : IHotkeySystem
+
+RuntimeDataContainer
+└── HotkeySystemRuntimeData : IHotkeySystemRuntimeData
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

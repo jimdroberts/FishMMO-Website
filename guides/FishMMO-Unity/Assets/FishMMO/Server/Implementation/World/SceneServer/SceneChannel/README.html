@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Scene Channel System | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Scene Channel System | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneChannel/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="scene-channel-system">Scene Channel System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneChannel/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> SceneServer subsystem for open-world scene channel listing and switching, aggregating scene instances across scene servers via database queries and handling same-server or cross-server channel transitions with DoS protection and write-through TTL caching.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Scene Channel system is a scene-server subsystem that provides channel selection for open-world scenes. Channels are multiple instances of the same scene on the same world server, potentially hosted across different scene servers. The system aggregates all available instances via database queries (<code>ISceneService.FetchAvailableAsync</code>, <code>ISceneServerService.FetchAsync</code>) and exposes a channel list to the client. The scene-server lookup is a liveness probe only: its answer (the hosting process's port) never leaves the server, because a switch is never a direct dial and a port list would map which scene server hosts which instance. It also handles same-server or cross-server channel switching by updating the character's <code>SceneHandle</code> and disconnecting the client for world-server re-route.</p>
+<p>The implementation uses a split execution model:</p>
+<ul>
+<li><strong>Main thread:</strong> request validation, ingress guard checks, cooldown enforcement, network broadcasts, and character state mutations.</li>
+<li><strong>Async worker:</strong> database reads via <code>TryEnqueueIngressWork</code> for scene-instance and scene-server-address queries.</li>
+<li><strong>Main-thread queue:</strong> marshalling async completion actions back to Unity/FishNet-safe context via <code>ISceneChannelSystemMainThreadQueueData</code>.</li>
+</ul>
+<p>All database work is asynchronous. Main-thread mutations (FishNet broadcasts, character state changes, disconnects) are marshalled through an isolated main-thread queue container. Two write-through TTL caches reduce repeated database polling for scene-instance and scene-server-address queries.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td></td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only module</td>
+</tr>
+<tr>
+<td>Unity 6.6 (6000.6.8f1)</td>
+<td>Yes</td>
+<td>Required engine version</td>
+</tr>
+<tr>
+<td>IL2CPP</td>
+<td>Yes</td>
+<td>Supported scripting backend</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>Channel listing aggregating all available open-world scene instances across scene servers on the same world server via database queries</li>
+<li>Opt-in initial channel list dispatch when a character loads into an open-world scene (<code>sendChannelListOnCharacterLoad</code>, off by default; <code>OnAfterLoadCharacter</code> is only subscribed when it is on)</li>
+<li>Explicit channel list refresh via <code>RequestSceneChannelListBroadcast</code> from the client</li>
+<li>Channel switching with database validation of target handle existence, <code>OpenWorld</code> scene type, and capacity</li>
+<li>Ordered hand-off through <code>ICharacterSystem.BeginChannelTransfer</code>: departure announced, then rebind, save, session release, disconnect</li>
+<li>Client disconnect triggering standard save/despawn/session-release pipeline via <code>CharacterSystem.OnRemoteConnectionStopped</code></li>
+<li>Auto-reconnect through world server load balancing to the scene server hosting the target channel (SceneHandle-aware routing)</li>
+<li>Per-connection, per-operation ingress guard with configurable debounce and in-flight gating (<code>RequestList</code>, <code>SelectChannel</code>)</li>
+<li>Bounded ingress guard sweep with configurable TTL, interval, and max removals</li>
+<li>Per-connection channel switch cooldown with configurable interval and bounded dictionary (DoS defense), timed on <code>MonotonicClock</code> so a stepped host clock cannot hold every entry inside its window</li>
+<li>Scene-server liveness judged by <code>SceneServerData.PulseAgeSeconds</code> — the pulse's age as the database measured it when the row was read — with the world server's <code>SceneServerPulseStaleSeconds</code> threshold (60 s); never by subtracting <code>LastPulse</code> from this host's clock</li>
+<li>Hard cap on cooldown dictionary size (<code>maxCooldownEntries</code>) rejecting new entries when saturated</li>
+<li>Periodic cleanup of expired cooldown entries with bounded removal per sweep</li>
+<li>Immediate cooldown entry removal on client disconnect</li>
+<li>Write-through TTL cache for scene-instance query results (<code>AvailableSceneCache</code>, keyed by <code>worldServerID|sceneName</code> via <code>BuildAvailableSceneCacheKey</code> with an <code>OrdinalIgnoreCase</code> comparer — the scene name alone collided between world servers sharing a scene server)</li>
+<li>Write-through TTL cache for scene-server ports (<code>SceneServerAddressCache</code>, <code>TimedCache&lt;long, ushort&gt;</code> keyed by scene server ID)</li>
+<li>Cache invalidation on fetch failure to prevent routing to dead scene servers</li>
+<li>Periodic expired-cache sweep piggybacking on the cooldown cleanup cycle</li>
+<li>Async worker backpressure via <code>TryEnqueueIngressWork</code> (rejects when queue unavailable/full)</li>
+<li>Per-system main-thread queue isolation with configurable drain cap per frame</li>
+<li>Instanced scene rejection for both channel listing and switching; the listing answers an instanced character with an empty list from behind the ingress guard rather than an unlimited reliable reply per message</li>
+<li>Graceful failure semantics: invalid requests fail closed with no mutation; capacity/type checks enforced before state changes; async failures logged without blocking main thread</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.6 (6000.6.8f1)</strong></li>
+<li><strong>FishNetworking</strong> — networking framework</li>
+<li><strong>FishMMO Server Core</strong> — provides <code>ServerBehaviour</code>, <code>ISceneChannelSystem</code>, <code>ISceneChannelSystemRuntimeData</code>, <code>ISceneChannelSystemMainThreadQueueData</code>, broadcast types (<code>RequestSceneChannelListBroadcast</code>, <code>SceneChannelSelectBroadcast</code>, <code>SceneChannelListBroadcast</code>, <code>ChannelAddress</code>), <code>IngressGuard</code>, <code>TimedCache</code>, <code>AsyncWorkerData</code>, <code>ISceneInstanceMappingData</code>, <code>ICharacterMappingData&lt;NetworkConnection&gt;</code>, <code>ISceneServerSystem&lt;NetworkConnection&gt;</code>, <code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code>, <code>CharacterFlags</code>, and <code>SceneType</code></li>
+<li><strong>FishMMO Database</strong> — provides <code>ISceneService</code>, <code>ISceneServerService</code>, <code>SceneData</code>, and <code>DatabaseResult&lt;T&gt;</code></li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within FishMMO. It is included as part of the server-side scene-server implementation and does not require separate installation. Ensure the FishMMO Server Core and its dependencies are properly configured in your Unity project.</p>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<ol>
+<li>Ensure <code>SceneChannelSystem</code> is present on the scene server GameObject (it inherits from <code>ServerBehaviour</code> and implements <code>ISceneChannelSystem</code>). The asset is created via <code>Create &gt; FishMMO &gt; Server &gt; SceneServer &gt; Scene Channel System</code>.</li>
+<li>Verify that the following data containers are registered in <code>DataContainerRegistry</code>:
+<ul>
+<li><code>SceneChannelSystemRuntimeData</code> → <code>ISceneChannelSystemRuntimeData</code></li>
+<li><code>SceneChannelSystemMainThreadQueueData</code> → <code>ISceneChannelSystemMainThreadQueueData</code></li>
+<li><code>AsyncWorkerData</code> (shared async work queue)</li>
+</ul>
+</li>
+<li>Verify that the following dependencies resolve from <code>DataContainerRegistry</code>:
+<ul>
+<li><code>ISceneInstanceMappingData</code></li>
+<li><code>ICharacterMappingData&lt;NetworkConnection&gt;</code></li>
+</ul>
+</li>
+<li>Verify that <code>ISceneServerSystem&lt;NetworkConnection&gt;</code> is registered in <code>BehaviourRegistry</code> (used for <code>WorldSceneDetailsCache.MaxClients</code> lookups).</li>
+<li>Verify that <code>ICharacterSystem&lt;NetworkConnection, Scene&gt;</code> is registered in <code>BehaviourRegistry</code> for character load event subscriptions.</li>
+<li>Verify that <code>ISceneService</code> and <code>ISceneServerService</code> are available in <code>Database.ServiceRegistry</code>.</li>
+<li>On initialize, <code>SceneChannelSystem</code> registers broadcast handlers for <code>RequestSceneChannelListBroadcast</code> and <code>SceneChannelSelectBroadcast</code> (both require authentication), subscribes to <code>OnAfterLoadCharacter</code> only when <code>sendChannelListOnCharacterLoad</code> is enabled, subscribes to connection events for cooldown cleanup, and clamps all serialized fields.</li>
+<li>On deinitialize, it drains the remaining main-thread queue, clears both caches, unregisters broadcast handlers, unsubscribes character and connection callbacks.</li>
+<li>Clients send <code>RequestSceneChannelListBroadcast</code> to refresh the channel list or <code>SceneChannelSelectBroadcast</code> to switch channels; the server validates, queries the database, and replies with a <code>SceneChannelListBroadcast</code> or disconnects the client for world-server re-route.</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-parameters">Inspector Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>int</td>
+<td>50</td>
+<td>Max queued channel-system actions drained from main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td>int</td>
+<td>500</td>
+<td>Per-connection, per-operation debounce window in milliseconds</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>10.0</td>
+<td>Seconds between ingress guard stale-entry sweep passes</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td>float</td>
+<td>60.0</td>
+<td>Maximum age in seconds for ingress entries before sweep eligibility</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum ingress entries removed per sweep pass</td>
+</tr>
+<tr>
+<td><code>channelSwitchCooldownSeconds</code></td>
+<td>float</td>
+<td>10.0</td>
+<td>Minimum seconds between channel switch attempts per connection</td>
+</tr>
+<tr>
+<td><code>cooldownCleanupIntervalSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Seconds between stale cooldown dictionary cleanup sweeps</td>
+</tr>
+<tr>
+<td><code>cooldownCleanupMaxRemovals</code></td>
+<td>int</td>
+<td>128</td>
+<td>Maximum cooldown entries removed per cleanup sweep</td>
+</tr>
+<tr>
+<td><code>maxCooldownEntries</code></td>
+<td>int</td>
+<td>5000</td>
+<td>Hard cap on cooldown dictionary size (DoS defense)</td>
+</tr>
+<tr>
+<td><code>sceneInstanceCacheTtlSeconds</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>TTL for cached scene-instance query results; 0 disables caching</td>
+</tr>
+<tr>
+<td><code>sceneServerCacheTtlSeconds</code></td>
+<td>float</td>
+<td>10.0</td>
+<td>TTL for cached scene-server ports; 0 disables caching</td>
+</tr>
+<tr>
+<td><code>sendChannelListOnCharacterLoad</code></td>
+<td>bool</td>
+<td>false</td>
+<td>Push an unsolicited channel list to every client as its character loads; off because the client asks when the picker opens and the list is stale within seconds</td>
+</tr>
+</tbody>
+</table>
+<h3 id="clamped-minimums">Clamped Minimums</h3>
+<p>All serialized fields are clamped on initialization to prevent invalid configuration:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>ingressDebounceMilliseconds</code></td>
+<td>50</td>
+</tr>
+<tr>
+<td><code>ingressSweepIntervalSeconds</code></td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>ingressEntryTtlSeconds</code></td>
+<td>5.0</td>
+</tr>
+<tr>
+<td><code>ingressSweepMaxRemovals</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>channelSwitchCooldownSeconds</code></td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>cooldownCleanupIntervalSeconds</code></td>
+<td>5.0</td>
+</tr>
+<tr>
+<td><code>cooldownCleanupMaxRemovals</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>maxCooldownEntries</code></td>
+<td>100</td>
+</tr>
+<tr>
+<td><code>sceneInstanceCacheTtlSeconds</code></td>
+<td>0.0</td>
+</tr>
+<tr>
+<td><code>sceneServerCacheTtlSeconds</code></td>
+<td>0.0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ingress-operations">Ingress Operations</h3>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Byte Value</th>
+<th>Used By</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RequestList</code></td>
+<td>1</td>
+<td><code>OnCharacterLoaded</code>, <code>OnRequestChannelList</code></td>
+</tr>
+<tr>
+<td><code>SelectChannel</code></td>
+<td>2</td>
+<td><code>OnChannelSelect</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="threading-model">Threading Model</h3>
+<table>
+<thead>
+<tr>
+<th>Thread</th>
+<th>Work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main thread</td>
+<td>Request validation, ingress guards, cooldown enforcement, broadcast dispatch, character state mutations (SceneHandle, CharacterFlags), disconnect, queue drain, ingress sweep, cooldown cleanup, cache sweep</td>
+</tr>
+<tr>
+<td>Async worker</td>
+<td>Database reads (<code>FetchAvailableScenesAsync</code>, <code>FetchSceneServerAddressAsync</code>) via <code>TryEnqueueIngressWork</code> with automatic guard release</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scene-instance-caches">Scene Instance Caches</h3>
+<p>Two <code>TimedCache</code> instances in <code>SceneChannelSystemRuntimeData</code> reduce database polling:</p>
+<table>
+<thead>
+<tr>
+<th>Cache</th>
+<th>Key</th>
+<th>Value</th>
+<th>Default TTL</th>
+<th>Comparer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AvailableSceneCache</code></td>
+<td><code>worldServerID\|sceneName</code> (<code>string</code>)</td>
+<td><code>IReadOnlyList&lt;SceneData&gt;</code></td>
+<td>5 s</td>
+<td><code>OrdinalIgnoreCase</code></td>
+</tr>
+<tr>
+<td><code>SceneServerAddressCache</code></td>
+<td>scene server ID (<code>long</code>)</td>
+<td><code>ushort</code> (port, server-side only)</td>
+<td>10 s</td>
+<td>default</td>
+</tr>
+</tbody>
+</table>
+<p>Cache behaviour:</p>
+<ul>
+<li>On hit (within TTL): returns cached value, skips database query.</li>
+<li>On miss or TTL expired: queries database, stores result in cache.</li>
+<li>On fetch failure (<code>SceneServerAddressCache</code>): invalidates the stale entry so subsequent calls re-fetch immediately, and the channel is left out of the list — a scene row outlives the process that served it, so a failed lookup is what keeps a dead instance out.</li>
+<li>Expired entries are swept periodically during the cooldown cleanup cycle (max 64 scanned, 32 removed per sweep per cache).</li>
+</ul>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="broadcast-protocol">Broadcast Protocol</h3>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Direction</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RequestSceneChannelListBroadcast</code></td>
+<td>Client → Server</td>
+<td>Client requests the channel list (empty payload)</td>
+</tr>
+<tr>
+<td><code>SceneChannelSelectBroadcast</code></td>
+<td>Client → Server</td>
+<td>Client selects a target channel (contains <code>ChannelAddress</code> with target <code>SceneHandle</code>)</td>
+</tr>
+<tr>
+<td><code>SceneChannelListBroadcast</code></td>
+<td>Server → Client</td>
+<td>Server sends the list of available channels (contains <code>List&lt;ChannelAddress&gt;</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Both inbound broadcast handlers require authentication (<code>requireAuthentication = true</code>).</p>
+<h3 id="channel-list-opt-in-on-load">Channel List (Opt-in on Load)</h3>
+<p><code>OnCharacterLoaded(conn, character)</code> — fired by <code>ICharacterSystem.OnAfterLoadCharacter</code>, and only subscribed when <code>sendChannelListOnCharacterLoad</code> is enabled:</p>
+<ol>
+<li>Returns immediately if the connection is null/inactive (a lingering combat-logout body is reattached through the same load path and has no connection) or the character is in an instanced scene.</li>
+<li>Acquires ingress guard (<code>RequestList</code>).</li>
+<li>Captures <code>sceneName</code>, <code>worldServerID</code>, <code>characterID</code>, and <code>SceneHandle</code>.</li>
+<li>Validates <code>sceneName</code> is not null/empty.</li>
+<li>Resolves <code>maxClients</code> from <code>WorldSceneDetailsCache</code> (fallback: <code>WorldSceneSettings.MaximumClientsPerScene</code>, 200).</li>
+<li>Enqueues <code>FetchAndSendChannelListAsync</code> via <code>TryEnqueueIngressWork</code>; a rejected enqueue releases the guard and answers <code>SendServerBusy</code>.</li>
+</ol>
+<h3 id="channel-list-explicit-request">Channel List (Explicit Request)</h3>
+<p><code>OnRequestChannelList(conn, msg, channel)</code> — handles <code>RequestSceneChannelListBroadcast</code>:</p>
+<ol>
+<li>Validates connection is active and has a spawned object.</li>
+<li>Looks up the character from <code>ICharacterMappingData&lt;NetworkConnection&gt;</code>.</li>
+<li>Acquires ingress guard (<code>RequestList</code>) — <strong>before</strong> the instanced-scene branch, which is otherwise an unbounded reliable reply per message.</li>
+<li>If the character is in an instanced scene: release the guard and answer with an empty list carrying <code>InstanceSceneHandle</code>.</li>
+<li>Captures <code>sceneName</code>, <code>worldServerID</code>, <code>characterID</code>, and <code>SceneHandle</code>.</li>
+<li>Validates <code>sceneName</code> is not null/empty.</li>
+<li>Resolves <code>maxClients</code> from <code>WorldSceneDetailsCache</code> (fallback: <code>WorldSceneSettings.MaximumClientsPerScene</code>, 200).</li>
+<li>Enqueues <code>FetchAndSendChannelListAsync</code> via <code>TryEnqueueIngressWork</code>; a rejected enqueue releases the guard and answers <code>SendServerBusy</code>.</li>
+</ol>
+<h3 id="fetchandsendchannellistasync">FetchAndSendChannelListAsync</h3>
+<ol>
+<li>Validates <code>Database.ServiceRegistry</code>, <code>ISceneService</code>, <code>ISceneServerService</code>, and <code>SceneChannelSystemRuntimeData</code>.</li>
+<li>Fetches available scene instances (cache-aware via <code>FetchAvailableScenesAsync</code>).</li>
+<li>Filters to <code>SceneType.OpenWorld</code> only.</li>
+<li>For each scene instance, resolves the hosting scene server's port (cache-aware via <code>FetchSceneServerAddressAsync</code>) purely to prove the process is alive; an instance whose lookup fails is dropped from the list.</li>
+<li>Builds <code>List&lt;ChannelAddress&gt;</code> with <code>SceneHandle</code> (the <code>scenes.id</code> row), <code>SceneName</code>, and <code>CharacterCount</code>. <code>ChannelAddress</code> carries no address or port field: the resolved port stays server-side.</li>
+<li>Marshals <code>SceneChannelListBroadcast</code> (<code>Addresses</code> array plus <code>CurrentSceneHandle</code>) to the main thread for transmission — from a <code>finally</code>, so every failure path above still answers, with an empty list.</li>
+</ol>
+<h3 id="channel-switch">Channel Switch</h3>
+<p><code>OnChannelSelect(conn, msg, channel)</code> — handles <code>SceneChannelSelectBroadcast</code>:</p>
+<ol>
+<li>Validates connection is active with a spawned object.</li>
+<li>Looks up the character from <code>ICharacterMappingData&lt;NetworkConnection&gt;</code>.</li>
+<li>Rejects if character is in an instanced scene.</li>
+<li>Rejects if <code>currentHandle == targetHandle</code> (already on target channel).</li>
+<li>Enforces per-connection cooldown:
+<ul>
+<li>Rejects if within cooldown window.</li>
+<li>Rejects if dictionary is saturated (<code>&gt;= maxCooldownEntries</code>) and client has no existing entry.</li>
+</ul>
+</li>
+<li>Acquires ingress guard (<code>SelectChannel</code>).</li>
+<li>Records cooldown timestamp immediately to prevent rapid re-entry during async window.</li>
+<li>Resolves <code>maxClients</code> from <code>WorldSceneDetailsCache</code>.</li>
+<li>Enqueues <code>ValidateAndSwitchChannelAsync</code> via <code>TryEnqueueIngressWork</code>.</li>
+</ol>
+<h3 id="validateandswitchchannelasync">ValidateAndSwitchChannelAsync</h3>
+<ol>
+<li>Validates <code>Database.ServiceRegistry</code> and <code>ISceneService</code>.</li>
+<li>Fetches available instances (cache-aware) and verifies target handle exists, is <code>OpenWorld</code>, and has capacity (<code>CharacterCount &lt; maxClients</code>).</li>
+<li>Claims the switch cooldown against the character row (<code>ICharacterService.TryBeginChannelSwitchAsync</code>). This is the cooldown that actually holds: the per-connection dictionary is wiped by the very disconnect the switch performs. Claimed only after the destination has been validated, so a player is not put on cooldown for asking about a channel that turned out to be full.</li>
+<li>Marshals to main thread:
+<ul>
+<li>Re-validates the character is still mapped to the connection and still passes <code>CanActOrMove</code> — the database round trip above gives combat or death time to intervene.</li>
+<li>Hands the whole transfer to <code>ICharacterSystem.BeginChannelTransfer(conn, targetHandle)</code>.</li>
+</ul>
+</li>
+<li><code>BeginChannelTransfer</code> raises <code>OnDisconnect</code> <strong>while <code>SceneHandle</code> still names the instance being left</strong> (that event is what debits scene population), then rebinds <code>SceneHandle</code>, saves, releases the session claim, and drops the connection. Doing it in that order is the point of the method: debiting after the rebind charged the <em>destination</em> instance — often one this server does not host — and left the source permanently over-populated.</li>
+<li><code>BuildCharacterData</code> captures the updated <code>SceneHandle</code> so the character is persisted with the target channel.</li>
+<li>Any failure after the claim is taken — inactive connection, character no longer mapped, <code>CanActOrMove</code> refusal, <code>BeginChannelTransfer</code> returning false, or a rejected main-thread enqueue — puts the claim back via <code>ReleaseChannelSwitchClaim</code>, so a player is never charged the cooldown for a switch they did not get.</li>
+<li>The client auto-reconnects to the world server, which routes through <code>ProcessOpenWorldQueueAsync</code> to the scene server hosting the target channel.</li>
+</ol>
+<blockquote>
+<p><strong><code>SceneHandle</code> is a <code>scenes.id</code>, not a Unity scene handle.</strong> A scene-manager handle is allocated from a per-process counter, so two scene servers running the same build routinely produce the same value for different scenes — it cannot identify an instance across processes. The row id is unique by construction. <code>ChannelAddress.SceneHandle</code> carries the same row id.</p>
+</blockquote>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Invalid requests fail closed with no mutation.</li>
+<li><strong>Every request is answered.</strong> A channel-list request always produces a <code>SceneChannelListBroadcast</code>, even when the list is empty (instanced scene, no other instances, database unavailable) — the picker opens on the player's click and only fills in or closes when a list arrives, so a silent failure left an empty window over the game. A refused switch always produces a <code>SceneTransferRefusedBroadcast</code> naming the reason, including <code>AlreadyAtDestination</code>.</li>
+<li>The list carries <code>CurrentSceneHandle</code> so the client can mark the channel the player is already on. It cannot work this out for itself: <code>IPlayerCharacter.SceneHandle</code> is server-side state and is never replicated.</li>
+<li>Capacity and scene-type checks are enforced before state changes.</li>
+<li>Async failures are caught, logged, and do not block the main thread.</li>
+<li>Main-thread completion paths revalidate connection activity and character mapping before mutating or broadcasting.</li>
+<li>Ingress guards are always released via <code>TryEnqueueIngressWork</code> deferred release (on completion or failure).</li>
+<li>Cache invalidation on fetch failure prevents stale routing.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>SceneChannelSystem</code> logs &quot;Initialized (Debounce=500ms, SwitchCooldown=10s)&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>ISceneChannelSystemRuntimeData</code>, <code>ISceneChannelSystemMainThreadQueueData</code>, and <code>AsyncWorkerData</code> all resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Dependencies available</td>
+<td>Verify <code>ISceneInstanceMappingData</code>, <code>ICharacterMappingData&lt;NetworkConnection&gt;</code>, and <code>ISceneServerSystem&lt;NetworkConnection&gt;</code> resolve from their respective registries</td>
+</tr>
+<tr>
+<td>Database services available</td>
+<td>Verify <code>ISceneService</code> and <code>ISceneServerService</code> resolve from <code>Database.ServiceRegistry</code></td>
+</tr>
+<tr>
+<td>Initial channel list on load</td>
+<td>Enable <code>sendChannelListOnCharacterLoad</code>, load a character into an open-world scene, and confirm <code>SceneChannelListBroadcast</code> is sent unprompted; with the flag off (the default) confirm nothing is sent until the client asks</td>
+</tr>
+<tr>
+<td>Instanced scene rejection (load)</td>
+<td>Load a character into an instanced scene; confirm no channel list is sent</td>
+</tr>
+<tr>
+<td>Channel list carries no ports</td>
+<td>Inspect a <code>SceneChannelListBroadcast</code>; confirm each <code>ChannelAddress</code> has only <code>SceneHandle</code>, <code>SceneName</code>, and <code>CharacterCount</code></td>
+</tr>
+<tr>
+<td>Explicit channel list request</td>
+<td>Send <code>RequestSceneChannelListBroadcast</code> from an authenticated client in an open-world scene; confirm <code>SceneChannelListBroadcast</code> reply with <code>List&lt;ChannelAddress&gt;</code></td>
+</tr>
+<tr>
+<td>Instanced scene request</td>
+<td>Send <code>RequestSceneChannelListBroadcast</code> from a character in an instanced scene; confirm an <strong>empty</strong> <code>SceneChannelListBroadcast</code> is returned so the client can close its picker</td>
+</tr>
+<tr>
+<td>Channel switch</td>
+<td>Send <code>SceneChannelSelectBroadcast</code> with a valid target handle; confirm <code>OnDisconnect</code> fires before the rebind, <code>SceneHandle</code> is updated, the session is released, and the client is disconnected</td>
+</tr>
+<tr>
+<td>Same-channel rejection</td>
+<td>Send <code>SceneChannelSelectBroadcast</code> with <code>targetHandle == currentHandle</code>; confirm a <code>SceneTransferRefusedBroadcast</code> with <code>AlreadyAtDestination</code> is returned</td>
+</tr>
+<tr>
+<td>Combat gate</td>
+<td>Send <code>SceneChannelSelectBroadcast</code> while in combat; confirm <code>SceneTransferRefusedBroadcast</code> with <code>CharacterStateChanged</code> and that no combat-logout body is left behind</td>
+</tr>
+<tr>
+<td>Target validation</td>
+<td>Send <code>SceneChannelSelectBroadcast</code> with a non-existent or full target handle; confirm request is rejected after async validation</td>
+</tr>
+<tr>
+<td>Channel switch cooldown</td>
+<td>Send rapid consecutive <code>SceneChannelSelectBroadcast</code> requests; confirm excess requests are dropped within <code>channelSwitchCooldownSeconds</code></td>
+</tr>
+<tr>
+<td>Cooldown dictionary saturation</td>
+<td>Saturate the cooldown dictionary to <code>maxCooldownEntries</code>; confirm new entries from unknown clients are rejected</td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid consecutive <code>RequestSceneChannelListBroadcast</code> from the same connection; confirm excess requests are dropped</td>
+</tr>
+<tr>
+<td>Ingress in-flight guard</td>
+<td>Send overlapping async requests; confirm only one is processed at a time per operation type</td>
+</tr>
+<tr>
+<td>Ingress sweep</td>
+<td>Wait for <code>ingressSweepIntervalSeconds</code>; confirm stale guard entries are cleaned up</td>
+</tr>
+<tr>
+<td>Cooldown cleanup</td>
+<td>Wait for <code>cooldownCleanupIntervalSeconds</code>; confirm expired cooldown entries are removed</td>
+</tr>
+<tr>
+<td>Disconnect cleanup</td>
+<td>Disconnect a client; confirm cooldown entry is removed immediately via <code>OnRemoteConnectionStopped</code></td>
+</tr>
+<tr>
+<td>Scene instance cache hit</td>
+<td>Request channel list twice within <code>sceneInstanceCacheTtlSeconds</code>; confirm second request uses cached data (no DB query)</td>
+</tr>
+<tr>
+<td>Scene instance cache expiry</td>
+<td>Wait beyond <code>sceneInstanceCacheTtlSeconds</code>; confirm next request queries the database</td>
+</tr>
+<tr>
+<td>Scene server cache invalidation</td>
+<td>Simulate a scene server fetch failure; confirm cached address is invalidated</td>
+</tr>
+<tr>
+<td>Cache sweep</td>
+<td>Wait for <code>cooldownCleanupIntervalSeconds</code>; confirm expired cache entries are swept</td>
+</tr>
+<tr>
+<td>Main-thread queue drain</td>
+<td>Confirm queued async results are dispatched on the main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>World scene details fallback</td>
+<td>Remove scene from <code>WorldSceneDetailsCache</code>; confirm <code>maxClients</code> falls back to <code>WorldSceneSettings.MaximumClientsPerScene</code> (200), the same ceiling the world server routes against</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm broadcast handlers unregistered, character and connection callbacks unsubscribed, caches cleared, and main-thread queue drained</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|RequestSceneChannelListBroadcast| SCS[SceneChannelSystem]
+    SCS --&gt;|FetchAvailableAsync / FetchAsync| DB[(PostgreSQL)]
+    SCS --&gt;|SceneChannelListBroadcast| Client
+    Client --&gt;|SceneChannelSelectBroadcast| SCS
+    SCS --&gt;|BeginChannelTransfer| CS[CharacterSystem]
+    CS --&gt;|save + release + disconnect| Client
+    Client --&gt;|reconnect| World[WorldServer]
+    World --&gt;|route to hosting scene server| Client
+</code></pre>
+<h3 id="channel-list-load--request">Channel List (Load / Request)</h3>
+<pre><code>OnCharacterLoaded(conn, character) / OnRequestChannelList(conn, msg, channel)
+│
+├─ 1. Validate connection + character
+├─ 2. Acquire ingress guard (RequestList)
+├─ 3. Instanced scene → release guard, send EMPTY list (InstanceSceneHandle)
+├─ 4. Capture sceneName, worldServerID, characterID, currentSceneHandle
+├─ 5. Resolve maxClients from WorldSceneDetailsCache (fallback: 200)
+└─ 6. TryEnqueueIngressWork → FetchAndSendChannelListAsync
+       │
+       ├─ FetchAvailableScenesAsync(worldServerID, sceneName, maxClients)
+       │    └─ Cache hit → return cached; miss → ISceneService.FetchAvailableAsync → cache result
+       ├─ Filter to SceneType.OpenWorld
+       ├─ For each instance:
+       │    └─ FetchSceneServerAddressAsync(sceneServerID)   # liveness probe; port stays server-side
+       │         └─ Cache hit → return cached; miss → ISceneServerService.FetchAsync → cache result
+       │              └─ Failure → invalidate cache entry, skip this channel
+       ├─ Build List&lt;ChannelAddress&gt; (SceneHandle, SceneName, CharacterCount)
+       └─ finally: TryEnqueueMainThread
+              └─ Validate conn still active → Broadcast SceneChannelListBroadcast
+                 (Addresses + CurrentSceneHandle; empty list on any failure above)
+</code></pre>
+<h3 id="channel-switch-1">Channel Switch</h3>
+<pre><code>OnChannelSelect(conn, msg, channel)
+│
+├─ 1. Validate connection + character
+├─ 2. Reject if instanced scene
+├─ 3. Reject if currentHandle == targetHandle
+├─ 4. Enforce per-connection cooldown
+│      ├─ Reject if within cooldown window
+│      └─ Reject if dictionary saturated (&gt;= maxCooldownEntries)
+├─ 5. Acquire ingress guard (SelectChannel)
+├─ 6. Record cooldown timestamp immediately
+├─ 7. Capture sceneName, worldServerID, characterID, maxClients
+└─ 8. TryEnqueueIngressWork → ValidateAndSwitchChannelAsync
+       │
+       ├─ FetchAvailableScenesAsync (cache-aware)
+       ├─ Verify targetHandle exists, is OpenWorld, has capacity
+       │    └─ Fails → ResolveUnavailableReasonAsync → SendTransferRefused
+       ├─ ICharacterService.TryBeginChannelSwitchAsync (the cooldown that survives the disconnect)
+       │    └─ Not granted → SendTransferRefused(OnCooldown)
+       └─ TryEnqueueMainThread
+              ├─ Re-validate character still mapped to connection
+              ├─ Re-check CharacterStateValidation.CanActOrMove
+              └─ ICharacterSystem.BeginChannelTransfer(conn, targetHandle)
+                     ├─ OnDisconnect raised while SceneHandle still names the source instance
+                     ├─ Rebind SceneHandle → save → release session claim → disconnect
+                     └─ Client auto-reconnects → world server re-routes to target channel
+              (any failure on this path → ReleaseChannelSwitchClaim + SendTransferRefused)
+</code></pre>
+<h3 id="onupdate-sweep">OnUpdate Sweep</h3>
+<pre><code>OnUpdate(deltaTime)
+│
+├─ 1. DrainMainThreadQueue (up to maxMainThreadActionsPerFrame)
+├─ 2. SweepIngressGuard()
+│      └── IngressGuard.Sweep(interval, ttl, maxRemovals)
+└─ 3. Decrement NextCooldownCleanup timer
+       └── When elapsed:
+              ├─ Reset timer to cooldownCleanupIntervalSeconds
+              ├─ CleanupExpiredCooldownEntries()
+              │    └── Remove entries where (MonotonicClock.NowSeconds - lastSwitch) &gt; cooldownSeconds
+              │         (bounded by cooldownCleanupMaxRemovals)
+              └─ SweepSceneCaches()
+                     ├─ AvailableSceneCache.SweepExpired(ttl, maxScan=64, maxRemove=32)
+                     └─ SceneServerAddressCache.SweepExpired(ttl, maxScan=64, maxRemove=32)
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code>SceneChannel/
+├── SceneChannelSystem.cs                    # Channel listing, switching, DoS protection, cache
+├── SceneChannelSystemRuntimeData.cs         # Runtime state (ingress guard, cooldowns, caches)
+├── SceneChannelSystemMainThreadQueueData.cs # Per-system main-thread action queue container
+└── README.md                                # System documentation
+</code></pre>
+<h3 id="related-core-contracts">Related Core Contracts</h3>
+<ul>
+<li><code>Server/Core/World/SceneServer/SceneChannel/ISceneChannelSystem.cs</code></li>
+<li><code>Server/Core/World/SceneServer/SceneChannel/ISceneChannelSystemRuntimeData.cs</code></li>
+<li><code>Server/Core/World/SceneServer/SceneChannel/ISceneChannelSystemMainThreadQueueData.cs</code></li>
+<li><code>Server/Core/RuntimeData/IAsyncWorkerData.cs</code></li>
+<li><code>Server/Core/RuntimeData/IMainThreadQueueData.cs</code></li>
+<li><code>Server/Core/Collections/TimedCache.cs</code></li>
+<li><code>Server/Core/Collections/IngressGuard.cs</code></li>
+</ul>
+<h3 id="inheritance-hierarchy">Inheritance Hierarchy</h3>
+<pre><code>ServerBehaviour
+└── SceneChannelSystem : ISceneChannelSystem
+
+RuntimeDataContainer
+├── SceneChannelSystemRuntimeData : ISceneChannelSystemRuntimeData
+└── MainThreadQueueData (abstract)
+    └── SystemMainThreadQueueData (abstract)
+        └── SceneChannelSystemMainThreadQueueData : ISceneChannelSystemMainThreadQueueData
+</code></pre>
+<h3 id="runtime-data-container-details">Runtime Data Container Details</h3>
+<p><strong><code>SceneChannelSystemRuntimeData</code></strong> — mutable runtime state for ingress protection, cooldowns, and caching. Implements <code>ISceneChannelSystemRuntimeData</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IngressGuard</code></td>
+<td><code>IngressGuard</code></td>
+<td>Per-connection, per-operation debounce and in-flight gating</td>
+</tr>
+<tr>
+<td><code>ChannelSwitchCooldownByClientId</code></td>
+<td><code>Dictionary&lt;int, double&gt;</code></td>
+<td>Tracks each client's last channel switch attempt, in <code>MonotonicClock</code> seconds, for cooldown enforcement</td>
+</tr>
+<tr>
+<td><code>NextCooldownCleanup</code></td>
+<td><code>float</code></td>
+<td>Countdown until next stale cooldown dictionary cleanup sweep</td>
+</tr>
+<tr>
+<td><code>AvailableSceneCache</code></td>
+<td><code>TimedCache&lt;string, IReadOnlyList&lt;SceneData&gt;&gt;</code></td>
+<td>Write-through TTL cache of <code>FetchAvailableAsync</code> results keyed by <code>worldServerID\|sceneName</code></td>
+</tr>
+<tr>
+<td><code>SceneServerAddressCache</code></td>
+<td><code>TimedCache&lt;long, ushort&gt;</code></td>
+<td>Write-through TTL cache of scene server ports keyed by scene server ID; used only to prove the host process is alive</td>
+</tr>
+</tbody>
+</table>
+<p>Lifecycle:</p>
+<ul>
+<li><code>InitializeOnce()</code> — creates <code>IngressGuard</code>, empty cooldown dictionary, and both <code>TimedCache</code> instances (scene cache uses <code>OrdinalIgnoreCase</code> comparer).</li>
+<li><code>Clear()</code> — clears guard, cooldowns, resets timer, and clears both caches.</li>
+<li><code>OnDeinitialize()</code> — clears and nulls all references.</li>
+</ul>
+<p><strong><code>SceneChannelSystemMainThreadQueueData</code></strong> — per-system main-thread action queue. Inherits from <code>SystemMainThreadQueueData</code> (which inherits from <code>MainThreadQueueData</code>). Implements <code>ISceneChannelSystemMainThreadQueueData</code>. Provides <code>Enqueue(Action)</code> and <code>Drain(int)</code> methods for marshalling async worker responses back to the Unity main thread. The <code>DataContainerRegistry</code> creates independent instances per concrete type, ensuring each system gets its own isolated main-thread queue separate from other subsystems.</p>
+<h3 id="required-data-container-attributes">Required Data Container Attributes</h3>
+<p><code>SceneChannelSystem</code> declares three required containers:</p>
+<ul>
+<li><code>[RequiresDataContainer(typeof(SceneChannelSystemMainThreadQueueData))]</code></li>
+<li><code>[RequiresDataContainer(typeof(SceneChannelSystemRuntimeData))]</code></li>
+<li><code>[RequiresDataContainer(typeof(AsyncWorkerData))]</code></li>
+</ul>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+<h2 id="eligibility">Eligibility</h2>
+<p><code>OnChannelSelect</code> gates on <code>CharacterStateValidation.CanActOrMove</code>, the same predicate every
+other state-changing handler uses. It rejects a character that is dead, teleporting, frozen,
+not finished loading, or <strong>in combat</strong>, and the check is repeated on the main thread after the
+database validation returns, because the character's state can change while that runs.</p>
+<p>Combat matters for the same reason <code>CharacterSystem.IPlayerCharacter_OnTeleport</code> refuses a
+teleport mid-fight: a channel switch is a voluntary move to another scene instance, so allowing
+it in combat makes it a cleaner escape than a teleporter — instant, and it lands the player on
+an instance their attacker is not in.</p>
+<p>It is also actively corrupting rather than merely unfair. The switch works by rewriting
+<code>SceneHandle</code> and dropping the connection, which lands in <code>CharacterSystem.OnRemoteConnectionStopped</code>
+— the one path that passes <code>allowCombatLinger: true</code>. In combat that starts a combat-logout
+linger: the body stays on the <strong>old</strong> instance holding the character's session claim, while the
+row now says the character belongs to the <strong>target</strong> handle. The world server then routes the
+reconnect to the target scene server, which has no body to reattach, tries a fresh claim, loses
+to the still-held one, and kicks the player — repeatedly, until the linger expires.</p>
+<p><code>OnRequestChannelList</code> is deliberately left ungated: it is a read-only query, treated the same
+way as the chat and name-lookup handlers. The authoritative gate is on the action.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

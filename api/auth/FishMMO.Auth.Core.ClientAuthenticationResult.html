@@ -122,10 +122,19 @@ Used to communicate authentication status and errors to the client.</p>
   
   <dd><p>Account was successfully created.</p>
 </dd>
-    <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_AccountUnverified"><code>AccountUnverified = 15</code></dt>
+    <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_AccountDetailsInvalid"><code>AccountDetailsInvalid = 26</code></dt>
   
-  <dd><p>Account email has not been verified. The user must enter the verification code sent during registration.</p>
+  <dd><p>Account creation was refused because an optional detail (phone number, real name,
+country, address, referral account or the verification choice) failed the server's
+rules. The client validates the same rules first, so this is normally unreachable.</p>
 </dd>
+    <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_AccountUnverified"><code>AccountUnverified = 15</code></dt>
+  <dd><p>The account has not been verified. The user must enter a verification code: any one of the
+codes sent by email, by SMS or by Discord DM verifies it.</p>
+<p>Sent only after a correct SRP proof, so it tells nobody without the password that the account exists.
+A wrong code is answered with <a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationResult.html#FishMMO_Auth_Core_ClientAuthenticationResult_InvalidUsernameOrPassword">InvalidUsernameOrPassword</a>, like every other refusal.</p>
+</dd>
+  
     <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_AccountVerified"><code>AccountVerified = 16</code></dt>
   
   <dd><p>Account has been successfully verified with the correct verification code.</p>
@@ -137,6 +146,19 @@ Used to communicate authentication status and errors to the client.</p>
     <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_Banned"><code>Banned = 5</code></dt>
   
   <dd><p>Account is banned and cannot log in.</p>
+</dd>
+    <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_BetaAccessRequired"><code>BetaAccessRequired = 23</code></dt>
+  <dd><p>The server is in a closed test and this account holds no beta access. Sent only after a
+correct SRP proof, never before, so it cannot be used to learn which accounts exist.</p>
+<p>Staff accounts (GameMaster and above) are never refused this way. A player can redeem a
+beta code in the Control Panel and sign in again.</p>
+</dd>
+  
+    <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_BetaCodeInvalid"><code>BetaCodeInvalid = 25</code></dt>
+  
+  <dd><p>Account creation was refused because the server is in a closed test and the beta code
+was missing or could not be redeemed. One answer for every bad-code case — unknown,
+revoked, expired, used up, malformed — so a script cannot tell a real code from a guess.</p>
 </dd>
     <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_InvalidUsernameOrPassword"><code>InvalidUsernameOrPassword = 3</code></dt>
   
@@ -150,6 +172,13 @@ Used to communicate authentication status and errors to the client.</p>
   
   <dd><p>No character is selected on the account. The client must select a character before connecting to a world server.</p>
 </dd>
+    <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_PhoneUnverified"><code>PhoneUnverified = 22</code></dt>
+  <dd><p>Legacy: the SMS code was the one outstanding. Current servers answer every unverified sign-in
+with <a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationResult.html#FishMMO_Auth_Core_ClientAuthenticationResult_AccountUnverified">AccountUnverified</a>, because any one code verifies the account.</p>
+<p>Kept so the values after it do not move, and still handled by clients exactly as
+<a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationResult.html#FishMMO_Auth_Core_ClientAuthenticationResult_AccountUnverified">AccountUnverified</a>.</p>
+</dd>
+  
     <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_SceneLoginSuccess"><code>SceneLoginSuccess = 8</code></dt>
   
   <dd><p>Login to the scene was successful.</p>
@@ -197,9 +226,34 @@ World/Scene servers until re-authenticating. Not sent over the wire.</p>
   
   <dd><p>The authentication token has been revoked.</p>
 </dd>
+    <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_TwoFactorExpired"><code>TwoFactorExpired = 27</code></dt>
+  <dd><p>The two-factor step of this sign-in has ended without signing in, and the server is closing
+the connection: the prompt went unanswered for the server's window, or the code just sent
+was wrong and was the last attempt one sign-in allows. The client must go back to the
+sign-in form; signing in again starts a fresh prompt.</p>
+<p>
+One value for both endings, and the client tells them apart without a timer of its own. The
+server only lets a prompt's window run out while no code from it is being checked, so an
+expiry that arrives unasked is the window, and one that answers a code the client sent is the
+attempt limit. A code sent in the very last moment of a window can cross the expiry on the
+wire and read as the attempt limit; the answer to both is the same, sign in again.
+</p>
+<p>
+Not <a class="xref" href="FishMMO.Auth.Core.ClientAuthenticationResult.html#FishMMO_Auth_Core_ClientAuthenticationResult_TwoFactorLocked">TwoFactorLocked</a>, which is an account-wide lock with a wait. Before this
+value existed the server closed the connection without a word in both cases. A client that
+predates it treats it as an unrecognised result.
+</p>
+</dd>
+  
     <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_TwoFactorInvalid"><code>TwoFactorInvalid = 18</code></dt>
   
   <dd><p>The submitted TOTP code was invalid or has already been used (anti-replay).</p>
+</dd>
+    <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_TwoFactorLocked"><code>TwoFactorLocked = 24</code></dt>
+  
+  <dd><p>Two-factor sign-in for this account is locked after repeated wrong codes. The password
+was already proven, so the lock is reported explicitly; the broadcast carries how long
+it has left. The client must end the attempt rather than prompt for another code.</p>
 </dd>
     <dt id="FishMMO_Auth_Core_ClientAuthenticationResult_TwoFactorRequired"><code>TwoFactorRequired = 17</code></dt>
   

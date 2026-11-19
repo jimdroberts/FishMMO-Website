@@ -144,7 +144,7 @@ finds. That inversion is what makes the controls usable at all — the previous 
 had each server write its own in-memory <code>locked</code> flag on every pulse, so anything
 that set the column out of band was overwritten within five seconds, and nothing in the
 process ever set the flag either. It also means any tool that can write the row (the
-Discord bot, a CMS, psql) controls the servers, exactly as the kick-request table already
+Discord bot, the Control Panel, psql) controls the servers, exactly as the kick-request table already
 does for accounts.</p>
 </div>
 
@@ -155,9 +155,9 @@ does for accounts.</p>
 
   <a id="FishMMO_Database_Data_ServerControlState__ctor_" data-uid="FishMMO.Database.Data.ServerControlState.#ctor*"></a>
 
-  <h3 id="FishMMO_Database_Data_ServerControlState__ctor_System_Boolean_System_Nullable_System_DateTime__" data-uid="FishMMO.Database.Data.ServerControlState.#ctor(System.Boolean,System.Nullable{System.DateTime})">
-  ServerControlState(bool, DateTime?)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Data/ServerControlState.cs/#L43"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Data_ServerControlState__ctor_System_Boolean_System_Nullable_System_DateTime__System_Nullable_System_Double__" data-uid="FishMMO.Database.Data.ServerControlState.#ctor(System.Boolean,System.Nullable{System.DateTime},System.Nullable{System.Double})">
+  ServerControlState(bool, DateTime?, double?)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Data/ServerControlState.cs/#L65"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Creates a control state.</p>
@@ -165,7 +165,7 @@ does for accounts.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public ServerControlState(bool locked, DateTime? shutdownAtUtc)</code></pre>
+    <pre><code class="lang-csharp hljs">public ServerControlState(bool locked, DateTime? shutdownAtUtc, double? shutdownInSeconds)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -175,6 +175,10 @@ does for accounts.</p>
 </dd>
     <dt><code>shutdownAtUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>?</dt>
     <dd><p>Scheduled stop time, or null.</p>
+</dd>
+    <dt><code>shutdownInSeconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a>?</dt>
+    <dd><p>Seconds until <code class="paramref">shutdownAtUtc</code> as the database measured them when it read
+the row. Ignored, and stored as null, when no shutdown is scheduled.</p>
 </dd>
   </dl>
 
@@ -232,7 +236,7 @@ has to go in and look at it.</p>
 
   <h3 id="FishMMO_Database_Data_ServerControlState_ShutdownAtUtc" data-uid="FishMMO.Database.Data.ServerControlState.ShutdownAtUtc">
   ShutdownAtUtc
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Data/ServerControlState.cs/#L38"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Data/ServerControlState.cs/#L40"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>When this server stops, or <code>null</code> when no shutdown is scheduled.</p>
@@ -257,9 +261,53 @@ has to go in and look at it.</p>
 
 
   <h4 class="section" id="FishMMO_Database_Data_ServerControlState_ShutdownAtUtc_remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>An absolute UTC instant rather than a remaining duration, so every process that reads
-it agrees on the deadline regardless of when it last pulsed, and a countdown survives
-a reader missing a beat.</p>
+  <div class="markdown level1 remarks"><p>An absolute UTC instant on the row, so every process that reads it agrees on which
+shutdown is scheduled. It is the schedule's identity (a changed value is a rescheduled
+shutdown) and what the logs print. It is NOT what a reader counts down against: that
+would compare the database's clock with the reader's, see
+<a class="xref" href="FishMMO.Database.Data.ServerControlState.html#FishMMO_Database_Data_ServerControlState_ShutdownInSeconds">ShutdownInSeconds</a>.</p>
+</div>
+
+
+
+
+
+  <h3 id="FishMMO_Database_Data_ServerControlState_ShutdownInSeconds" data-uid="FishMMO.Database.Data.ServerControlState.ShutdownInSeconds">
+  ShutdownInSeconds
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Data/ServerControlState.cs/#L56"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Seconds from the moment the database read this row until <a class="xref" href="FishMMO.Database.Data.ServerControlState.html#FishMMO_Database_Data_ServerControlState_ShutdownAtUtc">ShutdownAtUtc</a>,
+measured by the database clock; zero or negative once the deadline has passed.
+<code>null</code> exactly when no shutdown is scheduled.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public readonly double? ShutdownInSeconds</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a>?</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Data_ServerControlState_ShutdownInSeconds_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The deadline is stamped by whoever scheduled it and read by every server the shutdown
+concerns, so no reader's own clock is a fair judge of how far away it is. Each server
+used to subtract <code>DateTime.UtcNow</code> from the instant: a world host running a minute
+fast stopped a minute early, one stepped forward by NTP stopped at once, and every
+process serving one world counted down to a different moment. The database measures
+the remaining time inside the statement that reads the row, and a reader anchors that
+on its own monotonic clock the moment the reply arrives.</p>
 </div>
 
 
@@ -273,7 +321,7 @@ a reader missing a beat.</p>
 
   <h3 id="FishMMO_Database_Data_ServerControlState_HasShutdown" data-uid="FishMMO.Database.Data.ServerControlState.HasShutdown">
   HasShutdown
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Data/ServerControlState.cs/#L50"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Data/ServerControlState.cs/#L73"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Whether a shutdown is scheduled at all.</p>
@@ -293,49 +341,6 @@ a reader missing a beat.</p>
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
     <dd></dd>
   </dl>
-
-
-
-
-
-
-
-
-  <h2 class="section" id="methods">Methods
-</h2>
-
-
-  <a id="FishMMO_Database_Data_ServerControlState_SecondsUntilShutdown_" data-uid="FishMMO.Database.Data.ServerControlState.SecondsUntilShutdown*"></a>
-
-  <h3 id="FishMMO_Database_Data_ServerControlState_SecondsUntilShutdown_System_DateTime_" data-uid="FishMMO.Database.Data.ServerControlState.SecondsUntilShutdown(System.DateTime)">
-  SecondsUntilShutdown(DateTime)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Data/ServerControlState.cs/#L57"><i class="bi bi-code-slash"></i></a>
-  </h3>
-
-  <div class="markdown level1 summary"><p>Seconds remaining until the scheduled shutdown, clamped at zero. Zero when no
-shutdown is scheduled or the deadline has passed.</p>
-</div>
-  <div class="markdown level1 conceptual"></div>
-
-  <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public double SecondsUntilShutdown(DateTime nowUtc)</code></pre>
-  </div>
-
-  <h4 class="section">Parameters</h4>
-  <dl class="parameters">
-    <dt><code>nowUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
-    <dd><p>Current time.</p>
-</dd>
-  </dl>
-
-  <h4 class="section">Returns</h4>
-  <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a></dt>
-    <dd></dd>
-  </dl>
-
-
-
 
 
 

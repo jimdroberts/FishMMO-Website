@@ -139,34 +139,26 @@ structured error information through the DatabaseException system, helping disti
 </h2>
 
 
-  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.FetchAsync*"></a>
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchPumpAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.FetchPumpAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchAsync_System_DateTime_System_Int64_System_Int32_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.FetchAsync(System.DateTime,System.Int64,System.Int32,System.Int64,System.Threading.CancellationToken)">
-  FetchAsync(DateTime, long, int, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IChatService.cs/#L85"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchPumpAsync_FishMMO_Database_Data_ChatPumpQuery_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.FetchPumpAsync(FishMMO.Database.Data.ChatPumpQuery,System.Threading.CancellationToken)">
+  FetchPumpAsync(ChatPumpQuery, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IChatService.cs/#L114"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Fetches paginated chat messages excluding local messages for the specified scene server.</p>
+  <div class="markdown level1 summary"><p>Reads the chat rows one scene server should relay: new, relevant to someone it hosts,
+and not its own echo.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;List&lt;ChatData&gt;&gt;&gt; FetchAsync(DateTime lastFetch, long lastPosition, int amount, long sceneServerId, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;ChatPumpPage&gt;&gt; FetchPumpAsync(ChatPumpQuery query, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>lastFetch</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
-    <dd><p>Timestamp to compare messages against.</p>
-</dd>
-    <dt><code>lastPosition</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>Last message ID fetched (for pagination).</p>
-</dd>
-    <dt><code>amount</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>Maximum number of messages to fetch.</p>
-</dd>
-    <dt><code>sceneServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>Scene server ID to filter out local messages.</p>
+    <dt><code>query</code> <a class="xref" href="FishMMO.Database.Data.ChatPumpQuery.html">ChatPumpQuery</a></dt>
+    <dd><p>Where to start, what to skip, and what this server hosts.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
@@ -175,9 +167,9 @@ structured error information through the DatabaseException system, helping disti
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<a class="xref" href="FishMMO.Database.Data.ChatData.html">ChatData</a>&gt;&gt;&gt;</dt>
-    <dd><p>A <a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult&lt;T&gt;</a> containing the list of chat message data on success,
-or a DatabaseException on failure.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.ChatPumpPage.html">ChatPumpPage</a>&gt;&gt;</dt>
+    <dd><p>The rows in <code>(time_created, id)</code> order, the database clock at the start of the read,
+and whether the read caught up.</p>
 </dd>
   </dl>
 
@@ -187,11 +179,74 @@ or a DatabaseException on failure.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchAsync_System_DateTime_System_Int64_System_Int32_System_Int64_System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>This method uses LINQ with AsNoTracking for optimal read performance and automatically benefits
-from the retry policy configured on the DbContext without requiring explicit execution strategy wrapping.
-Filters out local channel messages (Tell, Guild, Party, World, Trade) from the specified scene server.
-Returns empty list for invalid amount.</p>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchPumpAsync_FishMMO_Database_Data_ChatPumpQuery_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+This replaces a strict <code>(time_created, id)</code> cursor that lost rows for good whenever
+two writers committed out of stamp order, and read one 20-row page of the whole shard's
+chat per call however far behind it was (hot-path audit H5, H6).
+</p>
+<p>
+The caller reads from a start held <a class="xref" href="FishMMO.Database.Npgsql.Services.ChatService.html#FishMMO_Database_Npgsql_Services_ChatService_PumpCommitWindowSeconds">PumpCommitWindowSeconds</a>
+behind what it has settled, and passes the IDs it has already handled in that window
+as <a class="xref" href="FishMMO.Database.Data.ChatPumpQuery.html#FishMMO_Database_Data_ChatPumpQuery_ExcludeIds">ExcludeIds</a>. Pages are read while they come back full, up to
+<a class="xref" href="FishMMO.Database.Data.ChatPumpQuery.html#FishMMO_Database_Data_ChatPumpQuery_MaxPages">MaxPages</a>, so a backlog is worked through instead of growing.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchRelayAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.FetchRelayAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchRelayAsync_FishMMO_Database_Data_ChatRelayQuery_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.FetchRelayAsync(FishMMO.Database.Data.ChatRelayQuery,System.Threading.CancellationToken)">
+  FetchRelayAsync(ChatRelayQuery, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IChatService.cs/#L138"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads the chat rows the Discord relay has not handled yet: every game row, never a row
+bridged in from Discord.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;ChatPumpPage&gt;&gt; FetchRelayAsync(ChatRelayQuery query, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>query</code> <a class="xref" href="FishMMO.Database.Data.ChatRelayQuery.html">ChatRelayQuery</a></dt>
+    <dd><p>Where to start and what to skip.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.ChatPumpPage.html">ChatPumpPage</a>&gt;&gt;</dt>
+    <dd><p>The rows in <code>(time_created, id)</code> order, the database clock at the start of the read,
+and whether the read caught up.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchRelayAsync_FishMMO_Database_Data_ChatRelayQuery_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+The same window as <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.html#FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchPumpAsync_FishMMO_Database_Data_ChatPumpQuery_System_Threading_CancellationToken_">FetchPumpAsync(ChatPumpQuery, CancellationToken)</a>, read by a <a class="xref" href="FishMMO.Database.Data.ChatReadWindow.html">ChatReadWindow</a>.
+The relay used to page by <code>id &gt; last id seen</code>, and IDs are taken at the INSERT,
+not at the commit: a row that committed after a higher ID had been read was skipped for
+good. It also read everything past that ID in one unbounded query (hot-path audit H5).
+</p>
+<p>
+A query with no <a class="xref" href="FishMMO.Database.Data.ChatRelayQuery.html#FishMMO_Database_Data_ChatRelayQuery_FromUtc">FromUtc</a> starts at the database's "now", so a
+relay that starts does not republish history.
+</p>
 </div>
 
 
@@ -274,10 +329,10 @@ Uses BaseService.ExecuteWriteAsync for:</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_PersistBatchAsync_System_Collections_Generic_List_System_ValueTuple_System_Int64_System_String_System_String_System_Int64_System_Int64_FishMMO_Database_Data_Enums_ChatChannel_System_String_System_ValueTuple_System_DateTime____System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.PersistBatchAsync(System.Collections.Generic.List{System.ValueTuple{System.Int64,System.String,System.String,System.Int64,System.Int64,FishMMO.Database.Data.Enums.ChatChannel,System.String,System.ValueTuple{System.DateTime}}},System.Int32,System.Threading.CancellationToken)">
   PersistBatchAsync(List&lt;(long characterId, string characterName, string accountName, long worldServerId, long sceneServerId, ChatChannel channel, string message, DateTime serverReceivedTime)&gt;, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IChatService.cs/#L100"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IChatService.cs/#L184"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Persists multiple chat messages in batches.</p>
+  <div class="markdown level1 summary"><p>Persists multiple chat messages in ONE transaction: every message lands, or none does.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -292,7 +347,8 @@ Uses BaseService.ExecuteWriteAsync for:</p>
 (characterId, characterName, accountName, worldServerId, sceneServerId, channel, message, serverReceivedTime).</p>
 </dd>
     <dt><code>maxBatchSize</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>Maximum number of messages per database round-trip (500–2500).</p>
+    <dd><p>Messages per INSERT statement inside the transaction (clamped to 500–2500).
+It does not change atomicity.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
@@ -312,6 +368,133 @@ Uses BaseService.ExecuteWriteAsync for:</p>
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_PersistBatchAsync_System_Collections_Generic_List_System_ValueTuple_System_Int64_System_String_System_String_System_Int64_System_Int64_FishMMO_Database_Data_Enums_ChatChannel_System_String_System_ValueTuple_System_DateTime____System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>All-or-nothing is what makes a failed call safe to retry. The rows are the chat audit
+log and other scene servers deliver whatever new rows they find, so a call that had
+committed part of a list before failing would write — and deliver — that part twice when
+the caller retried it.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_PersistBridgedAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.PersistBridgedAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_PersistBridgedAsync_System_Int64_System_Int64_System_String_System_String_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.PersistBridgedAsync(System.Int64,System.Int64,System.String,System.String,System.DateTime,System.Threading.CancellationToken)">
+  PersistBridgedAsync(long, long, string, string, DateTime, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IChatService.cs/#L83"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Persists one line bridged in from Discord, as a <a class="xref" href="FishMMO.Database.Data.Enums.ChatChannel.html#FishMMO_Database_Data_Enums_ChatChannel_Discord">Discord</a> row the
+scene servers relay to every player in <code class="paramref">worldServerId</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&gt; PersistBridgedAsync(long worldServerId, long sceneServerId, string authorName, string message, DateTime serverReceivedTime, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>worldServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>World the Discord channel is bridged to.</p>
+</dd>
+    <dt><code>sceneServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>Scene server the Discord channel is bridged to.</p>
+</dd>
+    <dt><code>authorName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The Discord author's (already sanitised) display name, for the audit columns.</p>
+</dd>
+    <dt><code>message</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The line as players will see it.</p>
+</dd>
+    <dt><code>serverReceivedTime</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd><p>When the bridge received it, UTC.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>A <a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a> indicating success or failure.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_PersistBridgedAsync_System_Int64_System_Int64_System_String_System_String_System_DateTime_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Through the same INSERT as every other chat row so it is stamped by the same clock: the
+bridge used to stamp <code>time_created</code> from its own host's clock, and the scene servers
+page the table by that column.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_SearchAdminAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.SearchAdminAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_SearchAdminAsync_FishMMO_Database_Data_ChatAdminQuery_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.SearchAdminAsync(FishMMO.Database.Data.ChatAdminQuery,System.Threading.CancellationToken)">
+  SearchAdminAsync(ChatAdminQuery, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IChatService.cs/#L167"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Searches persisted chat for an operator, newest message first.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;ChatAdminPage&gt;&gt; SearchAdminAsync(ChatAdminQuery query, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>query</code> <a class="xref" href="FishMMO.Database.Data.ChatAdminQuery.html">ChatAdminQuery</a></dt>
+    <dd><p>The filter to apply. Null is treated as an unfiltered query.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.ChatAdminPage.html">ChatAdminPage</a>&gt;&gt;</dt>
+    <dd><p>A <a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult&lt;T&gt;</a> containing one page of <a class="xref" href="FishMMO.Database.Data.ChatAdminData.html">ChatAdminData</a> and
+the total row count on success, or a DatabaseException on failure.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IChatService_SearchAdminAsync_FishMMO_Database_Data_ChatAdminQuery_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+This is the read behind a harassment or abuse report, so it is separate from
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IChatService.html#FishMMO_Database_Npgsql_Services_Interfaces_IChatService_FetchPumpAsync_FishMMO_Database_Data_ChatPumpQuery_System_Threading_CancellationToken_">FetchPumpAsync(ChatPumpQuery, CancellationToken)</a> in every respect: that one is a window the scene servers pull
+forward and it deliberately hides a server's own echo, while this one hides nothing and
+orders backwards from now.
+</p>
+<p>
+A message-text filter supplied with no character name, no account name and no lower time
+bound is REFUSED with <a class="xref" href="FishMMO.Database.DatabaseErrorCodes.html#FishMMO_Database_DatabaseErrorCodes_ValidationError">ValidationError</a> rather than served.
+The reason is in the implementation; callers should surface the message rather than
+retrying, because a retry of the same query is refused identically.
+</p>
+<p>
+Read-only: it uses AsNoTracking and writes nothing, including no audit row. Recording
+reads in the audit log would mean every listing of the log wrote a row of its own.
+</p>
+</div>
 
 
 

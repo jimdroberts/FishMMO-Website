@@ -521,6 +521,13 @@ re-enables the button if neither signal arrives.</p>
 <code>LoginQueueSystem</code>, which holds it open at the QUIC layer — unauthenticated, but connected —
 and answers with a position on a timer. Admission is rate-smoothed so a drained queue cannot
 immediately re-saturate the auth workers.</p>
+<p>The queue engages at the login server's <code>MaxPendingAuthConnections</code> (<code>AuthMaxPendingConnections</code>).
+Unset, that is what the SRP verify and proof channels hold between them — 500 + 500 = 1,000 — because
+past it admitting more connections only risks the channels refusing them with <code>ServerBusy</code>, while the
+queue keeps their place. The old default of 10,000 meant the queue could never engage. Admission
+runs at <code>LoginQueueAdmissionRatePerSecond</code> (50 by default, under what the proof stage completes on
+two workers), several per frame from accumulated credit, and a player at the two-factor prompt does
+not count against the cap.</p>
 <pre><code class="lang-mermaid">sequenceDiagram
     participant Client as ClientAuthenticatorCore
     participant Auth as ServerAuthenticator
@@ -534,7 +541,7 @@ immediately re-saturate the auth workers.</p>
         Auth-&gt;&gt;Auth: ClearHandshakeRateLimit(conn), (the retry below is server-invited)
         loop every LoginQueueUpdateRateSeconds (2s)
             Queue--&gt;&gt;Client: LoginQueuePositionBroadcast { n, TotalQueued, EstimatedWaitSeconds }
-            Client-&gt;&gt;Client: Queue dialog + refresh the panel's reply deadline
+            Client-&gt;&gt;Client: Queue panel (UITKWorldQueueDisplay, login wording), + refresh the panel's reply deadline
         end
         Queue--&gt;&gt;Client: LoginQueuePositionBroadcast { QueuePosition: 0 }
         Client-&gt;&gt;Client: RetryHandshakeAsync: jitter 0-1s, OnRehandshakeRequired() + OnConnected(null)
@@ -544,9 +551,13 @@ immediately re-saturate the auth workers.</p>
     else Wait exceeded LoginQueueTimeoutSeconds
         Queue--&gt;&gt;Client: LoginQueuePositionBroadcast { QueuePosition: -1 }
         Queue-&gt;&gt;Queue: conn.Disconnect(false), (not Kick — that discards the notice)
-        Client-&gt;&gt;Client: QuitToLogin + &quot;the login queue timed out&quot;
+        Client-&gt;&gt;Client: QuitToLogin, then the panel says the wait ended (Close only)
     end
 </code></pre>
+<p>The wait is shown on the same <code>UITKWorldQueueDisplay</code> panel as the world server's scene-routing
+queue (Phase 9a), with its own wording: it sits above the loading overlay, where the shared dialog
+it replaced was drawn behind it. The dialog remains only as a fallback for a scene without the
+panel, which is logged once as an authoring fault.</p>
 <p><strong>The re-handshake must not clear the credentials.</strong> This is the subtlety that makes or breaks
 the whole feature. Resetting the client's per-connection crypto state for the retry is correct —
 the server generates a fresh keypair for the new handshake — but the queue defers <em>before</em> SRP
@@ -611,18 +622,36 @@ refresh the deadline on every one.</p>
 
     alt Standard TOTP (6 digits)
         Server-&gt;&gt;Server: CryptoHelper.VerifyTotpCode(), • ±1 window drift tolerance, • PersistLastTotpWindow on success
-    else Recovery Code (XXXXX-XXXXX hex)
+    else Recovery Code (XXXX-XXXX-XXXX-XXXX hex)
         Server-&gt;&gt;DB: FetchUnusedRecoveryCodes(username)
         Server-&gt;&gt;Server: VerifyRecoveryCode(), • Constant-time HMAC compare, • ConsumeCode on success (single-use)
     end
 
     alt Code valid
         Server--&gt;&gt;Client: SrpSuccessBroadcast {,   Result: LoginSuccess,,   Token: enc(auth_token), }
-    else Code invalid
-        Server--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: TwoFactorFailed, }
-        Note over Server: Per-username failure counter, Lockout after 5 failures (60 min)
+    else Code invalid, attempts left
+        Server--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: TwoFactorInvalid, }
+        Note over Client,Server: Re-prompt, with the whole window again
+    else Code invalid, and it was the last of 5 attempts
+        Server--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: TwoFactorExpired, }, then disconnect
+    else Account's two-factor step locked
+        Server--&gt;&gt;Client: ClientAuthResultBroadcast {,   Result: TwoFactorLocked,,   retry-after, }
     end
+
+    Note over Server: No code within AuthTwoFactorWindowSeconds (120 s), TwoFactorExpired, then disconnect
 </code></pre>
+<p><strong>Each prompt gets the whole two-factor window</strong> — <code>AuthTwoFactorWindowSeconds</code>, 120 s by
+default, clamped 30–600 — the first prompt and every re-prompt after a wrong code. It used to
+inherit the 15 s machine-progress TTL, which cut off players still unlocking their phones. A
+player at the prompt does not count against <code>MaxPendingAuthConnections</code>, so people typing codes
+cannot fill the login queue's threshold. The prompt ends one of two ways without signing in, and
+both are answered <code>TwoFactorExpired</code> before the connection closes: the window ran out (the
+answer arrives unasked), or the code just sent was the last of the five a sign-in allows (the
+answer arrives in reply to it). Wrong codes are also counted per username in memory (15 lock the
+username's two-factor step for 5 minutes) and in the database, shared with the Control Panel
+(<code>AuthLockoutTwoFactor*</code>: 5 in 15 minutes lock it for 30), and a locked step is answered
+<code>TwoFactorLocked</code> with the time left. A code or proof whose connection closed while it was being
+checked issues nothing.</p>
 <h3 id="phase-7-token-issuance--character-select">Phase 7: Token Issuance &amp; Character Select</h3>
 <pre><code class="lang-mermaid">sequenceDiagram
     participant Client as Client
@@ -819,7 +848,7 @@ cover the whole phase, each picking up where the previous one stops:</p>
 <tr>
 <td>Scene handshake (<code>sceneLoadDeadlines</code>)</td>
 <td>Armed when the character enters <code>WaitingSceneLoadCharacters</code>; cleared by <code>ClientValidatedSceneBroadcast</code></td>
-<td><code>SceneLoadHandshakeTimeout</code> (90 s)</td>
+<td>the scene-load watchdog (120 s without progress, <code>SceneLoadStallTimeoutSeconds</code>; 900 s at most, <code>SceneLoadMaxSeconds</code>)</td>
 <td><code>SceneHandshakeTimedOut</code> — releases the session claim instead of holding it for the life of the socket</td>
 </tr>
 <tr>
@@ -892,6 +921,13 @@ or the character's combat-logout body may be standing in one specific instance t
 place it can go. All three are legitimate waits, and the client spends them sitting
 authenticated on the World server behind a loading overlay.</p>
 <p>That wait used to be both <strong>silent and unbounded</strong>, which is indistinguishable from a hang.</p>
+<p><strong>The open-world queue is strictly first in, first out.</strong> Each routing cycle takes only as many
+waiting connections as there are free slots, oldest first (<code>WorldSceneRoutingRules.SelectForRouting</code>),
+fetches their characters, and leaves everyone else queued in order; it used to snapshot and clear
+the whole waiting set every cycle to place a handful. A wait is shown on <code>UITKWorldQueueDisplay</code>, a
+panel above the loading overlay (every return through the world server after a zone change has the
+overlay up, and the shared dialog it replaced was drawn behind it): position, estimated wait,
+elapsed wait, the reason, and <strong>Leave queue</strong>.</p>
 <pre><code class="lang-mermaid">sequenceDiagram
     participant Client as Client
     participant World as WorldServer
@@ -902,17 +938,23 @@ authenticated on the World server behind a loading overlay.</p>
 
     loop every queuePositionUpdateRateSeconds (2s)
         World--&gt;&gt;Client: WorldSceneQueuePositionBroadcast {, QueuePosition: n, TotalQueued, EstimatedWaitSeconds, Reason, }
-        Client-&gt;&gt;Client: Wait dialog: position + reason, Close leaves the queue → QuitToLogin
+        Client-&gt;&gt;Client: Queue panel: position, estimate, elapsed, reason
+    end
+
+    opt Player chooses Leave queue
+        Client-&gt;&gt;World: WorldSceneQueueLeaveBroadcast (place given up)
+        Client-&gt;&gt;Client: QuitToLogin
     end
 
     alt Capacity found
         World--&gt;&gt;Client: WorldSceneQueuePositionBroadcast { QueuePosition: 0 }
         World--&gt;&gt;Client: WorldSceneConnectBroadcast { Port }
-        Note over Client: Dialog dismissed, Phase 9 begins
+        Note over Client: Panel dismissed, Phase 9 begins
     else Wait exceeded its TTL
         World--&gt;&gt;Client: WorldSceneQueuePositionBroadcast { QueuePosition: -1 }
-        World-&gt;&gt;World: conn.Disconnect(false), (not Kick — that discards the notice)
-        Client-&gt;&gt;Client: QuitToLogin + &quot;could not find room&quot;
+        World-&gt;&gt;World: Remember the account's place (60 s grace), conn.Disconnect(false), (not Kick — that discards the notice)
+        Client-&gt;&gt;Client: Stop the connection manager's own redial, Panel: wait ended, Try again or Return to login
+        Client-&gt;&gt;World: Try again: the ordinary world reconnect, resuming the place inside the grace window
     end
 </code></pre>
 <p><strong>Position semantics</strong> are identical to the login queue: <code>&gt; 0</code> waiting, <code>0</code> routed, <code>-1</code>
@@ -931,7 +973,7 @@ because they are one-shot transitions and losing one strands the dialog on scree
 <tr>
 <td><code>Capacity</code></td>
 <td>Every instance of the target scene is full</td>
-<td><code>waitingQueueTtlSeconds</code> (45 s)</td>
+<td><code>waitingQueueTtlSeconds</code> (45 s), timed from the later of joining and the scene's last placement, so it fires only when the line has <strong>stalled</strong> (<code>WorldSceneRoutingRules.QueueWaitExpired</code>)</td>
 </tr>
 <tr>
 <td><code>SceneLoading</code></td>
@@ -952,7 +994,18 @@ a teleporter's <code>ToScene</code>, or as a character's <code>BindScene</code>)
 would drop the player into somebody else's private instance, <code>character_id</code> and all.
 <code>ProcessOpenWorldQueueAsync</code> filters the type, as <code>SceneChannelSystem</code> already did when building
 a channel list.</p>
-<p><strong>A healthy login never sees the dialog.</strong> Every routed client passes through this queue, so a
+<p>A capacity wait timed from joining alone purged the tail of any queue longer than one TTL's worth
+of placements while the line was still moving, and a retry went to the back, so those players
+cycled for ever. Timed from the scene's last placement, a moving line keeps everyone in it.</p>
+<p><strong>A place survives a dropped connection.</strong> <code>WorldQueuePlaceMemory</code> remembers an account's place in
+one scene's queue — the time it began waiting, which is what the queue is ordered by — when the
+wait ends without the player's say: a disconnect, or a stalled-line purge. Rejoining the same
+scene's queue within <code>queuePlaceGraceSeconds</code> (60 s by default) resumes it; rejoining later, or
+another scene's queue, starts at the back, and a resumed place is spent. A player who chooses
+<strong>Leave queue</strong> sends <code>WorldSceneQueueLeaveBroadcast</code> first, because a deliberate leave looks
+exactly like a drop from the server's side, and the place is forgotten. All the queue's times are
+monotonic-clock readings.</p>
+<p><strong>A healthy login never sees the panel.</strong> Every routed client passes through this queue, so a
 sweep landing between enqueue and the next routing cycle would flash a position at someone who
 was never really queued. Connections are ranked across the whole group but only notified once
 they have waited longer than one full routing cycle.</p>
@@ -1001,8 +1054,8 @@ than halfway through its life regardless of how long it has been standing still.
 
     rect rgb(240, 255, 240)
         Note over Client,World: TOKEN RENEWAL (Phase 8/9, then periodic)
-        World-&gt;&gt;World: SweepTokenRenewals(), • Every 5s, per authenticated connection, • Due when now &gt;= NextAttemptUtc, • Per-connection in-flight guard
-        World-&gt;&gt;World: IssueRenewalTokenCoreAsync(), • Resolve verified real IP (abort if unknown), • Fetch current signing key from DB, • BuildToken(): now + 10min,   same username, accessLevel, loginServerId
+        World-&gt;&gt;World: SweepTokenRenewals(), • Every 5s, per authenticated connection, • Due when now &gt;= NextAttemptUtc (jittered up to 20% early, so a reconnect wave does not renew in lockstep), • Starts budgeted per sweep (at least 32), database work capped at 32 concurrent, • Per-connection in-flight guard
+        World-&gt;&gt;World: IssueRenewalTokenCoreAsync(), off the main thread, • Resolve verified real IP (abort if unknown), • Current signing key, cached 30 s per login server, • BuildToken(): now + 10min,   same username, accessLevel, loginServerId
         World-&gt;&gt;DB: PersistTokenHash(new_token_hash)
         World-&gt;&gt;World: EncryptTokenForSend(), ⚠ consumes an AES-GCM send sequence, so it runs ONLY after the DB write succeeds
         World--&gt;&gt;Client: RenewTokenResponseBroadcast {, Token, Result: LoginSuccess, }
@@ -1066,7 +1119,7 @@ local-testing configuration.</p>
 it. A desynchronised counter has to surface as a decryption failure rather than as a
 successful decrypt at a peer-chosen sequence.</p>
 <h4 id="revocation-only-works-if-it-is-actually-sent">Revocation only works if it is actually sent</h4>
-<p>Two things used to make logout revocation a guaranteed no-op, and both are easy to
+<p>Three things used to make logout revocation a guaranteed no-op, and all are easy to
 reintroduce:</p>
 <ol>
 <li><strong><code>RevokeTokenBroadcast</code> must be registered by every server type, not just the LoginServer.</strong>
@@ -1081,6 +1134,14 @@ queues a broadcast into the outgoing bundle and sends it on the next tick, so
 <code>Client.QuitToLogin</code> revokes first and then defers <code>ForceDisconnect</code> by
 <code>RevocationFlushTicks</code> (2), bounded by <code>RevocationFlushTimeoutSeconds</code> (0.5 s). Everything
 else in the teardown still runs immediately.</li>
+<li><strong>The handler's gate must admit a signed-in connection.</strong> It refuses connections that never
+began a handshake, so an anonymous peer cannot make it query the database. It used to decide
+that from the handshake-window map alone, which loses a connection the moment it authenticates
+— so every revocation from a signed-in client, the one case the broadcast exists for, was
+dropped at the gate and the token stayed valid until it expired. It now admits an
+authenticated connection, one inside its handshake window, or one the core still tracks as
+pending authentication, and then applies the per-IP (one per 5 s) and global (10 per second)
+limits.</li>
 </ol>
 <p>The local token copy is zeroed either way, which is why this was invisible: nothing on the
 client could use the token afterwards, but anyone who had captured it still could, for the
@@ -1523,7 +1584,7 @@ zone change.</li>
 <li><strong>Verify NGINX rate limits are active</strong> — check <code>limit_req_zone</code> and <code>limit_conn_zone</code> counters via <code>nginx -s reopen</code> logs or live metrics. Confirm the zones are not exhausted by legitimate traffic.</li>
 <li><strong>Enable stricter limits</strong> — reduce <code>limit_req</code> to 5r/s (API) and 1r/s (patch), tighten <code>limit_conn</code> to 5 conn/IP. Apply at NGINX edge; no game-server restart required.</li>
 <li><strong>Check nonce cache pressure</strong> — if the <code>ClientGate</code> nonce LRU exceeds 20,000 entries, the <code>Array.Sort</code> on eviction causes CPU spikes. Consider restarting the IPFetch/Patcher processes to flush the cache.</li>
-<li><strong>If the attack targets QUIC game ports</strong>, the game server's per-IP handshake limiter (8 per sliding 2s window) and global cap (500/sec) provide the last line of defense. Monitor <code>MaxPendingAuthConnections</code> (10,000) — if hit, legitimate clients are locked out.</li>
+<li><strong>If the attack targets QUIC game ports</strong>, the game server's per-IP handshake limiter (8 per sliding 2s window) and global cap (500/sec) provide the last line of defense. Monitor <code>MaxPendingAuthConnections</code> (1,000 on the Login Server, where it hands arrivals to the login queue; 10,000 on World and Scene servers) — if hit on a World or Scene server, legitimate clients are locked out.</li>
 </ol>
 <h4 id="account-takeover">Account Takeover</h4>
 <p>Suspicion: a user reports unauthorized access, or an anomaly detection alert fires on an account.</p>
@@ -1536,7 +1597,7 @@ zone change.</li>
 <h4 id="certificate-compromise">Certificate Compromise</h4>
 <p>Suspicion: the TLS private key for <code>game.fishmmo.com</code> (or <code>api.fishmmo.com</code>) has been exposed.</p>
 <ol>
-<li><strong>Renew certificates immediately</strong> — run <code>certbot renew --force-renewal</code> on the server hosting the affected domain. The certbot deploy hook (<code>certbot-fishmmo.sh</code>) copies new certs to <code>/etc/fishmmo/certs/</code>.</li>
+<li><strong>Replace the key, not just the certificate.</strong> The certificates are issued with <code>--reuse-key</code> so that client pins survive renewal, which also means a plain <code>certbot renew --force-renewal</code> re-issues the <em>compromised</em> key. Issue for the offline backup key instead (its SPKI is the second pin every release client already carries — see the README's <em>Client TLS Certificate Pinning</em>), or, without one, <code>certbot renew --cert-name &lt;domain&gt; --force-renewal --new-key</code> (it reuses the saved DNS hooks) and ship a client with new pins. The deploy hook (<code>/etc/letsencrypt/renewal-hooks/deploy/fishmmo-certificates</code>) copies the new files to <code>/etc/fishmmo/certs/</code>; revoke the old certificate with <code>certbot revoke</code>.</li>
 <li><strong>Restart all game servers</strong> that terminate QUIC/TLS (LoginServer, WorldServer, SceneServer) — each reads certificate paths from <code>.cfg</code> files (<code>CertificatePath</code> / <code>PrivateKeyPath</code>) at startup.</li>
 <li><strong>Reload NGINX</strong> with <code>nginx -t &amp;&amp; nginx -s reload</code> to pick up updated web server certificates.</li>
 <li><strong>Verify the new certificate</strong> — check <code>openssl x509 -in /etc/fishmmo/certs/fullchain.pem -noout -dates</code> and confirm the private key matches with <code>openssl pkey -in /etc/fishmmo/certs/privkey.pem -pubout</code>.</li>
@@ -1560,12 +1621,13 @@ zone change.</li>
 │  LAYER 3: Game Server                                       │
 │  ├─ Global handshake cap: 500/sec                           │
 │  ├─ Per-IP handshake limit: 8 per 2s window                 │
-│  ├─ Pending auth cap: 10,000                                │
+│  ├─ Pending auth cap: 1,000 Login, 10,000 World/Scene       │
 │  ├─ Auth TTL sweep: 15s stale, 60s hard deadline            │
+│  ├─ Two-factor prompt window: 120s per prompt               │
 │  ├─ Per-account rate limit: 1s (SRP verify)                 │
 │  ├─ Per-IP account creation limit: configurable             │
 │  ├─ Global hourly account creation cap                      │
-│  ├─ TOTP failure lockout: 5 failures → 60 min               │
+│  ├─ TOTP lockout: 5/sign-in; 5 in 15 min → 30 min           │
 │  ├─ Account verification brute-force protection              │
 │  ├─ Per-account scene auth callback: 2s                     │
 │  ├─ IngressGuard: per-connection, per-operation debounce    │
@@ -2015,12 +2077,12 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <tbody>
 <tr>
 <td><code>APIHost</code></td>
-<td><code>GeneratedHostConfig.ApiHost</code> (build-time substituted; committed value is the <code>FISHMMO_SENTINEL_PLACEHOLDER_API_HOST</code> sentinel)</td>
+<td><code>HostConfig.ApiHost</code> (build-time substituted; committed value is the <code>FISHMMO_SENTINEL_PLACEHOLDER_API_HOST</code> sentinel)</td>
 <td><code>Constants.cs</code> → <code>HostConfig.generated.cs</code></td>
 </tr>
 <tr>
 <td><code>GameHost</code></td>
-<td><code>GeneratedHostConfig.GameHost</code> (build-time substituted; committed value is the <code>FISHMMO_SENTINEL_PLACEHOLDER_GAME_HOST</code> sentinel)</td>
+<td><code>HostConfig.GameHost</code> (build-time substituted; committed value is the <code>FISHMMO_SENTINEL_PLACEHOLDER_GAME_HOST</code> sentinel)</td>
 <td><code>Constants.cs</code> → <code>HostConfig.generated.cs</code></td>
 </tr>
 <tr>
@@ -2035,8 +2097,8 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 </tr>
 <tr>
 <td><code>MaxPendingAuthConnections</code></td>
-<td>10,000</td>
-<td><code>BaseAuthenticatorCore.cs</code></td>
+<td>1,000 Login (SRP verify + proof channel capacity, <code>PendingAuthRules.DefaultLoginPendingCap</code>) / 10,000 World, Scene</td>
+<td><code>BaseAuthenticatorCore.cs</code>, <code>SrpAuthenticatorCore.cs</code></td>
 </tr>
 <tr>
 <td><code>HandshakeIpWindowSeconds</code></td>
@@ -2099,8 +2161,8 @@ Full detail available in <a href="SERVER_INITIALIZATION_ORDER.html"><code>SERVER
 <td><code>CharacterSystem.Loading.cs</code></td>
 </tr>
 <tr>
-<td><code>SceneLoadHandshakeTimeout</code></td>
-<td>90s</td>
+<td><code>SceneLoadStallTimeoutSeconds</code> / <code>SceneLoadMaxSeconds</code> (cfg)</td>
+<td>120 s / 900 s</td>
 <td><code>CharacterSystem.Loading.cs</code></td>
 </tr>
 <tr>
@@ -2239,7 +2301,7 @@ slow load is never mistaken for a dead one.</li>
 scene server is presumed dead an order of magnitude above its 5 s pulse rate, so a slow pulse
 or a brief database stall never evicts a healthy host — and well under the lease, so a
 conclusion drawn about liveness cannot outlive the claim it reasons about.</li>
-<li><strong><code>CharacterResidencyTimeout</code> (60 s) against <code>SceneLoadHandshakeTimeout</code> (90 s).</strong> The two
+<li><strong><code>CharacterResidencyTimeout</code> (60 s) against the scene-load watchdog (120 s without progress, <code>SceneLoadStallTimeoutSeconds</code>; 900 s at most, <code>SceneLoadMaxSeconds</code>).</strong> The two
 watchdogs must not overlap: residency stops the moment the character is registered, which is
 the same moment the handshake watchdog starts.</li>
 </ul>
@@ -2256,8 +2318,7 @@ the same moment the handshake watchdog starts.</li>
 </ul>
 <h3 id="rotate-certificates">Rotate Certificates</h3>
 <ul>
-<li><strong>Run certbot renewal</strong> with <code>certbot renew</code> on the host that manages TLS certificates. The deploy hook at <code>FishMMO-Setup/deploy-hooks/certbot-fishmmo.sh</code> copies renewed certs to <code>/etc/fishmmo/certs/</code>.</li>
-<li><strong>Reload NGINX</strong> with <code>nginx -t &amp;&amp; nginx -s reload</code> to pick up new web server certificates.</li>
+<li><strong>Run certbot renewal</strong> with <code>certbot renew</code> on the host that manages TLS certificates (the timer does this twice a day). The Installer-generated deploy hook, <code>/etc/letsencrypt/renewal-hooks/deploy/fishmmo-certificates</code>, copies renewed certs to <code>/etc/fishmmo/certs/</code> and reloads NGINX. The key is reused (<code>reuse_key = True</code>), so client pins stay valid.</li>
 <li><strong>Restart game servers</strong> (LoginServer, WorldServer, SceneServer) one at a time to minimize downtime. Each reads <code>CertificatePath</code> and <code>PrivateKeyPath</code> from its <code>.cfg</code> file at startup.</li>
 <li><strong>Verify</strong> certs with <code>openssl x509 -in /etc/fishmmo/certs/fullchain.pem -noout -dates</code> and check the private key matches via modulus comparison.</li>
 </ul>
@@ -2475,6 +2536,20 @@ reaps its scene rows once <code>last_pulse</code> is older than <code>SceneServe
 <td>Comma-separated CORS origins permitted for WebGL clients.</td>
 </tr>
 <tr>
+<td><code>AuthMaxPendingConnections</code></td>
+<td>int</td>
+<td><code>1000</code> Login (verify + proof channel capacity) / <code>10000</code> World, Scene</td>
+<td>All</td>
+<td>Connections allowed to be mid-authentication at once; on the Login server the login queue's threshold. A player at the two-factor prompt does not count. Commented out in the templates.</td>
+</tr>
+<tr>
+<td><code>AuthTwoFactorWindowSeconds</code></td>
+<td>int</td>
+<td><code>120</code></td>
+<td>Login</td>
+<td>Seconds a player has to answer each two-factor prompt. Clamped 30–600. Not in the templates.</td>
+</tr>
+<tr>
 <td><code>LoginQueueUpdateRateSeconds</code></td>
 <td>float</td>
 <td><code>2.0</code></td>
@@ -2491,7 +2566,7 @@ reaps its scene rows once <code>last_pulse</code> is older than <code>SceneServe
 <tr>
 <td><code>LoginQueueAdmissionRatePerSecond</code></td>
 <td>float</td>
-<td><code>5.0</code></td>
+<td><code>50.0</code></td>
 <td>Login</td>
 <td>Rate at which queued clients are admitted to the login server.</td>
 </tr>

@@ -117,22 +117,32 @@ All logic lives in <a class="xref" href="../auth/FishMMO.Auth.Implementation.Acc
     </dl>
     <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Implementation.AccountVerificationPolicy.html">AccountVerificationPolicy</a></dt>
-      <dd><p>Single source of truth for the development-only &quot;skip email verification&quot; policy
-driven by the <code>AutoVerifyAccounts</code> configuration key.</p>
-<p>Two call sites must agree on this answer:</p>
+      <dd><p>Single source of truth for whether, and on which channels, new accounts must prove their
+contact details: the development-only <code>AutoVerifyAccounts</code> bypass and the per-channel
+<code>VerifyEmail</code> / <code>VerifySms</code> / <code>VerifyDiscord</code> switches. Which codes an account is
+then sent and asked for is <code>AccountVerificationRules</code>, shared with the Control Panel.</p>
+<p>Two call sites must agree on these answers:</p>
 <ul>
-<li>Account creation, which persists <code>verified = true</code> instead of generating a
-verify code, queueing a verification email, and enrolling mandatory TOTP.</li>
-<li>The login lookup, which otherwise rejects an unverified account once
-<code>verification_email_sent_at</code> has been stamped. Without the login side
-honouring the flag, accounts created before auto-verify was enabled (or created
-against a production build) stay locked out of a local server forever.</li>
+<li>Account creation, which decides which codes to send and whether to verify the account outright.</li>
+<li>The login lookup, which otherwise rejects an unverified account. Without the login side
+honouring the same switches, an account created before a switch changed would be asked
+for a code no server will ever send, or let in without one it still owes.</li>
 </ul>
-<p>The compile-time guard is deliberate: a production player build ignores the key
-entirely, so a Development <code>LoginServer.cfg</code> that leaks into a production
-deployment cannot re-enable the bypass. Consequently the flag also has no effect in a
-server binary built with the Production working environment — build the server with
-the Development working environment for local testing.</p>
+<p><b>Precedence, highest first.</b></p>
+<ol><li><code>AutoVerifyAccounts=true</code> (editor and development builds only): every account is
+  verified at creation and no code is sent.</li><li><code>VerifyEmail</code> / <code>VerifySms</code> / <code>VerifyDiscord</code> say which channels this server
+  sends codes on. When all three are false, every new account is verified at creation through
+  the same database write the bypass uses.</li><li>Otherwise a code goes out on each channel the player chose that is switched on and the
+  account can receive, falling back to email; <b>any one code verifies the account</b>, and
+  there is no grace period: sign-in asks for a code until one is entered.</li></ol>
+<p>The compile-time guard on <a class="xref" href="FishMMO.Server.Implementation.AccountVerificationPolicy.html#FishMMO_Server_Implementation_AccountVerificationPolicy_IsAutoVerifyEnabled_FishMMO_Server_Core_IServerConfiguration_">IsAutoVerifyEnabled(IServerConfiguration)</a> is deliberate: a production player
+build ignores that key entirely, so a Development <code>LoginServer.cfg</code> that leaks into a
+production deployment cannot re-enable the bypass. Consequently the flag also has no effect in a
+server binary built with the Production working environment — build the server with the
+Development working environment for local testing. The channel switches have no such guard;
+a missing or unreadable value counts as <code>true</code>, so a typo verifies more, never less.</p>
+<p>None of this decides two-factor. An authenticator is set up when the player opts in at
+registration, however the account was verified, on the game and the Control Panel alike.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -187,6 +197,13 @@ Manages kick request database polling state separately from KickRequestSystem lo
 </dd>
     </dl>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.LoginSecurityPolicy.html">LoginSecurityPolicy</a></dt>
+      <dd><p>The login server's closed-test (beta) and database-backed sign-in lockout settings, read from
+<code>LoginServer.cfg</code>. Shared by account creation and the SRP authenticator so the two can
+never disagree about whether the server is in a closed test or what a lockout is.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Implementation.MainThreadQueueData.html">MainThreadQueueData</a></dt>
       <dd><p>Base runtime data container providing a thread-safe main-thread action queue.
 Async worker threads enqueue actions via Enqueue(), and the main thread
@@ -211,6 +228,12 @@ indicates the main thread is stalling long enough for async DB workers
 to saturate the queue (10K * 16 ms drain budget ≈ several seconds of
 hang) and is a stronger DoS / GC-pause signal than any individual
 client time-out.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.PacketCompressionSampler.html">PacketCompressionSampler</a></dt>
+      <dd><p>Counts every byte of every packet the server sends and receives over a window, to measure what
+<a class="xref" href="FishMMO.Shared.PacketCompression.html">PacketCompression</a> would save and to train its tables (<a class="xref" href="FishMMO.Shared.PacketCompressionTables.html">PacketCompressionTables</a>).</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -261,9 +284,15 @@ This class bridges FishNet broadcast events to the core and provides Unity/DB ca
 </dd>
     </dl>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerBandwidthRecorder.html">ServerBandwidthRecorder</a></dt>
+      <dd><p>Writes one row a minute of what this server process sent and received to
+<code>server_bandwidth_minute</code>, for the Control Panel's bandwidth page.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html">ServerBehaviour</a></dt>
-      <dd><p>Base class for all server-side behaviours in the FishMMO server architecture.
-Provides registration, initialization, and lifecycle management for server behaviours.</p>
+      <dd><p>Currency bookkeeping every system that takes or pays currency shares: the immediate attribute
+save a spend is conditioned on, and the economy ledger row written once it has happened.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -284,6 +313,14 @@ Can be extended for specific component types (behaviours, data containers, etc.)
       <dt><a class="xref" href="FishMMO.Server.Implementation.ServerLauncher.html">ServerLauncher</a></dt>
       <dd><p>Launches the server by preloading required scenes and handling addressable asset events.
 Supports command-line arguments for selecting server type.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.ServerTrafficBreakdown.html">ServerTrafficBreakdown</a></dt>
+      <dd><p>Each connection's outbound game traffic broken down by message type, logged once per interval: which broadcast, which
+behaviour's RPCs or sync types, the prediction state updates (reconcile), spawns, and so on, with bytes and messages per
+second. A measuring tool for the bandwidth budget, off unless <code>TrafficBreakdownSeconds</code> is set in the server's
+configuration.</p>
 </dd>
     </dl>
     <dl class="jumplist">
@@ -364,6 +401,16 @@ EF/Npgsql call chain to know whether blocking is safe.
 Structs
 </h3>
     <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.AuthLockoutSettings.html">AuthLockoutSettings</a></dt>
+      <dd><p>How long a sign-in step stays locked, and how many failures inside how long a window lock it.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.PlayerRequestContext.html">PlayerRequestContext</a></dt>
+      <dd><p>The acting player behind one client request, resolved once at the top of a broadcast handler.</p>
+</dd>
+    </dl>
+    <dl class="jumplist">
       <dt><a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.KekLoadResult.html">SigningKeyKekProvider.KekLoadResult</a></dt>
       <dd><p>Outcome of a KEK load. <a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.KekLoadResult.html#FishMMO_Server_Implementation_SigningKeyKekProvider_KekLoadResult_Kek">Kek</a> is non-null only when <a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.KekLoadResult.html#FishMMO_Server_Implementation_SigningKeyKekProvider_KekLoadResult_Success">Success</a>
 is <code>true</code>; otherwise <a class="xref" href="FishMMO.Server.Implementation.SigningKeyKekProvider.KekLoadResult.html#FishMMO_Server_Implementation_SigningKeyKekProvider_KekLoadResult_Error">Error</a> explains why, for fail-closed callers.</p>
@@ -383,6 +430,14 @@ from the concrete FishNet implementation.</p>
       <dd><p>Common interface for server authenticators (both SRP-based and token-based).
 Provides the Server reference and worker lifecycle methods needed by
 <a class="xref" href="FishMMO.Server.Implementation.FishNetNetworkWrapper.html#FishMMO_Server_Implementation_FishNetNetworkWrapper_AttachLoginAuthenticator_FishMMO_Server_Core_IServer_FishMMO_Server_Implementation_INetworkManagerWrapper_FishNet_Connection_NetworkConnection_FishMMO_Server_Core_IServerBehaviour__">AttachLoginAuthenticator(IServer&lt;INetworkManagerWrapper, NetworkConnection, IServerBehaviour&gt;)</a>.</p>
+</dd>
+    </dl>
+    <h3 id="enums">
+Enums
+</h3>
+    <dl class="jumplist">
+      <dt><a class="xref" href="FishMMO.Server.Implementation.PlayerRequestGate.html">PlayerRequestGate</a></dt>
+      <dd><p>Whether a player request passes through the character-state gate before the handler runs.</p>
 </dd>
     </dl>
 

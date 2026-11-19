@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService" class="text-break">
-Interface IGroupFinderQueueService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L28"><i class="bi bi-code-slash"></i></a>
+Interface IGroupFinderQueueService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L36"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -125,6 +125,14 @@ clauses re-assert the state they expect, so two servers acting on the same rows 
 produce one winner and one no-op rather than a character in two groups.
 </p>
 <p>
+<b>One clock.</b> Every heartbeat, queue time and match time is stamped by the database's
+clock, and every staleness test is made against it in SQL; callers pass how OLD a
+heartbeat may be, never a moment. The rows are written by one scene server and judged by
+every other, so a moment computed from the caller's own clock compared two machines'
+clocks: a server running 30 s behind had waiters nobody else counted, and at 60 s behind
+its rows were swept from under it every sweep.
+</p>
+<p>
 All methods return <a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a> or <a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult&lt;T&gt;</a>. Write
 operations go through the <code>BaseService</code> execution wrappers for transient-failure
 retry and exception mapping.
@@ -138,9 +146,9 @@ retry and exception mapping.
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.CountWaitingAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.CountWaitingAsync(System.Int64,FishMMO.Database.Data.Enums.SceneType,System.String,System.Int32,System.DateTime,System.Threading.CancellationToken)">
-  CountWaitingAsync(long, SceneType, string, int, DateTime, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L144"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.CountWaitingAsync(System.Int64,FishMMO.Database.Data.Enums.SceneType,System.String,System.Int32,System.TimeSpan,System.Threading.CancellationToken)">
+  CountWaitingAsync(long, SceneType, string, int, TimeSpan, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L150"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Counts the live waiters for one dungeon at one difficulty.</p>
@@ -148,7 +156,7 @@ retry and exception mapping.
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; CountWaitingAsync(long worldServerId, SceneType sceneType, string sceneName, int difficulty, DateTime pulsedSinceUtc, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; CountWaitingAsync(long worldServerId, SceneType sceneType, string sceneName, int difficulty, TimeSpan staleAfter, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -165,7 +173,7 @@ retry and exception mapping.
     <dt><code>difficulty</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd><p>Difficulty or format index.</p>
 </dd>
-    <dt><code>pulsedSinceUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dt><code>staleAfter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
     <dd><p>Rows whose heartbeat is older than this are not counted.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
@@ -190,11 +198,63 @@ retry and exception mapping.
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.CountWaitingAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_System_Int64_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_GroupFinderQueueKey__System_TimeSpan_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.CountWaitingAsync(System.Int64,System.Collections.Generic.IReadOnlyList{FishMMO.Database.Data.GroupFinderQueueKey},System.TimeSpan,System.Threading.CancellationToken)">
+  CountWaitingAsync(long, IReadOnlyList&lt;GroupFinderQueueKey&gt;, TimeSpan, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L164"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Counts the live waiters for several keys at once.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;IReadOnlyDictionary&lt;GroupFinderQueueKey, int&gt;&gt;&gt; CountWaitingAsync(long worldServerId, IReadOnlyList&lt;GroupFinderQueueKey&gt; keys, TimeSpan staleAfter, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>worldServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>World server to count on.</p>
+</dd>
+    <dt><code>keys</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="FishMMO.Database.Data.GroupFinderQueueKey.html">GroupFinderQueueKey</a>&gt;</dt>
+    <dd><p>What to count. Repeated keys are counted once.</p>
+</dd>
+    <dt><code>staleAfter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
+    <dd><p>Rows whose heartbeat is older than this are not counted.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlydictionary-2">IReadOnlyDictionary</a>&lt;<a class="xref" href="FishMMO.Database.Data.GroupFinderQueueKey.html">GroupFinderQueueKey</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;&gt;</dt>
+    <dd><p>One entry per distinct requested key, ALWAYS present: a key nobody waits under maps to 0.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_System_Int64_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_GroupFinderQueueKey__System_TimeSpan_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The pump's count: one statement for every key its waiters are queued under, where it
+used to run <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken_">CountWaitingAsync(long, SceneType, string, int, TimeSpan, CancellationToken)</a> once per key, in series.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.DeleteAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteAsync_System_Int64_System_Boolean_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.DeleteAsync(System.Int64,System.Boolean,System.Threading.CancellationToken)">
   DeleteAsync(long, bool, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L88"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L96"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes a character's queue row.</p>
@@ -243,7 +303,7 @@ has been dispatched — or when the character is gone.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteReturningAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.DeleteReturningAsync(System.Int64,System.Threading.CancellationToken)">
   DeleteReturningAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L104"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L112"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes a character's queue row whatever its state, and reports what was removed.</p>
@@ -291,22 +351,22 @@ commit and then removes, and reports, the matched row.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteStaleAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.DeleteStaleAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteStaleAsync_System_DateTime_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.DeleteStaleAsync(System.DateTime,System.Int32,System.Threading.CancellationToken)">
-  DeleteStaleAsync(DateTime, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L302"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteStaleAsync_System_TimeSpan_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.DeleteStaleAsync(System.TimeSpan,System.Int32,System.Threading.CancellationToken)">
+  DeleteStaleAsync(TimeSpan, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L337"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Removes rows whose heartbeat stopped before <code class="paramref">pulsedBeforeUtc</code>.</p>
+  <div class="markdown level1 summary"><p>Removes rows whose heartbeat is older than <code class="paramref">staleAfter</code>.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; DeleteStaleAsync(DateTime pulsedBeforeUtc, int maxRows = 256, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; DeleteStaleAsync(TimeSpan staleAfter, int maxRows = 256, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>pulsedBeforeUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dt><code>staleAfter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
     <dd><p>Rows whose heartbeat is older than this are eligible.</p>
 </dd>
     <dt><code>maxRows</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
@@ -330,7 +390,7 @@ commit and then removes, and reports, the matched row.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteStaleAsync_System_DateTime_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteStaleAsync_System_TimeSpan_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>Bounded per call so a large backlog drains across several sweeps rather than in one
 long statement. Matched rows are reaped too: a matched character whose server died was
 placed in a party it will never be transferred into, and the party system's own absent-
@@ -342,9 +402,9 @@ member handling takes it from there.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.EnqueueAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_System_Int64_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.EnqueueAsync(System.Int64,System.Int64,FishMMO.Database.Data.Enums.SceneType,System.String,System.Int32,System.DateTime,System.Threading.CancellationToken)">
-  EnqueueAsync(long, long, SceneType, string, int, DateTime, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L53"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_System_Int64_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.EnqueueAsync(System.Int64,System.Int64,FishMMO.Database.Data.Enums.SceneType,System.String,System.Int32,System.TimeSpan,System.Threading.CancellationToken)">
+  EnqueueAsync(long, long, SceneType, string, int, TimeSpan, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L61"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Puts a character in the queue for one dungeon at one difficulty, or moves their
@@ -353,7 +413,7 @@ existing entry to it.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;long&gt;&gt; EnqueueAsync(long worldServerId, long characterId, SceneType sceneType, string sceneName, int difficulty, DateTime stalePulsedBeforeUtc, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;long&gt;&gt; EnqueueAsync(long worldServerId, long characterId, SceneType sceneType, string sceneName, int difficulty, TimeSpan staleAfter, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -373,7 +433,7 @@ existing entry to it.</p>
     <dt><code>difficulty</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd><p>Index into the template's list: a dungeon's difficulty or an arena's format.</p>
 </dd>
-    <dt><code>stalePulsedBeforeUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dt><code>staleAfter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
     <dd><p>A matched row whose heartbeat is older than this is treated as abandoned and re-pointed
 like a waiting one. Without this a character whose scene server died between the match
 and the transfer could never queue again until the stale sweep happened to reach them.</p>
@@ -396,7 +456,7 @@ and the transfer could never queue again until the stale sweep happened to reach
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_System_Int64_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_System_Int64_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>A character already waiting for something else is re-pointed rather than refused —
 pressing Find Group at a second entrance means &quot;this one instead&quot;, and their place in
 line restarts. A character whose row is already <a class="xref" href="FishMMO.Database.Data.Enums.GroupFinderQueueStatus.html#FishMMO_Database_Data_Enums_GroupFinderQueueStatus_Matched">Matched</a>
@@ -409,9 +469,9 @@ to transfer them into it.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueGroupAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.EnqueueGroupAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueGroupAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_Int64_System_Collections_Generic_IReadOnlyList_System_Int64__System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.EnqueueGroupAsync(System.Int64,FishMMO.Database.Data.Enums.SceneType,System.String,System.Int32,System.Int64,System.Collections.Generic.IReadOnlyList{System.Int64},System.DateTime,System.Threading.CancellationToken)">
-  EnqueueGroupAsync(long, SceneType, string, int, long, IReadOnlyList&lt;long&gt;, DateTime, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L73"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueGroupAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_Int64_System_Collections_Generic_IReadOnlyList_System_Int64__System_TimeSpan_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.EnqueueGroupAsync(System.Int64,FishMMO.Database.Data.Enums.SceneType,System.String,System.Int32,System.Int64,System.Collections.Generic.IReadOnlyList{System.Int64},System.TimeSpan,System.Threading.CancellationToken)">
+  EnqueueGroupAsync(long, SceneType, string, int, long, IReadOnlyList&lt;long&gt;, TimeSpan, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L81"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Queues a pre-made group together, all or none.</p>
@@ -419,7 +479,7 @@ to transfer them into it.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; EnqueueGroupAsync(long worldServerId, SceneType sceneType, string sceneName, int difficulty, long groupId, IReadOnlyList&lt;long&gt; characterIds, DateTime stalePulsedBeforeUtc, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; EnqueueGroupAsync(long worldServerId, SceneType sceneType, string sceneName, int difficulty, long groupId, IReadOnlyList&lt;long&gt; characterIds, TimeSpan staleAfter, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -442,8 +502,8 @@ to transfer them into it.</p>
     <dt><code>characterIds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;</dt>
     <dd><p>Every member, including the one who pressed the button.</p>
 </dd>
-    <dt><code>stalePulsedBeforeUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
-    <dd><p>Stale threshold, as for <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_System_Int64_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken_">EnqueueAsync(long, long, SceneType, string, int, DateTime, CancellationToken)</a>.</p>
+    <dt><code>staleAfter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
+    <dd><p>Stale heartbeat age, as for <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_System_Int64_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken_">EnqueueAsync(long, long, SceneType, string, int, TimeSpan, CancellationToken)</a>.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
@@ -453,7 +513,7 @@ to transfer them into it.</p>
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
-    <dd><p>Rows written, equal to the member count on success. Zero when a member could not be queued and nothing was written.</p>
+    <dd><p>Rows written, equal to the member count on success. A StaleState failure, with nothing written, when a member is already matched elsewhere: the group queues together or not at all.</p>
 </dd>
   </dl>
 
@@ -463,35 +523,36 @@ to transfer them into it.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueGroupAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_Int64_System_Collections_Generic_IReadOnlyList_System_Int64__System_DateTime_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueGroupAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_Int64_System_Collections_Generic_IReadOnlyList_System_Int64__System_TimeSpan_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>Every member gets a row carrying the same <code class="paramref">groupId</code>, in one transaction:
 a member whose row is live-matched already refuses the whole group, so a party cannot
 end up half in one queue and half in another. Members already waiting for something else
-are re-pointed exactly as <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_System_Int64_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken_">EnqueueAsync(long, long, SceneType, string, int, DateTime, CancellationToken)</a> re-points a single character.</p>
+are re-pointed exactly as <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_EnqueueAsync_System_Int64_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken_">EnqueueAsync(long, long, SceneType, string, int, TimeSpan, CancellationToken)</a> re-points a single character.</p>
 </div>
 
 
 
 
-  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_FetchByCharactersAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.FetchByCharactersAsync*"></a>
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_FetchBackfillOpeningsAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.FetchBackfillOpeningsAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_FetchByCharactersAsync_System_Collections_Generic_IReadOnlyList_System_Int64__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.FetchByCharactersAsync(System.Collections.Generic.IReadOnlyList{System.Int64},System.Threading.CancellationToken)">
-  FetchByCharactersAsync(IReadOnlyList&lt;long&gt;, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L132"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_FetchBackfillOpeningsAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.FetchBackfillOpeningsAsync(System.Int64,System.Threading.CancellationToken)">
+  FetchBackfillOpeningsAsync(long, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L295"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Reads the queue rows of the given characters.</p>
+  <div class="markdown level1 summary"><p>The arenas and formats that have a seat to backfill right now: a live match with an
+open backfill window, a ready instance, and a team short of its size.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;IReadOnlyList&lt;GroupFinderQueueData&gt;&gt;&gt; FetchByCharactersAsync(IReadOnlyList&lt;long&gt; characterIds, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;IReadOnlyList&lt;GroupFinderQueueKey&gt;&gt;&gt; FetchBackfillOpeningsAsync(long worldServerId, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>characterIds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;</dt>
-    <dd><p>Characters to look up; duplicates and non-positive ids are ignored.</p>
+    <dt><code>worldServerId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>World server to look on.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
@@ -500,8 +561,8 @@ are re-pointed exactly as <a class="xref" href="FishMMO.Database.Npgsql.Services
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="FishMMO.Database.Data.GroupFinderQueueData.html">GroupFinderQueueData</a>&gt;&gt;&gt;</dt>
-    <dd><p>The rows that exist. Characters with no row are simply absent.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="FishMMO.Database.Data.GroupFinderQueueKey.html">GroupFinderQueueKey</a>&gt;&gt;&gt;</dt>
+    <dd><p>The arena keys (scene type PvP, scene name, format) with an opening, each once.</p>
 </dd>
   </dl>
 
@@ -511,10 +572,11 @@ are re-pointed exactly as <a class="xref" href="FishMMO.Database.Npgsql.Services
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_FetchByCharactersAsync_System_Collections_Generic_IReadOnlyList_System_Int64__System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>The scene server's pump reads its own characters' rows once per interval to learn which
-of them have been matched — by itself or by any other server — and which have been
-removed underneath it.</p>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_FetchBackfillOpeningsAsync_System_Int64_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A plain read, no locks: the pump's check before <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryBackfillArenaSeatAsync_System_Int64_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken_">TryBackfillArenaSeatAsync(long, string, int, TimeSpan, CancellationToken)</a>,
+whose transaction locks and scans, and which used to run for every arena key with
+local waiters on every pump whether or not any window was open. A key this reports is
+only a candidate; the transaction re-decides everything under its lock.</p>
 </div>
 
 
@@ -524,15 +586,16 @@ removed underneath it.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_PulseAsync_System_Collections_Generic_IReadOnlyList_System_Int64__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.PulseAsync(System.Collections.Generic.IReadOnlyList{System.Int64},System.Threading.CancellationToken)">
   PulseAsync(IReadOnlyList&lt;long&gt;, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L119"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L138"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Refreshes the heartbeat on the rows of characters connected to the calling scene server.</p>
+  <div class="markdown level1 summary"><p>Refreshes the heartbeat on the rows of characters connected to the calling scene server,
+and returns those rows as the refresh left them.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; PulseAsync(IReadOnlyList&lt;long&gt; characterIds, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;IReadOnlyList&lt;GroupFinderPulseData&gt;&gt;&gt; PulseAsync(IReadOnlyList&lt;long&gt; characterIds, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -547,8 +610,8 @@ removed underneath it.</p>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
-    <dd><p>Rows updated.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="FishMMO.Database.Data.GroupFinderPulseData.html">GroupFinderPulseData</a>&gt;&gt;&gt;</dt>
+    <dd><p>The rows that exist. Characters with no row are simply absent.</p>
 </dd>
   </dl>
 
@@ -559,11 +622,21 @@ removed underneath it.</p>
 
 
   <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_PulseAsync_System_Collections_Generic_IReadOnlyList_System_Int64__System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>A row whose heartbeat stops is excluded from matching by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormGroupAsync_System_Int64_System_String_System_Int32_System_Int32_System_DateTime_FishMMO_Database_Data_Enums_SceneType_System_Byte_System_Byte_System_Threading_CancellationToken_">TryFormGroupAsync(long, string, int, int, DateTime, SceneType, byte, byte, CancellationToken)</a>
-and <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken_">CountWaitingAsync(long, SceneType, string, int, DateTime, CancellationToken)</a> and eventually removed by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteStaleAsync_System_DateTime_System_Int32_System_Threading_CancellationToken_">DeleteStaleAsync(DateTime, int, CancellationToken)</a>.
+  <div class="markdown level1 remarks"><p>
+A row whose heartbeat stops is excluded from matching by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormGroupAsync_System_Int64_System_String_System_Int32_System_Int32_System_TimeSpan_FishMMO_Database_Data_Enums_SceneType_System_Byte_System_Byte_System_Threading_CancellationToken_">TryFormGroupAsync(long, string, int, int, TimeSpan, SceneType, byte, byte, CancellationToken)</a>
+and <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_CountWaitingAsync_System_Int64_FishMMO_Database_Data_Enums_SceneType_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken_">CountWaitingAsync(long, SceneType, string, int, TimeSpan, CancellationToken)</a> and eventually removed by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_DeleteStaleAsync_System_TimeSpan_System_Int32_System_Threading_CancellationToken_">DeleteStaleAsync(TimeSpan, int, CancellationToken)</a>.
 That is the only defence against a scene server dying with waiters on it: nothing else
 would ever remove them, and a group formed around a character nobody can reach is a
-party of four with an empty slot that never fills.</p>
+party of four with an empty slot that never fills.
+</p>
+<p>
+One statement, <code>UPDATE ... RETURNING</code>. The pump needs both the heartbeat and the
+rows — which of its characters were matched, by itself or any other server, and which
+were removed underneath it — and used to spend a round trip on each. A row matched into
+a party also carries the character's membership, read in the same statement, because
+the pump honours the match only while they are in that party and tells them the rank
+they hold; that used to be one more round trip per matched row, in series.
+</p>
 </div>
 
 
@@ -573,7 +646,7 @@ party of four with an empty slot that never fills.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_ReleaseClaimAsync_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.ReleaseClaimAsync(System.Int64,System.Int64,System.Threading.CancellationToken)">
   ReleaseClaimAsync(long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L287"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L322"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns a character claimed by <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryClaimForInstanceAsync_System_Int64_System_Int64_System_Int64_System_Threading_CancellationToken_">TryClaimForInstanceAsync(long, long, long, CancellationToken)</a> to the waiting
@@ -617,9 +690,9 @@ state, when the join it was claimed for could not be completed.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryBackfillArenaSeatAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryBackfillArenaSeatAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryBackfillArenaSeatAsync_System_Int64_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryBackfillArenaSeatAsync(System.Int64,System.String,System.Int32,System.DateTime,System.Threading.CancellationToken)">
-  TryBackfillArenaSeatAsync(long, string, int, DateTime, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L255"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryBackfillArenaSeatAsync_System_Int64_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryBackfillArenaSeatAsync(System.Int64,System.String,System.Int32,System.TimeSpan,System.Threading.CancellationToken)">
+  TryBackfillArenaSeatAsync(long, string, int, TimeSpan, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L275"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Seats the longest-waiting eligible waiter for an arena in a live match of that arena and
@@ -628,7 +701,7 @@ format that has a vacated seat and an open backfill window.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;ArenaBackfillData&gt;&gt; TryBackfillArenaSeatAsync(long worldServerId, string sceneName, int format, DateTime pulsedSinceUtc, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;ArenaBackfillData&gt;&gt; TryBackfillArenaSeatAsync(long worldServerId, string sceneName, int format, TimeSpan staleAfter, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -639,7 +712,7 @@ format that has a vacated seat and an open backfill window.</p>
     <dd></dd>
     <dt><code>format</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd></dd>
-    <dt><code>pulsedSinceUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dt><code>staleAfter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
     <dd></dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd></dd>
@@ -657,7 +730,7 @@ format that has a vacated seat and an open backfill window.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryBackfillArenaSeatAsync_System_Int64_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryBackfillArenaSeatAsync_System_Int64_System_String_System_Int32_System_TimeSpan_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>One transaction: the match row is locked, the vacancy re-counted under the lock, the
 oldest waiter locked and bound to the instance, and a new seated member row inserted.
 Ranked matches take waiters from the same (ranked) format only, because the format is
@@ -671,7 +744,7 @@ what the queue row records.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryClaimForInstanceAsync_System_Int64_System_Int64_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryClaimForInstanceAsync(System.Int64,System.Int64,System.Int64,System.Threading.CancellationToken)">
   TryClaimForInstanceAsync(long, long, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L277"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L312"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Marks one waiting character as matched into an existing instance, for the late-join
@@ -724,9 +797,9 @@ adds the character to the instance's party after this succeeds, and calls
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormArenaMatchAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryFormArenaMatchAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormArenaMatchAsync_System_Int64_System_String_System_Int32_System_Int32_System_Int32_System_Int32_System_DateTime_System_Int32_FishMMO_Database_Data_ArenaRatingSource_FishMMO_Database_Data_ArenaComposeOptions_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryFormArenaMatchAsync(System.Int64,System.String,System.Int32,System.Int32,System.Int32,System.Int32,System.DateTime,System.Int32,FishMMO.Database.Data.ArenaRatingSource,FishMMO.Database.Data.ArenaComposeOptions,System.Threading.CancellationToken)">
-  TryFormArenaMatchAsync(long, string, int, int, int, int, DateTime, int, ArenaRatingSource, ArenaComposeOptions, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L232"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormArenaMatchAsync_System_Int64_System_String_System_Int32_System_Int32_System_Int32_System_Int32_System_TimeSpan_System_Int32_FishMMO_Database_Data_ArenaRatingSource_FishMMO_Database_Data_ArenaComposeOptions_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryFormArenaMatchAsync(System.Int64,System.String,System.Int32,System.Int32,System.Int32,System.Int32,System.TimeSpan,System.Int32,FishMMO.Database.Data.ArenaRatingSource,FishMMO.Database.Data.ArenaComposeOptions,System.Threading.CancellationToken)">
+  TryFormArenaMatchAsync(long, string, int, int, int, int, TimeSpan, int, ArenaRatingSource, ArenaComposeOptions, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L252"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Forms an arena match from the longest-waiting eligible players, keeping pre-made groups
@@ -735,7 +808,7 @@ together, opening the instance and writing the match and its seats, all in one t
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;ArenaMatchFormedData&gt;&gt; TryFormArenaMatchAsync(long worldServerId, string sceneName, int format, int templateId, int teamCount, int teamSize, DateTime pulsedSinceUtc, int maxCandidates = 128, ArenaRatingSource ratingSource = default, ArenaComposeOptions composeOptions = default, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;ArenaMatchFormedData&gt;&gt; TryFormArenaMatchAsync(long worldServerId, string sceneName, int format, int templateId, int teamCount, int teamSize, TimeSpan staleAfter, int maxCandidates = 128, ArenaRatingSource ratingSource = default, ArenaComposeOptions composeOptions = default, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -758,7 +831,7 @@ together, opening the instance and writing the match and its seats, all in one t
     <dt><code>teamSize</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd><p>Seats per team.</p>
 </dd>
-    <dt><code>pulsedSinceUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dt><code>staleAfter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
     <dd><p>Waiters whose heartbeat is older than this are not eligible.</p>
 </dd>
     <dt><code>maxCandidates</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
@@ -786,9 +859,9 @@ together, opening the instance and writing the match and its seats, all in one t
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormArenaMatchAsync_System_Int64_System_String_System_Int32_System_Int32_System_Int32_System_Int32_System_DateTime_System_Int32_FishMMO_Database_Data_ArenaRatingSource_FishMMO_Database_Data_ArenaComposeOptions_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormArenaMatchAsync_System_Int64_System_String_System_Int32_System_Int32_System_Int32_System_Int32_System_TimeSpan_System_Int32_FishMMO_Database_Data_ArenaRatingSource_FishMMO_Database_Data_ArenaComposeOptions_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>
-The arena counterpart of <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormGroupAsync_System_Int64_System_String_System_Int32_System_Int32_System_DateTime_FishMMO_Database_Data_Enums_SceneType_System_Byte_System_Byte_System_Threading_CancellationToken_">TryFormGroupAsync(long, string, int, int, DateTime, SceneType, byte, byte, CancellationToken)</a>, with the same guarantees: the
+The arena counterpart of <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.html#FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormGroupAsync_System_Int64_System_String_System_Int32_System_Int32_System_TimeSpan_FishMMO_Database_Data_Enums_SceneType_System_Byte_System_Byte_System_Threading_CancellationToken_">TryFormGroupAsync(long, string, int, int, TimeSpan, SceneType, byte, byte, CancellationToken)</a>, with the same guarantees: the
 candidates are row-locked with plain <code>FOR UPDATE</code>, eligibility is re-asserted inside
 the transaction, and either everything is written or nothing is. Composition — which
 waiter sits on which team — is decided by <a class="xref" href="FishMMO.Database.Data.ArenaMatchComposer.html">ArenaMatchComposer</a> on the locked
@@ -810,16 +883,16 @@ is in it. It is still inserted under the one-instance guard, against every seat.
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormGroupAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryFormGroupAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormGroupAsync_System_Int64_System_String_System_Int32_System_Int32_System_DateTime_FishMMO_Database_Data_Enums_SceneType_System_Byte_System_Byte_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryFormGroupAsync(System.Int64,System.String,System.Int32,System.Int32,System.DateTime,FishMMO.Database.Data.Enums.SceneType,System.Byte,System.Byte,System.Threading.CancellationToken)">
-  TryFormGroupAsync(long, string, int, int, DateTime, SceneType, byte, byte, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L189"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IGroupFinderQueueService_TryFormGroupAsync_System_Int64_System_String_System_Int32_System_Int32_System_TimeSpan_FishMMO_Database_Data_Enums_SceneType_System_Byte_System_Byte_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IGroupFinderQueueService.TryFormGroupAsync(System.Int64,System.String,System.Int32,System.Int32,System.TimeSpan,FishMMO.Database.Data.Enums.SceneType,System.Byte,System.Byte,System.Threading.CancellationToken)">
+  TryFormGroupAsync(long, string, int, int, TimeSpan, SceneType, byte, byte, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IGroupFinderQueueService.cs/#L209"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;GroupFinderMatchData&gt;&gt; TryFormGroupAsync(long worldServerId, string sceneName, int difficulty, int groupSize, DateTime pulsedSinceUtc, SceneType sceneType, byte leaderRank, byte memberRank, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;GroupFinderMatchData&gt;&gt; TryFormGroupAsync(long worldServerId, string sceneName, int difficulty, int groupSize, TimeSpan staleAfter, SceneType sceneType, byte leaderRank, byte memberRank, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -832,7 +905,7 @@ is in it. It is still inserted under the one-instance guard, against every seat.
     <dd></dd>
     <dt><code>groupSize</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd></dd>
-    <dt><code>pulsedSinceUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dt><code>staleAfter</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
     <dd></dd>
     <dt><code>sceneType</code> <a class="xref" href="FishMMO.Database.Data.Enums.SceneType.html">SceneType</a></dt>
     <dd></dd>

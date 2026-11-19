@@ -116,6 +116,9 @@
 <li><a href="#scene-rows-are-reaped-not-just-written">Scene rows are reaped, not just written</a></li>
 <li><a href="#the-channel-switch-cooldown-lives-on-the-character">The channel-switch cooldown lives on the character</a></li>
 <li><a href="#kick-requests-expire">Kick requests expire</a></li>
+<li><a href="#the-database-clock">The database clock</a></li>
+<li><a href="#batched-reads-and-writes">Batched reads and writes</a></li>
+<li><a href="#the-chat-table-is-read-through-a-window">The chat table is read through a window</a></li>
 </ul>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
@@ -135,7 +138,7 @@
 <td>Yes</td>
 </tr>
 <tr>
-<td>Unity 6.3 LTS (Editor + headless server builds)</td>
+<td>Unity 6.6 (Editor + headless server builds)</td>
 <td>Yes</td>
 </tr>
 <tr>
@@ -167,16 +170,34 @@
 ├── Data/                       Plain data records + enums shared across servers
 │   ├── Arena/                    ArenaMatchData, ArenaMatchComposer, ArenaRatingSource
 │   ├── Character/                Per-character sub-entity records, including CharacterItemData
-│   │                             and its ItemContainerType discriminator
+│   │                             and its ItemContainerType discriminator, and the batched
+│   │                             save's CharacterPersistRequest / CharacterPersistResult
 │   ├── Enums/                    ChatChannel, SceneStatus, SceneType, CharacterSessionState,
-│   │                             ArenaMatchStatus, ArenaSeatStatus, GroupFinderQueueStatus, …
-│   ├── GroupFinder/              GroupFinderQueueData, GroupFinderMatchData
+│   │                             ArenaMatchStatus, ArenaSeatStatus, GroupFinderQueueStatus,
+│   │                             LeaderboardSourceKind, …
+│   ├── GroupFinder/              GroupFinderQueueData, GroupFinderMatchData, GroupFinderPulseData
+│   │                             (a heartbeat row plus party membership), GroupFinderQueueKey
 │   ├── Guild/                    Guild, rank, log, application and update records
 │   ├── Housing/                  PlotData, PlotStructureData, PlotAccessData, PlotVaultData,
-│   │                             PlotUpdateData
-│   └── Party/                    Party records
-├── Migrations/                 EF Core migrations (created by FishMMO-DB-Migrator; gitignored,
-│                                 so a checkout has none until they are generated locally)
+│   │                             PlotUpdateData, PlotUpdatePollData (marks + the database time
+│   │                             of the poll), PlotTaxCharge / PlotTaxChargeResult (the offline
+│   │                             tax batch)
+│   ├── Leaderboard/              LeaderboardQuery (which board, who is eligible), the row, page
+│   │                             and standing records ILeaderboardService returns
+│   ├── Party/                    Party records
+│   ├── ChatPumpData.cs           ChatPumpQuery, ChatRelayQuery, ChatPumpPage: one windowed read
+│   │                             of the chat table
+│   ├── ChatReadWindow.cs         A chat reader's window and seen-ID set, on the database clock
+│   ├── DaemonCommandExpiry.cs    A claimed daemon command's time left, counted on a monotonic clock
+│   ├── ServerBandwidthData.cs    ServerBandwidthKind, ServerBandwidthMath (retention, rollup and
+│   │                             wire-estimate rules), ServerBandwidthSample (one minute row) and
+│   │                             the bandwidth report records
+│   └── ServerControlState.cs     A server row's lock and scheduled shutdown, with the seconds
+│                                 left measured by the database
+├── (../../Migrations/)         EF Core migrations live at the monorepo root, not in this folder,
+│                                 and FishMMO-DB.csproj compiles them in (`..\..\Migrations\*.cs`).
+│                                 Gitignored, so a checkout has none until they are generated
+│                                 locally with FishMMO-DB-Migrator as the startup project
 ├── Exceptions/                 Typed database exceptions
 ├── Npgsql/                     Concrete PostgreSQL implementation
 │   ├── NpgsqlDbContext.cs        EF Core DbContext — one DbSet per table
@@ -185,13 +206,23 @@
 │   ├── NpgsqlServiceRegistry.cs  IDatabaseServiceRegistry implementation
 │   ├── SchemaValidationResult.cs Pending-migration report returned by ValidateSchemaAsync
 │   ├── DbContextExtensions.cs    GetTableName&lt;TEntity&gt;(), for services that emit raw SQL
-│   ├── Entities/                 EF Core entity types (Login / Scene / World)
+│   ├── Entities/                 EF Core entity types (Bandwidth / Daemon / Login / Maintenance /
+│   │                             Scene / Support / World)
 │   ├── EntityConfigurations/     Fluent EF Core configurations (see EntityConfigurations/README.md)
 │   ├── Services/                 Per-domain service implementations
-│   │   ├── BaseService.cs          Execution wrappers, transient retry, raw-SQL helpers
+│   │   ├── BaseService.cs          Execution wrappers, transient retry, raw-SQL helpers, the
+│   │   │                           database-clock read (DatabaseUtcClockSql, ReadDatabaseUtcNowAsync)
+│   │   ├── BulkBatch.cs            Shared bulk-write rules: KeepNewest, RequireAnyLiveCharacter
+│   │   ├── ServerControlSql.cs     The control columns world and scene server rows are read by, and
+│   │   │                           the delay-from-database-now shutdown schedule
 │   │   ├── UnitOfWorkService.cs    IUnitOfWork — one ambient transaction across several services
+│   │   ├── Bandwidth/              ServerBandwidthService (a server's own minute rows),
+│   │   │                           ServerBandwidthReportService (the panel's read, rollup, prune)
+│   │   ├── Scene/Character/        … and CharacterWriteGate, the one ownership gate every
+│   │   │                           per-character sub-entity write passes through
 │   │   └── Interfaces/             IAccountService, ICharacterItemService, IPlotService, …
-│   │       └── Actions/              IPersistAction, IFetchByKeyAction, … reusable method shapes
+│   │       └── Actions/              IPersistAction, IPersistManyOwnedAction, IFetchByKeyAction, …
+│   │                                 reusable method shapes
 │   └── Monitoring/               Health / Metrics / Diagnostics (see Monitoring/README.md)
 ├── Unity/                      Unity MonoBehaviour wrapper, commented out (see Unity/README.md)
 ├── Database.cs                 High-level orchestrator (IDatabase implementation)
@@ -203,7 +234,8 @@
 ├── DatabaseErrorCodes.cs       Stable error code enum returned via DatabaseResult
 ├── DatabaseResult.cs           Result&lt;T&gt; envelope (IsSuccess / ErrorCode / Data)
 └── BulkWriteResult.cs          What a batched, version-gated write actually did:
-                                 Filtered (refused) vs Superseded (lost the version race)
+                                 Filtered (refused; Unowned is the claim-gate share of it)
+                                 vs Superseded (lost the version race)
 </code></pre>
 <h2 id="key-components">Key Components</h2>
 <table>
@@ -248,7 +280,23 @@
 </tr>
 <tr>
 <td><code>BaseService</code></td>
-<td>Base class for every service: execution wrappers, transient-failure retry, exception mapping, and the <code>{0}</code> → <code>@p0</code> placeholder rewriting used by the raw-SQL paths.</td>
+<td>Base class for every service: execution wrappers, transient-failure retry, exception mapping, and the <code>{0}</code> → <code>@p0</code> placeholder rewriting used by the raw-SQL paths. <code>DatabaseUtcClockSql</code> / <code>ReadDatabaseUtcNowAsync</code> give a service the database's own UTC time; see <a href="#the-database-clock">The database clock</a>.</td>
+</tr>
+<tr>
+<td><code>CharacterWriteGate</code></td>
+<td>The ownership check every per-character sub-entity write runs inside its own transaction. See <a href="#sub-entity-writes-carry-the-claim-too">Sub-entity writes carry the claim too</a>.</td>
+</tr>
+<tr>
+<td><code>ServerControlState</code> / <code>ServerControlSql</code></td>
+<td>A world or scene server row's operator state (lock, scheduled shutdown) and the seconds left before the shutdown, measured by the database in the statement that read the row. <code>ServerControlSql</code> is the one column list and mapper the pulses, the world registration and the scene servers' read of a world row share, and the <code>SetShutdownInAsync</code> statement that adds a delay to the database's time.</td>
+</tr>
+<tr>
+<td><code>ChatReadWindow</code> / <code>ChatPumpQuery</code> / <code>ChatRelayQuery</code></td>
+<td>The windowed read of the chat table. See <a href="#the-chat-table-is-read-through-a-window">The chat table is read through a window</a>.</td>
+</tr>
+<tr>
+<td><code>DaemonCommandExpiry</code></td>
+<td>Whether a claimed daemon command may still run: the seconds the database measured at the claim, counted down on the daemon's monotonic clock from the moment the claim was sent.</td>
 </tr>
 <tr>
 <td><code>IUnitOfWorkService</code> / <code>IUnitOfWork</code></td>
@@ -260,7 +308,7 @@
 </tr>
 <tr>
 <td><code>BulkWriteResult</code></td>
-<td>Outcome of a batched, version-gated write. Separates <code>Filtered</code> (the service refused the row) from <code>Superseded</code> (the row lost the version race, and the stored value is the newer one).</td>
+<td>Outcome of a batched, version-gated write. Separates <code>Filtered</code> (the service refused the row) from <code>Superseded</code> (the row lost the version race, and the stored value is the newer one). <code>Unowned</code> is the part of <code>Filtered</code> an ownership-gated write refused because the writer no longer holds that character's claim.</td>
 </tr>
 <tr>
 <td><code>Monitoring/</code> (under Npgsql)</td>
@@ -273,8 +321,9 @@
 </tbody>
 </table>
 <h2 id="table-inventory">Table inventory</h2>
-<p>55 tables, one entity type and one <code>IEntityTypeConfiguration&lt;T&gt;</code> apiece — the folders under
-<code>Npgsql/Entities/</code> and <code>Npgsql/EntityConfigurations/</code> mirror each other exactly. The table name
+<p>72 tables, one entity type and one <code>IEntityTypeConfiguration&lt;T&gt;</code> apiece — the folders under
+<code>Npgsql/Entities/</code> and <code>Npgsql/EntityConfigurations/</code> mirror each other exactly (<code>Bandwidth/</code>,
+<code>Daemon/</code> and <code>Maintenance/</code> keep all their configurations in one file each). The table name
 each configuration declares with <code>ToTable(...)</code> is the authority; the C# names are
 <code>&lt;Name&gt;Entity</code> / <code>&lt;Name&gt;EntityConfiguration</code>.</p>
 <table>
@@ -291,11 +340,27 @@ each configuration declares with <code>ToTable(...)</code> is the authority; the
 </tr>
 <tr>
 <td><code>Login/</code></td>
-<td><code>accounts</code>, <code>auth_tokens</code>, <code>connection_token_keys</code>, <code>email_queue</code>, <code>login_servers</code>, <code>login_server_signing_keys</code>, <code>two_factor_recovery_codes</code></td>
+<td><code>accounts</code>, <code>account_beta_codes</code>, <code>admin_audit_log</code>, <code>auth_tokens</code>, <code>beta_codes</code>, <code>connection_token_keys</code>, <code>email_queue</code>, <code>login_servers</code>, <code>login_server_signing_keys</code>, <code>password_reset_tokens</code>, <code>sms_queue</code>, <code>two_factor_recovery_codes</code>, <code>two_factor_reset_requests</code>, <code>web_sessions</code></td>
 </tr>
 <tr>
 <td><code>World/</code></td>
 <td><code>world_servers</code>, <code>kick_requests</code></td>
+</tr>
+<tr>
+<td><code>Bandwidth/</code></td>
+<td><code>server_bandwidth_minute</code>, <code>server_bandwidth_hour</code></td>
+</tr>
+<tr>
+<td><code>Daemon/</code></td>
+<td><code>daemon_hosts</code>, <code>daemon_apps</code>, <code>daemon_commands</code>, <code>daemon_app_events</code></td>
+</tr>
+<tr>
+<td><code>Maintenance/</code></td>
+<td><code>maintenance_operations</code>, <code>maintenance_targets</code></td>
+</tr>
+<tr>
+<td><code>Support/</code></td>
+<td><code>support_tickets</code>, <code>support_ticket_messages</code></td>
 </tr>
 <tr>
 <td><code>Scene/</code></td>
@@ -336,17 +401,22 @@ each configuration declares with <code>ToTable(...)</code> is the authority; the
 <tr>
 <td><code>group_finder_queue</code></td>
 <td><code>IGroupFinderQueueService</code></td>
-<td>The dungeon and arena queue. Shared by every scene server on a world server, each running the same matching pump; every state change is a single statement or single transaction whose <code>WHERE</code> re-asserts the state it expects, so two servers acting at once give one winner and one no-op. <code>TryFormArenaMatchAsync</code> is the only thing that creates an arena match, inside the transaction that takes its players out of the queue.</td>
+<td>The dungeon and arena queue. Shared by every scene server on a world server, each running the same matching pump; every state change is a single statement or single transaction whose <code>WHERE</code> re-asserts the state it expects, so two servers acting at once give one winner and one no-op. <code>TryFormArenaMatchAsync</code> is the only thing that creates an arena match, inside the transaction that takes its players out of the queue. Heartbeats, queue and match times are stamped by the database clock and every staleness test is made in SQL: callers pass a <code>TimeSpan staleAfter</code>, never an instant. <code>PulseAsync</code> is one <code>UPDATE ... RETURNING</code> that hands back each row (<code>GroupFinderPulseData</code>) with the character's party membership; <code>CountWaitingAsync</code> has a many-key overload, and <code>FetchBackfillOpeningsAsync</code> is the lock-free check before the backfill transaction.</td>
 </tr>
 <tr>
 <td><code>arena_*</code></td>
 <td><code>IArenaMatchService</code>, <code>IArenaRatingService</code>, <code>IArenaPenaltyService</code></td>
-<td>Match status only ever moves forward — the <code>WHERE</code> refuses a status lower than the current one, so a late write from a server that lost the instance cannot reopen an ended match. Ratings are keyed by season; <code>arena_penalty</code> is the deserter queue-lock.</td>
+<td>Match status only ever moves forward — the <code>WHERE</code> refuses a status lower than the current one, so a late write from a server that lost the instance cannot reopen an ended match. Ratings are keyed by season; <code>arena_penalty</code> is the deserter queue-lock. <code>CancelAbandonedAsync(TimeSpan olderThan, ...)</code> ages matches by the database clock and reads only unfinished ones, through the partial index <code>ix_arena_match_unfinished_time_created</code>; <code>SetBackfillWindowAsync(matchId, TimeSpan? window)</code> stamps the window's end from the database clock too.</td>
 </tr>
 <tr>
 <td><code>plot_*</code> / <code>plots</code></td>
 <td><code>IPlotService</code>, <code>IPlotStructureService</code>, <code>IPlotAccessService</code>, <code>IPlotVaultService</code>, <code>IPlotUpdateService</code></td>
-<td>Plots are scoped to a world server: the same scene runs on every world, and an unscoped row would show one player's house as owned land to everybody on every other world. Every ownership change reports its affected-row count and the caller must check it — treating zero as success sells one plot to two players.</td>
+<td>Plots are scoped to a world server: the same scene runs on every world, and an unscoped row would show one player's house as owned land to everybody on every other world. Every ownership change reports its affected-row count and the caller must check it — treating zero as success sells one plot to two players. The tax sweep reads by <code>(tax_due_utc, id)</code> keyset pages (<code>FetchTaxDueAsync</code>) and by owner (<code>FetchTaxDueForOwnersAsync</code>); <code>ChargeTaxOfflineAsync</code> bills a page of owners no server holds in one transaction (<code>SKIP LOCKED</code>, each bill in full or not at all, ledger row in the same commit, no <code>plot_updates</code> mark) and defers a plot whose owner a server holds via <code>plots.tax_next_attempt_utc</code>. <code>IPlotUpdateService.FetchAsync</code> returns <code>PlotUpdatePollData</code>: the marks and the database time the poll was taken at. The rules are in <code>FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/Housing/README.md</code>.</td>
+</tr>
+<tr>
+<td><code>server_bandwidth_*</code></td>
+<td><code>IServerBandwidthService</code>, <code>IServerBandwidthReportService</code></td>
+<td>What each server process measured on its own transport, one row per server, process and minute. A server keys its minute from the database clock (<code>FetchDatabaseUtcNowAsync</code>) before writing, and <code>RecordAsync</code> is a SET-upsert, so re-sending a row after a lost reply writes nothing twice. No foreign key to the server tables: the history outlives a deregistered server. The Control Panel's <code>RollupAsync</code> recomputes hour rows from the minutes (the trailing 6 hours each pass; every hour that still has minutes on the first pass after a panel starts), <code>PruneAsync</code> keeps minutes 14 days and hours 13 months and rolls an hour before deleting its minutes, and <code>FetchReportAsync</code> reads the page in one <code>REPEATABLE READ</code> snapshot.</td>
 </tr>
 <tr>
 <td><code>character_waypoints</code></td>
@@ -739,6 +809,10 @@ var factory = new NpgsqlDbContextFactory(config);
 <td>Character-row write that additionally requires <code>session_state = Online</code> and a matching <code>session_owner_server_id</code> / <code>session_owner_token</code>, verified in the same statement as the write. Returns <code>Forbidden</code> when the claim is gone — checked before the version comparison, since a displaced writer usually looks version-stale too.</td>
 </tr>
 <tr>
+<td><code>PersistManyAsync(requests)</code></td>
+<td>The batched sibling: each <code>CharacterPersistRequest</code> with a claim is checked exactly as <code>PersistOwnedAsync</code> checks it, one without as the plain save, and each row gets its own outcome, <code>OwnershipLost</code> checked before <code>Stale</code> for the same reason. See <a href="#batched-reads-and-writes">Batched reads and writes</a>.</td>
+</tr>
+<tr>
 <td><code>FetchUnownedSessionsAsync(leases)</code></td>
 <td>Returns which of the supplied ownership triples the database no longer attributes to that owner. A diagnostic read for the short-count path of <code>RefreshSessionLeasesAsync</code>, which reports only a row count.</td>
 </tr>
@@ -746,6 +820,84 @@ var factory = new NpgsqlDbContextFactory(config);
 </table>
 <p>Plain <code>PersistAsync</code> remains for legitimate non-owner writes — the world server clearing
 <code>IsInInstance</code> while the character is Offline between servers, and character creation.</p>
+<h3 id="sub-entity-writes-carry-the-claim-too">Sub-entity writes carry the claim too</h3>
+<p>Every per-character sub-entity table with a scene-server writer — attributes, abilities, known
+abilities, achievements, factions, archetypes, skills, quests, hotkeys, item cooldowns, pets, pet
+attributes and pet buffs — offers <code>PersistOwnedAsync(rows, claims)</code> (<code>IPersistManyOwnedAction&lt;T&gt;</code>)
+beside the ungated <code>PersistAsync</code>. Both run one shared gate, <code>CharacterWriteGate.AdmitAsync</code>,
+inside the write's own transaction:</p>
+<ul>
+<li>One statement takes <code>FOR SHARE</code> on every named character that is live, <code>Online</code> and claimed
+under exactly the quoted triple, in ascending id order, and the write touches only those
+characters' rows. <code>FOR SHARE</code> is the weakest lock an <code>UPDATE</code> of the character row waits
+behind, so a release, a claim, the lease refresh and the row save all queue behind a write in
+flight, while two sub-entity writes for one character do not block each other. A release that
+commits while the write waits is seen: the locking read re-checks its predicate against the row
+version it waited for.</li>
+<li>Rows of a live character whose claim the writer no longer holds are not attempted and are
+counted as <code>BulkWriteResult.Unowned</code>, which is part of <code>Filtered</code> — so a caller that clears dirty
+marks only on <code>Filtered == 0</code> keeps them. A write that could touch none of its characters fails
+with <code>Forbidden</code> (they exist, none is ours) or <code>NotFound</code> (none exists).</li>
+<li>With no claims (<code>PersistAsync</code>) the gate only checks that each character exists — per character,
+not per batch — for character creation, deletion, and writes already inside a unit of work that
+asserted ownership itself (the item layer's).</li>
+</ul>
+<p>Three single-row writes have owned variants beside their ungated ones, sharing one body each and
+admitted by the same gate in their own transaction (<code>CharacterWriteGate.AdmitOneAsync</code>), and each
+checks first that its claim names the row's character (<code>CharacterWriteGate.ValidateClaim</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Owned</th>
+<th>Ungated</th>
+<th>Written by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ICharacterAbilityService.PersistOwnedAsync(row, claim)</code></td>
+<td><code>PersistAsync(row)</code></td>
+<td>an ability grant; returns the row identity</td>
+</tr>
+<tr>
+<td><code>ICharacterAbilityService.DeleteAbilityOwnedAsync(..., claim, admitReleased)</code></td>
+<td><code>DeleteAbilityAsync(...)</code></td>
+<td>a forget; with <code>admitReleased</code>, the grant's revoke</td>
+</tr>
+<tr>
+<td><code>ICharacterQuestService.DeleteQuestOwnedAsync(..., claim)</code></td>
+<td><code>DeleteQuestAsync(...)</code></td>
+<td>a quest turn-in or abandon</td>
+</tr>
+</tbody>
+</table>
+<p><code>admitReleased</code> is the one widening, and only for a delete that undoes the writer's own row
+(<code>CharacterWriteGate.AdmitOwnOrReleasedAsync</code>): the character is also admitted while it holds no
+claim at all — not <code>Online</code> and no owner server, the ownership assertion's own definition of
+unclaimed — under the same share lock, so a claim waits for the delete. A grant's player may have
+logged out before the grant could be settled, and the revoke of the unpaid row then always runs after
+the release. Once another session holds the character it is refused like any other write. A hotkey
+batch skips a stale row as superseded, like every sibling batch, instead of failing the whole batch.</p>
+<p><code>character_item</code> is gated by <code>ICharacterSessionOwnershipService.AssertOwnershipAsync</code>, which takes
+a stronger lock (<code>FOR NO KEY UPDATE</code>) for the whole item transaction. It is equivalent only when a
+write that carries a claim is asserted with <code>allowUnclaimed: false</code>; the item layer does exactly
+that (<code>CharacterInventorySystem.AllowsUnclaimedItemWrite</code>), because a just-released character's
+row is unclaimed and would otherwise accept the released session's late write.</p>
+<p>Waypoint pages and dialogue choices are deliberately not gated: they are OR-merges that can only
+add what the character really did, so a late merge loses nothing and refusing one would.</p>
+<p>Buffs have no write of their own. <code>CharacterData.Buffs</code>, when not null, rides the character row:
+<code>PersistOwnedAsync</code>, <code>PersistAsync</code> and each row of <code>PersistManyAsync</code> replace that character's
+stored buffs with exactly that set (<code>CharacterBuffService.ReplaceSetsAsync</code>) in the same
+transaction, and only for rows the character <code>UPDATE</code> actually wrote — the row's version is the
+only per-character ordering that makes &quot;delete what the set no longer names&quot; safe against saves
+landing out of order. <code>ICharacterBuffService</code> only reads, and tombstones on deletion.</p>
+<p>The offline tax charge (<code>IPlotService.ChargeTaxOfflineAsync</code>) carries no claim by design: it
+debits a character no server holds, and asserts exactly that under the row lock for its whole
+transaction.</p>
+<p>A pet-row write (<code>ICharacterPetService.PersistAsync</code> / <code>PersistOwnedAsync</code>) also deletes, in the
+same transaction, every pet attribute and pet buff row of that character whose version differs
+from the pet row now stored: the restore keeps only rows whose version matches, so those could
+never be read again and used to pile up for the life of the character.</p>
 <h3 id="expired-leases-are-not-online">Expired leases are not &quot;online&quot;</h3>
 <p><code>AnyOnlineAsync</code> and <code>FetchInWorldCharacterAsync</code> additionally require
 <code>session_lease_expires_utc &gt; now</code>, matching the predicate <code>TryClaimAsync</code> already uses to steal
@@ -772,7 +924,11 @@ a character any server was free to claim.</p>
 </tr>
 <tr>
 <td><code>scenes.scene_handle</code> (<code>integer</code>)</td>
-<td>Diagnostic only: the hosting scene server's own scene-manager handle for the loaded scene.</td>
+<td>Diagnostic only once the row is <code>Ready</code>: the hosting scene server's own scene-manager handle for the loaded scene. <code>0</code> while <code>Pending</code>; while <code>Loading</code>, the negative claim token of the <code>DequeueAsync</code> that took the row, which <code>SetReadyAsync</code> replaces with the real handle.</td>
+</tr>
+<tr>
+<td><code>scenes.scene_server_id</code></td>
+<td><code>0</code> while <code>Pending</code>; the server that claimed the row from the queue while <code>Loading</code>; the server that made it <code>Ready</code> after.</td>
 </tr>
 </tbody>
 </table>
@@ -783,8 +939,14 @@ server's routing map collapsed them into a single entry and double-counted its c
 server accepted a character routed to a <em>different</em> server's instance whenever handle and scene
 name both matched, and <code>PulseAsync</code> had two servers overwriting each other's population — the
 very number routing and load-balancing decide on. Every cross-process API (<code>SetReadyAsync</code>,
-<code>PulseAsync</code>, <code>PulseBatchAsync</code>, <code>DeleteAsync</code>, <code>UpdateSceneAsync</code>) is addressed by row ID;
-<code>DeleteByHandleAsync</code> survives for administrative use only.</p>
+<code>PulseAsync</code>, <code>PulseBatchAsync</code>, <code>DeleteAsync</code>, <code>DeleteManyAsync</code>, <code>UpdateStatusManyAsync</code>,
+<code>FetchWithAgesAsync</code>, and the character-side <code>UpdateSceneAsync</code> / <code>UpdateSceneBatchAsync</code>) is
+addressed by row ID. The handle-keyed <code>DeleteByHandleAsync</code> has been removed.</p>
+<p><code>DequeueAsync(sceneServerId)</code> claims the oldest <code>Pending</code> row for the calling server and is safe to
+retry: the claim (the server's id, plus a claim token taken once per call and written into
+<code>scene_handle</code>) lets a retry after a reply lost past the commit find the row its first attempt
+took instead of claiming a second one. It returns the row with its age in seconds by the database
+clock, the only form of <code>time_created</code> a scene server can compare with anything.</p>
 <p><code>SetReadyAsync</code> names the row explicitly rather than claiming &quot;the oldest loading row with this
 name&quot;. Ordering was ambiguous whenever two loads of one scene overlapped, so each could stamp its
 server and handle onto the other's row — and because an instanced row keeps the <code>character_id</code>
@@ -800,15 +962,19 @@ it was created for, that handed a character the dungeon created for somebody els
 </thead>
 <tbody>
 <tr>
-<td><code>DeleteStaleUnreadyAsync(worldServerId, olderThanUtc, maxRows)</code></td>
-<td>Rows that never reached <code>Ready</code> and are older than the grace period. A <code>Loading</code> row orphaned by a scene server that died between dequeue and load still has <code>scene_server_id = 0</code>, so that server's own restart cleanup (<code>DeleteBySceneServerAsync</code>, which matches on its id) never removes it. Left alone, the row keeps its <code>character_id</code> and the character it belongs to is routed at an instance that will never exist.</td>
+<td><code>DeleteStaleUnreadyAsync(worldServerId, minAgeSeconds, maxRows)</code></td>
+<td>Rows that never reached <code>Ready</code> and are at least <code>minAgeSeconds</code> old. A <code>Pending</code> row no scene server ever takes has no owner to remove it, and a row that failed to load is left behind by the server that tried. Left alone, the row keeps its <code>character_id</code> and the character it belongs to is routed at an instance that will never exist. A <code>Loading</code> row names the server that claimed it, so one orphaned by a scene server that died mid-load goes with that server's restart cleanup (<code>DeleteBySceneServerAsync</code>) or the dead-host sweep below first; this sweep is the backstop.</td>
 </tr>
 <tr>
-<td><code>DeleteByStaleSceneServersAsync(worldServerId, pulseOlderThanUtc, maxRows)</code></td>
-<td><code>Ready</code> rows whose host has stopped pulsing or deregistered. A crashed scene server deletes nothing on its way out, so every scene it hosted stays advertised as available and clients are routed to an address that refuses them — or, once a replacement reuses the port, to a server that does not have the scene and bounces them straight back.</td>
+<td><code>DeleteByStaleSceneServersAsync(worldServerId, pulseStaleSeconds, maxRows)</code></td>
+<td>Every row that names a host (a <code>Ready</code> scene, or a load that host had claimed) whose last pulse is at least <code>pulseStaleSeconds</code> old, or which has deregistered. A crashed scene server deletes nothing on its way out, so every scene it hosted stays advertised as available and clients are routed to an address that refuses them — or, once a replacement reuses the port, to a server that does not have the scene and bounces them straight back. Rows with <code>scene_server_id = 0</code> are skipped, and a window that is not positive is refused: it would call every scene server dead.</td>
 </tr>
 </tbody>
 </table>
+<p>Both cutoffs are ages measured in SQL against the database clock that stamped <code>time_created</code> and
+<code>last_pulse</code>. They used to be instants computed on the world server's host, so the sweep's idea of
+&quot;stale&quot; moved with that host's clock: a world server running a minute fast reaped every scene of
+every healthy scene server.</p>
 <p>Both use <code>FOR UPDATE SKIP LOCKED</code> so a row a scene server is concurrently dequeuing is left to
 it rather than deleted out from under an in-flight load. <code>Ready</code> rows with a live host are never
 touched here — they belong to the scene server that owns them.</p>
@@ -834,6 +1000,143 @@ must neither lose to a concurrent save nor bump the version a save is guarding o
 is deleted by whichever game server acts on it, so the normal lifetime is seconds — but if that
 server dies before polling, nothing ever deletes the row and an unbounded check reported the
 account as &quot;already online&quot; at every future login, forever.</p>
+<h2 id="the-database-clock">The database clock</h2>
+<p>Every server runs on its own host, and hosts disagree about the time. So a stamp that another
+process will judge is written by the database, and how old a stamp is, or how long is left before
+a deadline, is measured by the database as well. A process's own <code>DateTime.UtcNow</code> never meets a
+database stamp: subtracted from one, it measures that host's skew along with the age — a panel a
+minute fast calls every healthy server silent, and a deadline planned from it moves by the skew.</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stamped by the database</td>
+<td>Server pulses (<code>login_servers</code>, <code>world_servers</code>, <code>scene_servers</code>); <code>scenes.time_created</code>; <code>chat.time_created</code> (per row, from every writer, the Discord bridge included); the <code>plot_updates</code>, <code>guild_updates</code> and <code>party_updates</code> marks; group-finder heartbeats, queue and match times; arena match times and backfill windows; daemon heartbeats and commands; a shutdown scheduled by delay (<code>SetShutdownInAsync</code>) and a maintenance window's deadline.</td>
+</tr>
+<tr>
+<td>Returned as an age or a countdown, measured in the reading statement</td>
+<td><code>SceneServerData.PulseAgeSeconds</code>; the <code>AgeSeconds</code> of <code>ISceneService.DequeueAsync</code> and <code>FetchWithAgesAsync</code>; <code>ServerControlState.ShutdownInSeconds</code> from every pulse and control read; <code>DaemonCommandData.ExpiresInSeconds</code>; <code>IServerBoardService.FetchPulseAgeAsync</code>; and the Control Panel's <code>ServerAdminData</code>, <code>DaemonHostData</code>, <code>DaemonAppData</code>, <code>GroupFinderQueueAdminData</code>, <code>MaintenanceOperationData</code> and <code>MaintenanceTargetData</code> ages.</td>
+</tr>
+<tr>
+<td>Passed in as a duration, never an instant</td>
+<td><code>IGroupFinderQueueService</code> (<code>TimeSpan staleAfter</code>); <code>IArenaMatchService.CancelAbandonedAsync</code> and <code>SetBackfillWindowAsync</code>; <code>ISceneService.DeleteStaleUnreadyAsync</code> and <code>DeleteByStaleSceneServersAsync</code> (seconds); <code>SetShutdownInAsync</code> on world and scene servers (seconds from the database's now).</td>
+</tr>
+<tr>
+<td>Read explicitly, for a key or a watermark</td>
+<td><code>BaseService.ReadDatabaseUtcNowAsync</code>; <code>IServerBandwidthService.FetchDatabaseUtcNowAsync</code>; <code>ChatPumpPage.ReadStartedUtc</code>; <code>PlotUpdatePollData.AsOfUtc</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>A process anchors a countdown it is handed on its own monotonic clock, so no wall-clock step moves
+it (<code>DaemonCommandExpiry</code> anchors when the claim is sent rather than when the reply arrives, so its
+error is always toward refusing). <code>clock_timestamp()</code> is used where a value should be as late as the
+statement allows — the update marks and chat rows readers sweep past, the seconds-left columns —
+and <code>now()</code>, the transaction's start, where every row of one transaction must share an instant or
+every age in one read must be measured against one clock.</p>
+<h2 id="batched-reads-and-writes">Batched reads and writes</h2>
+<p>The paths that touch many rows on a timer do it in one statement per batch, not one round trip
+per row.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Replaces</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ICharacterService.PersistManyAsync(requests)</code></td>
+<td>The periodic save's one <code>PersistOwnedAsync</code> per character. One transaction: the rows are locked in id order, written by one <code>UPDATE ... FROM UNNEST</code> that makes the single-row save's deleted, version and (for a request with a claim) ownership checks per row, and the rows it did not write are read back under the same locks and classified (<code>CharacterPersistOutcome</code>: <code>Saved</code>, <code>Replayed</code>, <code>NotFound</code>, <code>Stale</code>, <code>OwnershipLost</code>, <code>Invalid</code>). No row's outcome decides another's. <code>Replayed</code> — the row already holds exactly this version under this caller's claim — is a write whose commit reply was lost, and counts as stored. The scene server sends 500 rows a call, since the locks are held until the commit.</td>
+</tr>
+<tr>
+<td><code>ICharacterService.ReleaseManyAsync(leases)</code></td>
+<td><code>ReleaseAsync</code> per character; returns the ids actually released.</td>
+</tr>
+<tr>
+<td><code>ICharacterService.UpdateSceneBatchAsync(worldServerId, binds)</code></td>
+<td>The world server's routing pass binding one character row per round trip. Up to 1,000 characters a statement; a later entry for the same character wins.</td>
+</tr>
+<tr>
+<td><code>ICharacterService.FetchSelectedWithLockAsync(account)</code></td>
+<td><code>FetchByAccountAsync</code> followed by <code>FetchLockAsync</code> over the same row.</td>
+</tr>
+<tr>
+<td><code>ISceneService.SumCharacterCountAsync(worldServerId)</code></td>
+<td>Reading every scene row to add up a world's population: one <code>SUM</code> over its <code>Ready</code> scenes.</td>
+</tr>
+<tr>
+<td><code>ISceneService.UpdateStatusManyAsync</code>, <code>DeleteManyAsync</code>, <code>FetchWithAgesAsync</code></td>
+<td>Per-row status writes, deletes and reads in the scene and world servers' sweeps and instance routing.</td>
+</tr>
+<tr>
+<td><code>ICharacterPartyService.FetchManyAsync(long[])</code> and <code>FetchOnlineMemberIdsAsync(long[])</code>, <code>ICharacterGuildService.FetchManyAsync(long[])</code>, <code>IGuildRankService.FetchManyAsync(long[])</code></td>
+<td>The party and guild update pumps' roster, online and ladder reads per party or guild. Every requested id is always present in the result, so an empty list means &quot;read, and empty&quot;.</td>
+</tr>
+<tr>
+<td><code>IGuildService.FetchNamesAsync</code>, <code>ICharacterService.FetchNamesAsync</code></td>
+<td>One query per name in the scene servers' name lookups. Each resolves at most 128 ids a call, and a deleted character does not resolve.</td>
+</tr>
+<tr>
+<td><code>IKickRequestService.FetchAsync</code></td>
+<td>A last-login lookup per kick: each request carries <code>KickRequestData.AccountLastLogin</code>, read in the same query.</td>
+</tr>
+<tr>
+<td>Sub-entity <code>PersistAsync</code> / <code>PersistOwnedAsync</code></td>
+<td>Failing the whole batch for one missing character. A batch leaves out the rows of a character that is missing or deleted (counted as <code>Filtered</code>) and fails with <code>NotFound</code> only when it named no live character at all (<code>BulkBatch.RequireAnyLiveCharacter</code>).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Every multi-row writer of <code>characters</code> locks in ascending id order</strong> — <code>PersistManyAsync</code>,
+<code>ReleaseManyAsync</code>, <code>UpdateSceneBatchAsync</code> and <code>RefreshSessionLeasesAsync</code> with
+<code>FOR NO KEY UPDATE</code> (the mode an ordinary <code>UPDATE</code> takes, so foreign-key checks are not blocked),
+and the sub-entity gate with <code>FOR SHARE</code>. Two statements that locked overlapping rows in their own
+plan order could each hold a row the other waits on; one order means no cycle can form.</p>
+<h2 id="the-chat-table-is-read-through-a-window">The chat table is read through a window</h2>
+<p><code>chat.time_created</code> is stamped by the database (<code>clock_timestamp()</code>, per row) in the one
+idempotent <code>INSERT</code> every writer uses: <code>PersistBatchAsync</code> (the scene servers' flush),
+<code>PersistAsync</code>, and <code>PersistBridgedAsync</code> (the Discord bridge). A row becomes visible only when its
+transaction commits, so two writers can commit in the opposite order to their stamps — and to their
+ids, which are also taken at the <code>INSERT</code>. A reader paging by &quot;after the last row I saw&quot; moved past a
+row that had not committed yet and never saw it. Readers keep a window instead of a cursor:</p>
+<ul>
+<li>Each read starts at a watermark held <code>ChatService.PumpCommitWindowSeconds</code> (10 s) behind what the
+reader has settled, and passes the ids it has already handled in that window to be skipped. A row
+is read exactly once as long as it commits within 10 s of its stamp.</li>
+<li>Pages are read while they come back full, up to the query's <code>MaxPages</code> (defaults 100 rows a page
+and 10 pages; the service clamps them to 1,000 and 100). <code>ChatPumpPage.Drained</code> says whether the
+reader caught up, and <code>ReadStartedUtc</code> is the database clock taken before the first page.</li>
+<li>A reader's first read starts at the database's own &quot;now&quot;, and nothing stamped before it is ever
+read, so a restarted reader does not replay history. A failed read settles nothing, so its span is
+read again.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Reader</th>
+<th>Query</th>
+<th>Rows returned</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The scene servers' cross-server pump (<code>ChatPumpCursor</code> in the game's server code: the same window, plus per-recipient relevance)</td>
+<td><code>FetchPumpAsync(ChatPumpQuery)</code></td>
+<td>Only rows relevant to what the reading server hosts, decided in SQL: World, Trade and Discord by world id; Party and Guild by the id in the message's first word; Tell by the lowercased target name (quoted when it has a space). A server's own World, Trade, Party, Guild and Tell lines are its echo and are left out.</td>
+</tr>
+<tr>
+<td>The Discord relay</td>
+<td><code>FetchRelayAsync(ChatRelayQuery)</code></td>
+<td>Every game row; never a row bridged in from Discord.</td>
+</tr>
+</tbody>
+</table>
+<p><code>ChatReadWindow</code> is the window alone — <code>SnapshotSeenIds</code> for the query, <code>Admit</code> for each row
+returned, <code>CompleteRead</code> to settle — as pure bookkeeping, for a reader that takes every row.</p>
 
 </article>
 

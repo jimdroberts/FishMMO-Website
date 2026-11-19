@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem" class="text-break">
-Class SceneServerSystem  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.AdminCommands.cs/#L35"><i class="bi bi-code-slash"></i></a>
+Class SceneServerSystem  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.ServerControl.cs/#L39"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -144,6 +144,27 @@ public class SceneServerSystem : ServerBehaviour, IServerBehaviour&lt;INetworkMa
   <dl class="typelist inheritedMembers">
     <dt>Inherited Members</dt>
     <dd>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryBeginPlayerRequest_FishNet_Connection_NetworkConnection_FishMMO_Server_Implementation_PlayerRequestContext__FishMMO_Server_Implementation_PlayerRequestGate_">ServerBehaviour.TryBeginPlayerRequest(NetworkConnection, out PlayerRequestContext, PlayerRequestGate)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryCaptureSessionClaim_System_Int64_FishMMO_Database_Data_CharacterSessionLeaseData__">ServerBehaviour.TryCaptureSessionClaim(long, out CharacterSessionLeaseData)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_ClaimsOf_FishMMO_Database_Data_CharacterSessionLeaseData_">ServerBehaviour.ClaimsOf(CharacterSessionLeaseData)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_IsClaimRefusal_FishMMO_Database_DatabaseResult_">ServerBehaviour.IsClaimRefusal(DatabaseResult)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_IsClaimRefusal__1_FishMMO_Database_DatabaseResult___0__">ServerBehaviour.IsClaimRefusal&lt;T&gt;(DatabaseResult&lt;T&gt;)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_RecordCurrencyMovement_System_Int64_System_Int64_FishMMO_Shared_CurrencyMovementReason_System_Boolean_">ServerBehaviour.RecordCurrencyMovement(long, long, CurrencyMovementReason, bool)</a>
+    </div>
+    <div>
+      <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_TryPersistCharacterAttributes_FishMMO_Shared_Core_IPlayerCharacter_">ServerBehaviour.TryPersistCharacterAttributes(IPlayerCharacter)</a>
+    </div>
     <div>
       <a class="xref" href="FishMMO.Server.Implementation.ServerBehaviour.html#FishMMO_Server_Implementation_ServerBehaviour_Initialized">ServerBehaviour.Initialized</a>
     </div>
@@ -215,6 +236,9 @@ public class SceneServerSystem : ServerBehaviour, IServerBehaviour&lt;INetworkMa
     </div>
     <div>
       <span class="xref">Object.GetEntityId()</span>
+    </div>
+    <div>
+      <span class="xref">Object.MemberwiseClone()</span>
     </div>
     <div>
       <span class="xref">Object.GetInstanceID()</span>
@@ -433,9 +457,6 @@ public class SceneServerSystem : ServerBehaviour, IServerBehaviour&lt;INetworkMa
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.gettype">object.GetType()</a>
     </div>
     <div>
-      <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.memberwiseclone">object.MemberwiseClone()</a>
-    </div>
-    <div>
       <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.object.referenceequals">object.ReferenceEquals(object, object)</a>
     </div>
   </dd></dl>
@@ -444,18 +465,14 @@ public class SceneServerSystem : ServerBehaviour, IServerBehaviour&lt;INetworkMa
 
 
   <h2 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_remarks">Remarks</h2>
-  <div class="markdown level0 remarks"><p>
-The database row is the authority for a server's lock and shutdown state, never the
-process. Commands here write the row; every world and scene server reads its own row back
-on each pulse and adopts what it finds. That is what makes a single in-game command reach
-processes the player is not connected to — and it means anything else that can write those
-rows (the Discord bot, a CMS, psql) controls the servers identically, exactly as
-<code>kick_requests</code> already works for accounts.
-</p>
+  <div class="markdown level0 remarks"><p>Configuration: <code>NetworkSendInterval</code> (this server's flush interval) and <code>ClientNetworkSendInterval</code> (its
+clients'), each 1 or 2, default 1 (FishNet's own every-tick behaviour). The queue depth follows the CLIENT interval and
+is applied before any client connects, so a client that has not yet been told (it is told on arrival, before anything
+else) only ever sends more often than the depth assumes, never less.</p>
 <p>
-This lives on the scene server because that is where players — and therefore admins — are.
-It is a partial of <a class="xref" href="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.html">SceneServerSystem</a> rather than a new behaviour so it needs
-no scene wiring: the scene server already loads this system.
+<code>IdleNetworkSendInterval</code> (0 = off, up to <a class="xref" href="FishMMO.Shared.NetworkSendSchedule.html#FishMMO_Shared_NetworkSendSchedule_MaximumIdleInterval">MaximumIdleInterval</a>): a player who is
+nowhere near a fight has its unreliable data flushed this often instead (fewer packets, one tick later), while
+reliable data still leaves on the normal interval so replies are never slower. See <a class="xref" href="FishMMO.Shared.NetworkSendSchedule.html#FishMMO_Shared_NetworkSendSchedule_IsEngaged_System_Boolean_System_Boolean_">IsEngaged(bool, bool)</a>.
 </p>
 </div>
 
@@ -464,11 +481,43 @@ no scene wiring: the scene server already loads this system.
 </h2>
 
 
+  <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_IdleIntervalPlayerTicks_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.IdleIntervalPlayerTicks*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_IdleIntervalPlayerTicks" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.IdleIntervalPlayerTicks">
+  IdleIntervalPlayerTicks
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.NetworkSchedule.cs/#L52"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Ticks between an idle player's sends (the simulation tools report it).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public long IdleIntervalPlayerTicks { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
   <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_PulseRate_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.PulseRate*"></a>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_PulseRate" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.PulseRate">
   PulseRate
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L93"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L97"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Gets or sets the pulse rate for heartbeat updates.</p>
@@ -496,11 +545,75 @@ no scene wiring: the scene server already loads this system.
 
 
 
+  <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_ScheduledPlayerTicks_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.ScheduledPlayerTicks*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_ScheduledPlayerTicks" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.ScheduledPlayerTicks">
+  ScheduledPlayerTicks
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.NetworkSchedule.cs/#L49"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Ticks between a scheduled player's sends, as this server runs them (the simulation tools report it).</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public long ScheduledPlayerTicks { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_WorldClock_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.WorldClock*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_WorldClock" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.WorldClock">
+  WorldClock
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.WorldClock.cs/#L29"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The world clock, for the staff tools' clock report and controls. Null before start.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public WorldClockHost WorldClock { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Server.Implementation.World.SceneServer.Clock.WorldClockHost.html">WorldClockHost</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
   <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_WorldSceneDetailsCache_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.WorldSceneDetailsCache*"></a>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_WorldSceneDetailsCache" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.WorldSceneDetailsCache">
   WorldSceneDetailsCache
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L103"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L107"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Cache of world scene details, including max clients per scene.</p>
@@ -536,7 +649,7 @@ no scene wiring: the scene server already loads this system.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_AdjustSceneCharacterCount_System_Int64_System_String_System_Int64_System_Int32_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.AdjustSceneCharacterCount(System.Int64,System.String,System.Int64,System.Int32)">
   AdjustSceneCharacterCount(long, string, long, int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L544"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L581"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Adjusts the character count for a specific scene instance.</p>
@@ -578,7 +691,7 @@ no scene wiring: the scene server already loads this system.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_CloseInstance_System_Int64_System_String_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.CloseInstance(System.Int64,System.String)">
   CloseInstance(long, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1049"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1121"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns an instance's occupants to the open world and unloads it.</p>
@@ -618,11 +731,45 @@ having the ground removed from under them.</p>
 
 
 
+  <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_DescribeServerControl_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.DescribeServerControl*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_DescribeServerControl" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.DescribeServerControl">
+  DescribeServerControl()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.ServerControl.cs/#L627"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>This scene server's lock and shutdown state, and every world's it has read, as report lines (what the
+staff tools' <code>/admin server status</code> prints): what the process is doing now, which after a control
+change is the question worth asking, because the row and the process agree only after the next pulse.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IReadOnlyList&lt;string&gt; DescribeServerControl()</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_InitializeOnce_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.InitializeOnce*"></a>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_InitializeOnce" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.InitializeOnce">
   InitializeOnce()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L113"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L117"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called once to initialize the scene server system. Registers the server in the database and subscribes to connection and scene events.</p>
@@ -654,7 +801,7 @@ having the ground removed from under them.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_InitializeOnceAsync_System_Threading_CancellationToken_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.InitializeOnceAsync(System.Threading.CancellationToken)">
   InitializeOnceAsync(CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L260"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L268"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes the system and registers it in the database without blocking the Unity
@@ -697,7 +844,7 @@ and FishNet APIs used below stay legal.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_NoteDeliberateInstanceExit_System_Int64_System_String_System_Int64_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.NoteDeliberateInstanceExit(System.Int64,System.String,System.Int64)">
   NoteDeliberateInstanceExit(long, string, long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L583"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L620"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Records that an instance's occupant left by choice rather than by losing its connection.</p>
@@ -748,7 +895,7 @@ no longer exists is nothing at all.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_OnDeinitialize" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.OnDeinitialize">
   OnDeinitialize()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L390"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L416"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when the system is being destroyed. Unsubscribes from events and deletes scene data from the database.</p>
@@ -775,7 +922,7 @@ no longer exists is nothing at all.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_OnUpdate_System_Single_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.OnUpdate(System.Single)">
   OnUpdate(float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L488"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L523"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Drains the main-thread queue each frame.</p>
@@ -807,7 +954,7 @@ no longer exists is nothing at all.
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_SceneManager_OnUnloadEnd_FishNet_Managing_Scened_SceneUnloadEndEventArgs_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.SceneManager_OnUnloadEnd(FishNet.Managing.Scened.SceneUnloadEndEventArgs)">
   SceneManager_OnUnloadEnd(SceneUnloadEndEventArgs)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1750"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1878"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Handles scene unload completion events, removing scene mappings and cleaning up.
@@ -838,19 +985,56 @@ then removes from both the flat map and the nested WorldScenes hierarchy.</p>
 
 
 
-  <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_TryGetInstanceExpiry_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.TryGetInstanceExpiry*"></a>
+  <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_Service_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.Service*"></a>
 
-  <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_TryGetInstanceExpiry_System_Int64_System_DateTime__" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.TryGetInstanceExpiry(System.Int64,System.DateTime@)">
-  TryGetInstanceExpiry(long, out DateTime)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L977"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_Service__1" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.Service``1">
+  Service&lt;T&gt;()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerModuleServices.cs/#L70"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>When an instance will close on its own, if it is time-bounded.</p>
+  <div class="markdown level1 summary"><p>The first running module service of a type, or null (the staff tools find the weather here).</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public bool TryGetInstanceExpiry(long sceneID, out DateTime expiresUtc)</code></pre>
+    <pre><code class="lang-csharp hljs">public T Service&lt;T&gt;() where T : class, ISceneServerModuleService</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><span class="xref">T</span></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Type Parameters</h4>
+  <dl class="parameters">
+    <dt><code>T</code></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_TryGetInstanceRemainingSeconds_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.TryGetInstanceRemainingSeconds*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_TryGetInstanceRemainingSeconds_System_Int64_System_Double__" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.TryGetInstanceRemainingSeconds(System.Int64,System.Double@)">
+  TryGetInstanceRemainingSeconds(long, out double)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1048"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>How long an instance has left before it closes on its own, if it is time-bounded.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool TryGetInstanceRemainingSeconds(long sceneID, out double remainingSeconds)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -858,16 +1042,16 @@ then removes from both the flat map and the nested WorldScenes hierarchy.</p>
     <dt><code>sceneID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
     <dd><p>Scene row of the instance.</p>
 </dd>
-    <dt><code>expiresUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
-    <dd><p>When it closes, if it does.</p>
+    <dt><code>remainingSeconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a></dt>
+    <dd><p>Seconds until it closes; negative once it is overdue.</p>
 </dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
-    <dd><p><code>false</code> for a scene this server does not host, an open-world scene, or one whose
-creation time was never recorded — none of which have an expiry to report.</p>
+    <dd><p><code>false</code> for a scene this server does not host or an open-world scene, neither of
+which has an expiry to report.</p>
 </dd>
   </dl>
 
@@ -877,10 +1061,16 @@ creation time was never recorded — none of which have an expiry to report.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_TryGetInstanceExpiry_System_Int64_System_DateTime___remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_TryGetInstanceRemainingSeconds_System_Int64_System_Double___remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>The lifetime cap is configuration this system owns, so the answer is derived here rather
 than by making every caller read the key and repeat the arithmetic — which is how two
 places end up disagreeing about when a dungeon ends.</p>
+<p>
+A duration, not an instant. The deadline is kept on the monotonic clock, and this used to
+hand it out re-expressed on the host's wall clock for the caller to subtract the wall
+clock from again: two reads of a clock that can step, to recover a number this already
+had.
+</p>
 </div>
 
 
@@ -890,7 +1080,7 @@ places end up disagreeing about when a dungeon ends.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_TryGetSceneInstanceDetails_System_Int64_System_String_System_Int64_FishMMO_Server_Core_World_SceneServer_ISceneInstanceDetails__" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.TryGetSceneInstanceDetails(System.Int64,System.String,System.Int64,FishMMO.Server.Core.World.SceneServer.ISceneInstanceDetails@)">
   TryGetSceneInstanceDetails(long, string, long, out ISceneInstanceDetails)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1829"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1957"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to get scene instance details for a given world server, scene name, and handle.
@@ -939,7 +1129,7 @@ and scene name match as a correctness check.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_TryLoadSceneForConnection_FishNet_Connection_NetworkConnection_FishMMO_Server_Core_World_SceneServer_ISceneInstanceDetails_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.TryLoadSceneForConnection(FishNet.Connection.NetworkConnection,FishMMO.Server.Core.World.SceneServer.ISceneInstanceDetails)">
   TryLoadSceneForConnection(NetworkConnection, ISceneInstanceDetails)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1861"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1989"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Attempts to load a scene for a connection if it is valid and loaded.</p>
@@ -981,7 +1171,7 @@ and scene name match as a correctness check.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_UnloadScene_System_Int64_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.UnloadScene(System.Int64)">
   UnloadScene(long)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1911"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L2039"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unloads a scene by handle and removes its details from the database and server.</p>
@@ -995,7 +1185,8 @@ and scene name match as a correctness check.</p>
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>sceneID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd></dd>
+    <dd><p>Scene row to unload.</p>
+</dd>
   </dl>
 
 
@@ -1013,7 +1204,7 @@ and scene name match as a correctness check.</p>
 
   <h3 id="FishMMO_Server_Implementation_World_SceneServer_SceneServerSystem_UnloadSceneForConnection_FishNet_Connection_NetworkConnection_System_String_" data-uid="FishMMO.Server.Implementation.World.SceneServer.SceneServerSystem.UnloadSceneForConnection(FishNet.Connection.NetworkConnection,System.String)">
   UnloadSceneForConnection(NetworkConnection, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L1891"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/SceneServer/SceneServerSystem.cs/#L2019"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Unloads a scene for a connection by scene name.</p>

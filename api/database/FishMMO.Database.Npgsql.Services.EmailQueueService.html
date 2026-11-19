@@ -197,7 +197,7 @@ EF Core compiled queries for reads, following the existing service pattern.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_EmailQueueService_DequeueNextAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.DequeueNextAsync(System.String,System.Threading.CancellationToken)">
   DequeueNextAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L74"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L91"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Atomically claims and dequeues the next pending email using
@@ -238,8 +238,8 @@ Throws DatabaseEntityNotFoundException if the queue is empty.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_EmailQueueService_EnqueueAsync_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.EnqueueAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_EmailQueueService_EnqueueAsync_System_String_System_String_System_String_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.EnqueueAsync(System.String,System.String,System.String,System.String,System.Threading.CancellationToken)">
-  EnqueueAsync(string, string, string, string, CancellationToken)
+  <h3 id="FishMMO_Database_Npgsql_Services_EmailQueueService_EnqueueAsync_System_String_System_String_System_String_System_String_FishMMO_Database_Data_EmailKind_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.EnqueueAsync(System.String,System.String,System.String,System.String,FishMMO.Database.Data.EmailKind,System.Threading.CancellationToken)">
+  EnqueueAsync(string, string, string, string, EmailKind, CancellationToken)
   <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L24"><i class="bi bi-code-slash"></i></a>
   </h3>
 
@@ -248,7 +248,7 @@ Throws DatabaseEntityNotFoundException if the queue is empty.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; EnqueueAsync(string recipientEmail, string recipientUsername, string subject, string body, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; EnqueueAsync(string recipientEmail, string recipientUsername, string subject, string body, EmailKind kind = EmailKind.Verification, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -264,6 +264,15 @@ Throws DatabaseEntityNotFoundException if the queue is empty.</p>
 </dd>
     <dt><code>body</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd><p>Email body (plain-text or HTML).</p>
+</dd>
+    <dt><code>kind</code> <a class="xref" href="FishMMO.Database.Data.EmailKind.html">EmailKind</a></dt>
+    <dd><p>What the mail is for. Defaults to <a class="xref" href="FishMMO.Database.Data.EmailKind.html#FishMMO_Database_Data_EmailKind_Verification">Verification</a>, which is both
+the column default and the meaning every row had before kinds existed, so a caller
+that does not care keeps the behaviour it always had. A password reset MUST pass
+<a class="xref" href="FishMMO.Database.Data.EmailKind.html#FishMMO_Database_Data_EmailKind_PasswordReset">PasswordReset</a>: the drain stamps
+<code>verification_email_sent_at</code> after delivering a verification mail, and stamping
+it for a reset would end an unverified account's grace period — locking the player out
+of the game and the panel at the moment they recovered their password.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
@@ -288,23 +297,25 @@ Throws DatabaseEntityNotFoundException if the queue is empty.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_EmailQueueService_HasPendingForUserAsync_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.HasPendingForUserAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_EmailQueueService_HasPendingForUserAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.HasPendingForUserAsync(System.String,System.Threading.CancellationToken)">
-  HasPendingForUserAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L56"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_EmailQueueService_HasPendingForUserAsync_System_String_System_Nullable_FishMMO_Database_Data_EmailKind__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.HasPendingForUserAsync(System.String,System.Nullable{FishMMO.Database.Data.EmailKind},System.Threading.CancellationToken)">
+  HasPendingForUserAsync(string, EmailKind?, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L66"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Returns true if the specified user already has a pending (unsent, unclaimed)
-verification email in the queue. Prevents duplicate/spam emails.</p>
+  <div class="markdown level1 summary"><p>Returns true if the specified user already has an unsent email of
+<code class="paramref">kind</code> in the queue. Prevents duplicate mail piling up.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; HasPendingForUserAsync(string recipientUsername, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; HasPendingForUserAsync(string recipientUsername, EmailKind? kind = null, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>recipientUsername</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>kind</code> <a class="xref" href="FishMMO.Database.Data.EmailKind.html">EmailKind</a>?</dt>
     <dd></dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd></dd>
@@ -322,6 +333,12 @@ verification email in the queue. Prevents duplicate/spam emails.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_EmailQueueService_HasPendingForUserAsync_System_String_System_Nullable_FishMMO_Database_Data_EmailKind__System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p><b>Pass the kind you are about to send.</b> The queue carries more than one kind, so
+a blind check answers a different question than the caller asked: a pending password
+reset would suppress the verification mail an unverified player is waiting for.
+Null means any kind, and is almost never what a caller wants.</p>
+</div>
 
 
 
@@ -330,12 +347,10 @@ verification email in the queue. Prevents duplicate/spam emails.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_EmailQueueService_MarkFailedAsync_System_Int64_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.MarkFailedAsync(System.Int64,System.String,System.Int32,System.Threading.CancellationToken)">
   MarkFailedAsync(long, string, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L158"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L215"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Marks an email delivery attempt as failed and increments the attempt counter.
-Emails exceeding <code class="paramref">maxAttempts</code> are left in the queue
-with the error recorded so operators can investigate.</p>
+  <div class="markdown level1 summary"><p>Marks an email delivery attempt as failed and increments the attempt counter.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -367,6 +382,12 @@ with the error recorded so operators can investigate.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_EmailQueueService_MarkFailedAsync_System_Int64_System_String_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>While attempts remain the claim is released, which is what puts the message back in
+line for another login server to pick up. Once <code class="paramref">maxAttempts</code> is
+reached the claim is kept, which takes the message out of circulation and leaves it
+in the queue with its error for an operator to investigate or retry by hand.</p>
+</div>
 
 
 
@@ -375,7 +396,7 @@ with the error recorded so operators can investigate.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_EmailQueueService_MarkSentAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.EmailQueueService.MarkSentAsync(System.Int64,System.Threading.CancellationToken)">
   MarkSentAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L134"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/EmailQueueService.cs/#L191"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Marks an email as successfully sent.</p>

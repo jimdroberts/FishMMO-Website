@@ -116,6 +116,24 @@ NOTE on hosts where the process may not create them;</li>
 <li>a regression proof that the paths being refused are exactly the ones bare <code>Path.Combine</code>
 would have let escape.</li>
 </ul>
+<h2 id="patch-application-patchapplytestscs">Patch application (<code>PatchApplyTests.cs</code>)</h2>
+<p>After the containment cases the harness runs the <strong>real Updater build</strong> as its own process
+against throwaway installs, writing each archive the way the patch generator does (with the same
+<code>FishMMO.Shared.ZstdDelta</code>). Build the Updater first; <code>dotnet run</code> builds it through the project
+reference. Covered:</p>
+<ul>
+<li>format 2: a changed file rebuilt from its zstd delta, a renamed bundle rebuilt under its new
+name with the old one removed, a zstd-compressed new file in a new directory, a deletion, an
+untouched file, a patched executable keeping its execute bit, staging and archive cleaned up;</li>
+<li>a corrupt delta: failure reported and the install left <strong>exactly</strong> as it was (no new files,
+nothing deleted or changed), archive kept for a retry;</li>
+<li>a drifted install (a file not at the expected old version): refused, nothing touched;</li>
+<li>refusals before anything is touched: a format-3 manifest, a format-1 <code>manifest.json</code> carrying
+format-2 fields, an encoded new file without its size;</li>
+<li>a format-1 archive from the previous generator still applies;</li>
+<li>a 70 MiB file with a change 50 MiB in, patched from a delta of about 135 KB (exercises the
+one-at-a-time gate for large decodes).</li>
+</ul>
 
 </article>
 

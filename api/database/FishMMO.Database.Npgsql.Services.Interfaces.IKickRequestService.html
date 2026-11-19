@@ -147,7 +147,7 @@ Kick requests are used to forcefully disconnect accounts from active sessions.
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_DeleteAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IKickRequestService.DeleteAsync(System.String,System.Threading.CancellationToken)">
   DeleteAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IKickRequestService.cs/#L81"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IKickRequestService.cs/#L85"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes all kick requests for the specified account.</p>
@@ -199,29 +199,23 @@ failures are automatically retried.
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_FetchAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IKickRequestService.FetchAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_FetchAsync_System_DateTime_System_Int64_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IKickRequestService.FetchAsync(System.DateTime,System.Int64,System.Int32,System.Threading.CancellationToken)">
-  FetchAsync(DateTime, long, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IKickRequestService.cs/#L100"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_FetchAsync_FishMMO_Database_Data_KickRequestPollQuery_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IKickRequestService.FetchAsync(FishMMO.Database.Data.KickRequestPollQuery,System.Threading.CancellationToken)">
+  FetchAsync(KickRequestPollQuery, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IKickRequestService.cs/#L108"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Fetches paginated kick requests based on timestamp and position.</p>
+  <div class="markdown level1 summary"><p>Reads one page of kick requests for a game server's poll, on the database's clock.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;List&lt;KickRequestData&gt;&gt;&gt; FetchAsync(DateTime lastFetch, long lastPosition, int amount, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;KickRequestPage&gt;&gt; FetchAsync(KickRequestPollQuery query, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>lastFetch</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
-    <dd><p>Timestamp to compare requests against.</p>
-</dd>
-    <dt><code>lastPosition</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
-    <dd><p>Last request ID fetched (for pagination).</p>
-</dd>
-    <dt><code>amount</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>Maximum number of requests to fetch.</p>
+    <dt><code>query</code> <a class="xref" href="FishMMO.Database.Data.KickRequestPollQuery.html">KickRequestPollQuery</a></dt>
+    <dd><p>Where to read from and what to skip, built by <a class="xref" href="FishMMO.Database.Data.KickRequestReadWindow.html#FishMMO_Database_Data_KickRequestReadWindow_BuildQuery_System_Int32_System_Double_">BuildQuery(int, double)</a>.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
     <dd><p>Cancellation token.</p>
@@ -230,9 +224,10 @@ failures are automatically retried.
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<a class="xref" href="FishMMO.Database.Data.KickRequestData.html">KickRequestData</a>&gt;&gt;&gt;</dt>
-    <dd><p>A <a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult&lt;T&gt;</a> containing the list of kick request data on success,
-or a DatabaseException on failure.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.KickRequestPage.html">KickRequestPage</a>&gt;&gt;</dt>
+    <dd><p>The page — requests stamped at or after the start and not already handled, in
+<code>(time_created, id)</code> order — with the database clock taken before it was read and
+the start it read from; or a DatabaseException on failure.</p>
 </dd>
   </dl>
 
@@ -242,11 +237,14 @@ or a DatabaseException on failure.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_FetchAsync_System_DateTime_System_Int64_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>This method uses LINQ (ToListAsync with AsNoTracking) and automatically benefits from
-the retry policy configured on the DbContext without requiring explicit execution strategy wrapping.
-Uses pagination pattern with timestamp and ID for reliable cursor-based pagination.
-Returns empty list for invalid amount.</p>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_FetchAsync_FishMMO_Database_Data_KickRequestPollQuery_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The reader keeps its place with <a class="xref" href="FishMMO.Database.Data.KickRequestReadWindow.html">KickRequestReadWindow</a>, which reads a commit
+window (<a class="xref" href="FishMMO.Database.Npgsql.Services.KickRequestService.html#FishMMO_Database_Npgsql_Services_KickRequestService_PollCommitWindowSeconds">PollCommitWindowSeconds</a>) behind what it has
+settled and skips what it has handled, so a request that commits after a later-stamped
+one is still read. A first read (no <a class="xref" href="FishMMO.Database.Data.KickRequestPollQuery.html#FishMMO_Database_Data_KickRequestPollQuery_FromUtc">FromUtc</a>) starts
+<a class="xref" href="FishMMO.Database.Data.KickRequestPollQuery.html#FishMMO_Database_Data_KickRequestPollQuery_FirstReadLookbackSeconds">FirstReadLookbackSeconds</a> before the database's &quot;now&quot;.
+Each request carries its account's last login (<a class="xref" href="FishMMO.Database.Data.KickRequestData.html#FishMMO_Database_Data_KickRequestData_AccountLastLogin">AccountLastLogin</a>),
+read in the same query, so the caller needs no per-kick lookup to tell a stale kick.</p>
 </div>
 
 
@@ -256,7 +254,7 @@ Returns empty list for invalid amount.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_HasPendingAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IKickRequestService.HasPendingAsync(System.String,System.Threading.CancellationToken)">
   HasPendingAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IKickRequestService.cs/#L59"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IKickRequestService.cs/#L63"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Checks whether a pending kick request exists for the specified account.</p>
@@ -291,6 +289,10 @@ Returns empty list for invalid amount.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_HasPendingAsync_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>A request is pending for a bounded time after its stamp, measured by the database's
+clock, which wrote the stamp; never by the calling process's.</p>
+</div>
 
 
 

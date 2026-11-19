@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData" class="text-break">
-Class ServerSelectSystemRuntimeData  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L10"><i class="bi bi-code-slash"></i></a>
+Class ServerSelectSystemRuntimeData  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L12"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -182,7 +182,7 @@ Class ServerSelectSystemRuntimeData  <a class="header-action link-secondary" tit
 
   <h3 id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_InFlightRequests" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.InFlightRequests">
   InFlightRequests
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L15"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L17"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Per-connection in-flight gate for server-list requests.</p>
@@ -210,19 +210,21 @@ Class ServerSelectSystemRuntimeData  <a class="header-action link-secondary" tit
 
 
 
-  <a id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_NextAllowedRequestUtcByClientId_" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.NextAllowedRequestUtcByClientId*"></a>
+  <a id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_NextAllowedRequestSecondsByClientId_" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.NextAllowedRequestSecondsByClientId*"></a>
 
-  <h3 id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_NextAllowedRequestUtcByClientId" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.NextAllowedRequestUtcByClientId">
-  NextAllowedRequestUtcByClientId
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L20"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_NextAllowedRequestSecondsByClientId" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.NextAllowedRequestSecondsByClientId">
+  NextAllowedRequestSecondsByClientId
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L24"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Per-connection time-based cooldown to prevent sequential server-list spam after in-flight release.</p>
+  <div class="markdown level1 summary"><p>Per-connection time-based cooldown to prevent sequential server-list spam after in-flight
+release, as <a class="xref" href="FishMMO.Server.Core.MonotonicClock.html">MonotonicClock</a> seconds: a local duration, which a wall-clock
+step back would have stretched to the length of the step.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public ConcurrentDictionary&lt;int, DateTime&gt; NextAllowedRequestUtcByClientId { get; }</code></pre>
+    <pre><code class="lang-csharp hljs">public ConcurrentDictionary&lt;int, double&gt; NextAllowedRequestSecondsByClientId { get; }</code></pre>
   </div>
 
 
@@ -231,13 +233,52 @@ Class ServerSelectSystemRuntimeData  <a class="header-action link-secondary" tit
 
   <h4 class="section">Property Value</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.concurrent.concurrentdictionary-2">ConcurrentDictionary</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>&gt;</dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.concurrent.concurrentdictionary-2">ConcurrentDictionary</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.double">double</a>&gt;</dt>
     <dd></dd>
   </dl>
 
 
 
 
+
+
+
+
+  <a id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_ServerList_" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.ServerList*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_ServerList" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.ServerList">
+  ServerList
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L36"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The active world-server list, shared by every request inside its short lifetime and by
+every request that arrives while it is being read. Keyed by a single constant: the
+list is the same for every client.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public SingleFlightCache&lt;byte, WorldServerDetails[]&gt; ServerList { get; }</code></pre>
+  </div>
+
+
+
+
+
+  <h4 class="section">Property Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="FishMMO.Server.Core.Collections.SingleFlightCache-2.html">SingleFlightCache</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a>, <a class="xref" href="FishMMO.Shared.WorldServerDetails.html">WorldServerDetails</a>[]&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_ServerList_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Timed on the monotonic clock, handed to the cache through its clock seam as a
+<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a> it only ever subtracts from itself. On the default wall clock a
+step back would have served one read of the list for the length of the step.</p>
+</div>
 
 
 
@@ -250,7 +291,7 @@ Class ServerSelectSystemRuntimeData  <a class="header-action link-secondary" tit
 
   <h3 id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_Clear" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.Clear">
   Clear()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L31"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L55"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears all runtime data in this container, resetting it to initial state.
@@ -278,7 +319,7 @@ Must be implemented by derived classes.</p>
 
   <h3 id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_InitializeOnce" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.InitializeOnce">
   InitializeOnce()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L23"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L46"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called once to initialize the data container. Must be implemented by derived classes.</p>
@@ -310,7 +351,7 @@ Must be implemented by derived classes.</p>
 
   <h3 id="FishMMO_Server_Implementation_LoginServer_ServerSelectSystemRuntimeData_OnDeinitialize" data-uid="FishMMO.Server.Implementation.LoginServer.ServerSelectSystemRuntimeData.OnDeinitialize">
   OnDeinitialize()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L38"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/ServerSelect/ServerSelectSystemRuntimeData.cs/#L63"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Called when the data container is being deinitialized. Must be implemented by derived classes.</p>

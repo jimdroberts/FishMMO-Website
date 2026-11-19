@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_DiscordBot_Services_ChatPollingService" data-uid="FishMMO.DiscordBot.Services.ChatPollingService" class="text-break">
-Class ChatPollingService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L21"><i class="bi bi-code-slash"></i></a>
+Class ChatPollingService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L44"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -156,6 +156,25 @@ Uses a reentrancy guard to prevent overlapping polls.</p>
 
 
 
+  <h2 id="FishMMO_DiscordBot_Services_ChatPollingService_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+<b>A window, not an ID cursor.</b> The relay used to read <code>id &gt; last id seen</code>. Chat
+IDs are taken when a row is INSERTed and the row becomes visible when its transaction
+commits, so a row that committed after a higher ID had already been read was skipped for
+good (hot-path audit H5). It now reads through <a class="xref" href="../database/FishMMO.Database.Data.ChatReadWindow.html">ChatReadWindow</a>, the same window
+the scene servers' pump keeps: each read starts a commit window behind what it has settled
+and skips by ID what it has already handled, so no row is skipped and none is relayed twice.
+</p>
+<p>
+<b>Bounded.</b> Each poll reads at most <span class="xref">FishMMO.DiscordBot.Services.ChatPollingService.RelayMaxPagesPerPoll</span> pages of
+<span class="xref">FishMMO.DiscordBot.Services.ChatPollingService.RelayPageSize</span> rows. A relay that has fallen behind — Discord was unreachable
+for a while — catches up over several polls instead of in one query of unbounded size.
+</p>
+<p>
+<b>No replay at startup.</b> The first read starts at the database's own "now", and nothing
+stamped before it is ever read, so a restarted bot does not republish history.
+</p>
+</div>
 
 
   <h2 class="section" id="constructors">Constructors
@@ -164,9 +183,9 @@ Uses a reentrancy guard to prevent overlapping polls.</p>
 
   <a id="FishMMO_DiscordBot_Services_ChatPollingService__ctor_" data-uid="FishMMO.DiscordBot.Services.ChatPollingService.#ctor*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Services_ChatPollingService__ctor_Discord_WebSocket_DiscordSocketClient_FishMMO_Database_Npgsql_NpgsqlDbContextFactory_Microsoft_Extensions_Logging_ILogger_FishMMO_DiscordBot_Services_ChatPollingService__Microsoft_Extensions_Configuration_IConfiguration_FishMMO_DiscordBot_Services_DynamicChannelManagerService_FishMMO_DiscordBot_Services_BridgeBanService_FishMMO_DiscordBot_Services_AccountLinkingService_FishMMO_DiscordBot_Services_BotConfigurationService_FishMMO_DiscordBot_Services_ChatRelayPolicy_" data-uid="FishMMO.DiscordBot.Services.ChatPollingService.#ctor(Discord.WebSocket.DiscordSocketClient,FishMMO.Database.Npgsql.NpgsqlDbContextFactory,Microsoft.Extensions.Logging.ILogger{FishMMO.DiscordBot.Services.ChatPollingService},Microsoft.Extensions.Configuration.IConfiguration,FishMMO.DiscordBot.Services.DynamicChannelManagerService,FishMMO.DiscordBot.Services.BridgeBanService,FishMMO.DiscordBot.Services.AccountLinkingService,FishMMO.DiscordBot.Services.BotConfigurationService,FishMMO.DiscordBot.Services.ChatRelayPolicy)">
-  ChatPollingService(DiscordSocketClient, NpgsqlDbContextFactory, ILogger&lt;ChatPollingService&gt;, IConfiguration, DynamicChannelManagerService, BridgeBanService, AccountLinkingService, BotConfigurationService, ChatRelayPolicy)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L47"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Services_ChatPollingService__ctor_Discord_WebSocket_DiscordSocketClient_FishMMO_Database_Npgsql_NpgsqlDbContextFactory_FishMMO_Database_Npgsql_Services_Interfaces_IChatService_Microsoft_Extensions_Logging_ILogger_FishMMO_DiscordBot_Services_ChatPollingService__Microsoft_Extensions_Configuration_IConfiguration_FishMMO_DiscordBot_Services_DynamicChannelManagerService_FishMMO_DiscordBot_Services_BridgeBanService_FishMMO_DiscordBot_Services_AccountLinkingService_FishMMO_DiscordBot_Services_ChatRelayPolicy_" data-uid="FishMMO.DiscordBot.Services.ChatPollingService.#ctor(Discord.WebSocket.DiscordSocketClient,FishMMO.Database.Npgsql.NpgsqlDbContextFactory,FishMMO.Database.Npgsql.Services.Interfaces.IChatService,Microsoft.Extensions.Logging.ILogger{FishMMO.DiscordBot.Services.ChatPollingService},Microsoft.Extensions.Configuration.IConfiguration,FishMMO.DiscordBot.Services.DynamicChannelManagerService,FishMMO.DiscordBot.Services.BridgeBanService,FishMMO.DiscordBot.Services.AccountLinkingService,FishMMO.DiscordBot.Services.ChatRelayPolicy)">
+  ChatPollingService(DiscordSocketClient, NpgsqlDbContextFactory, IChatService, ILogger&lt;ChatPollingService&gt;, IConfiguration, DynamicChannelManagerService, BridgeBanService, AccountLinkingService, ChatRelayPolicy)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L85"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes a new instance of the <a class="xref" href="FishMMO.DiscordBot.Services.ChatPollingService.html">ChatPollingService</a> class.</p>
@@ -174,7 +193,7 @@ Uses a reentrancy guard to prevent overlapping polls.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public ChatPollingService(DiscordSocketClient discordClient, NpgsqlDbContextFactory dbContextFactory, ILogger&lt;ChatPollingService&gt; logger, IConfiguration configuration, DynamicChannelManagerService dynamicChannelManager, BridgeBanService bridgeBanService, AccountLinkingService accountLinkingService, BotConfigurationService botConfigService, ChatRelayPolicy relayPolicy)</code></pre>
+    <pre><code class="lang-csharp hljs">public ChatPollingService(DiscordSocketClient discordClient, NpgsqlDbContextFactory dbContextFactory, IChatService chatService, ILogger&lt;ChatPollingService&gt; logger, IConfiguration configuration, DynamicChannelManagerService dynamicChannelManager, BridgeBanService bridgeBanService, AccountLinkingService accountLinkingService, ChatRelayPolicy relayPolicy)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -184,6 +203,9 @@ Uses a reentrancy guard to prevent overlapping polls.</p>
 </dd>
     <dt><code>dbContextFactory</code> <a class="xref" href="../database/FishMMO.Database.Npgsql.NpgsqlDbContextFactory.html">NpgsqlDbContextFactory</a></dt>
     <dd><p>Factory for creating database contexts.</p>
+</dd>
+    <dt><code>chatService</code> <a class="xref" href="../database/FishMMO.Database.Npgsql.Services.Interfaces.IChatService.html">IChatService</a></dt>
+    <dd><p>Chat persistence; the relay reads new rows through it.</p>
 </dd>
     <dt><code>logger</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger-1">ILogger</a>&lt;<a class="xref" href="FishMMO.DiscordBot.Services.ChatPollingService.html">ChatPollingService</a>&gt;</dt>
     <dd><p>Logger instance.</p>
@@ -197,8 +219,6 @@ Uses a reentrancy guard to prevent overlapping polls.</p>
     <dt><code>bridgeBanService</code> <a class="xref" href="FishMMO.DiscordBot.Services.BridgeBanService.html">BridgeBanService</a></dt>
     <dd></dd>
     <dt><code>accountLinkingService</code> <a class="xref" href="FishMMO.DiscordBot.Services.AccountLinkingService.html">AccountLinkingService</a></dt>
-    <dd></dd>
-    <dt><code>botConfigService</code> <a class="xref" href="FishMMO.DiscordBot.Services.BotConfigurationService.html">BotConfigurationService</a></dt>
     <dd></dd>
     <dt><code>relayPolicy</code> <a class="xref" href="FishMMO.DiscordBot.Services.ChatRelayPolicy.html">ChatRelayPolicy</a></dt>
     <dd><p>Allowlist deciding which game channels may reach Discord.</p>
@@ -224,7 +244,7 @@ Uses a reentrancy guard to prevent overlapping polls.</p>
 
   <h3 id="FishMMO_DiscordBot_Services_ChatPollingService_Dispose" data-uid="FishMMO.DiscordBot.Services.ChatPollingService.Dispose">
   Dispose()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L385"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L498"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.</p>
@@ -251,7 +271,7 @@ Uses a reentrancy guard to prevent overlapping polls.</p>
 
   <h3 id="FishMMO_DiscordBot_Services_ChatPollingService_StartAsync_System_Threading_CancellationToken_" data-uid="FishMMO.DiscordBot.Services.ChatPollingService.StartAsync(System.Threading.CancellationToken)">
   StartAsync(CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L92"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L130"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Triggered when the application host is ready to start the service.</p>
@@ -290,7 +310,7 @@ Uses a reentrancy guard to prevent overlapping polls.</p>
 
   <h3 id="FishMMO_DiscordBot_Services_ChatPollingService_StopAsync_System_Threading_CancellationToken_" data-uid="FishMMO.DiscordBot.Services.ChatPollingService.StopAsync(System.Threading.CancellationToken)">
   StopAsync(CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L377"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/ChatPollingService.cs/#L490"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Triggered when the application host is performing a graceful shutdown.</p>

@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Enum PortType | FishMMO Documentation ">
       
-      <meta name="description" content="Specifies the type of port monitoring to perform for an application. An empty list of  indicates process-only monitoring.">
+      <meta name="description" content="The health checks an application can be configured with.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -90,7 +90,7 @@
 
 
   <h1 id="AppHealthMonitor_PortType" data-uid="AppHealthMonitor.PortType" class="text-break">
-Enum PortType  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-AppHealthMonitor/AppHealthMonitor/PortType.cs/#L7"><i class="bi bi-code-slash"></i></a>
+Enum PortType  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-AppHealthMonitor/AppHealthMonitor/PortType.cs/#L11"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -98,8 +98,7 @@ Enum PortType  <a class="header-action link-secondary" title="View source" href=
   <dl><dt>Assembly</dt><dd>AppHealthMonitor.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Specifies the type of port monitoring to perform for an application.
-An empty list of <a class="xref" href="AppHealthMonitor.PortType.html">PortType</a> indicates process-only monitoring.</p>
+  <div class="markdown summary"><p>The health checks an application can be configured with.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -118,21 +117,43 @@ An empty list of <a class="xref" href="AppHealthMonitor.PortType.html">PortType<
   <h2 id="fields">Fields
 </h2>
   <dl class="parameters">
+    <dt id="AppHealthMonitor_PortType_DatabasePulse"><code>DatabasePulse = 2</code></dt>
+  <dd><p>Read the server's own pulse from the database.</p>
+<p>
+The right check for a FishMMO game server. The transport is WebTransport over QUIC,
+which is UDP-only, so there is no TCP listener to connect to — a TCP check against a
+game port fails against a perfectly healthy server, and the supervisor then restarts
+it until it gives up. And QUIC has no "is the port open" answer to replace it with:
+the server responds only to a valid Initial packet carrying a TLS ClientHello, so a
+genuine probe means performing a handshake.
+</p>
+<p>
+The pulse sidesteps all of that and proves more: the server is running its loop,
+doing work, and can still reach the database. A socket probe only ever proves a
+socket is bound.
+</p>
+</dd>
+  
     <dt id="AppHealthMonitor_PortType_TCP"><code>TCP = 0</code></dt>
   
-  <dd><p>TCP port monitoring. Checks if TCP connections can be established.</p>
+  <dd><p>Open a TCP connection. Real evidence, for anything that listens on TCP.</p>
 </dd>
     <dt id="AppHealthMonitor_PortType_UDP"><code>UDP = 1</code></dt>
-  
-  <dd><p>UDP port monitoring. Checks if UDP datagrams can be sent.</p>
+  <dd><p>Send a UDP datagram.</p>
+<p><b>This proves almost nothing and must not be used alone.</b> UDP is connectionless,
+so the send succeeds whether or not anything is listening; the checker returns true
+as soon as the local stack accepts the datagram and never waits for a reply. It
+cannot tell a healthy server from one that is not running.</p>
 </dd>
-    <dt id="AppHealthMonitor_PortType_WebSocket"><code>WebSocket = 2</code></dt>
   
-  <dd><p>WebSocket port monitoring. Checks if WebSocket connections can be established.</p>
-</dd>
   </dl>
 
 
+  <h2 id="AppHealthMonitor_PortType_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>The name has outgrown the type: one of these is not a port at all. Renaming it is
+config-compatible — the JSON carries the member names, not the type name — and is worth
+doing when something else brings someone into this file.</p>
+</div>
 
 </article>
 

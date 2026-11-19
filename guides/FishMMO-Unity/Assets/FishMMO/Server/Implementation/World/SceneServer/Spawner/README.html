@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Spawner System | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Spawner System | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/Spawner/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="spawner-system">Spawner System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/Spawner/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Server-only, condition-driven framework for spawning and respawning networked objects in FishMMO: spawners are authored in world scenes, baked into server-only tables, and run by the scene server with configurable selection strategies, conditional gating, physics-based placement, and a pre-warmed object pool that gives a map a fixed memory footprint.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guide">Quick Start Guide</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Spawner system spawns and respawns networked objects — NPCs, world items, gathering nodes, containers — with configurable selection (linear, random, weighted), conditional respawn gating (OR and AND lists), bounding-box placement with ground detection, pooling through FishNet, and per-object respawn timers.</p>
+<h3 id="authored-in-the-scene-run-from-a-table">Authored in the scene, run from a table</h3>
+<p>World scenes are built into <strong>one addressable bundle shared by clients and servers</strong>, so anything left in a scene ships to every player. A spawner is therefore split in two:</p>
+<table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>Where it lives</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ObjectSpawner</code></td>
+<td>A world scene, on a GameObject tagged <code>EditorOnly</code></td>
+<td>Design-time placement and settings. Inert at runtime; never reaches a build.</td>
+</tr>
+<tr>
+<td><code>SceneSpawnTable</code></td>
+<td><code>Assets/Prefabs/Server/SceneServer/SpawnTables/&lt;Scene&gt;.asset</code></td>
+<td>The scene's spawners, baked: every authored value plus where each spawner stood.</td>
+</tr>
+<tr>
+<td><code>SpawnTableCatalogue</code></td>
+<td><code>…/SpawnTables/SpawnTableCatalogue.asset</code></td>
+<td>Every table, by scene name. Referenced by <code>SpawnerSystem.asset</code>.</td>
+</tr>
+<tr>
+<td><code>SpawnerSystem</code> / <code>SpawnerHost</code></td>
+<td>Scene server</td>
+<td>On each world scene load, runs one <code>SpawnerRuntime</code> per table entry for that scene instance; drops them on unload.</td>
+</tr>
+<tr>
+<td><code>SpawnerRuntime</code></td>
+<td>Scene server</td>
+<td>The spawner itself: pool reservation, spawning, respawn timers, conditions. The spawned objects' <code>ISpawnOwner</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Every table and the catalogue are <strong>addressable in <code>Server_Static_Permanent</code></strong>, addressed by path and labelled for the server's boot load. Client builds drop every group with &quot;Server&quot; in its name, so the data never reaches a client bundle. <code>ServerAddressables.Register</code> does this whenever an asset is created, and again on every bake (so every build re-checks it). It is idempotent, so the group file only changes when an entry was missing or wrong. <code>SpawnTableBakeTests.ServerDataAssets_AreAddressableInTheServerGroupOnly</code> checks that each table and catalogue is in that group and in no group a client builds.</p>
+<p>The bake runs from <code>FishMMO Dashboard → World → Spawn Tables → Rebuild Spawn Tables</code>, <strong>whenever a world scene is saved</strong>, and <strong>before the addressables step of every build</strong> — the dashboard's <em>Build Addressables</em> and <em>Build Game</em> (client and server) and the CLI build alike. Every build refuses to continue while any spawner is not tagged <code>EditorOnly</code> or still carries a <code>NetworkObject</code>. The tables are generated but checked in, like the world scene details cache. Their <code>[SerializeReference]</code> ids are numbered in table order, so rebaking an unchanged scene leaves its table byte-identical and a build does not dirty the tree.</p>
+<p><strong>Dashboard → World → Spawn Tables</strong> shows the tables read-only. The landing page lists every world scene with its spawner count, flags tables missing from the catalogue or left behind by a scene that is no longer a world scene, and has <strong>Rebuild Spawn Tables</strong>, which offers to save modified scenes first and then reports each problem and build blocker. Selecting a table shows each spawner's placement, schedule, conditions and spawnables (prefab, chance, respawn window, NPC overrides), warns about entries that spawn nothing, and has <strong>Rebake This Scene</strong> and <strong>Open Scene</strong>. Edit spawners in the scene, not the table, because the next bake overwrites the table.</p>
+<p>It used to be a <code>NetworkBehaviour</code> on its own scene <code>NetworkObject</code> that disabled itself off the server, which shipped every spawner's configuration to every player and spent a scene network object on each.</p>
+<h3 id="deterministic-memory-footprint">Deterministic memory footprint</h3>
+<p>Objects are never destroyed and re-instantiated on respawn — they are returned to FishNet's object pool with <code>DespawnType.Pool</code> and drawn back out with <code>GetPooledInstantiated</code>. That recycling alone is not enough to make a map's cost predictable, because the pool fills <em>lazily</em>: the first NPC of each kind is instantiated the moment a player walks into range, so a freshly loaded map hitches as it is explored and only reaches its true heap size once every spawner has fired at least once.</p>
+<p><code>SpawnerPool</code> closes that. Each spawner reserves <code>MaxSpawnCount + PrewarmHeadroom</code> instances of every prefab it can select, at scene start, de-duplicated across spawners that share a prefab. The result is a one-time load cost and a footprint you can plan capacity against, rather than one discovered under load.</p>
+<p>The pool outlives the scenes. FishNet leaves a despawned object in whatever scene it was in, so every pooled instance that had ever been spawned used to die with its world scene, while the reservation still counted it: the next instance of a dungeon skipped the prewarm and instantiated lazily in play. <code>PersistentPool</code> (Shared) now moves every instance going back into the pool (and every prewarmed one) out of the world scenes (<code>DontDestroyOnLoad</code>). Only objects alive at the unload go with the scene, and <code>SpawnerRuntime.Stop</code> takes exactly those out of the reservation (<code>SpawnerPool.Forget</code>), so the next load makes them again up front.</p>
+<p>Despawns with no spawner pool the same way. A corpse whose NPC has no spawner (<code>NPC.ReturnToPool</code>'s fallback) and ground loot or a scripted container (<code>Interactable.Despawn</code>'s fallback) go through <code>PersistentPool.Despawn</code> too, so they no longer sit in the pool inside the world scene and die with it; so do a pet (<code>Pet.Despawn</code>) and a boss's add. The rule is in Shared because the NPC, pet and interactable paths are Shared code. It never moves a scene object: FishNet does not pool one, it disables it in place for its own scene to re-enable.</p>
+<p>This is also why the per-spawner override settings matter for memory and not only for content: one NPC prefab that becomes a weak variant at one spawner and an elite at another is <strong>one</strong> pool bucket. Duplicating the prefab to make the variant would be a second bucket and a second fixed slice of the budget.</p>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Dedicated server only; not compiled into clients</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Dedicated server only; not compiled into clients</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-side only system</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Unity Version:</strong> Unity 6.6 (6000.6.8f1)</li>
+<li><strong>Scripting Backend:</strong> IL2CPP</li>
+</ul>
+<h2 id="features">Features</h2>
+<ul>
+<li>Server-only spawn lifecycle (spawn, despawn, respawn); nothing about spawners reaches a client</li>
+<li>Scene-authored, table-run: <code>ObjectSpawner</code> authoring components baked into <code>SceneSpawnTable</code>s</li>
+<li>One set of spawners per loaded scene instance, so stacked instances of a scene each populate themselves</li>
+<li>Three spawn selection strategies: Linear (sequential), Random (uniform), Weighted (proportional odds via <code>SpawnChance</code>)</li>
+<li>Conditional respawn gating with OR and AND condition lists (<code>RespawnCondition</code>, serialized data)</li>
+<li>Bounding-box placement with physics SphereCast ground detection in the scene instance's own physics scene</li>
+<li>FishNet object pooling via <code>GetPooledInstantiated()</code> / <code>Despawn(DespawnType.Pool)</code></li>
+<li>Object pool pre-warming via <code>SpawnerPool.Reserve(...)</code></li>
+<li>Per-spawner NPC overrides: attribute database, AI archetype, additional or replacement abilities, faction, corpse decay, and a random uniform scale range</li>
+<li>Weighted item roll tables so one world-item prefab can serve every ground pickup in the game from a single pool bucket</li>
+<li>NPC brains prepared before the network spawn: <code>AIBrainHost.Prepare</code> adds the brain, gives it the catalogue's (or the spawner's) archetype, and warps its NavMeshAgent onto the mesh at the spawn point</li>
+<li>Per-object configurable respawn timers (fixed or randomized between min/max)</li>
+<li>One sweep per frame for the whole scene server (<code>SpawnerScheduler</code>), and only spawners that actually have something to respawn are visited at all</li>
+<li>Auto-calculated vertical offset (<code>YOffset</code>) from prefab collider dimensions, computed at bake time</li>
+<li>Editor gizmo visualization of bounding box and spawn area, with a warning label on a spawner that would ship</li>
+<li><code>SpawnersClearedCondition</code> for boss encounters: a camp does not return while the spawner guarding it still has a live creature</li>
+<li>NPC corpse decay: dead NPCs remain visible for <code>NPC.CorpseDecayDuration</code> seconds (default 30s) before returning to the object pool. AI is suspended during corpse state and the NPC is immortal. <code>NPCSpawnableSettings.CorpseDecayDurationOverride</code> allows per-spawner override. Pets bypass the corpse timer and despawn immediately.</li>
+<li>Re-rolled attributes on each spawn: NPC seed, RNG, gender, and name are regenerated in <code>OnStartServer</code> so pooled NPCs get fresh randomized attributes each time.</li>
+<li>NPC packs: a spawner can make its NPCs one pack (<code>Pack</code>), with a tactic, a shared focus and a role per entry; respawns rejoin it. See <a href="#npc-packs">NPC packs</a>.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Unity 6.6 (6000.6.8f1)</strong></li>
+<li><strong>FishNetworking</strong> — <code>NetworkObject</code>, <code>ServerManager</code>, <code>SceneManager</code> load/unload events, object pooling</li>
+<li><strong>FishMMO Shared Core</strong> — <code>ISpawnable</code>, <code>ISpawnOwner</code>, <code>ICharacterDamageController</code></li>
+<li><strong>FishMMO Server AI</strong> — <code>AIBrainHost</code> for NPC brains</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>Integrated module within the FishMMO Server assembly. The scene server's system list (<code>SceneServer.unity</code>) runs <code>SpawnerSystem</code>, and <code>SpawnerSystem.asset</code> names <code>SpawnTableCatalogue.asset</code>; <code>SpawnerSystem.asset</code> is in the <code>Server_Static_Permanent</code> addressable group, which pulls every table into the server-only bundle.</p>
+<p>Scenes authored before the move carry networked spawners. <code>FishMMO Dashboard → World → Spawn Tables → Migrate Scene Spawners</code> tags every spawner <code>EditorOnly</code>, removes the <code>NetworkObject</code> that existed only for it, and bakes the tables. <code>[MovedFrom]</code> on the settings classes lets old scenes' <code>[SerializeReference]</code> records resolve to the server assembly.</p>
+<h2 id="quick-start-guide">Quick Start Guide</h2>
+<ol>
+<li>Add an <code>ObjectSpawner</code> component to an empty GameObject in a world scene (<code>Add Component → FishMMO/Server/Object Spawner</code>). The GameObject is tagged <code>EditorOnly</code> automatically, and the tag cannot be left off. <code>ObjectSpawner.OnValidate</code> re-tags a spawner whenever it is loaded, pasted or edited, and <code>SpawnerTagEnforcer</code> re-tags every spawner as its scene is saved, which catches a tag changed on the GameObject afterwards. Each correction is logged and can be undone.</li>
+<li>Configure <code>Spawnables</code> — pick a settings type (NPC, item) and assign its prefab.</li>
+<li>Set <code>InitialSpawnCount</code> and <code>MaxSpawnCount</code> to control concurrency.</li>
+<li>Choose a <code>SpawnType</code> (Linear, Random, or Weighted).</li>
+<li>Optionally configure <code>BoundingBoxSize</code> and enable <code>RandomSpawnPosition</code> for area-based placement.</li>
+<li>Optionally add respawn conditions to <code>OrConditions</code> / <code>TrueConditions</code>.</li>
+<li>Optionally make the NPCs one pack: enable <code>Pack</code> and give each NPC entry a <code>PackRole</code> (see <a href="#npc-packs">NPC packs</a>).</li>
+<li>Save the scene. The scene's table is baked on save; check the console for bake warnings.</li>
+</ol>
+<h3 id="shipped-spawners">Shipped spawners</h3>
+<table>
+<thead>
+<tr>
+<th>Scene</th>
+<th>Spawner</th>
+<th>Produces</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dungeon</td>
+<td><code>Orc 2</code>, <code>Orc 3</code></td>
+<td>One orc each, weighted: <code>an orc</code> 0.5, <code>an orc warrior</code> 0.3, <code>an orc mage</code> 0.2; prefab respawn cadence</td>
+</tr>
+<tr>
+<td>Dungeon</td>
+<td><code>Chest</code></td>
+<td><code>Dungeon Chest</code>: fixed position on the floor, respawns 5–10 minutes after it is emptied</td>
+</tr>
+</tbody>
+</table>
+<p>The generated world scenes (<code>Assets/Scenes/WorldScene/&lt;World&gt;/</code>) get spawners from the world generator at the cut, wildlife among them (<code>WildlifeSpawnerCut</code>, World Design module).</p>
+<p><code>SpawnTableBakeTests.EveryShippedSpawner_SpawnsSomething</code> fails on any spawner whose entries are empty or name no prefab, which the runtime skips without a word. The Dungeon's three spawners and the tutorial banker shipped that way until 2026-09-16.</p>
+<p><strong>Placement.</strong> With <code>RandomSpawnPosition</code> on, the object lands at the ground hit plus the spawnable's <code>YOffset</code>: how far its pivot stands above its collider's lowest point (<code>SpawnableSettings.PivotAboveBottom</code>) — 0 for a base pivot (gathering nodes, trees, characters), half the height for a centred one — so the collider just rests on the ground. (It was the collider's full height until 2026-10-12, which floated every base-pivot prefab by its own height.) The ground probe starts at the top of the bounding box and reaches down its full height, so a spawner placed above the floor needs a box at least twice that tall; the Dungeon orc spawners stand 0.5 m up with a 1.5 m box.</p>
+<h2 id="configuration">Configuration</h2>
+<h3 id="objectspawner-authoring-and-spawnerdefinition-baked">ObjectSpawner (authoring) and SpawnerDefinition (baked)</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InitialSpawnCount</code></td>
+<td><code>int</code></td>
+<td>0</td>
+<td>Objects spawned immediately on start</td>
+</tr>
+<tr>
+<td><code>MaxSpawnCount</code></td>
+<td><code>int</code></td>
+<td>1</td>
+<td>Maximum concurrent spawned objects</td>
+</tr>
+<tr>
+<td><code>UniqueSpawnables</code></td>
+<td><code>bool</code></td>
+<td>false</td>
+<td>At most one live instance of each entry</td>
+</tr>
+<tr>
+<td><code>SpawnType</code></td>
+<td><code>ObjectSpawnType</code></td>
+<td>Linear</td>
+<td>Selection strategy for choosing from the list</td>
+</tr>
+<tr>
+<td><code>RandomRespawnTime</code></td>
+<td><code>bool</code></td>
+<td>true</td>
+<td>If true, randomizes between min/max respawn times; otherwise the maximum is used</td>
+</tr>
+<tr>
+<td><code>InitialRespawnTime</code></td>
+<td><code>float</code></td>
+<td>0</td>
+<td>Respawn delay for an object with no settings and no cadence of its own</td>
+</tr>
+<tr>
+<td><code>RespawnCheckIntervalMinimum</code></td>
+<td><code>float</code></td>
+<td>3</td>
+<td>Shortest delay between this spawner's respawn checks</td>
+</tr>
+<tr>
+<td><code>RespawnCheckIntervalMaximum</code></td>
+<td><code>float</code></td>
+<td>6</td>
+<td>Longest delay; each check re-rolls inside the range so spawners do not poll in lockstep</td>
+</tr>
+<tr>
+<td><code>RandomSpawnPosition</code></td>
+<td><code>bool</code></td>
+<td>true</td>
+<td>If true, picks random position within bounding box</td>
+</tr>
+<tr>
+<td><code>BoundingBoxSize</code></td>
+<td><code>Vector3</code></td>
+<td>(1, 1, 1)</td>
+<td>Size of the spawn area</td>
+</tr>
+<tr>
+<td><code>SphereRadius</code></td>
+<td><code>float</code></td>
+<td>0.5</td>
+<td>SphereCast radius for ground detection</td>
+</tr>
+<tr>
+<td><code>Spawnables</code></td>
+<td><code>List&lt;SpawnableSettings&gt;</code></td>
+<td>—</td>
+<td><code>[SerializeReference]</code> list of spawnable configurations</td>
+</tr>
+<tr>
+<td><code>OrConditions</code></td>
+<td><code>List&lt;RespawnCondition&gt;</code></td>
+<td>—</td>
+<td>Any condition true → respawn allowed (logical OR)</td>
+</tr>
+<tr>
+<td><code>TrueConditions</code></td>
+<td><code>List&lt;RespawnCondition&gt;</code></td>
+<td>—</td>
+<td>All conditions must be true (logical AND)</td>
+</tr>
+<tr>
+<td><code>PrewarmPool</code></td>
+<td><code>bool</code></td>
+<td>true</td>
+<td>Instantiate this spawner's prefabs into the pool at scene start</td>
+</tr>
+<tr>
+<td><code>PrewarmHeadroom</code></td>
+<td><code>int</code></td>
+<td>1</td>
+<td>Extra pooled instances beyond <code>MaxSpawnCount</code>, covering corpses that have not yet decayed</td>
+</tr>
+<tr>
+<td><code>Pack</code></td>
+<td><code>NPCPackSettings</code></td>
+<td>disabled</td>
+<td>Makes this spawner's NPCs one pack; see <a href="#npc-packs">NPC packs</a></td>
+</tr>
+</tbody>
+</table>
+<p>The baked <code>SpawnerDefinition</code> adds <code>Name</code>, <code>Position</code> and <code>Rotation</code> — where the spawner stood.</p>
+<p>Turn <code>PrewarmPool</code> off only for spawners whose prefabs are large and rarely used, where paying the cost on demand is preferable to paying it always.</p>
+<h3 id="spawnablesettings">SpawnableSettings</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NetworkObject</code></td>
+<td><code>NetworkObject</code></td>
+<td>—</td>
+<td>The prefab to spawn</td>
+</tr>
+<tr>
+<td><code>MinimumRespawnTime</code></td>
+<td><code>float</code></td>
+<td>0</td>
+<td>Minimum respawn delay (seconds)</td>
+</tr>
+<tr>
+<td><code>MaximumRespawnTime</code></td>
+<td><code>float</code></td>
+<td>0</td>
+<td>Maximum respawn delay (seconds)</td>
+</tr>
+<tr>
+<td><code>SpawnChance</code></td>
+<td><code>float [0–1]</code></td>
+<td>0.5</td>
+<td>Selection weight for weighted spawn mode</td>
+</tr>
+<tr>
+<td><code>YOffset</code></td>
+<td><code>float</code></td>
+<td>auto</td>
+<td>Pivot above the collider's lowest point, calculated from the collider at bake time</td>
+</tr>
+</tbody>
+</table>
+<h3 id="npcspawnablesettings">NPCSpawnableSettings</h3>
+<p>Per-spawner overrides that let one NPC prefab serve a whole zone's worth of variants. Everything but the archetype is applied in <code>OnSpawned</code>, which runs after the object leaves the pool and before <code>ServerManager.Spawn</code> — that is, before <code>NPC.OnStartServer</code> rolls attributes and learns abilities, and before the spawn payload is written to clients. The archetype goes to <code>AIBrainHost.Prepare</code> once the NPC is in its scene.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AttributeBonusOverride</code></td>
+<td><code>NPCAttributeDatabase</code></td>
+<td>—</td>
+<td>Replaces the prefab's attribute database</td>
+</tr>
+<tr>
+<td><code>CorpseDecayDurationOverride</code></td>
+<td><code>float</code></td>
+<td>0</td>
+<td>Corpse decay seconds; 0 = prefab default</td>
+</tr>
+<tr>
+<td><code>EmptyCorpseDecayDurationOverride</code></td>
+<td><code>float</code></td>
+<td>0</td>
+<td>Empty-corpse decay seconds; 0 = prefab default</td>
+</tr>
+<tr>
+<td><code>LootTableOverride</code></td>
+<td><code>LootTableTemplate</code></td>
+<td>—</td>
+<td>Replaces the prefab's loot table</td>
+</tr>
+<tr>
+<td><code>ArchetypeOverride</code></td>
+<td><code>AIArchetypeTemplate</code></td>
+<td>—</td>
+<td>Replaces the prefab's whole AI brain; empty = the prefab's brain catalogue entry</td>
+</tr>
+<tr>
+<td><code>AdditionalAbilities</code></td>
+<td><code>List&lt;AbilityTemplate&gt;</code></td>
+<td>—</td>
+<td>Abilities granted on top of the prefab's list</td>
+</tr>
+<tr>
+<td><code>ReplacePrefabAbilities</code></td>
+<td><code>bool</code></td>
+<td>false</td>
+<td>Replace the prefab's ability list rather than extending it</td>
+</tr>
+<tr>
+<td><code>FactionOverride</code></td>
+<td><code>RaceTemplate</code></td>
+<td>—</td>
+<td>Replaces the prefab's race template / faction source</td>
+</tr>
+<tr>
+<td><code>MinimumScale</code> / <code>MaximumScale</code></td>
+<td><code>float</code></td>
+<td>1 / 1</td>
+<td>Random uniform scale range; 1..1 leaves the prefab scale alone</td>
+</tr>
+<tr>
+<td><code>PackRole</code></td>
+<td><code>NPCGroupRole</code></td>
+<td>DPS</td>
+<td>This entry's role in the spawner's pack; read only when the spawner's <code>Pack</code> is enabled</td>
+</tr>
+</tbody>
+</table>
+<p>Every override resolves to &quot;this spawner's value, or the prefab's&quot; — never to whatever a pooled instance carried from its last spawner.</p>
+<p>The scale is deliberately uniform: a non-uniform scale would desynchronise the NavMeshAgent's radius and height from the collider.</p>
+<h3 id="npc-packs">NPC packs</h3>
+<p>A spawner can make every NPC it produces one pack (an <code>NPCGroup</code>, server-only): they share a focus, join each other's fights and arrange themselves by a tactic while they orbit. The pack is authored in the spawn data and nowhere else — no scene component, no prefab change — and baked into the table with the rest of the spawner.</p>
+<p><strong>One spawner, one pack.</strong> The spawner founds the pack when its first NPC spawns and adds every NPC it spawns after that, each with its entry's <code>PackRole</code>. A member leaves on death, despawn and pool reset; when the last one leaves the pack is released, and the next spawn founds a new one. So a respawn rejoins the pack while any member of it still stands, and after a wipe the pack comes back as a new one. To place several packs, place several spawners — the pool is shared, so a second spawner of the same wolves costs no extra prefab bucket.</p>
+<p><strong><code>Pack</code> (<code>NPCPackSettings</code>), on the spawner:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Enabled</code></td>
+<td>false</td>
+<td>The spawner's NPCs are one pack. Off, the spawner behaves exactly as it always did</td>
+</tr>
+<tr>
+<td><code>Tactic</code></td>
+<td>None</td>
+<td>Surround, Flank, FocusFire or Kite: where members fighting the pack's focus stand while they orbit it (see the AI README, <em>Packs</em>)</td>
+</tr>
+<tr>
+<td><code>FocusTargeting</code></td>
+<td>true</td>
+<td>The pack's focus follows whoever its living tank is fighting</td>
+</tr>
+<tr>
+<td><code>TacticOrbitRadius</code></td>
+<td>5</td>
+<td>Metres from the focus at which an orbiting member takes its tactic slot</td>
+</tr>
+<tr>
+<td><code>KiteRotationSpeed</code></td>
+<td>30</td>
+<td>Degrees per second the Kite ring turns</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>PackRole</code>, on each NPC entry:</strong> Tank (picks by threat; its target becomes the focus; holds a Flank's front), DPS and Support (take the focus when choosing a target), Healer (heals through a healer archetype, as it would anyway), None (keeps its own targeting but still answers alerts).</p>
+<p><strong>Authoring a pack with an exact composition</strong> — say one orc warrior tank, one orc mage and two orcs:</p>
+<ol>
+<li>One <code>ObjectSpawner</code>, bounding box around the camp.</li>
+<li>Four <code>NPCSpawnableSettings</code> entries: <code>an orc warrior</code> (<code>PackRole</code> Tank), <code>an orc mage</code> (DPS), <code>an orc</code> (DPS), <code>an orc</code> (DPS).</li>
+<li><code>SpawnType</code> Linear, <code>UniqueSpawnables</code> on, <code>InitialSpawnCount</code> and <code>MaxSpawnCount</code> 4. With unique entries a respawn refills the entry that died, so the pack comes back as authored rather than as whatever the selection rolled.</li>
+<li><code>Pack</code>: <code>Enabled</code> on, a <code>Tactic</code> (Flank suits a tank and damage dealers), <code>FocusTargeting</code> on.</li>
+<li>Save the scene; the dashboard's Spawn Tables page shows the pack and each entry's role.</li>
+</ol>
+<p>For a looser pack — &quot;four wolves, one in five an alpha&quot; — leave <code>UniqueSpawnables</code> off and use Weighted: every respawn rolls its own entry and joins the pack with that entry's role.</p>
+<p>A tactic only moves members whose archetype has an Orbit variety state in its attacking state (the melee and archer archetypes do); the rest still share the focus and the alerts.</p>
+<h3 id="itemspawnablesettings">ItemSpawnableSettings</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ItemTemplate</code></td>
+<td><code>BaseItemTemplate</code></td>
+<td>—</td>
+<td>Item spawned when <code>RollTable</code> is empty</td>
+</tr>
+<tr>
+<td><code>MinimumAmount</code> / <code>MaximumAmount</code></td>
+<td><code>int</code></td>
+<td>1 / 1</td>
+<td>Stack size range</td>
+</tr>
+<tr>
+<td><code>RollTable</code></td>
+<td><code>List&lt;ItemRoll&gt;</code></td>
+<td>—</td>
+<td>Optional weighted table; when non-empty, one entry is rolled per spawn</td>
+</tr>
+<tr>
+<td><code>AchievementTemplateID</code></td>
+<td><code>int</code></td>
+<td>0</td>
+<td>Achievement granted on pickup; 0 = none</td>
+</tr>
+</tbody>
+</table>
+<p>Each <code>ItemRoll</code> carries its own template, stack range and weight. <code>OnValidate</code> repairs inverted stack ranges and negative weights, which would otherwise be a spawn-time exception on a live server rather than a bad item.</p>
+<p><code>OnSpawned</code> writes the rolled template and stack amount onto the spawned <code>WorldItem</code>, plus a
+non-zero <strong>generation seed</strong> onto the <code>WorldItem</code> (two 16-bit draws from
+<code>DeterministicRNG.Shared</code>, retried while zero). Zero is <code>Item.Initialize</code>'s sentinel for &quot;derive a
+seed from the database id&quot;, and a freshly granted item has no id — so a drop spawned without one
+rolled its attributes from <code>RNG(0)</code>, identically for every drop of that template, and re-rolled
+them differently after the next relog once a real row id existed.</p>
+<h3 id="objectspawntype-enum">ObjectSpawnType Enum</h3>
+<pre><code>ObjectSpawnType : byte
+├── Linear   = 0   # Sequential cycling through the list
+├── Random   = 1   # Uniform random selection
+└── Weighted = 2   # Weighted random using SpawnChance values
+</code></pre>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="ispawnable-and-ispawnowner">ISpawnable and ISpawnOwner</h3>
+<p><code>ISpawnable</code> (Shared Core) is implemented by any entity a spawner produces. It knows its owner only as an <code>ISpawnOwner</code> — the spawner's settings for it are the spawner's bookkeeping.</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Spawner</code></td>
+<td><code>ISpawnOwner</code></td>
+<td>The spawner that created this entity, or null</td>
+</tr>
+<tr>
+<td><code>NetworkObject</code></td>
+<td><code>NetworkObject</code></td>
+<td>FishNet network object for synchronization</td>
+</tr>
+<tr>
+<td><code>ID</code></td>
+<td><code>long</code></td>
+<td>Unique identifier for the spawned entity</td>
+</tr>
+<tr>
+<td><code>Despawn()</code></td>
+<td><code>void</code></td>
+<td>Hands the entity back to its spawner, or despawns it directly when it has none</td>
+</tr>
+</tbody>
+</table>
+<h3 id="spawn-selection-logic-getspawnindex">Spawn Selection Logic (<code>GetSpawnIndex</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>SpawnType</th>
+<th>Selection Logic</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Linear</code></td>
+<td>Increments an index, wrapping at list end</td>
+</tr>
+<tr>
+<td><code>Random</code></td>
+<td>Uniform random</td>
+</tr>
+<tr>
+<td><code>Weighted</code></td>
+<td>Cumulative weight: picks based on <code>SpawnChance</code> proportional odds</td>
+</tr>
+</tbody>
+</table>
+<h3 id="respawn-conditions">Respawn Conditions</h3>
+<p><code>RespawnCondition</code> is a <code>[Serializable]</code> class held by <code>[SerializeReference]</code>; subclasses implement <code>OnCheckCondition(SpawnerRuntime)</code>. A condition that names other scene objects resolves them at bake time through <code>Bake(authored, resolveSpawnerIndex)</code>: a baked table is loaded without its scene, so it may only refer to its siblings by index.</p>
+<h4 id="spawnersclearedcondition">SpawnersClearedCondition</h4>
+<p>Allows respawn only when nothing the listed spawners produced is still alive:</p>
+<ul>
+<li>Authored as a list of <code>ObjectSpawner</code>s in the same scene; baked into <code>SpawnerIndices</code>.</li>
+<li>Walks each named sibling's live objects; any character whose damage controller is alive blocks the respawn.</li>
+<li>Non-character spawns never block, and an index outside the table is ignored.</li>
+</ul>
+<p>Typical use: a camp that does not return while its guard stands.</p>
+<h3 id="external-integration-points">External Integration Points</h3>
+<ul>
+<li><strong>NPC System</strong> — NPCs implement <code>ISpawnable</code>; <code>NPC.ReturnToPool</code> hands a decayed corpse back to its spawner, or pools it through <code>PersistentPool</code> when it has none.</li>
+<li><strong>AI System</strong> — <code>AIBrainHost.Prepare(npc, spawnPosition, archetypeOverride)</code> runs after the scene move and before the network spawn.</li>
+<li><strong>Pet System</strong> — pets are spawned by <code>PetSystem</code>, not by spawners, and despawn directly.</li>
+<li><strong>Scene Server</strong> — <code>SpawnerHost</code> follows FishNet's server-side <code>OnLoadEnd</code> / <code>OnUnloadEnd</code>, and starts a loaded scene one update later so the scene server's own handler (difficulty rules, orphan unloads) has always run first.</li>
+<li><strong>Build</strong> — <code>CustomBuildTool</code> bakes the tables before the addressables step of both <code>RunBuild</code> (<em>Build Game</em>) and the addressables-only build, and refuses to build while a spawner would ship.</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nothing ships</td>
+<td><code>SpawnTableBakeTests.ABuiltWorldScene_ReferencesNoSpawnerDataAndNoServerScript</code></td>
+<td>Built world scenes reference no prefab only a spawner names, and no server-assembly script</td>
+</tr>
+<tr>
+<td>The check is live</td>
+<td><code>SpawnTableBakeTests.TheDependencyCheck_WouldSeeSpawnerDataThatReachedTheBuild</code></td>
+<td>The same scene with its spawners untagged does report their prefabs</td>
+</tr>
+<tr>
+<td>Tables up to date</td>
+<td><code>SpawnTableBakeTests.EverySceneWithSpawners_HasABakedTableThatMatchesIt</code></td>
+<td>Every scene's table matches its spawners</td>
+</tr>
+<tr>
+<td>Tag enforced</td>
+<td><code>SpawnTableBakeTests.AnUntaggedSpawner_IsRetaggedBeforeItsSceneIsSaved</code></td>
+<td>Saving a scene retags an untagged spawner</td>
+</tr>
+<tr>
+<td>Server group only</td>
+<td><code>SpawnTableBakeTests.ServerDataAssets_AreAddressableInTheServerGroupOnly</code></td>
+<td>Tables and catalogues are addressable only where clients never build</td>
+</tr>
+<tr>
+<td>Every build bakes</td>
+<td><code>SpawnTableBakeTests.EveryBuildPath_BakesSpawnTablesBeforeItsAddressables</code></td>
+<td>Each addressables build in <code>CustomBuildTool</code> is preceded by a bake</td>
+</tr>
+<tr>
+<td>Rebakes don't churn</td>
+<td><code>SpawnTableBakeTests.ABakedTable_KeepsItsReferenceIdsAcrossRebakes</code></td>
+<td>An unchanged rebake serializes identically</td>
+</tr>
+<tr>
+<td>Initial spawn</td>
+<td>Run a scene server with <code>InitialSpawnCount &gt; 0</code></td>
+<td>Correct number of entities spawned once the scene loads</td>
+</tr>
+<tr>
+<td>Max spawn cap</td>
+<td>Verify <code>SpawnedCount</code> never exceeds <code>MaxSpawnCount</code></td>
+<td>Count stays at or below configured maximum</td>
+</tr>
+<tr>
+<td>Weighted selection</td>
+<td>Set <code>SpawnType = Weighted</code> with varied <code>SpawnChance</code></td>
+<td>Higher-chance entries spawn proportionally more</td>
+</tr>
+<tr>
+<td>Respawn timer</td>
+<td>Kill an NPC, wait out corpse decay and respawn delay</td>
+<td>New entity spawns after configured delay</td>
+</tr>
+<tr>
+<td>Conditions</td>
+<td><code>SpawnerSchedulerTests</code></td>
+<td>A refused respawn keeps its deadline and its place in the schedule</td>
+</tr>
+<tr>
+<td>Stacked instances</td>
+<td>Load two instances of one world scene</td>
+<td>Each instance populates itself; unloading one leaves the other alone</td>
+</tr>
+<tr>
+<td>Scheduler membership</td>
+<td>Read <code>SpawnerHost.Scheduler.ActiveCount</code> with every spawner at its cap</td>
+<td>Zero — a world at rest costs nothing per frame</td>
+</tr>
+<tr>
+<td>Packs</td>
+<td><code>NPCPackTests</code>, <code>SpawnTableBakeTests.ToDefinition_CopiesThePackAndEachEntrysRole</code></td>
+<td>Roles and tactic reach the pack; a respawn rejoins it; a wipe founds a new one; a spawner without a pack joins nobody</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Author[ObjectSpawner in scene] --&gt;|save / build| Bake[SceneSpawnTable]
+    Bake --&gt; Catalogue[SpawnTableCatalogue]
+    Load[Scene load on server] --&gt; Host[SpawnerHost]
+    Catalogue --&gt; Host
+    Host --&gt; Runtime[SpawnerRuntime per definition]
+    Runtime --&gt; Pool[Pool reservation]
+    Runtime --&gt;|on timer| Spawn[Pooled spawn + brain prepare]
+    Spawn --&gt;|death / pickup| Runtime
+</code></pre>
+<h3 id="spawn-lifecycle">Spawn Lifecycle</h3>
+<h4 id="start-spawnerruntimepopulate-from-one-update-after-the-scene-loads">Start (<code>SpawnerRuntime.Populate</code>, from one update after the scene loads)</h4>
+<ol>
+<li>Reserves pool instances for every prefab the spawner can select.</li>
+<li>Spawns <code>InitialSpawnCount</code> objects (clamped to <code>MaxSpawnCount</code>).</li>
+<li>Creates respawn timers for the remaining slots, including any an initial spawn failed to fill.</li>
+<li>Joins the scheduler if it has any timers — once every spawner in its scene has started.</li>
+</ol>
+<p><code>SpawnerHost</code> spreads a scene's starts over frames: each start spends what it made (prewarmed instances plus spawns, plus one) from <code>StartWorkPerFrame</code> (default 32), a token bucket that can go into debt and recovers every frame, so no scene waits forever. The whole scene joins the schedule only when all of its spawners have started, so a condition that names a sibling never sees it unstarted. <code>SpawnerHost.StartScene</code> still starts a scene all at once, for tests and tools.</p>
+<h4 id="spawn-spawnobject">Spawn (<code>SpawnObject</code>)</h4>
+<ol>
+<li>Selects a <code>SpawnableSettings</code> via <code>GetSpawnIndex()</code> (and a free entry when <code>UniqueSpawnables</code>).</li>
+<li>If <code>RandomSpawnPosition</code>, sphere-casts down from a random point at the top of the box in the scene instance's physics scene and adds <code>YOffset</code>.</li>
+<li>Retrieves a pooled instance via <code>GetPooledInstantiated()</code>.</li>
+<li>Applies the settings (<code>OnSpawned</code>).</li>
+<li>Moves the object to the scene instance.</li>
+<li>For an NPC, prepares its brain through <code>AIBrainHost</code>.</li>
+<li>Sets the object's <code>Spawner</code> to this runtime, spawns it, and records it with its settings.</li>
+<li>For an NPC, when the spawner's <code>Pack</code> is enabled, adds its brain to the spawner's pack (founding one if none stands) with its entry's <code>PackRole</code>.</li>
+<li>Clears respawn timers if <code>MaxSpawnCount</code> is reached.</li>
+</ol>
+<p>Steps 4 to 8 complete or are rolled back in a <code>finally</code> (owner cleared, instance despawned or returned to the pool, and — for an instance never spawned, which raises no despawn — its prepared brain taken off the tick and out of any pack), so an exception never leaves a half-spawned object in the world untracked. The attempt returns a <code>SpawnOutcome</code>; a problem that stops it early (a misconfigured entry, an unloaded scene) is logged once per spawner and entry, not at every check.</p>
+<h4 id="despawn">Despawn</h4>
+<ol>
+<li>Removes the entity (and its settings record); a second despawn of the same object is ignored.</li>
+<li>Schedules a respawn timer from the settings' cadence, or the NPC's own.</li>
+<li>Clears the entity's <code>Spawner</code>.</li>
+<li>Returns the object to the pool via <code>ServerManager.Despawn(DespawnType.Pool)</code> and keeps it out of the world scene (<code>PersistentPool.Despawn</code>). The despawn resets an NPC's brain, which leaves its pack if it had not already left at death.</li>
+</ol>
+<h4 id="scene-unload">Scene unload</h4>
+<p>The scene's runtimes leave the schedule and forget their bookkeeping; the objects still alive go with the scene, are taken out of the pool reservation, and any still pointing at a stopped runtime has its <code>Spawner</code> cleared. Each runtime's pack is dissolved.</p>
+<h3 id="respawn-loop-tryrespawn">Respawn Loop (<code>TryRespawn</code>)</h3>
+<ol>
+<li>Skips if no spawnables or no pending timers.</li>
+<li>Clears all timers if <code>SpawnedCount &gt;= MaxSpawnCount</code>.</li>
+<li>Returns immediately if no timer has elapsed.</li>
+<li>Evaluates the respawn conditions <strong>once</strong> for the pass.</li>
+<li>Consumes <strong>every</strong> elapsed timer, spawning one object each, stopping at <code>MaxSpawnCount</code> or when the frame's spawn budget runs out.</li>
+</ol>
+<p>A refused respawn consumes no timer: the spawner keeps its work and is re-tested on its own interval, which is what lets a camp come back once the boss guarding it dies. Neither does an attempt that leaves the object owed (<code>SpawnerRuntime.ConsumesTimer</code>: a misconfigured entry, an unloaded scene, a spawn that threw and was rolled back): the deadline goes back and the pass ends, to be tried again at the next check. A timer is spent only when an object entered the world or there is no slot for one (the cap, or every unique entry alive).</p>
+<h3 id="who-gets-asked-and-how-often-spawnerscheduler">Who gets asked, and how often (<code>SpawnerScheduler</code>)</h3>
+<ul>
+<li><strong>How often a spawner polls</strong> is its own <code>RespawnCheckIntervalMinimum</code> / <code>Maximum</code>, re-rolled each pass. Respawn deadlines are absolute times on the scheduler's monotonic clock (<code>SpawnerScheduler.Now</code>, which reads <code>MonotonicClock</code>), so a longer interval does not shift them, and neither does the host's wall clock being set: <code>DateTime.UtcNow</code> deadlines used to fire every respawn at once on a forward step.</li>
+<li><strong>How much is spawned per frame</strong> is <code>SpawnerScheduler.SpawnsPerFrame</code> (default 8), separate from the start budget so neither can hold the other up. A spawner the budget cuts short keeps the sweep's cursor and its open gate, so it finishes first next frame; the first spawner of every frame always has the whole budget, so none is starved.</li>
+<li><strong>A pass that throws</strong> is caught per spawner and reported to that spawner's <code>RepeatingFaultLog</code>; the sweep carries on.</li>
+<li><strong>Which spawners are asked at all</strong> is the scheduler's membership list. A spawner joins when it has something to respawn and leaves the moment it does not, so a spawner at its cap costs nothing.</li>
+</ul>
+<p><code>SpawnerSystem.OnUpdate</code> ticks the host once per frame. The list is <em>swept</em> rather than walked — each frame covers a <code>FramesPerSweep</code>-th (1/60) of it. The scheduler is an instance per host, so a simulation running beside a server does not walk the server's spawners.</p>
+<h2 id="project-structure">Project Structure</h2>
+<pre><code>Spawner/                                   # Server/Implementation/World/SceneServer/Spawner
+├── ObjectSpawner.cs              # Authoring component (EditorOnly); inert at runtime
+├── SpawnerDefinition.cs          # One baked spawner
+├── SceneSpawnTable.cs            # One scene's baked spawners
+├── SpawnTableCatalogue.cs        # Every table, by scene name
+├── SpawnerSystem.cs              # Scene server behaviour; ticks the host
+├── SpawnerHost.cs                # Starts/stops runtimes per scene instance
+├── SpawnerRuntime.cs             # The running spawner; ISpawnOwner
+├── SpawnerScheduler.cs           # Active list of spawners with work
+├── SpawnerPool.cs                # Pool pre-warming
+├── ObjectSpawnType.cs
+├── Settings/
+│   ├── SpawnableSettings.cs
+│   ├── ItemSpawnableSettings.cs
+│   └── NPCSpawnableSettings.cs
+└── Condition/
+    ├── RespawnCondition.cs
+    └── Types/
+        └── SpawnersClearedCondition.cs
+</code></pre>
+<p>Related: <code>Shared/Core/Entity/Spawner/ISpawnable.cs</code>, <code>ISpawnOwner.cs</code>; the pack a spawner owns and its authored settings, <code>AI/Group/NPCGroup.cs</code> and <code>NPCPackSettings.cs</code>; editor tooling in <code>Shared/Implementation/Tools/Extensions/Unity/Editor/Spawner/</code> (<code>SpawnTableBaker</code>, <code>SpawnerSceneMigration</code>, <code>SpawnerBuildStripper</code>).</p>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

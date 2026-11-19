@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class CanUseItemCondition | FishMMO Documentation ">
       
-      <meta name="description" content="Condition that checks if a character can use a specific item (i.e., possesses it in their inventory).">
+      <meta name="description" content="Condition that checks whether a character is carrying a specific item.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Shared_CanUseItemCondition" data-uid="FishMMO.Shared.CanUseItemCondition" class="text-break">
-Class CanUseItemCondition  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Conditions/Character/Inventory/CanUseItemCondition.cs/#L10"><i class="bi bi-code-slash"></i></a>
+Class CanUseItemCondition  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/ECA/Conditions/Character/Inventory/CanUseItemCondition.cs/#L54"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,7 +97,7 @@ Class CanUseItemCondition  <a class="header-action link-secondary" title="View s
   <dl><dt>Assembly</dt><dd>FishMMO.Shared.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Condition that checks if a character can use a specific item (i.e., possesses it in their inventory).</p>
+  <div class="markdown summary"><p>Condition that checks whether a character is <b>carrying</b> a specific item.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -170,6 +170,46 @@ public class CanUseItemCondition : BaseCondition, ICondition</code></pre>
 
 
 
+  <h2 id="FishMMO_Shared_CanUseItemCondition_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+<b>Despite the name, this condition checks inventory presence and nothing else.</b> It is an
+"owns one of these" test, not a "may use this right now" test. Read the name as
+<code>HasItemInInventory</code>; the class name is kept because conditions are persisted by type
+through <code>[SerializeReference]</code> and renaming it would silently null out the condition on
+every authored Trigger asset that already references it.
+</p>
+<p>
+<b>What it does NOT check, and where each of those actually lives:</b>
+</p>
+<ul><li>
+<b>Cooldown.</b> Compose <a class="xref" href="FishMMO.Shared.HasCooldownCondition.html">HasCooldownCondition</a> (with
+<a class="xref" href="FishMMO.Shared.Core.BaseCondition.html#FishMMO_Shared_Core_BaseCondition_Invert">Invert</a> set) alongside this one, giving it the consumable
+template's <code>ID</code> — that is the key <a class="xref" href="FishMMO.Shared.ConsumableTemplate.html#FishMMO_Shared_ConsumableTemplate_Invoke_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_Item_System_UInt32_">Invoke(IPlayerCharacter, Item, uint)</a> registers the
+cooldown under. Doing it here instead would mean a second, parallel copy of that condition's
+tick-domain resolution: a replicate-domain tick has to be preferred over a raw authoritative
+one and an authoritative one mapped through
+<a class="xref" href="FishMMO.Shared.Core.ICooldownController.html#FishMMO_Shared_Core_ICooldownController_ResolveAuthoritativeTick_System_UInt32_">ResolveAuthoritativeTick(uint)</a>, or the comparison is made in the
+wrong clock and answers wrongly during reconcile replay. One copy of that, in the condition
+named after it, is the whole point of ECA conditions being small composable predicates.
+</li><li>
+<b>Charges / stack amount.</b> <a class="xref" href="FishMMO.Shared.ConsumableTemplate.html#FishMMO_Shared_ConsumableTemplate_CanConsume_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_Item_System_UInt32_">CanConsume(IPlayerCharacter, Item, uint)</a> owns it, and needs
+the <a class="xref" href="FishMMO.Shared.Item.html">Item</a> instance and an <a class="xref" href="FishMMO.Shared.Core.IPlayerCharacter.html">IPlayerCharacter</a> — neither of which this
+condition has, since <code>IItemContainer.ContainsItem</code> answers only yes or no and the subject
+here may be an NPC.
+</li><li>
+<b>"Requirements".</b> There is no such concept to check. <a class="xref" href="FishMMO.Shared.BaseItemTemplate.html">BaseItemTemplate</a> has
+no level, class, attribute or faction requirement fields of any kind — the FIXME that used to
+sit in <a class="xref" href="FishMMO.Shared.CanUseItemCondition.html#FishMMO_Shared_CanUseItemCondition_Evaluate_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_">Evaluate(ICharacter, EventData)</a> promising a "requirements" check referred to a system that has
+never existed. If one is added later, this is the condition to extend.
+</li></ul>
+<p>
+<b>This is not the authoritative use gate and must not be treated as one.</b> Item use is
+validated server-side by <a class="xref" href="FishMMO.Shared.ConsumableTemplate.html#FishMMO_Shared_ConsumableTemplate_CanConsume_FishMMO_Shared_Core_IPlayerCharacter_FishMMO_Shared_Item_System_UInt32_">CanConsume(IPlayerCharacter, Item, uint)</a>, called from both
+<code>AbilityController.ActivateConsumable</code> (client pre-filter) and the authoritative
+activation path. A Trigger that gates on this condition alone is gating on possession, so a
+character who owns a potion satisfies it while the potion is still on cooldown.
+</p>
+</div>
 
 
   <h2 class="section" id="fields">Fields
@@ -179,7 +219,7 @@ public class CanUseItemCondition : BaseCondition, ICondition</code></pre>
 
   <h3 id="FishMMO_Shared_CanUseItemCondition_RequiredItem" data-uid="FishMMO.Shared.CanUseItemCondition.RequiredItem">
   RequiredItem
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Conditions/Character/Inventory/CanUseItemCondition.cs/#L16"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/ECA/Conditions/Character/Inventory/CanUseItemCondition.cs/#L60"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>The item template required for this condition to pass.</p>
@@ -215,10 +255,10 @@ public class CanUseItemCondition : BaseCondition, ICondition</code></pre>
 
   <h3 id="FishMMO_Shared_CanUseItemCondition_Evaluate_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData_" data-uid="FishMMO.Shared.CanUseItemCondition.Evaluate(FishMMO.Shared.Core.ICharacter,FishMMO.Shared.Core.EventData)">
   Evaluate(ICharacter, EventData)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Shared/Implementation/Entity/ECA/Conditions/Character/Inventory/CanUseItemCondition.cs/#L27"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/ECA/Conditions/Character/Inventory/CanUseItemCondition.cs/#L86"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Evaluates whether the character (or event target) can use the specified item.</p>
+  <div class="markdown level1 summary"><p>Evaluates whether the character (or event target) is carrying the specified item.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -250,7 +290,8 @@ public class CanUseItemCondition : BaseCondition, ICondition</code></pre>
 
 
   <h4 class="section" id="FishMMO_Shared_CanUseItemCondition_Evaluate_FishMMO_Shared_Core_ICharacter_FishMMO_Shared_Core_EventData__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>This method currently only checks for item presence in the inventory. Additional checks (e.g., cooldowns, requirements) can be added.</p>
+  <div class="markdown level1 remarks"><p>Presence only. See the remarks on <a class="xref" href="FishMMO.Shared.CanUseItemCondition.html">CanUseItemCondition</a> for what is not
+checked here and which condition or template method checks it instead.</p>
 </div>
 
 

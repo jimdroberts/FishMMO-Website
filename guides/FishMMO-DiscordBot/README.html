@@ -91,10 +91,11 @@
 <p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-DiscordBot/README.md">View this file on GitHub</a></p>
 </blockquote>
 <p>A standalone .NET 8 application that bridges a live FishMMO server with a Discord
-guild. The bot relays in-game chat to Discord channels and back, lets players
-<strong>link</strong> their Discord account to a FishMMO character, exposes administrative
-slash-style commands (mute, ban, kick, character lookup), and dynamically
-provisions per-guild / per-party voice or text channels.</p>
+guild. The bot relays in-game chat to Discord channels and back, delivers the
+<strong>Discord account-verification code</strong> to players who chose Discord at
+registration, lets players <strong>link</strong> their Discord account to their FishMMO
+account, exposes administrative commands (mute, ban, kick, character lookup),
+and dynamically provisions per-world / per-scene channels.</p>
 <p>It runs as a long-lived service alongside the rest of the FishMMO server stack.</p>
 <hr>
 <h2 id="table-of-contents">Table of Contents</h2>
@@ -109,6 +110,8 @@ provisions per-guild / per-party voice or text channels.</p>
 <li><a href="#data">Data</a></li>
 </ul>
 </li>
+<li><a href="#account-verification-by-discord">Account Verification by Discord</a></li>
+<li><a href="#account-links">Account Links</a></li>
 <li><a href="#configuration">Configuration</a>
 <ul>
 <li><a href="#appsettingsjson-shape"><code>appsettings.json</code> shape</a></li>
@@ -123,17 +126,34 @@ provisions per-guild / per-party voice or text channels.</p>
 <p>The bot is built on the <strong>Discord.Net</strong> client library and the standard
 <code>Microsoft.Extensions.Hosting</code> generic host. It composes a fixed set of
 modules (command handlers) and services (background workers) through DI, reads
-its configuration from <code>appsettings.json</code>, and connects to the FishMMO chat
-endpoint to poll chat events and post outbound messages.</p>
+its configuration from <code>appsettings.json</code>, and talks to the FishMMO PostgreSQL
+database directly through the shared <code>FishMMO-DB</code> project.</p>
 <p>Bridging is two-way:</p>
 <ul>
-<li><strong>Game → Discord:</strong> <code>ChatPollingService</code> periodically polls the FishMMO chat
-REST API and forwards new messages to the configured Discord channels via
-<code>GameChatBridgeService</code>.</li>
-<li><strong>Discord → Game:</strong> Discord chat messages (and slash commands) are intercepted
-by <code>CommandHandlingService</code> and pushed back to the FishMMO chat API, subject
-to <code>RateLimiterService</code> and <code>BridgeBanService</code>.</li>
+<li><strong>Game → Discord:</strong> <code>ChatPollingService</code> periodically reads new rows from the
+game's chat table and forwards the relayable ones to the matching Discord
+channel. It reads through <code>ChatService.FetchRelayAsync</code> with a <code>ChatReadWindow</code>
+(both in <code>FishMMO-DB</code>), the same window the scene servers' chat pump keeps:
+each read starts a commit window behind what it has settled and skips by ID
+what it has already handled, so a row that commits out of ID order is not
+skipped and no row is relayed twice. Each poll reads at most 5 pages of 200
+rows, so a relay that has fallen behind catches up over several polls, and the
+first read starts at the database's &quot;now&quot;, so a restarted bot does not replay
+history. A read that fails settles nothing and is read again on the next poll;
+once a batch's reads have succeeded, each row is recorded as handled before it
+is checked for a link code or sent, so a row whose send fails costs that one
+row and is never relayed twice.</li>
+<li><strong>Discord → Game:</strong> Discord messages in a managed channel are intercepted by
+<code>CommandHandlingService</code> and written into the chat table by
+<code>GameChatBridgeService</code>, subject to <code>RateLimiterService</code> and <code>BridgeBanService</code>.
+The write goes through <code>ChatService.PersistBridgedAsync</code>, the same <code>INSERT</code> the
+scene servers use, so the row is stamped by the database clock the scene
+servers' chat pumps page by, not by the bot host's clock, which could stamp a
+row behind a window the pumps had already passed.</li>
 </ul>
+<p>Account verification is one-way: the game and the Control Panel issue a code,
+<code>DiscordVerificationService</code> DMs it to the player, and the player types it back
+into the game or the panel.</p>
 <hr>
 <h2 id="supported-platforms">Supported Platforms</h2>
 <table>
@@ -171,8 +191,8 @@ to <code>RateLimiterService</code> and <code>BridgeBanService</code>.</li>
 <td>Required</td>
 </tr>
 <tr>
-<td>FishMMO server</td>
-<td>Required (for chat API)</td>
+<td>FishMMO PostgreSQL database</td>
+<td>Required (chat, accounts, links)</td>
 </tr>
 </tbody>
 </table>
@@ -181,9 +201,8 @@ to <code>RateLimiterService</code> and <code>BridgeBanService</code>.</li>
 <pre><code>FishMMO-DiscordBot/
 ├── Program.cs                 # Generic host + DI composition + bot startup
 ├── ChatChannel.cs             # Enum / mapping of FishMMO chat channels
-├── appsettings.json           # Bot configuration (token, mappings, limits)
-├── Data/                      # Plain DTOs / configuration POCOs
-├── Modules/                   # Discord slash + text command handlers
+├── Data/                      # Plain DTOs / persisted bot state
+├── Modules/                   # Discord text command handlers
 │   ├── AdminModule.cs
 │   ├── CharacterModule.cs
 │   ├── CommandListModule.cs
@@ -196,13 +215,17 @@ to <code>RateLimiterService</code> and <code>BridgeBanService</code>.</li>
     ├── BotConfigurationService.cs
     ├── BridgeBanService.cs
     ├── ChatPollingService.cs
+    ├── ChatRelayPolicy.cs
     ├── CommandHandlingService.cs
+    ├── DiscordVerificationService.cs
     ├── DynamicChannelManagerService.cs
     ├── GameChatBridgeService.cs
     └── RateLimiterService.cs
 </code></pre>
 <p>The generic host wires <code>IHostedService</code> implementations for each background
-worker; the bot's lifetime is the host's lifetime.</p>
+worker; the bot's lifetime is the host's lifetime. Configuration comes from
+<code>FishMMO-Setup/&lt;Environment&gt;/appsettings.DiscordBot.json</code>, which the build copies
+into the output directory as <code>appsettings.json</code> / <code>appsettings.Production.json</code>.</p>
 <hr>
 <h2 id="key-components">Key Components</h2>
 <h3 id="modules-discord-side-commands">Modules (Discord-side commands)</h3>
@@ -216,19 +239,19 @@ worker; the bot's lifetime is the host's lifetime.</p>
 <tbody>
 <tr>
 <td><code>AdminModule</code></td>
-<td>Owner / admin-only commands (reload config, shutdown, diagnostics).</td>
+<td>Owner / admin-only commands (command permissions, diagnostics).</td>
 </tr>
 <tr>
 <td><code>CharacterModule</code></td>
-<td>Character lookup by name / Discord-linked account.</td>
+<td><code>char inspect</code> / <code>char whois</code> — character lookup, and the game account, Discord username and linked-since date of a linked Discord user.</td>
 </tr>
 <tr>
 <td><code>CommandListModule</code></td>
-<td><code>!help</code> / <code>/help</code> — self-documenting command list.</td>
+<td><code>help</code> — self-documenting command list.</td>
 </tr>
 <tr>
 <td><code>DatabaseModule</code></td>
-<td>Read-only DB queries gated behind admin permissions.</td>
+<td>Read-only DB queries gated behind admin permissions. <code>getaccount</code> shows the account's Discord username, whether a Discord user is linked, whether Discord is verified, and whether the verification DM went out.</td>
 </tr>
 <tr>
 <td><code>GeneralModule</code></td>
@@ -236,11 +259,11 @@ worker; the bot's lifetime is the host's lifetime.</p>
 </tr>
 <tr>
 <td><code>LinkModule</code></td>
-<td><code>/link</code> workflow — issues short-lived one-time codes that a player redeems in-game to link Discord ↔ FishMMO account.</td>
+<td><code>/link</code> issues a short-lived code the player types into game chat; <code>/unlink</code> removes the link. Both read and write the link in the database.</td>
 </tr>
 <tr>
 <td><code>ModerationModule</code></td>
-<td>Mute / unmute / ban / unban for the chat bridge (uses <code>BridgeBanService</code>).</td>
+<td><code>mod kick</code> / <code>mod ban</code> / <code>mod unban</code> on game accounts, and ban / unban for the chat bridge (uses <code>BridgeBanService</code>). The game-account commands need the Discord user linked to a Game Master or Admin game account, apply the Control Panel's guards (not yourself, not a peer or superior), call the same account services the panel does, and write each attempt to the admin audit log with source <code>discord</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -255,23 +278,31 @@ worker; the bot's lifetime is the host's lifetime.</p>
 <tbody>
 <tr>
 <td><code>BotConfigurationService</code></td>
-<td>Loads <code>appsettings.json</code>, watches for changes, exposes config to other services.</td>
+<td>Loads and saves <code>botconfig.json</code> (dynamic channels) and <code>botdata.json</code> (bridge bans, muted zones, command permissions, and legacy links awaiting import).</td>
 </tr>
 <tr>
 <td><code>AccountLinkingService</code></td>
-<td>Manages pending link codes and persists confirmed Discord ↔ account mappings.</td>
+<td>Holds pending <code>/link</code> codes in memory, writes confirmed links to the database, caches link lookups for 60 s, and imports old <code>botdata.json</code> links on start.</td>
+</tr>
+<tr>
+<td><code>DiscordVerificationService</code></td>
+<td>Delivers the one Discord verification DM per account. Woken by PostgreSQL <code>LISTEN/NOTIFY</code>, a slow safety sweep, the gateway's Ready event and member joins. See <a href="#account-verification-by-discord">Account Verification by Discord</a>.</td>
 </tr>
 <tr>
 <td><code>ChatPollingService</code></td>
-<td>Polls FishMMO chat API at a configured interval; emits events to <code>GameChatBridgeService</code>.</td>
+<td>Reads new chat rows at a configured interval through <code>ChatService.FetchRelayAsync</code> and a <code>ChatReadWindow</code>, spots <code>/link</code> codes typed in game chat, and relays allowed channels to Discord.</td>
+</tr>
+<tr>
+<td><code>ChatRelayPolicy</code></td>
+<td>The allowlist of in-game channels that may be republished to Discord.</td>
 </tr>
 <tr>
 <td><code>GameChatBridgeService</code></td>
-<td>Forwards game messages → Discord channels and Discord messages → game chat.</td>
+<td>Writes Discord messages from managed channels into the game's chat table through <code>ChatService.PersistBridgedAsync</code>, after rate-limit and bridge-ban checks.</td>
 </tr>
 <tr>
 <td><code>DynamicChannelManagerService</code></td>
-<td>Creates / archives Discord channels in response to in-game events (party formed, guild created, etc.).</td>
+<td>Creates / archives Discord channels for game worlds and scenes.</td>
 </tr>
 <tr>
 <td><code>CommandHandlingService</code></td>
@@ -279,55 +310,163 @@ worker; the bot's lifetime is the host's lifetime.</p>
 </tr>
 <tr>
 <td><code>BridgeBanService</code></td>
-<td>Tracks Discord users banned from the bridge; consulted before forwarding.</td>
+<td>Tracks characters and accounts banned from the bridge; consulted before forwarding. A Discord author is checked by their linked account.</td>
 </tr>
 <tr>
 <td><code>RateLimiterService</code></td>
-<td>Per-user / per-channel sliding-window rate limiter to prevent spam from either side.</td>
+<td>Per-user sliding-window rate limiter for the bridge.</td>
 </tr>
 </tbody>
 </table>
 <h3 id="data">Data</h3>
-<p><code>Data/</code> holds POCOs used for configuration binding (channel mappings, bridge
-policy, rate-limit windows) and DTOs for the FishMMO chat REST contract.</p>
+<p><code>Data/</code> holds the bot's own persisted state (<code>BotPersistentData</code>, bridge bans,
+command permissions, dynamic channel state) and in-memory DTOs such as
+<code>PendingLinkVerification</code>. <code>LinkedAccount</code> survives only so old <code>botdata.json</code>
+files still load; see <a href="#account-links">Account Links</a>.</p>
+<hr>
+<h2 id="account-verification-by-discord">Account Verification by Discord</h2>
+<p>A player can verify their game account by email, SMS or <strong>Discord</strong>, and any one
+correct code verifies it. For Discord they give their Discord username at
+registration, in either form Discord uses — <code>fishfan</code>, or <code>FishFan#1234</code> for a
+name that still has its discriminator. The database stores it lowercase.</p>
+<p>The game or the Control Panel issues the code. The bot's only job is to carry
+it: <strong>players never type a code into Discord</strong>.</p>
+<h3 id="the-bot-sends-exactly-one-dm-ever">The bot sends exactly one DM, ever</h3>
+<p>Each account is sent its code once. There are no resends, and there is no command
+to ask for one. A delivery is <em>claimed</em> in the database before the bot sends it
+and <em>marked delivered</em> after, so two bot instances — or a bot racing a player who
+has just verified by email — cannot both send.</p>
+<p>What happens when a send fails depends on whether the message could have gone out:</p>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>What the bot does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Delivered</td>
+<td>Marks it delivered. Nothing is ever sent for that account again.</td>
+</tr>
+<tr>
+<td>Discord <strong>definitely refused</strong> it (a 4xx, e.g. <code>50007</code> — the member's DMs are closed or they blocked the bot)</td>
+<td>Releases it with the reason, and counts an attempt. After <code>MaxSendAttempts</code> (5) it stops.</td>
+</tr>
+<tr>
+<td>Discord <strong>rate-limited</strong> it (429)</td>
+<td>Releases it uncounted; it goes out on a later pass.</td>
+</tr>
+<tr>
+<td><strong>Unknown</strong> — a timeout, a 5xx, a dropped connection</td>
+<td><strong>Leaves it claimed</strong> and logs an error for staff.</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Why an ambiguous failure stays claimed.</strong> A timed-out request may already have
+delivered the message. Retrying it is exactly the second DM this design exists to
+prevent, so the bot doesn't: one DM ever beats a guaranteed delivery. Staff check
+with the player and resolve the row by hand. For the same reason the send turns off
+Discord.Net's automatic retry of timeouts and 502s; only rate limits are retried.</p>
+</blockquote>
+<p>The bot also will not DM a Discord user who is <strong>already linked to a different game
+account</strong>; that delivery is released with the reason and counts as an attempt.</p>
+<h3 id="players-must-join-the-discord-server">Players must join the Discord server</h3>
+<p>Discord only lets a bot DM someone it shares a server with, and only lets it look a
+username up among that server's members. So <code>Discord:DefaultGuildId</code> must be the
+server the game's invite link sends players to.</p>
+<p>A player who isn't a member yet is recorded as <em>waiting to join</em>, and is sent
+their code the moment they join. The join is handled from the gateway's
+member-joined event, with a read of just that member's username, not by polling.
+On a delivery's very first try, if the member isn't in the local member cache,
+the bot makes one REST member search. After that it relies on the cache and the
+join event, so a player who never joins costs nothing per sweep.</p>
+<p>A username matches a member ignoring case. A bare name (<code>fishfan</code>) matches only a
+member without a discriminator, and a tagged name (<code>fishfan#1234</code>) needs the exact
+discriminator. If a name matches more than one member, the bot sends nothing and
+records why. A DM to the wrong person puts a verification code in a stranger's
+hands.</p>
+<h3 id="why-listennotify-and-not-polling">Why LISTEN/NOTIFY and not polling</h3>
+<p>Codes are rare and the accounts table is not small, so the bot doesn't query it on
+a timer. Issuing a code raises a PostgreSQL notification on
+<code>fishmmo_discord_verification</code>. The bot keeps one dedicated, <strong>unpooled</strong>
+connection on <code>LISTEN</code> (a LISTEN is session state, and the shared pool doesn't
+reset sessions), and runs a pass when it fires. It reconnects with capped
+exponential backoff, logging once per outage, and runs a pass after every
+reconnect, in case something was raised while it was down.</p>
+<p>A slow safety sweep (<code>SweepMinutes</code>, default 5) and the gateway's Ready event
+catch anything raised while the bot itself was down. Passes never overlap: every
+wake source signals one queue with a single reader, and wakes during a pass fold
+into one more pass.</p>
+<h3 id="pacing">Pacing</h3>
+<p><code>MinDmIntervalMs</code> (default 1500 ms, never below 250) is a <strong>global</strong> minimum gap
+between any two DMs, sent or failed. Nothing a player does can make the bot send
+faster than that.</p>
+<h3 id="privileged-intent">Privileged intent</h3>
+<p>Matching usernames against members needs the <strong>Server Members</strong> (<code>GUILD_MEMBERS</code>)
+privileged intent, enabled in the Discord developer portal. The bot already
+requests it and downloads the member list on connect. A pass waits until that
+download completes, so nobody is wrongly recorded as not having joined.</p>
+<hr>
+<h2 id="account-links">Account Links</h2>
+<p>A game account's linked Discord user is a <strong>database column</strong>, unique across
+accounts: one Discord account links one game account. A verified Discord code and
+a <code>/link</code> are the same link.</p>
+<ul>
+<li><code>/link &lt;character&gt;</code> DMs the player a short-lived code. When that code appears in
+game chat from the named character, the bot links the character's account.
+Only the pending code lives in memory; the link is written to the database. If
+the Discord user is already linked to a different account, nothing changes and
+the player is told why.</li>
+<li><code>/unlink</code> removes the link. The account stays verified — an unlink is not a
+reason to lock a player out — but the Discord channel's own proof goes.</li>
+<li><code>char whois</code> shows the linked game account, Discord username and linked-since
+date. A link names an account, not a character.</li>
+<li>The bridge-ban check on a Discord author uses their linked <strong>account</strong>.</li>
+</ul>
+<p>Lookups are cached for 60 seconds, because the bridge checks the link on every
+message. Links this bot makes or removes take effect at once. A link made in the
+game or Control Panel is seen within the minute.</p>
+<blockquote>
+<p><strong>Migrating from <code>botdata.json</code>.</strong> Older bots kept links in <code>botdata.json</code>. On
+start the bot imports every remaining entry into the database. It removes the
+entries that imported, and the ones the database refused for good (that Discord
+user is linked to another account, the account no longer exists, or the account
+already has a different Discord user), logging each refusal. Entries that failed
+transiently stay in the file and are retried on the next start.</p>
+</blockquote>
 <hr>
 <h2 id="configuration">Configuration</h2>
-<p>Place <code>appsettings.json</code> in the project root. It is copied to the output
-directory by the build (<code>&lt;CopyToOutputDirectory&gt;PreserveNewest&lt;/CopyToOutputDirectory&gt;</code>).</p>
+<p>Configuration lives in <code>FishMMO-Setup/Development/appsettings.DiscordBot.json</code>
+and <code>FishMMO-Setup/Production/appsettings.DiscordBot.json</code>. The build copies them
+to the output directory as <code>appsettings.json</code> and <code>appsettings.Production.json</code>,
+and <code>appsettings.json</code> files in the working directory override them.</p>
 <h3 id="appsettingsjson-shape"><code>appsettings.json</code> shape</h3>
 <pre><code class="lang-json">{
   &quot;Discord&quot;: {
-    &quot;Token&quot;: &quot;YOUR_DISCORD_BOT_TOKEN&quot;,
-    &quot;Prefix&quot;: &quot;!&quot;,
-    &quot;GuildId&quot;: &quot;0000000000000000000&quot;
+    &quot;DefaultGuildId&quot;: 0
   },
-  &quot;FishMMO&quot;: {
-    &quot;ApiUrl&quot;: &quot;http://localhost:5000/api/&quot;,
-    &quot;ApiKey&quot;: &quot;YOUR_FISHMMO_API_KEY&quot;,
-    &quot;ChatPollIntervalMs&quot;: 1500
+  &quot;Npgsql&quot;: {
+    &quot;Host&quot;: &quot;127.0.0.1&quot;,
+    &quot;Port&quot;: &quot;5432&quot;,
+    &quot;Database&quot;: &quot;fishmmo&quot;,
+    &quot;Schema&quot;: &quot;public&quot;
   },
-  &quot;ChannelMappings&quot;: {
-    &quot;World&quot;:   &quot;discord-channel-id&quot;,
-    &quot;Trade&quot;:   &quot;discord-channel-id&quot;,
-    &quot;Admin&quot;:   &quot;discord-admin-channel-id&quot;
-  },
-  &quot;DynamicChannels&quot;: {
-    &quot;Enabled&quot;: true,
-    &quot;CategoryId&quot;: &quot;discord-category-id&quot;,
-    &quot;AutoArchiveMinutes&quot;: 60
-  },
-  &quot;RateLimits&quot;: {
-    &quot;PerUserPerMinute&quot;: 10,
-    &quot;PerChannelPerMinute&quot;: 60
-  },
-  &quot;Linking&quot;: {
-    &quot;CodeLengthChars&quot;: 8,
-    &quot;CodeTtlSeconds&quot;: 300
-  },
+  &quot;ChatPollingIntervalSeconds&quot;: 5,
   &quot;ChatRelay&quot;: {
-    &quot;GameToDiscordChannels&quot;: [ &quot;Say&quot;, &quot;World&quot;, &quot;Trade&quot;, &quot;Region&quot; ]
+    &quot;GameToDiscordChannels&quot;: [ &quot;World&quot;, &quot;Trade&quot;, &quot;Region&quot; ]
   },
-  &quot;BridgeMessageMaxLength&quot;: 128
+  &quot;BridgeMessageMaxLength&quot;: 128,
+  &quot;DiscordVerification&quot;: {
+    &quot;SweepMinutes&quot;: 5,
+    &quot;BatchSize&quot;: 25,
+    &quot;MinDmIntervalMs&quot;: 1500
+  },
+  &quot;RateLimiting&quot;: {
+    &quot;MaxMessagesPerWindow&quot;: 5,
+    &quot;WindowSeconds&quot;: 10
+  }
 }
 </code></pre>
 <table>
@@ -339,40 +478,44 @@ directory by the build (<code>&lt;CopyToOutputDirectory&gt;PreserveNewest&lt;/Co
 </thead>
 <tbody>
 <tr>
-<td><code>Discord.Token</code></td>
-<td><strong>Secret.</strong> Store via environment override in production.</td>
+<td><code>FISHMMO_DISCORD_TOKEN</code> (environment)</td>
+<td><strong>Secret.</strong> Not a config key: the bot reads its token only from this environment variable, and refuses to connect without it.</td>
 </tr>
 <tr>
-<td><code>Discord.Prefix</code></td>
-<td>Legacy text-command prefix (slash commands are preferred).</td>
+<td><code>Discord.DefaultGuildId</code></td>
+<td>The Discord server the bot operates in. <strong>Must be the server the game's invite link points players to</strong> — verification DMs can only reach its members. <code>0</code> disables channel creation and verification delivery.</td>
 </tr>
 <tr>
-<td><code>FishMMO.ApiUrl</code> / <code>ApiKey</code></td>
-<td>FishMMO chat / account REST endpoint.</td>
+<td><code>Npgsql</code></td>
+<td>Database host, port, name and pool settings, read by FishMMO-DB's <code>NpgsqlDbConfiguration</code> through the shared <code>NpgsqlDbContextFactory</code>, as every other FishMMO process reads them. <strong>No credentials here:</strong> they come from <code>FISHMMO_DB_USERNAME</code> / <code>FISHMMO_DB_PASSWORD</code> or the platform secrets file (see the FishMMO-DB README). <code>FISHMMO_DB_HOST</code> / <code>FISHMMO_DB_PORT</code> / <code>FISHMMO_DB_NAME</code> override the host, port and name.</td>
 </tr>
 <tr>
-<td><code>ChannelMappings</code></td>
-<td>In-game chat channel → Discord channel ID.</td>
-</tr>
-<tr>
-<td><code>DynamicChannels</code></td>
-<td>Configures <code>DynamicChannelManagerService</code>.</td>
-</tr>
-<tr>
-<td><code>RateLimits</code></td>
-<td>Sliding-window settings for <code>RateLimiterService</code>.</td>
-</tr>
-<tr>
-<td><code>Linking</code></td>
-<td>Controls <code>/link</code> codes (length and TTL).</td>
+<td><code>ChatPollingIntervalSeconds</code></td>
+<td>How often <code>ChatPollingService</code> reads new chat rows.</td>
 </tr>
 <tr>
 <td><code>ChatRelay.GameToDiscordChannels</code></td>
-<td><strong>Allowlist</strong> of in-game channels the bot may republish to Discord. Omit for the default (<code>Say</code>, <code>World</code>, <code>Trade</code>, <code>Region</code>). See the warning below.</td>
+<td><strong>Allowlist</strong> of in-game channels the bot may republish to Discord. Omit for the default (<code>World</code>, <code>Trade</code>, <code>Region</code>). See the warning below.</td>
 </tr>
 <tr>
 <td><code>BridgeMessageMaxLength</code></td>
 <td>Caps a Discord message bridged into the game. Keep at or below the game's <code>ChatBroadcast.MaxTextLength</code> (<strong>128</strong>) — clients discard anything longer, so a larger value makes long messages vanish rather than arrive truncated.</td>
+</tr>
+<tr>
+<td><code>DiscordVerification.SweepMinutes</code></td>
+<td>Safety sweep for verification deliveries (default 5, clamped 1–60). Not the delivery path — <code>LISTEN/NOTIFY</code> and member joins are.</td>
+</tr>
+<tr>
+<td><code>DiscordVerification.BatchSize</code></td>
+<td>Most pending deliveries one sweep pass reads (default 25, clamped 1–100).</td>
+</tr>
+<tr>
+<td><code>DiscordVerification.MinDmIntervalMs</code></td>
+<td>Global minimum gap between any two verification DMs (default 1500, clamped 250–60000).</td>
+</tr>
+<tr>
+<td><code>RateLimiting</code></td>
+<td>Sliding-window settings for <code>RateLimiterService</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -387,9 +530,9 @@ Inbound Discord messages are sanitised at the bridge and again server-side, and 
 exempt from in-game tab filtering.</p>
 </blockquote>
 <blockquote>
-<p><strong>Production:</strong> override <code>Discord.Token</code>, <code>FishMMO.ApiKey</code>, and any SMTP-like
-secrets through environment variables (e.g. <code>Discord__Token=…</code>) rather than
-committing them to <code>appsettings.json</code>.</p>
+<p><strong>Production:</strong> set <code>FISHMMO_DISCORD_TOKEN</code>, <code>FISHMMO_DB_USERNAME</code> and
+<code>FISHMMO_DB_PASSWORD</code> through the environment (or the database secrets file)
+rather than committing them to any <code>appsettings</code> file.</p>
 </blockquote>
 <hr>
 <h2 id="build--run">Build &amp; Run</h2>
@@ -405,13 +548,23 @@ Docker.</p>
 <hr>
 <h2 id="deployment-notes">Deployment Notes</h2>
 <ul>
-<li>The bot needs the <code>MESSAGE CONTENT</code> and <code>GUILD MEMBERS</code> privileged intents
-enabled in the Discord developer portal.</li>
+<li>The bot needs the <code>MESSAGE CONTENT</code> and <code>SERVER MEMBERS</code> (<code>GUILD_MEMBERS</code>)
+privileged intents enabled in the Discord developer portal. Without Server
+Members the gateway refuses the connection, and verification codes cannot be
+delivered at all.</li>
 <li>Required Discord scopes: <code>bot</code>, <code>applications.commands</code>.</li>
 <li>Required bot permissions: read/send/manage messages in the bridged channels,
-manage channels under the configured dynamic category, and (for moderation
-commands) timeout / ban members.</li>
-<li>Run it on the same network as the FishMMO API so polling latency stays low.</li>
+manage channels under the dynamic category, and (for moderation commands)
+timeout / ban members.</li>
+<li>The database user needs <code>LISTEN</code> on the FishMMO database. Point the <code>Npgsql</code>
+settings (or <code>FISHMMO_DB_HOST</code> / <code>FISHMMO_DB_PORT</code>) at PostgreSQL directly, or
+at a pooler in <strong>session</strong> mode. A transaction-mode pooler (PgBouncer's default) drops
+<code>LISTEN</code>, and deliveries then wait for the sweep.</li>
+<li>A delivery left claimed after an ambiguous send is logged at error level with
+the account name. Watch for those; each one needs a person to check with the
+player.</li>
+<li>Run it on the same network as the database so polling and notifications stay
+prompt.</li>
 </ul>
 <hr>
 <h2 id="flow-diagram">Flow Diagram</h2>
@@ -419,6 +572,7 @@ commands) timeout / ban members.</li>
     subgraph Discord
         DUser[Discord users]
         DChan[Bridged channels]
+        DDM[Direct messages]
     end
     subgraph Bot[&quot;FishMMO-DiscordBot&quot;]
         Host[Generic Host]
@@ -426,33 +580,44 @@ commands) timeout / ban members.</li>
         Bridge[GameChatBridgeService]
         Cmd[CommandHandlingService]
         Link[AccountLinkingService]
+        Verify[DiscordVerificationService]
         Dyn[DynamicChannelManagerService]
         Rate[RateLimiterService]
         Ban[BridgeBanService]
     end
-    subgraph Game[&quot;FishMMO Server&quot;]
-        API[Chat / Account REST API]
+    subgraph Game[&quot;FishMMO&quot;]
+        DB[(PostgreSQL)]
+        Issuers[Game / Control Panel]
         Players[In-game players]
     end
 
-    Players --&gt; API
-    API --&gt;|poll| Poll
-    Poll --&gt; Bridge --&gt; DChan
+    Players --&gt; DB
+    DB --&gt;|poll chat| Poll
+    Poll --&gt; DChan
 
     DUser --&gt; DChan --&gt; Cmd
     Cmd --&gt;|allow?| Rate
     Cmd --&gt;|allow?| Ban
-    Cmd --&gt; Bridge --&gt; API --&gt; Players
+    Cmd --&gt; Bridge --&gt; DB --&gt; Players
 
-    DUser --&gt;|/link code| Link --&gt; API
-    API --&gt;|in-game redeem| Link
+    DUser --&gt;|/link| Link --&gt;|code| DDM
+    Poll --&gt;|code seen in game chat| Link
+    Link --&gt;|link / unlink| DB
 
-    API --&gt;|&quot;events (party, guild)&quot;| Dyn --&gt; DChan
+    Issuers --&gt;|issue code + NOTIFY| DB
+    DB --&gt;|LISTEN| Verify
+    DUser --&gt;|joins server| Verify
+    Verify --&gt;|claim / delivered / released| DB
+    Verify --&gt;|one DM with the code| DDM
+    DDM --&gt;|player types code| Issuers
+
+    Poll --&gt;|new world / scene| Dyn --&gt; DChan
 
     Host --- Poll
     Host --- Bridge
     Host --- Cmd
     Host --- Link
+    Host --- Verify
     Host --- Dyn
     Host --- Rate
     Host --- Ban

@@ -140,7 +140,7 @@ datagrams on every platform, browsers included.</p>
 than the C# that calls it. <code>WebTransportNative.EnsureInitialized</code> checks that
 before anything else:</p>
 <ul>
-<li><code>wt_abi_version()</code> must equal <code>WebTransportNative.ExpectedAbiVersion</code> (<strong>3</strong>,
+<li><code>wt_abi_version()</code> must equal <code>WebTransportNative.ExpectedAbiVersion</code> (<strong>4</strong>,
 paired with <code>WT_ABI_VERSION</code> in <code>FishMMO-WebTransport/src/webtransport_api.h</code>;
 <code>FishMMO-WebTransport/tests/check_abi_version.sh</code> verifies the pair). A
 mismatch, a <code>DllNotFoundException</code>, or a library too old to export
@@ -184,6 +184,173 @@ share, or a <code>WTError.BufferFull</code> from a reliable send (the native
 per-connection in-flight cap, 8 MB), means the peer is not reading and its
 stream is already broken, so <code>KickSlowClient</code> disconnects it rather than let the
 shared queue drop other clients' reliable packets. Broadcasts (<code>connectionId == -1</code>) count against nobody.</p>
+<h2 id="traffic-statistics">Traffic statistics</h2>
+<p>The transport counts what it sends and receives, and game code reads it all
+through one call. FishNet's <code>StatisticsManager</code> is not used: it is off in
+release builds, hard-disabled on servers (<code>UNITY_SERVER</code>), its byte types are
+<code>internal</code>, and development builds count each byte twice.</p>
+<pre><code class="lang-csharp">using FishNet.Transporting.WebTransport;
+
+TransportTraffic.Capture(out TransportTrafficSnapshot now);          // any thread, no allocation
+if (TransportTrafficMath.TryComputeRates(in previous, in now, out TransportTrafficRates r))
+{
+    double upKBps   = r.WireSentBytesPerSecond / 1024.0;              // NaN when unknown
+    double overhead = r.SentOverheadRatio;                            // wire bytes per app byte
+}
+</code></pre>
+<h3 id="layers">Layers</h3>
+<p>Every figure carries a <code>TrafficMeasure</code>: <code>Measured</code>, <code>BrowserReported</code>,
+<code>Estimated</code>, or <code>Unavailable</code>. An unavailable value is <code>-1</code> (integers) or <code>NaN</code>
+(rates, times) — <strong>never read it as 0 or show it as 0</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>What it is</th>
+<th>Desktop client, editor, servers</th>
+<th>WebGL, browser gives bytes</th>
+<th>WebGL, no bytes (Chrome)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>App</strong> <code>App{Sent,Recv}{Reliable,Unreliable}{Bytes,Messages}</code></td>
+<td>FishNet bundles handed to / delivered by the transport</td>
+<td>Measured (managed socket)</td>
+<td>Measured</td>
+<td>Measured</td>
+</tr>
+<tr>
+<td><strong>Framing</strong> <code>Framing{Sent,Recv}Bytes</code></td>
+<td>the length prefix on every reliable message</td>
+<td>Measured (exact)</td>
+<td>Measured (exact)</td>
+<td>Measured (exact)</td>
+</tr>
+<tr>
+<td><strong>QUIC</strong> <code>Quic{Sent,Recv}Bytes</code></td>
+<td>UDP payload: QUIC headers, AEAD tags, padding, ACK-only packets, retransmissions, handshake</td>
+<td>Measured (msquic <code>UDP_*_BYTES</code>)</td>
+<td>BrowserReported (<code>getStats()</code>)</td>
+<td>Estimated (model below)</td>
+</tr>
+<tr>
+<td><strong>Datagrams</strong> <code>Udp{Sent,Recv}Datagrams</code></td>
+<td>UDP datagrams</td>
+<td>Measured (msquic <code>UDP_SEND</code> / <code>UDP_RECV</code>)</td>
+<td>Estimated (<code>packetsSent/Received</code>)</td>
+<td>Estimated (model)</td>
+</tr>
+<tr>
+<td><strong>Wire</strong> <code>Wire{Sent,Recv}Bytes</code> (derived)</td>
+<td>QUIC + 28 B (IPv4 20 + UDP 8) per datagram</td>
+<td>Estimated, exact up to IP options</td>
+<td>Estimated</td>
+<td>Estimated</td>
+</tr>
+</tbody>
+</table>
+<p>Ethernet framing is deliberately not added: egress is billed at the IP level.
+<code>TransportTrafficMath.IpV4UdpHeaderBytes</code> is 28 because the native stack binds
+IPv4 only.</p>
+<p><code>snapshot.Process</code> (native only) adds msquic's process-wide counters:
+<code>QuicAppSentBytes</code>/<code>QuicAppRecvBytes</code> (the app layer plus this transport's
+framing and HTTP/3 headers, as msquic saw it), connections created, active and
+connected (gauges), handshake failures, connections refused by this
+transport's limits, by msquic load and for no ALPN, protocol errors, packets
+lost/dropped/undecryptable, stateless retries and resets. <code>SessionsOpened</code> /
+<code>SessionsActive</code> are WebTransport sessions: accepted clients on a server,
+successful connects (one per hop) on a client.</p>
+<p><code>snapshot.Connection</code> (clients only) is the client connection's RTT (smoothed,
+min, max, variance), path MTU, congestion window, packets and bytes each way,
+and lost packets (msquic's suspected − spurious; QUIC retransmits the frames of
+lost packets, so this is also the retransmission count). On WebGL only the RTT
+fields can be known, and only where <code>getStats()</code> exists.</p>
+<h3 id="totals-and-clocks">Totals and clocks</h3>
+<ul>
+<li><strong>Process lifetime.</strong> A client's server hop builds a new socket; nothing in
+<code>TransportTraffic</code> is reset by it (the per-session <code>GetClientWireStats</code>
+handshake diagnostics still are). msquic's counters are baselined at every
+<code>wt_init</code> and folded into a carried total before every <code>wt_deinit</code>, so a
+deinitialise does not reset them and a Unity domain reload restarts the
+managed and native totals together.</li>
+<li><strong>Clock.</strong> <code>TimestampSeconds</code> is <code>Stopwatch</code> seconds, the same basis as the
+server's <code>MonotonicClock.NowSeconds</code>. Only differences mean anything.</li>
+<li><strong>Rates.</strong> <code>TryComputeRates</code> fails on an empty interval, a backend change, or
+an application total that went backwards (not one process lifetime). A layer
+whose measure differs between the two ends — a WebGL client whose first
+<code>getStats()</code> answer arrived mid-interval — comes back <code>Unavailable</code> for that
+interval rather than as a spike. To smooth a display, difference against the
+snapshot from a few seconds back rather than averaging one-second rates.</li>
+</ul>
+<h3 id="where-counting-happens">Where counting happens</h3>
+<ul>
+<li><strong>Sends</strong> are counted after the native (or browser) send call accepted them,
+per recipient: a server broadcast is serialised once but paid for once per
+client.</li>
+<li><strong>Receives</strong> are counted on arrival, on the msquic worker thread, <strong>before</strong>
+the server's per-connection rate limiter and before the incoming-event queue:
+a flooder's refused messages still crossed the wire.</li>
+<li>The hot-path cost is two or three uncontended <code>Interlocked</code> adds per message.
+Send and receive counters sit on separate cache lines.</li>
+</ul>
+<h3 id="connection-statistics-and-the-blocking-read">Connection statistics and the blocking read</h3>
+<p>A connection-level msquic read blocks until that connection's worker answers.
+So <code>Capture</code> never makes one: the client socket reads
+<code>wt_client_get_connection_stats</code> itself in <code>IterateIncoming</code>, on the thread
+that polls and later destroys the handle, <strong>at most once a second and only
+while something has called <code>Capture</code> in the last five seconds</strong>. A hidden panel
+costs nothing. The first capture after a quiet spell therefore carries no
+connection statistics yet. The native side keeps the connection handle open
+until an in-flight read returns, so a read that meets the connection's
+shutdown is safe.</p>
+<h3 id="webgl">WebGL</h3>
+<p>The jslib's <code>WTGetStats</code> returns the answers already received from each
+session's <code>getStats()</code> and asks for fresh ones, so figures are at most one
+capture old; cumulative fields are summed over every session the page has
+opened. Byte counts are used only when <strong>both</strong> directions are present. Sent
+bytes are <code>bytesSent + bytesSentOverhead</code> when the overhead field exists (the
+specification's split); Firefox reports wire bytes in <code>bytesSent</code> and omits the
+overhead field. Chrome ships <code>getStats()</code> only behind a flag and without byte
+counters, so on Chrome the QUIC layer is <strong>Estimated</strong> by
+<code>TransportTrafficMath.EstimateBrowserQuic</code> from the socket's own counters:</p>
+<ul>
+<li>per message: the exact length prefix (reliable), a 1-byte Quarter Stream ID
+(datagram), a 3-byte frame header;</li>
+<li>per packet: 30 bytes (1 flags + 9 connection id + 4 packet number + 16 AEAD
+tag); a packet per datagram message, and per reliable message or per 1200
+stream bytes, whichever is more;</li>
+<li>ACKs: one per two packets received, riding on data packets when there are
+enough of them, 5 bytes each;</li>
+<li>per session: a client handshake flight of about 1350 bytes, a server flight of
+about 3000 (a typical certificate chain), and the HTTP/3 set-up (about 150 up,
+35 down).</li>
+</ul>
+<p>The constants come from the RFCs and the native library's own framing; they
+have not been checked against a packet capture, which is why the result is
+labelled Estimated wherever it is shown.</p>
+<h3 id="for-a-server-bandwidth-sampler">For a server bandwidth sampler</h3>
+<p>Take a snapshot every interval and store the <strong>measured</strong> deltas:
+<code>AppSentBytes</code>/<code>AppRecvBytes</code>, <code>QuicSentBytes</code>/<code>QuicRecvBytes</code>,
+<code>UdpSentDatagrams</code>/<code>UdpRecvDatagrams</code> (all <code>Measured</code> on a server),
+<code>SessionsActive</code> at sample time, and from <code>TransportTrafficRates</code>
+<code>SessionsOpened</code> (sessions accepted), <code>ConnectionsRefused</code> (listener limits,
+msquic load, no ALPN) and <code>HandshakeFailures</code>. Compute the IP-level
+figure when reading (<code>udp + datagrams × 28</code>), never store it. The process
+counters cover the whole process, including traffic of connections that never
+became sessions, which is exactly what an operator pays for.</p>
+<p>One msquic 2.5.9 quirk bounds the sent-datagram count. <code>QuicPacketBuilderSendBatch</code>
+reports each batch with the flush's <em>running</em> datagram total rather than the
+batch's own, so a flush that emits several batches over-counts <code>UDP_SEND</code>; the
+byte counters are unaffected. Measured on loopback with both ends in one process
+(<code>FishMMO-WebTransport/tests/stats_e2e.cpp</code>, and a scratch probe): paced
+game-like traffic and a 300 KB reliable burst counted exactly; a connection's
+handshake counted about 20 % more datagrams than were received; a tight mixed
+burst of datagrams and stream messages more than double. The received count is
+exact. The error reaches only the sent IP-header estimate (28 B per over-counted
+datagram), which is labelled Estimated anyway — a few hundred bytes per
+handshake. The fix belongs upstream (count per batch); it is not patched here
+because the Windows build ships msquic's prebuilt <code>msquic.dll</code>.</p>
 <h2 id="wire-format">Wire format</h2>
 <p>A QUIC stream is an ordered byte stream, not a message stream — writes may be
 coalesced or split arbitrarily. Every application message on the reliable
@@ -325,6 +492,14 @@ IPv6Address=::1
 <li>Processing is queued to Unity main thread via <code>ConcurrentQueue&lt;Action&gt;</code></li>
 <li>Send functions MUST be called from the same thread as <code>poll()</code></li>
 </ul>
+<h2 id="licence">Licence</h2>
+<p>This WebTransport transport (the C# code, the WebGL <code>.jslib</code> and the editor tools in this folder)
+is first-party FishMMO code, licensed under the MIT licence in the repository root's <code>LICENSE</code>.
+It sits inside the FishNet folder, whose <code>LICENSE.txt</code> and <code>THIRD PARTY NOTICE.md</code> cover FishNet
+itself, not this transport (whose socket classes follow the layout of FishNet's own transports,
+Tugboat and Bayou, and build on FishNet's <code>Transport</code> API). The native library it loads is built from <code>FishMMO-WebTransport/</code>
+(also MIT) and contains MsQuic (MIT) and quictls (Apache-2.0); see
+<code>FishMMO-WebTransport/THIRD-PARTY-NOTICES.md</code> and <code>THIRD-PARTY-NOTICES.md</code> at the repository root.</p>
 
 </article>
 

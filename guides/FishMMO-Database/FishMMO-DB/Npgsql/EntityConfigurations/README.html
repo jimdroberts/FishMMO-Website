@@ -102,7 +102,10 @@ files consistent with the entities they configure.</p>
 <p>If a future reader finds this surprising, please keep this note in mind rather
 than reorganising files to match the folder structure.</p>
 <h2 id="what-is-here">What is here</h2>
-<p>55 files, one per table, mirroring the folders under <code>Npgsql/Entities/</code>. The table name a
+<p>67 files configuring 72 tables, mirroring the folders under <code>Npgsql/Entities/</code>: one file per
+table, except that <code>Bandwidth/</code>, <code>Daemon/</code> and <code>Maintenance/</code> each keep their folder's
+configurations in one file (<code>ServerBandwidthEntityConfigurations.cs</code>,
+<code>DaemonEntityConfigurations.cs</code>, <code>MaintenanceEntityConfigurations.cs</code>). The table name a
 configuration declares with <code>ToTable(...)</code> is the authority for the schema; the C# names are
 <code>&lt;Name&gt;Entity</code> / <code>&lt;Name&gt;EntityConfiguration</code>.</p>
 <table>
@@ -119,11 +122,27 @@ configuration declares with <code>ToTable(...)</code> is the authority for the s
 </tr>
 <tr>
 <td><code>Login/</code></td>
-<td><code>accounts</code>, <code>auth_tokens</code>, <code>connection_token_keys</code>, <code>email_queue</code>, <code>login_servers</code>, <code>login_server_signing_keys</code>, <code>two_factor_recovery_codes</code></td>
+<td><code>accounts</code>, <code>account_beta_codes</code>, <code>admin_audit_log</code>, <code>auth_tokens</code>, <code>beta_codes</code>, <code>connection_token_keys</code>, <code>email_queue</code>, <code>login_servers</code>, <code>login_server_signing_keys</code>, <code>password_reset_tokens</code>, <code>sms_queue</code>, <code>two_factor_recovery_codes</code>, <code>two_factor_reset_requests</code>, <code>web_sessions</code></td>
 </tr>
 <tr>
 <td><code>World/</code></td>
 <td><code>world_servers</code>, <code>kick_requests</code></td>
+</tr>
+<tr>
+<td><code>Bandwidth/</code></td>
+<td><code>server_bandwidth_minute</code>, <code>server_bandwidth_hour</code> — measured per-minute traffic each server writes about itself (SET-upserted, no FK), rolled into hours by the Control Panel</td>
+</tr>
+<tr>
+<td><code>Daemon/</code></td>
+<td><code>daemon_hosts</code>, <code>daemon_apps</code>, <code>daemon_commands</code>, <code>daemon_app_events</code></td>
+</tr>
+<tr>
+<td><code>Maintenance/</code></td>
+<td><code>maintenance_operations</code>, <code>maintenance_targets</code></td>
+</tr>
+<tr>
+<td><code>Support/</code></td>
+<td><code>support_tickets</code>, <code>support_ticket_messages</code></td>
 </tr>
 <tr>
 <td><code>Scene/</code></td>
@@ -155,14 +174,23 @@ configuration declares with <code>ToTable(...)</code> is the authority for the s
 <h2 id="conventions-these-files-follow">Conventions these files follow</h2>
 <ul>
 <li>Timestamps default with <code>HasDefaultValueSql(&quot;timezone('UTC', CURRENT_TIMESTAMP)&quot;)</code>, never a
-client clock, so rows written by different scene servers order correctly under clock skew.</li>
+client clock, so rows written by different scene servers order correctly under clock skew. A
+default only covers an insert that omits the column, so the raw-SQL writers of stamps another
+process judges (pulses, chat rows, update marks, queue heartbeats) take the database clock in the
+statement itself; see <a href="../../README.html#the-database-clock">The database clock</a>. A bandwidth
+row's <code>bucket_start</code> has no default at all: the writing server reads the database clock first
+and keys the row with it, so a retried upsert lands under the same minute.</li>
 <li>Every index a service's hot query depends on is declared here, with a comment naming the query
 it serves. Services write their upserts as raw SQL with an <code>ON CONFLICT (columns)</code> list, so a
 unique index declared here is load-bearing for that statement: change its columns and the upsert
 starts failing at runtime, not at compile time.</li>
 <li>Partial indexes are used wherever the interesting rows are a minority of the table
 (<code>HasFilter(&quot;active = TRUE&quot;)</code>, <code>HasFilter(&quot;tax_due_utc IS NOT NULL&quot;)</code>,
-<code>HasFilter(&quot;owner_character_id &lt;&gt; 0&quot;)</code>, and similar).</li>
+<code>HasFilter(&quot;owner_character_id &lt;&gt; 0&quot;)</code>, <code>HasFilter(&quot;request_key IS NOT NULL&quot;)</code>, and similar).
+Where the filter compares against a constant (<code>status &lt; 4</code>), the queries it serves write that
+comparison as a literal rather than a parameter: the planner can use the index only when it can
+prove the query implies the filter, and it proves nothing about a parameter once a plan is
+cached. <code>ArenaMatchEntityConfiguration.UnfinishedFilter</code> is the one text both sides share.</li>
 <li>Enum-valued columns are stored as <code>int</code> with a comment fixing the numeric meaning, because this
 assembly cannot reference <code>FishMMO.Shared</code>. The pairing is pinned by tests
 (<code>ItemContainerTypeParityTests</code>, <code>CurrencyLedgerStateTests</code>), not by a shared type.</li>
@@ -196,14 +224,31 @@ scene server resolves the match from the instance it loaded); <code>arena_match_
 <code>(MatchID, CharacterID)</code>; <code>arena_season</code> uses a <strong>partial</strong> unique index
 (<code>HasFilter(&quot;active = TRUE&quot;)</code>) so at most one season is active; <code>arena_rating</code> is unique on
 <code>(SeasonID, CharacterID)</code> with a <code>(SeasonID, Rating)</code> leaderboard index and defaults of <code>1500</code>
-rating / <code>1500</code> peak; <code>arena_penalty</code> is the deserter lock, one row per character.</li>
+rating / <code>1500</code> peak; <code>arena_penalty</code> is the deserter lock, one row per character.
+<code>arena_match</code> also has the partial index <code>ix_arena_match_unfinished_time_created</code> on
+<code>TimeCreated</code>, filtered to unfinished matches (<code>status &lt; 4</code>, before <code>Ended</code>), for the
+abandoned-match sweep every scene server runs (<code>ArenaMatchService.CancelAbandonedAsync</code>): nothing
+deletes finished matches, so without the filter that unscoped sweep read a table that only grows.</li>
 <li><strong><code>Scene/Housing/</code></strong> — five tables. <code>plots</code> is unique on
 <code>(WorldServerID, SceneName, PlotKey)</code> — plots are world-scoped, and <code>PlotKey</code> is capped at 64 to
 match <code>PlotIdentity.MaxPlotKeyLength</code> — with a filtered unique index
-<code>ix_plots_one_house_per_character</code> enforcing one house per character and a filtered <code>TaxDueUtc</code>
-index for the tax sweep. <code>plot_structures</code>, <code>plot_access</code> and <code>plot_updates</code> cascade from the
-plot; <code>plot_vault</code> deliberately has <strong>no</strong> foreign key to <code>plots</code> (it holds what a character is
-owed after the plot is gone) and cascades from the character instead.</li>
+<code>ix_plots_one_house_per_character</code> enforcing one house per character. The tax sweep's page reads
+<code>(WorldServerID, TaxDueUtc, ID)</code>, filtered to <code>tax_due_utc IS NOT NULL</code>: the world leads because
+every sweep names one, and the ID ends the key because the sweep pages with a
+<code>(tax_due_utc, id)</code> keyset. <code>TaxNextAttemptUtc</code> (<code>tax_next_attempt_utc</code>) is set only while a
+plot's owner is held by another server, deferring the plot for the sweeps that cannot bill it; it
+is null on almost every row, so it is filtered on the heap rather than added to the index.
+<code>plot_structures</code>, <code>plot_access</code> and <code>plot_updates</code> cascade from the plot; <code>plot_vault</code>
+deliberately has <strong>no</strong> foreign key to <code>plots</code> (it holds what a character is owed after the plot
+is gone) and cascades from the character instead.</li>
+<li><strong><code>Bandwidth/</code></strong> — two tables, no foreign keys (a server's history outlives its registration row).
+<code>server_bandwidth_minute</code> is keyed <code>(ServerKind, ServerName, BucketStart, InstanceID)</code>: the
+upsert's conflict target (<code>ServerBandwidthService.RecordAsync</code>) and, in that column order, one
+server's history in time order. <code>server_bandwidth_hour</code> is keyed
+<code>(ServerKind, ServerName, BucketStart)</code>, summed over instances by the rollup. Each has a
+<code>BucketStart</code> index for the reads over all servers and the retention deletes. Neither carries an
+<code>xmin</code> token: a minute row has one single-flight writer, and an hour row is recomputed whole
+from its minutes, so rewriting it always leaves the same row.</li>
 </ul>
 
 </article>

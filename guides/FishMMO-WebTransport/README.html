@@ -188,6 +188,10 @@ brew install cmake openssl@3
 ./build_macos.sh
 </code></pre>
 <p>Output: <code>libfishmmo_webtransport.dylib</code> in the Unity <code>mac_x86_64</code> plugin directory.</p>
+<h2 id="msquic-patch-listeners-bind-their-own-address">msquic patch: listeners bind their own address</h2>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-WebTransport/patches/msquic-listener-bind-specific-address.patch"><code>patches/msquic-listener-bind-specific-address.patch</code></a> is applied to the fetched msquic v2.5.9 by <code>FetchContent</code>'s <code>PATCH_COMMAND</code> (<a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-WebTransport/cmake/ApplyPatchOnce.cmake"><code>cmake/ApplyPatchOnce.cmake</code></a>, which skips it when already applied and fails the configure if it no longer applies).</p>
+<p>Upstream msquic ignores a listener's address for its socket: every listener binds the dual-stack wildcard <code>[::]:PORT</code> and filters connections by address afterwards. A game server whose <code>.cfg</code> says <code>Address=127.0.0.1</code> therefore held port 7770 on <strong>every</strong> interface, so NGINX's stream listener on the LAN address (<code>192.168.1.2:7770</code>) failed it with <code>ListenerStart: 0x62</code> (errno 98, address in use), and the server was reachable directly wherever the firewall allowed it. With the patch a listener given a specific address binds exactly that address (<code>[::ffff:127.0.0.1]:7770</code> in <code>ss</code>), and the server-binding lookup compares addresses as well as ports, so listeners on different addresses of one port get separate sockets. Wildcard listeners (<code>0.0.0.0</code>, <code>::</code>) behave as before.</p>
+<p>The CMake builds (<code>build_linux.sh</code>, <code>build_macos.sh</code>, <code>build_windows.ps1 -Static</code>) apply it. The NuGet Windows builds (<code>build_windows_nuget.ps1</code>, the <code>build_windows.ps1</code> default, <code>build_windows_cross.sh</code>) link Microsoft's prebuilt msquic and do <strong>not</strong>: a Windows game server behind NGINX on the same host needs a <code>-Static</code> build. Clients never open a listener and are unaffected.</p>
 <h2 id="tls-provider">TLS provider</h2>
 <p>msquic ships in two TLS flavours and only one of them can host a server for this
 library.</p>
@@ -247,12 +251,12 @@ match:</p>
 <tbody>
 <tr>
 <td>Native</td>
-<td><code>WT_ABI_VERSION</code> = <strong>3</strong></td>
+<td><code>WT_ABI_VERSION</code> = <strong>4</strong></td>
 <td><code>src/webtransport_api.h</code></td>
 </tr>
 <tr>
 <td>Managed</td>
-<td><code>WebTransportNative.ExpectedAbiVersion</code> = <strong>3</strong></td>
+<td><code>WebTransportNative.ExpectedAbiVersion</code> = <strong>4</strong></td>
 <td><code>../FishMMO-Unity/Assets/Plugins/FishNet/Plugins/WebTransport/Native/WebTransportNative.cs</code></td>
 </tr>
 </tbody>
@@ -284,6 +288,10 @@ mismatch.</p>
 <tr>
 <td>3</td>
 <td><code>+ wt_abi_version</code>, <code>wt_tls_provider</code>, <code>WT_ERR_TLS_BACKEND</code> (2026-09-09)</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>+ wt_get_global_counters</code>, <code>wt_client_get_connection_stats</code> (2026-09-25)</td>
 </tr>
 </tbody>
 </table>
@@ -348,6 +356,14 @@ mismatch.</p>
 <tr>
 <td><code>wt_tls_provider()</code></td>
 <td><code>&quot;openssl&quot;</code>, <code>&quot;schannel&quot;</code>, or <code>&quot;unknown&quot;</code> before <code>wt_init()</code></td>
+</tr>
+<tr>
+<td><code>wt_get_global_counters()</code></td>
+<td>msquic's process-wide counters (<code>QUIC_PARAM_GLOBAL_PERF_COUNTERS</code>) into the versioned <code>wt_global_counters_t</code>: UDP datagrams and payload bytes each way, msquic app bytes, connections created/active/connected, handshake failures, refusals (limits, load, ALPN), protocol errors, lost/dropped/undecryptable packets, stateless retries and resets. Never blocks; any thread</td>
+</tr>
+<tr>
+<td><code>wt_client_get_connection_stats()</code></td>
+<td>the client connection's <code>QUIC_STATISTICS_V2</code> into the versioned <code>wt_connection_stats_t</code>: RTT (smoothed/min/max/variance), path MTU, congestion window, packets and bytes each way, suspected and spurious losses. <strong>Blocks</strong> until the connection's worker answers — call from the polling thread, at most about once a second. The handle stays open until an in-flight read returns, so a read racing <code>SHUTDOWN_COMPLETE</code> is safe</td>
 </tr>
 </tbody>
 </table>
@@ -431,11 +447,18 @@ build scripts pass <code>OFF</code>.</p>
 
 bash tests/run_startup_e2e.sh build   # ABI, TLS provider, certificate-vs-backend failure; no certificates needed
 bash tests/run_limits_e2e.sh build    # the limits above on loopback: bucket, kick, both caps, a paced sender
+bash tests/run_stats_e2e.sh build     # statistics exports: counters move with traffic, struct contract, reads racing shutdown
+bash tests/run_race_e2e.sh build      # connection teardown vs application-thread calls: churn, parked first bytes, rescue
 bash tests/check_abi_version.sh       # native WT_ABI_VERSION == C# ExpectedAbiVersion
+
+bash tests/build_asan.sh              # AddressSanitizer build of the library + tests into build_asan/
+bash tests/run_race_e2e.sh build_asan # any e2e script takes it; a lost race is a report, not a flake
 </code></pre>
-<p><code>run_limits_e2e.sh</code> mints a throwaway CA and a <code>localhost</code> leaf in a temp
-directory and hands it to the test through <code>SSL_CERT_FILE</code>, because the native
-client validates TLS strictly.</p>
+<p><code>run_limits_e2e.sh</code>, <code>run_stats_e2e.sh</code> and <code>run_race_e2e.sh</code> mint a throwaway CA and a <code>localhost</code>
+leaf in a temp directory and hand it to the test through <code>SSL_CERT_FILE</code>, because the native
+client validates TLS strictly. <code>build_asan.sh</code> compiles outside CMake on purpose: the CMake
+target writes the library into the Unity plugin folder, which an instrumented build must not
+overwrite.</p>
 <h2 id="platform-support">Platform Support</h2>
 <table>
 <thead>
@@ -509,8 +532,10 @@ and must be rebuilt per-deployment.</p>
 ├── rebuild_only.ps1            Incremental rebuild — prefers the NuGet tree, else the CMake cache
 ├── rebuild_only.bat            cmd.exe wrapper for rebuild_only.ps1
 ├── README.md
+├── cmake/ApplyPatchOnce.cmake  Idempotent patch step for the fetched msquic
+├── patches/                    msquic patches (see &quot;msquic patch&quot; above)
 ├── src/                        C++ source (7 .cpp + 8 .h)
-└── tests/                      wt_limits_e2e, wt_startup_e2e, check_abi_version.sh (-DWT_BUILD_TESTS=ON)
+└── tests/                      wt_*_e2e tests, build_asan.sh, check_abi_version.sh (-DWT_BUILD_TESTS=ON)
 </code></pre>
 <h3 id="generated-not-tracked">Generated, not tracked</h3>
 <table>

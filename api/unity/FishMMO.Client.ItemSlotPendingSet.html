@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Client_ItemSlotPendingSet" data-uid="FishMMO.Client.ItemSlotPendingSet" class="text-break">
-Class ItemSlotPendingSet  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L31"><i class="bi bi-code-slash"></i></a>
+Class ItemSlotPendingSet  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L43"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -163,8 +163,20 @@ unreliable path, a scene handover. The guard does not care which.
 <p>
 Guards are keyed by slot and kept after release rather than removed, because a player
 working out of one bag drags the same handful of slots over and over and re-allocating a
-guard per click would churn for no reason. Count therefore counts guards, not
-pending slots; <a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#FishMMO_Client_ItemSlotPendingSet_HasAnyPending">HasAnyPending</a> is the question worth asking.
+guard per click would churn for no reason. The dictionary therefore outlives the waits it
+holds — its size counts every slot ever touched — which is why the number of slots actually
+waiting is kept as its own field rather than read off <code>guards.Count</code>:
+<a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#FishMMO_Client_ItemSlotPendingSet_PendingCount">PendingCount</a> is that number, and <a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#FishMMO_Client_ItemSlotPendingSet_HasAnyPending">HasAnyPending</a> is the question
+worth asking.
+</p>
+<p>
+This set is PER PANEL, and each panel releases it when it stops showing what it was showing
+— the loot and container panels both do it from <code>Hide</code> and when a different corpse or
+chest arrives, and the item panels do it through <code>ItemOperationTracker.ReleaseAll</code> on
+close, on character change and on destroy. A panel torn down without one of those running
+still leaves nothing behind, because the set dies with the panel that holds it and any wait
+that somehow outlives the frame is expired by the tick. Nothing here is static and nothing
+here is shared between panels.
 </p>
 </div>
 
@@ -176,7 +188,7 @@ pending slots; <a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#Fish
 
   <h3 id="FishMMO_Client_ItemSlotPendingSet_ItemOperationTimeoutSeconds" data-uid="FishMMO.Client.ItemSlotPendingSet.ItemOperationTimeoutSeconds">
   ItemOperationTimeoutSeconds
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L44"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L56"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>How long an item operation may go unanswered before the slot is handed back.</p>
@@ -220,7 +232,7 @@ silent one.</p>
 
   <h3 id="FishMMO_Client_ItemSlotPendingSet_HasAnyPending" data-uid="FishMMO.Client.ItemSlotPendingSet.HasAnyPending">
   HasAnyPending
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L56"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L68"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>True while any slot in this container is waiting on the server.</p>
@@ -252,7 +264,7 @@ silent one.</p>
 
   <h3 id="FishMMO_Client_ItemSlotPendingSet_PendingCount" data-uid="FishMMO.Client.ItemSlotPendingSet.PendingCount">
   PendingCount
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L53"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L65"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Number of slots that currently have a request outstanding.</p>
@@ -288,7 +300,7 @@ silent one.</p>
 
   <h3 id="FishMMO_Client_ItemSlotPendingSet_CollectExpired" data-uid="FishMMO.Client.ItemSlotPendingSet.CollectExpired">
   CollectExpired()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L157"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L228"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Collects the slots whose wait has just expired.</p>
@@ -317,6 +329,76 @@ silent one.</p>
   <div class="markdown level1 remarks"><p><a class="xref" href="FishMMO.Client.PendingReplyGuard.html#FishMMO_Client_PendingReplyGuard_HasExpired">HasExpired()</a> is self-clearing and reports true exactly
 once per wait, so this can be driven straight from a per-frame tick and each slot is
 handed back once. The returned list is reused; copy it if you need to keep it.</p>
+<p>
+The count is clamped at zero rather than allowed to go negative. That clamp is a
+courtesy, not a guarantee: it keeps a drift between the field and the guards from
+turning into a counter that never comes back down and silently disables
+<a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#FishMMO_Client_ItemSlotPendingSet_HasAnyPending">HasAnyPending</a>, but it also HIDES the drift while doing so — a negative
+result means the field disagreed with the guards, and the fix is wherever that happened,
+not here.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Client_ItemSlotPendingSet_CollectPending_" data-uid="FishMMO.Client.ItemSlotPendingSet.CollectPending*"></a>
+
+  <h3 id="FishMMO_Client_ItemSlotPendingSet_CollectPending_System_Collections_Generic_List_System_Int32__" data-uid="FishMMO.Client.ItemSlotPendingSet.CollectPending(System.Collections.Generic.List{System.Int32})">
+  CollectPending(List&lt;int&gt;)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L195"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Collects every slot that currently has a request outstanding.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void CollectPending(List&lt;int&gt; into)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>into</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;</dt>
+    <dd><p>Receives the pending slot indices, appended. NOT cleared by this call.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Client_ItemSlotPendingSet_CollectPending_System_Collections_Generic_List_System_Int32___remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+For the one question the per-slot accessors cannot answer: which pending slots are no
+longer worth waiting for. A panel viewing a SHARED pile — a corpse, a world chest — is
+re-sent the whole contents whenever any looter takes something, and a slot that has
+vanished from that snapshot is a request this client lost the race on. Its reply is
+already accounted for by the snapshot, so the panel prunes it immediately rather than
+leaving it locked until the watchdog fires, on a row that is no longer on screen.
+Answering that needs the pending set enumerated, because the caller is looking for slots
+it does NOT have any more and so has nothing to ask <a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#FishMMO_Client_ItemSlotPendingSet_IsPending_System_Int32_">IsPending(int)</a> about.
+</p>
+<p>
+Fills a caller-supplied list rather than returning a shared buffer, unlike
+<a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#FishMMO_Client_ItemSlotPendingSet_CollectExpired">CollectExpired()</a>: the caller iterates the result while calling
+<a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#FishMMO_Client_ItemSlotPendingSet_Release_System_Int32_">Release(int)</a>, and a prune interleaved with a tick must not have the tick's
+buffer pulled out from under it.
+</p>
+<p>
+IT APPENDS AND NEVER CLEARS. The single caller clears its scratch list first, and every
+caller must: a buffer carried across two calls reports the slots that were pending the
+first time as well, and the prune that reads it releases on the strength of a snapshot
+it has already acted on. That is not a cosmetic double-report — <a class="xref" href="FishMMO.Client.ItemSlotPendingSet.html#FishMMO_Client_ItemSlotPendingSet_Release_System_Int32_">Release(int)</a>
+does not care whether the slot is still the one the caller meant, so a stale index
+handed back to a prune releases a LIVE claim, which is precisely the double-submit this
+whole type exists to prevent. Clearing here instead would hide the mistake rather than
+remove it, and would make <code>into</code> mean something different from every other
+out-parameter in this file.
+</p>
 </div>
 
 
@@ -326,7 +408,7 @@ handed back once. The returned list is reused; copy it if you need to keep it.</
 
   <h3 id="FishMMO_Client_ItemSlotPendingSet_IsPending_System_Int32_" data-uid="FishMMO.Client.ItemSlotPendingSet.IsPending(System.Int32)">
   IsPending(int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L63"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L75"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Reports whether a request is outstanding on <code class="paramref">slot</code>.</p>
@@ -365,7 +447,7 @@ handed back once. The returned list is reused; copy it if you need to keep it.</
 
   <h3 id="FishMMO_Client_ItemSlotPendingSet_Release_System_Int32_" data-uid="FishMMO.Client.ItemSlotPendingSet.Release(System.Int32)">
   Release(int)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L108"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L120"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Ends the wait on <code class="paramref">slot</code>.</p>
@@ -404,7 +486,7 @@ handed back once. The returned list is reused; copy it if you need to keep it.</
 
   <h3 id="FishMMO_Client_ItemSlotPendingSet_ReleaseAll_System_Collections_Generic_List_System_Int32__" data-uid="FishMMO.Client.ItemSlotPendingSet.ReleaseAll(System.Collections.Generic.List{System.Int32})">
   ReleaseAll(List&lt;int&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L129"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L143"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Ends every outstanding wait, reporting the slots that were released.</p>
@@ -430,7 +512,9 @@ handed back once. The returned list is reused; copy it if you need to keep it.</
 
 
   <h4 class="section" id="FishMMO_Client_ItemSlotPendingSet_ReleaseAll_System_Collections_Generic_List_System_Int32___remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Used by every teardown path — panel close, character change, quit to login, destroy.
+  <div class="markdown level1 remarks"><p>The item panels reach this through <code>ItemOperationTracker.ReleaseAll</code>, which they
+call on close, on character change, quit to login and destroy; the loot and container
+panels call it directly from <code>Hide</code> and when the pile they are showing is replaced.
 A lock that outlives the panel it belongs to is worse than no lock at all: the slot is
 rebuilt from the container looking normal, but the set still refuses the next click.</p>
 </div>
@@ -442,7 +526,7 @@ rebuilt from the container looking normal, but the set still refuses the next cl
 
   <h3 id="FishMMO_Client_ItemSlotPendingSet_TryBegin_System_Int32_System_Single_" data-uid="FishMMO.Client.ItemSlotPendingSet.TryBegin(System.Int32,System.Single)">
   TryBegin(int, float)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L80"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Client/GUI/World/ItemContainers/ItemSlotPendingSet.cs/#L92"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Claims <code class="paramref">slot</code> for a request that is about to be sent.</p>

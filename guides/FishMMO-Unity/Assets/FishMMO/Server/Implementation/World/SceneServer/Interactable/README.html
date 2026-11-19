@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Interactable System | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Interactable System | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/Interactable/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="interactable-system">Interactable System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/FishMMO/Server/Implementation/World/SceneServer/Interactable/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> The scene server's handling of a player using a world interactable: validation, the
+per-connection interaction guard, dispatch to the interactable's ECA triggers and to module handlers, server-authoritative
+dialogue, container looting, and portal activations.</p>
+<h2 id="overview">Overview</h2>
+<p><strong>Interaction behaviour is data, not code.</strong> There is no server-side handler registry: <code>InteractableSystem</code> validates
+the request and then calls <code>IInteractable.ExecuteOnInteract(eventData)</code>, which fires the <code>OnInteractTriggers</code> authored
+on the interactable prefab through the ECA trigger system. Modules add behaviour two ways: their own triggers on the
+prefab (or attached at run time through <code>InteractableTriggers</code>), and the <code>OnPlayerInteracting</code> event raised just before
+the triggers run.</p>
+<table>
+<thead>
+<tr>
+<th>Partial class</th>
+<th>Handles</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InteractableSystem.cs</code></td>
+<td>Broadcast registration, validation, ingress guard, dispatch, <code>OnPlayerInteracting</code>, NPC look-at, main-thread queue drain, <code>SendNewItemBroadcast</code></td>
+</tr>
+<tr>
+<td><code>InteractableSystem.Dialogue.cs</code></td>
+<td><code>DialogueChoiceBroadcast</code>: server-authoritative dialogue sessions and the per-character choice cache</td>
+</tr>
+<tr>
+<td><code>InteractableSystem.Container.cs</code></td>
+<td><code>ContainerTakeItemBroadcast</code>: taking items from an open container</td>
+</tr>
+<tr>
+<td><code>InteractableSystem.Portal.cs</code></td>
+<td>The server's <code>PortalActivationStore</code>: reads and writes <code>character_portals</code> and <code>world_portal_state</code>, and tells clients which portals are open for them. The use of a portal is decided by <code>PortalGate</code> in the shared assembly.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What moved to modules</strong> (each with its own system and README): merchants, mail and corpse loot (Commerce), ability
+crafting (Ability Crafting), the group finder, dungeon finder and arenas (Matchmaking), waypoint discovery and fast
+travel (Travel). The interactables themselves, placed in the world, stay in the core; without the module they open
+nothing.</p>
+<p><strong>Threading.</strong> Validation, the ingress guard, trigger execution, dialogue sessions and broadcasts run on the main
+thread. Database reads and writes (dialogue choices, portal activations) run on the async worker and come back through
+<code>IInteractableSystemMainThreadQueueData</code>. All interaction entry points share one per-connection <code>IngressGuard</code> with a
+configurable cooldown, so only one interaction is in flight per connection; stale entries are swept with bounded
+cleanup.</p>
+<h2 id="configuration">Configuration</h2>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxMainThreadActionsPerFrame</code></td>
+<td>int</td>
+<td>100</td>
+<td>Actions drained from the main-thread queue per frame</td>
+</tr>
+<tr>
+<td><code>interactionDebounceMilliseconds</code></td>
+<td>int</td>
+<td>1000</td>
+<td>Global interaction cooldown: a player interacts with one thing at a time</td>
+</tr>
+<tr>
+<td><code>debounceSweepIntervalSeconds</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>Seconds between bounded debounce tracker sweeps</td>
+</tr>
+<tr>
+<td><code>debounceEntryTtlSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>Seconds before a stale debounce entry is removed</td>
+</tr>
+<tr>
+<td><code>debounceSweepMaxRemovals</code></td>
+<td>int</td>
+<td>128</td>
+<td>Stale entries removed per sweep and tracker</td>
+</tr>
+<tr>
+<td><code>worldSceneDetailsCache</code></td>
+<td>WorldSceneDetailsCache</td>
+<td></td>
+<td>Scene validation and respawn lookup</td>
+</tr>
+<tr>
+<td><code>portalFlushIntervalSeconds</code></td>
+<td>float</td>
+<td>30.0</td>
+<td>How often unconfirmed portal activations are written again</td>
+</tr>
+<tr>
+<td><code>portalWorldRefreshSeconds</code></td>
+<td>float</td>
+<td>120.0</td>
+<td>How often a scene's world portal openings are re-read (openings made on another scene server)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MaxActiveDialogueSessions</code></td>
+<td>2048</td>
+<td>Concurrent dialogue sessions before new ones are refused</td>
+</tr>
+<tr>
+<td><code>MaxCachedChoiceCharacters</code></td>
+<td>4096</td>
+<td>Characters with cached dialogue choices before eviction</td>
+</tr>
+</tbody>
+</table>
+<h2 id="broadcast-handlers">Broadcast Handlers</h2>
+<table>
+<thead>
+<tr>
+<th>Broadcast</th>
+<th>Handler</th>
+<th>Partial</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InteractableBroadcast</code></td>
+<td><code>OnServerInteractableBroadcastReceived</code></td>
+<td><code>InteractableSystem.cs</code></td>
+<td>Use an interactable</td>
+</tr>
+<tr>
+<td><code>DialogueChoiceBroadcast</code></td>
+<td><code>OnServerDialogueChoiceBroadcastReceived</code></td>
+<td><code>InteractableSystem.Dialogue.cs</code></td>
+<td>Choose a dialogue option</td>
+</tr>
+<tr>
+<td><code>ContainerTakeItemBroadcast</code></td>
+<td><code>OnServerContainerTakeItemBroadcastReceived</code></td>
+<td><code>InteractableSystem.Container.cs</code></td>
+<td>Take an item from a container</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage">Usage</h2>
+<h3 id="generic-interaction-dispatch">Generic Interaction Dispatch</h3>
+<p><code>OnServerInteractableBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, spawned object, and character.</li>
+<li>Acquires ingress guard (<code>EndIngressGuard</code> in a <code>finally</code>).</li>
+<li>Validates scene via <code>WorldSceneDetailsCache</code>.</li>
+<li>Validates scene object via <code>ValidateSceneObject</code> (existence + same-scene check).</li>
+<li>Resolves the interactable with <code>InteractableResolver.Resolve(sceneObject)</code>.</li>
+<li>Calls <code>interactable.CanInteract(character)</code>, then <code>interactable.TryConsumeInteractRateLimit(character)</code>.
+Every refusal above logs at Debug with the reason (corpse / in-range / rate-limited) — the branches
+used to decline in silence, which made &quot;I pressed E and nothing happened&quot; undiagnosable.</li>
+<li>Raises <code>OnPlayerInteracting(character, interactable)</code>. Interaction kinds intrinsic to the interactable are handled
+by whoever subscribes, before the triggers: the Commerce module opens a corpse's loot window here, so a missing
+<code>OnInteractTriggers</code> entry cannot make a creature unlootable. A throwing handler does not stop the interaction.</li>
+<li>Calls <code>interactable.ExecuteOnInteract(new PlayerInteractionEventData(...))</code> to run the prefab's
+<code>OnInteractTriggers</code>. The event data carries a <code>SendNewItemBroadcast</code> callback so triggers that
+grant items can tell the client.</li>
+</ol>
+<h3 id="dialogue-session">Dialogue Session</h3>
+<p><strong>Start</strong> (<code>StartDialogueSession</code> / <code>StartECADialogueSession</code>):</p>
+<ol>
+<li>Ends any existing session for the character.</li>
+<li>Checks bounded session capacity (<code>MaxActiveDialogueSessions</code>).</li>
+<li>Evaluates start node conditions via ECA.</li>
+<li>Executes start node on-enter actions.</li>
+<li>Loads cached choices for the character + template.</li>
+<li>Creates <code>DialogueSession</code> and broadcasts <code>DialogueStartBroadcast</code>.</li>
+</ol>
+<p><strong>Choice</strong> (<code>OnServerDialogueChoiceBroadcastReceived</code>):</p>
+<ol>
+<li>Validates session exists and node matches.</li>
+<li>Validates template, scene, and range (skipped for ECA sessions).</li>
+<li>Validates choice index bounds.</li>
+<li>Evaluates choice conditions via ECA.</li>
+<li>Executes current node on-exit actions and choice on-select actions.</li>
+<li>Updates choice bitmask.</li>
+<li>If <code>NextNodeId &lt; 0</code>: persists cached choices if enabled, broadcasts <code>DialogueEndBroadcast</code>.</li>
+<li>Otherwise: evaluates next node conditions, executes on-enter actions, advances session, broadcasts <code>DialogueChoiceResultBroadcast</code>.</li>
+</ol>
+<h3 id="container-take-item">Container Take Item</h3>
+<p><code>OnServerContainerTakeItemBroadcastReceived(conn, msg, channel)</code>:</p>
+<ol>
+<li>Validates connection, character, inventory controller, and ingress guard.</li>
+<li>Validates scene object and interactable in range.</li>
+<li>Confirms interactable is <code>IContainer</code> + <code>IItemContainer</code> with a template.</li>
+<li>Removes item from container slot.</li>
+<li>Calls <code>SendNewItemBroadcast</code> to add to inventory; on failure, puts item back.</li>
+<li>If container is empty and <code>DespawnWhenEmpty</code> is enabled, despawns.</li>
+</ol>
+<h3 id="inventory-persistence">Inventory Persistence</h3>
+<p>This system does not place, broadcast or persist items itself. Both entry points delegate to
+<code>CharacterInventorySystem</code>, which is the one grant funnel that hands an item its database identity:</p>
+<p><code>SendNewItemBroadcast(conn, character, inventoryController, newItem)</code>:</p>
+<ol>
+<li>Requires an <code>IPlayerCharacter</code>; refuses otherwise.</li>
+<li>Resolves <code>ICharacterInventorySystem</code> from <code>Server.BehaviourRegistry</code>. <strong>If it is absent the grant
+is refused</strong> rather than persisted without a write-back — an item that never learns its id cannot
+be equipped, used or moved, so the caller's own fallback (put it back on the corpse, refund the
+purchase) is the better outcome.</li>
+<li>Returns <code>inventorySystem.TryGrantItem(playerCharacter, newItem, InventoryType.Inventory)</code>.</li>
+</ol>
+<p><code>PersistInventoryChanges(character, changed, removed)</code> hands changed rows to <code>inventorySystem.PersistInventoryChanges</code> — the journalled batch. The caller has already
+told the client. Same registry-absent refusal, logged as an error.</p>
+<p>The place/broadcast/persist body used to live here and was one of three copies (quest and
+achievement systems had their own); only this one wrote the identity back, which is why they were
+collapsed into <code>CharacterInventorySystem.TryGrantItem</code>.</p>
+<h3 id="interactable-types">Interactable Types</h3>
+<p>Each type is a component deriving from <code>Interactable</code> in
+<a href="https://github.com/jimdroberts/FishMMO/tree/main/FishMMO-Unity/Assets/FishMMO/Shared/Implementation/Entity/Interactable"><code>Shared/Implementation/Entity/Interactable/</code></a>. None of them
+carries interaction logic in this server system — the component supplies
+identity, display metadata, <code>CanInteract</code> rules, and template references, while
+the behaviour listed below is what the prefab's <code>OnInteractTriggers</code> are
+conventionally wired to do.</p>
+<table>
+<thead>
+<tr>
+<th>Interactable Type</th>
+<th>Typical authored behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AbilityCrafter</code></td>
+<td>Opens the ability crafting UI (Ability Crafting module); NPC look-at</td>
+</tr>
+<tr>
+<td><code>Banker</code></td>
+<td>Sets <code>LastInteractableID</code>, opens bank UI; NPC look-at; achievement</td>
+</tr>
+<tr>
+<td><code>Bindstone</code></td>
+<td>Sets character <code>BindPosition</code> and <code>BindScene</code>; achievement</td>
+</tr>
+<tr>
+<td><code>CapturePoint</code></td>
+<td>Applies capture progress, broadcasts state, achievement on capture</td>
+</tr>
+<tr>
+<td><code>Container</code></td>
+<td>Builds slot data and opens the container UI; achievement</td>
+</tr>
+<tr>
+<td><code>DialogueInteractable</code></td>
+<td>Starts a server-authoritative dialogue session; NPC look-at</td>
+</tr>
+<tr>
+<td><code>DungeonEntrance</code></td>
+<td>Opens the dungeon finder UI (Matchmaking module)</td>
+</tr>
+<tr>
+<td><code>GatheringNode</code></td>
+<td>Rolls the weighted drop table, grants items, decrements uses, auto-despawns</td>
+</tr>
+<tr>
+<td><code>LoreObject</code></td>
+<td>Idempotently grants abilities / events / items</td>
+</tr>
+<tr>
+<td><code>Mailbox</code></td>
+<td>Opens the mail UI (Commerce module); achievement</td>
+</tr>
+<tr>
+<td><code>Merchant</code></td>
+<td>Opens the merchant UI with the template ID (Commerce module); NPC look-at</td>
+</tr>
+<tr>
+<td><code>PlotFoundation</code></td>
+<td>Housing: the placed foundation a plot's row points at; <code>ClaimPlotAction</code> buys it</td>
+</tr>
+<tr>
+<td><code>QuestInteractable</code></td>
+<td>Offers and turns in quests</td>
+</tr>
+<tr>
+<td><code>Shrine</code></td>
+<td>Heals health/mana by percentage, applies buff stacks; achievement</td>
+</tr>
+<tr>
+<td><code>Switch</code></td>
+<td>Toggles <code>ISwitchTarget</code> activate/deactivate; achievement</td>
+</tr>
+<tr>
+<td><code>Teleporter</code></td>
+<td>Teleports via direct transform or named destination; achievement</td>
+</tr>
+<tr>
+<td><code>Waypoint</code></td>
+<td>The Travel module attaches its <code>Waypoint Interact</code> trigger at run time (<code>InteractableTriggers</code>): <code>UnlockWaypointAction</code> and the discovery achievement. Travel is <strong>not</strong> an interaction: it is requested from the map, validated by the server, and the arrival runs <code>OnTravelTriggers</code></td>
+</tr>
+<tr>
+<td><code>WorldItem</code></td>
+<td>Picks up the item with a concurrency guard, adjusts stack or despawns; achievement</td>
+</tr>
+<tr>
+<td><code>ArenaBoard</code></td>
+<td>Opens the arena panel (Matchmaking module; its season leaderboard tab is the Leaderboards module's)</td>
+</tr>
+<tr>
+<td><code>ArenaObjective</code></td>
+<td>A flag stand or control point; its trigger runs <code>InteractWithArenaObjectiveAction</code>, which the Matchmaking module's match coordinator scores</td>
+</tr>
+</tbody>
+</table>
+<p>Because the mapping is authored per prefab rather than compiled in, two
+<code>Shrine</code> prefabs can behave differently, and a prefab whose <code>OnInteractTriggers</code>
+list is empty is interactable but inert — see <a href="#operational-checks">Operational Checks</a>.</p>
+<h3 id="failure-semantics">Failure Semantics</h3>
+<ul>
+<li>Invalid requests fail closed with no mutation.</li>
+<li>Scene/object/range checks prevent cross-scene and spoofed interaction attempts.</li>
+<li>Ability craft event selection rejects duplicates and unknown/unowned events.</li>
+<li>Dialogue sessions are bounded; excess sessions are rejected with a warning.</li>
+<li>World item pickup uses <code>ConcurrentDictionary</code> to prevent item duplication.</li>
+<li>Async enqueue failures are handled explicitly: known-ability and crafted-ability grants fail closed (no learn mutation, no charge on rejection); writes that must not be dropped go through <code>EnqueuePersistence</code>, which the worker admits even past its backpressure threshold.</li>
+<li>Main-thread completion paths revalidate runtime state before mutating or broadcasting.</li>
+<li>Ingress guards are always released in <code>finally</code> blocks (synchronous or async-owned).</li>
+</ul>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How to Verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initialization success</td>
+<td>Confirm <code>InteractableSystem</code> logs &quot;Initialized&quot; without errors on server startup</td>
+</tr>
+<tr>
+<td>Trigger wiring</td>
+<td>Confirm each interactable prefab has its <code>OnInteractTriggers</code> list populated; an empty list means interacting does nothing</td>
+</tr>
+<tr>
+<td>Data containers available</td>
+<td>Verify <code>IInteractableSystemRuntimeData</code> and <code>IInteractableSystemMainThreadQueueData</code> resolve from <code>DataContainerRegistry</code></td>
+</tr>
+<tr>
+<td>Dialogue start</td>
+<td>Interact with <code>DialogueInteractable</code>; confirm <code>DialogueStartBroadcast</code> with template ID and start node</td>
+</tr>
+<tr>
+<td>Dialogue choice</td>
+<td>Send <code>DialogueChoiceBroadcast</code> with valid node/choice; confirm <code>DialogueChoiceResultBroadcast</code> or <code>DialogueEndBroadcast</code></td>
+</tr>
+<tr>
+<td>Dialogue range check</td>
+<td>Move out of range during dialogue; confirm session ends with <code>DialogueEndBroadcast</code></td>
+</tr>
+<tr>
+<td>ECA dialogue</td>
+<td>Trigger <code>DisplayDialogueAction</code>; confirm dialogue session starts without physical interactable</td>
+</tr>
+<tr>
+<td>Dialogue session cap</td>
+<td>Fill <code>MaxActiveDialogueSessions</code>; confirm new sessions are rejected with warning</td>
+</tr>
+<tr>
+<td>Container take item</td>
+<td>Send <code>ContainerTakeItemBroadcast</code>; confirm item appears in inventory via <code>InventorySetMultipleItemsBroadcast</code></td>
+</tr>
+<tr>
+<td>Container auto-despawn</td>
+<td>Take last item from <code>DespawnWhenEmpty</code> container; confirm container despawns</td>
+</tr>
+<tr>
+<td>Container failed pickup</td>
+<td>Take item with full inventory; confirm item is returned to container slot</td>
+</tr>
+<tr>
+<td>World item pickup</td>
+<td>Interact with <code>WorldItem</code>; confirm item added to inventory and world item despawned</td>
+</tr>
+<tr>
+<td>World item duplication guard</td>
+<td>Interact with same <code>WorldItem</code> from two connections simultaneously; confirm only one succeeds</td>
+</tr>
+<tr>
+<td>Gathering node</td>
+<td>Interact with <code>GatheringNode</code>; confirm <code>GatheringNodeBroadcast</code> and item grant</td>
+</tr>
+<tr>
+<td>Gathering node depletion</td>
+<td>Deplete all uses; confirm node despawns</td>
+</tr>
+<tr>
+<td>Capture point</td>
+<td>Interact with <code>CapturePoint</code>; confirm <code>CapturePointUpdateBroadcast</code> with progress</td>
+</tr>
+<tr>
+<td>Shrine healing</td>
+<td>Interact with <code>Shrine</code>; confirm health/mana restored and <code>ShrineBroadcast</code> sent</td>
+</tr>
+<tr>
+<td>Switch toggle</td>
+<td>Interact with <code>Switch</code>; confirm <code>SwitchStateBroadcast</code> with toggled state</td>
+</tr>
+<tr>
+<td>Bindstone</td>
+<td>Interact with <code>Bindstone</code>; confirm <code>BindPosition</code> and <code>BindScene</code> updated</td>
+</tr>
+<tr>
+<td>Teleporter</td>
+<td>Interact with <code>Teleporter</code>; confirm character repositioned or teleported</td>
+</tr>
+<tr>
+<td>Lore object</td>
+<td>Interact with <code>LoreObject</code>; confirm <code>LoreObjectBroadcast</code> and idempotent ability grants</td>
+</tr>
+<tr>
+<td>Ingress debounce</td>
+<td>Send rapid consecutive interactions; confirm excess requests are dropped</td>
+</tr>
+<tr>
+<td>Debounce sweep</td>
+<td>Wait for <code>debounceSweepIntervalSeconds</code>; confirm stale entries are cleaned up</td>
+</tr>
+<tr>
+<td>NPC look-at</td>
+<td>Interact with NPC merchant; confirm NPC faces character and transitions to idle</td>
+</tr>
+<tr>
+<td>Out-of-range interaction</td>
+<td>Send interaction from beyond range; confirm request is rejected</td>
+</tr>
+<tr>
+<td>Cross-scene interaction</td>
+<td>Send interaction for object in different scene; confirm request is rejected</td>
+</tr>
+<tr>
+<td>Main-thread queue drain</td>
+<td>Confirm queued async results are dispatched on the main thread within <code>maxMainThreadActionsPerFrame</code> per frame</td>
+</tr>
+<tr>
+<td>Async backpressure</td>
+<td>Saturate async worker queue; confirm <code>TryEnqueueAsyncWork</code> requests are refused with a logged warning, while <code>EnqueuePersistence</code> writes are still admitted behind the backlog with a counted overflow line</td>
+</tr>
+<tr>
+<td>Inventory system absent</td>
+<td>Unregister <code>ICharacterInventorySystem</code>; confirm an item grant is refused with an error rather than persisted</td>
+</tr>
+<tr>
+<td>Deinitialize cleanup</td>
+<td>Trigger deinitialize; confirm broadcast handlers unregistered, handlers cleared, dialogue sessions cleared, and main-thread queue drained</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagrams">Flow Diagrams</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|interact request| Sys[InteractableSystem]
+    Sys --&gt;|range + cooldown check| Sys
+    Sys --&gt;|ExecuteOnInteract| Handler[OnInteractTriggers - ECA]
+    Handler --&gt;|loot / dialogue / portal| Effects
+    Effects --&gt;|persist| DB[(PostgreSQL)]
+    Effects --&gt;|broadcast| Client
+</code></pre>
+<h3 id="generic-interaction-dispatch-1">Generic Interaction Dispatch</h3>
+<pre><code>OnServerInteractableBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + spawned character
+├─ 2. Acquire ingress guard (global key 0)
+├─ 3. Validate scene via WorldSceneDetailsCache
+├─ 4. ValidateSceneObject(msg.InteractableID, characterSceneHandle)
+│      ├── Existence check in SceneObject.Objects
+│      └── Same-scene handle check
+├─ 5. InteractableResolver.Resolve(sceneObject)
+├─ 6. CanInteract(character) + TryConsumeInteractRateLimit(character)
+└─ 7. RaisePlayerInteracting (modules), then interactable.ExecuteOnInteract(...)
+       │
+       └── (Trigger actions: broadcast, state change, achievement, etc.)
+</code></pre>
+<h3 id="dialogue-flow">Dialogue Flow</h3>
+<pre><code>StartDialogueSession(character, sceneObject, dialogue)
+│
+├─ EndDialogueSession (close any existing)
+├─ Bounded capacity check
+├─ Evaluate start node conditions (ECA)
+├─ Execute start node on-enter actions
+├─ Load cached choices
+├─ Create DialogueSession
+└─ Broadcast DialogueStartBroadcast
+
+OnServerDialogueChoiceBroadcastReceived(conn, msg, channel)
+│
+├─ 1. Validate connection + character + ingress guard
+├─ 2. Validate session exists + node matches
+├─ 3. Validate template + scene + range
+├─ 4. Validate choice index bounds
+├─ 5. Evaluate choice conditions (ECA)
+├─ 6. Execute current node on-exit actions
+├─ 7. Execute choice on-select actions
+├─ 8. Update choice bitmask
+└─ 9. If NextNodeId &lt; 0:
+       │    ├── Cache choices if enabled
+       │    └── EndDialogueSessionWithBroadcast
+       └── Else:
+            ├── Evaluate next node conditions
+            ├── Execute next node on-enter actions
+            ├── Advance session (CurrentNodeId = NextNodeId)
+            └── Broadcast DialogueChoiceResultBroadcast
+</code></pre>
+<h2 id="license">License</h2>
+<p>This project is subject to the FishMMO project license.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

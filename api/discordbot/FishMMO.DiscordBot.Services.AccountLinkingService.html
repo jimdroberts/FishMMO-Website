@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class AccountLinkingService | FishMMO Documentation ">
       
-      <meta name="description" content="Manages Discord-to-game account linking via verification codes. Users request a link with a character name, receive a code, type it in-game, and the polling service confirms the link when the code appears in chat.">
+      <meta name="description" content="Manages Discord-to-game account linking. The link itself lives in the database: the account&#39;s linked Discord user is a unique column, so one Discord account links one game account, and a verified Discord code and a /link are the same link.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_DiscordBot_Services_AccountLinkingService" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService" class="text-break">
-Class AccountLinkingService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L15"><i class="bi bi-code-slash"></i></a>
+Class AccountLinkingService  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L40"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,14 +97,14 @@ Class AccountLinkingService  <a class="header-action link-secondary" title="View
   <dl><dt>Assembly</dt><dd>FishMMO-DiscordBot.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Manages Discord-to-game account linking via verification codes.
-Users request a link with a character name, receive a code, type it in-game,
-and the polling service confirms the link when the code appears in chat.</p>
+  <div class="markdown summary"><p>Manages Discord-to-game account linking. The link itself lives in the database: the account's
+linked Discord user is a unique column, so one Discord account links one game account, and a
+verified Discord code and a <code>/link</code> are the same link.</p>
 </div>
   <div class="markdown conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public sealed class AccountLinkingService : IDisposable</code></pre>
+    <pre><code class="lang-csharp hljs">public sealed class AccountLinkingService : IHostedService, IDisposable</code></pre>
   </div>
 
 
@@ -121,6 +121,7 @@ and the polling service confirms the link when the code appears in chat.</p>
   <dl class="typelist implements">
     <dt>Implements</dt>
     <dd>
+      <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.hosting.ihostedservice">IHostedService</a></div>
       <div><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.idisposable">IDisposable</a></div>
     </dd>
   </dl>
@@ -152,6 +153,22 @@ and the polling service confirms the link when the code appears in chat.</p>
 
 
 
+  <h2 id="FishMMO_DiscordBot_Services_AccountLinkingService_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+The <code>/link</code> flow is unchanged for the player: they name a character, the bot DMs them a
+short-lived code, and they type it into game chat, where <a class="xref" href="FishMMO.DiscordBot.Services.ChatPollingService.html">ChatPollingService</a> sees it.
+Only the pending code is kept in memory; the confirmed link is written to the database.
+</p>
+<p>
+Lookups are cached briefly because <a class="xref" href="FishMMO.DiscordBot.Services.GameChatBridgeService.html">GameChatBridgeService</a> checks the link on every
+bridged message. Links made or removed by this bot invalidate their entry at once; a link made
+elsewhere (a Discord code redeemed in the game or Control Panel) is seen within
+<span class="xref">FishMMO.DiscordBot.Services.AccountLinkingService.LinkCacheLifetime</span>.
+</p>
+<p>
+On start it imports the links older bots kept in botdata.json; see <a class="xref" href="FishMMO.DiscordBot.Services.AccountLinkingService.html#FishMMO_DiscordBot_Services_AccountLinkingService_ImportLegacyLinksAsync">ImportLegacyLinksAsync()</a>.
+</p>
+</div>
 
 
   <h2 class="section" id="constructors">Constructors
@@ -160,9 +177,9 @@ and the polling service confirms the link when the code appears in chat.</p>
 
   <a id="FishMMO_DiscordBot_Services_AccountLinkingService__ctor_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.#ctor*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService__ctor_FishMMO_DiscordBot_Services_BotConfigurationService_Microsoft_Extensions_Logging_ILogger_FishMMO_DiscordBot_Services_AccountLinkingService__" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.#ctor(FishMMO.DiscordBot.Services.BotConfigurationService,Microsoft.Extensions.Logging.ILogger{FishMMO.DiscordBot.Services.AccountLinkingService})">
-  AccountLinkingService(BotConfigurationService, ILogger&lt;AccountLinkingService&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L33"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService__ctor_FishMMO_DiscordBot_Services_BotConfigurationService_FishMMO_Database_Npgsql_Services_Interfaces_IDiscordAccountService_FishMMO_Database_Npgsql_NpgsqlDbContextFactory_Microsoft_Extensions_Logging_ILogger_FishMMO_DiscordBot_Services_AccountLinkingService__" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.#ctor(FishMMO.DiscordBot.Services.BotConfigurationService,FishMMO.Database.Npgsql.Services.Interfaces.IDiscordAccountService,FishMMO.Database.Npgsql.NpgsqlDbContextFactory,Microsoft.Extensions.Logging.ILogger{FishMMO.DiscordBot.Services.AccountLinkingService})">
+  AccountLinkingService(BotConfigurationService, IDiscordAccountService, NpgsqlDbContextFactory, ILogger&lt;AccountLinkingService&gt;)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L66"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Initializes a new instance of the <a class="xref" href="FishMMO.DiscordBot.Services.AccountLinkingService.html">AccountLinkingService</a> class.</p>
@@ -170,12 +187,16 @@ and the polling service confirms the link when the code appears in chat.</p>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public AccountLinkingService(BotConfigurationService botConfigService, ILogger&lt;AccountLinkingService&gt; logger)</code></pre>
+    <pre><code class="lang-csharp hljs">public AccountLinkingService(BotConfigurationService botConfigService, IDiscordAccountService discordAccountService, NpgsqlDbContextFactory dbContextFactory, ILogger&lt;AccountLinkingService&gt; logger)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>botConfigService</code> <a class="xref" href="FishMMO.DiscordBot.Services.BotConfigurationService.html">BotConfigurationService</a></dt>
+    <dd></dd>
+    <dt><code>discordAccountService</code> <a class="xref" href="../database/FishMMO.Database.Npgsql.Services.Interfaces.IDiscordAccountService.html">IDiscordAccountService</a></dt>
+    <dd></dd>
+    <dt><code>dbContextFactory</code> <a class="xref" href="../database/FishMMO.Database.Npgsql.NpgsqlDbContextFactory.html">NpgsqlDbContextFactory</a></dt>
     <dd></dd>
     <dt><code>logger</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger-1">ILogger</a>&lt;<a class="xref" href="FishMMO.DiscordBot.Services.AccountLinkingService.html">AccountLinkingService</a>&gt;</dt>
     <dd></dd>
@@ -200,7 +221,7 @@ and the polling service confirms the link when the code appears in chat.</p>
 
   <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_Dispose" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.Dispose">
   Dispose()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L196"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L415"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.</p>
@@ -223,19 +244,20 @@ and the polling service confirms the link when the code appears in chat.</p>
 
 
 
-  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_GetLinkedAccount_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.GetLinkedAccount*"></a>
+  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_GetLinkedAccountAsync_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.GetLinkedAccountAsync*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_GetLinkedAccount_System_UInt64_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.GetLinkedAccount(System.UInt64)">
-  GetLinkedAccount(ulong)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L142"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_GetLinkedAccountAsync_System_UInt64_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.GetLinkedAccountAsync(System.UInt64)">
+  GetLinkedAccountAsync(ulong)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L224"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Gets the linked account for a Discord user, if any.</p>
+  <div class="markdown level1 summary"><p>Gets the account a Discord user is linked to, or null in <code>Data</code> when there is none.
+Successful lookups are cached for <span class="xref">FishMMO.DiscordBot.Services.AccountLinkingService.LinkCacheLifetime</span>; failures are not.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public LinkedAccount? GetLinkedAccount(ulong discordUserId)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;DiscordAccountLink?&gt;&gt; GetLinkedAccountAsync(ulong discordUserId)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -246,7 +268,7 @@ and the polling service confirms the link when the code appears in chat.</p>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="FishMMO.DiscordBot.Data.LinkedAccount.html">LinkedAccount</a></dt>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="../database/FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="../database/FishMMO.Database.Data.DiscordAccountLink.html">DiscordAccountLink</a>?&gt;&gt;</dt>
     <dd></dd>
   </dl>
 
@@ -264,7 +286,7 @@ and the polling service confirms the link when the code appears in chat.</p>
 
   <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_HasPendingVerification_System_UInt64_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.HasPendingVerification(System.UInt64)">
   HasPendingVerification(ulong)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L152"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L243"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Checks if a Discord user has a pending verification.</p>
@@ -297,26 +319,114 @@ and the polling service confirms the link when the code appears in chat.</p>
 
 
 
-  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_StartLinkRequest_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.StartLinkRequest*"></a>
+  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_ImportLegacyLinksAsync_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.ImportLegacyLinksAsync*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_StartLinkRequest_System_UInt64_System_String_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.StartLinkRequest(System.UInt64,System.String)">
-  StartLinkRequest(ulong, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L51"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_ImportLegacyLinksAsync" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.ImportLegacyLinksAsync">
+  ImportLegacyLinksAsync()
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L270"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Starts a link request for the given Discord user and character name.
-Returns the verification code the user must type in-game.</p>
+  <div class="markdown level1 summary"><p>Moves the links older bots kept in botdata.json into the database, once.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public string? StartLinkRequest(ulong discordUserId, string characterName)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task ImportLegacyLinksAsync()</code></pre>
+  </div>
+
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task">Task</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_DiscordBot_Services_AccountLinkingService_ImportLegacyLinksAsync_remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Each entry is written with the account's Discord user. An entry is removed from the file when it
+was imported, or when the database refused it for good — that Discord user is already linked to
+another account, the account no longer exists, or the name is not a valid account name — and each
+refusal is logged. An entry that failed transiently stays for the next start.
+</p>
+<p>
+An account that already has a DIFFERENT Discord user in the database is not overwritten, because
+the database link is newer than anything in the file: the entry is refused and removed.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_StartAsync_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.StartAsync*"></a>
+
+  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_StartAsync_System_Threading_CancellationToken_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.StartAsync(System.Threading.CancellationToken)">
+  StartAsync(CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L89"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Starts the one-time botdata.json import in the background.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task StartAsync(CancellationToken cancellationToken)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task">Task</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_DiscordBot_Services_AccountLinkingService_StartAsync_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Registered after <a class="xref" href="FishMMO.DiscordBot.Services.DynamicChannelManagerService.html">DynamicChannelManagerService</a>, whose start loads botdata.json, so the
+file is in memory by now. Not awaited: a slow or unreachable database must not hold the bot's
+start, and an entry that fails transiently simply stays in the file for the next start.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_StartLinkRequestAsync_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.StartLinkRequestAsync*"></a>
+
+  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_StartLinkRequestAsync_System_UInt64_System_String_System_String_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.StartLinkRequestAsync(System.UInt64,System.String,System.String)">
+  StartLinkRequestAsync(ulong, string?, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L115"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Starts a link request for the given Discord user and character name.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;(LinkRequestStatus Status, string? Code)&gt; StartLinkRequestAsync(ulong discordUserId, string? discordUsername, string characterName)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>discordUserId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint64">ulong</a></dt>
     <dd><p>The Discord user ID.</p>
+</dd>
+    <dt><code>discordUsername</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The user's Discord username as Discord reports it, recorded on the account when the link is made.</p>
 </dd>
     <dt><code>characterName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd><p>The character name claimed by the user.</p>
@@ -325,8 +435,8 @@ Returns the verification code the user must type in-game.</p>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd><p>The verification code, or null if the user already has a linked account.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;(<a class="xref" href="FishMMO.DiscordBot.Services.LinkRequestStatus.html">LinkRequestStatus</a> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetuple-fishmmo.discordbot.services.linkrequeststatus,system.string-.status">Status</a>, <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.valuetuple-fishmmo.discordbot.services.linkrequeststatus,system.string-.code">Code</a>)&gt;</dt>
+    <dd><p>The status, and the verification code the user must type in-game when it started.</p>
 </dd>
   </dl>
 
@@ -340,20 +450,59 @@ Returns the verification code the user must type in-game.</p>
 
 
 
-  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_TryVerifyFromChat_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.TryVerifyFromChat*"></a>
+  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_StopAsync_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.StopAsync*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_TryVerifyFromChat_System_String_System_String_System_String_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.TryVerifyFromChat(System.String,System.String,System.String)">
-  TryVerifyFromChat(string, string, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L87"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_StopAsync_System_Threading_CancellationToken_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.StopAsync(System.Threading.CancellationToken)">
+  StopAsync(CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L106"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Checks whether a chat message from the game contains a pending verification code.
-If it matches, confirms the link and returns the associated Discord user ID.</p>
+  <div class="markdown level1 summary"><p>Triggered when the application host is performing a graceful shutdown.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public ulong? TryVerifyFromChat(string characterName, string accountName, string message)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task StopAsync(CancellationToken cancellationToken)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Indicates that the shutdown process should no longer be graceful.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task">Task</a></dt>
+    <dd><p>A <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task">Task</a> that represents the asynchronous Stop operation.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_TryVerifyFromChatAsync_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.TryVerifyFromChatAsync*"></a>
+
+  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_TryVerifyFromChatAsync_System_String_System_String_System_String_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.TryVerifyFromChatAsync(System.String,System.String,System.String)">
+  TryVerifyFromChatAsync(string, string, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L157"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Checks whether a chat message from the game contains a pending verification code.
+If it matches, writes the link to the database.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;ChatLinkVerification?&gt; TryVerifyFromChatAsync(string characterName, string accountName, string message)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -371,8 +520,8 @@ If it matches, confirms the link and returns the associated Discord user ID.</p>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.uint64">ulong</a>?</dt>
-    <dd><p>The Discord user ID if verification succeeded; null otherwise.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.DiscordBot.Services.ChatLinkVerification.html">ChatLinkVerification</a>&gt;</dt>
+    <dd><p>How the link ended, or null when the message carried no pending code.</p>
 </dd>
   </dl>
 
@@ -386,19 +535,19 @@ If it matches, confirms the link and returns the associated Discord user ID.</p>
 
 
 
-  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_Unlink_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.Unlink*"></a>
+  <a id="FishMMO_DiscordBot_Services_AccountLinkingService_UnlinkAsync_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.UnlinkAsync*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_Unlink_System_UInt64_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.Unlink(System.UInt64)">
-  Unlink(ulong)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L133"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Services_AccountLinkingService_UnlinkAsync_System_UInt64_" data-uid="FishMMO.DiscordBot.Services.AccountLinkingService.UnlinkAsync(System.UInt64)">
+  UnlinkAsync(ulong)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Services/AccountLinkingService.cs/#L213"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Removes a linked account for the specified Discord user.</p>
+  <div class="markdown level1 summary"><p>Removes the link for the specified Discord user.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public bool Unlink(ulong discordUserId)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; UnlinkAsync(ulong discordUserId)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -409,8 +558,8 @@ If it matches, confirms the link and returns the associated Discord user ID.</p>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
-    <dd><p>True if the account was unlinked.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="../database/FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;&gt;</dt>
+    <dd><p>True in <code>Data</code> when there was a link to remove.</p>
 </dd>
   </dl>
 

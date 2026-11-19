@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Account Creation System | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Account Creation System | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/AccountCreation/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="account-creation-system">Account Creation System</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/FishMMO/Server/Implementation/LoginServer/AccountCreation/README.md">View this file on GitHub</a></p>
+</blockquote>
+<p><strong>Short description:</strong> Asynchronous, rate-limited login-server pipeline for creating new player accounts without blocking the network thread, using AES-encrypted SRP credentials, per-IP DoS protection, and bounded async workers with main-thread response marshalling.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#supported-platforms">Supported Platforms</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#installation--build">Installation / Build</a></li>
+<li><a href="#quick-start-guides">Quick Start Guides</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#usage-examples">Usage Examples</a></li>
+<li><a href="#operational-checks">Operational Checks</a></li>
+<li><a href="#flow-diagram">Flow Diagram</a></li>
+<li><a href="#project-structure">Project Structure</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="overview">Overview</h2>
+<p>The Account Creation system is an asynchronous, rate-limited login-server pipeline for creating new accounts without blocking the network thread. Incoming <code>CreateAccountBroadcast</code> messages are treated as ultra-fast UDP gate events: encrypted payloads are validated and queued immediately on the network thread, while AES decryption, SRP credential conversion, username validation, and database persistence are executed by background <code>AsyncWorkerData</code> workers. Responses are marshalled back to the main Unity thread through a dedicated <code>AccountCreationSystemMainThreadQueueData</code> queue container to preserve FishNet thread-safety.</p>
+<p>Main-thread response dispatch is time-sliced by <code>maxMainThreadResponsesPerFrame</code> to avoid frame spikes under heavy ingress. The system is fully stateless — all mutable state lives in <code>RuntimeDataContainer</code> instances managed by the <code>DataContainerRegistry</code>, ensuring each system gets its own isolated data.</p>
+<p>The request pipeline follows four stages:</p>
+<ol>
+<li><strong>Network Thread (UDP Gate)</strong> — validates connection encryption data, rejects oversized payloads, captures client IP, creates an immutable <code>AccountCreationRequest&lt;NetworkConnection&gt;</code>, and enqueues via bounded channel with backpressure. No decryption or DB I/O occurs here.</li>
+<li><strong>Queue + Backpressure</strong> — requests are dispatched through centralized <code>AsyncWorkerData</code>, keyed on <code>conn.ClientId</code> so a connection's requests stay ordered relative to one another. The rolling global hourly budget is checked (not consumed) before the enqueue. A refused enqueue, or an exhausted budget, returns <code>EnqueueResult.QueueFull</code>, which reaches the client as <code>ServerBusy</code> — deliberately the same answer, so a prober cannot detect the global cap's existence or threshold.</li>
+<li><strong>Worker Threads</strong> — AES-decrypt username/salt/verifier using per-field sequence-derived nonces, convert bytes to strings via <code>CryptoHelper.StrictUtf8</code> (throws <code>DecoderFallbackException</code> on malformed UTF-8), zero decrypted byte arrays with <code>CryptographicOperations.ZeroMemory()</code>, validate username against centralized <code>Authentication.IsAllowedUsername()</code> rules, validate salt/verifier length limits, persist via <code>IAccountService.PersistAsync()</code>, update runtime metrics and per-IP failure tracking.</li>
+<li><strong>Main Thread Response</strong> — <code>OnUpdate</code> drains queued actions through <code>Drain(maxMainThreadResponsesPerFrame)</code> and sends FishNet <code>ClientAuthResultBroadcast</code> on the main thread. On shutdown, remaining queued responses are fully drained.</li>
+</ol>
+<h2 id="supported-platforms">Supported Platforms</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>Yes</td>
+<td>Server runtime</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Yes</td>
+<td>Server runtime</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td>N/A</td>
+<td>Server-only system — not applicable to client builds</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Version / Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unity</td>
+<td>6.6 (6000.6.8f1)</td>
+</tr>
+<tr>
+<td>Scripting Backend</td>
+<td>IL2CPP</td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Zero-blocking network thread</strong> — encrypted payloads are validated and queued on the network thread with no decryption or I/O</li>
+<li><strong>AES-GCM encryption</strong> — per-field sequence-derived nonces for username, salt, and verifier with AAD binding to <code>AuthMessageType.CreateAccount</code></li>
+<li><strong>SRP (Secure Remote Password) protocol</strong> — credentials stored as salt + verifier; plaintext passwords never reach the server</li>
+<li><strong>Per-IP rate limiting</strong> — configurable <code>ipRateLimitSeconds</code> cooldown between attempts from the same IP checked and recorded under one lock in <code>IpAbuseTracker</code> (TOCTOU-safe); a blocked or rate-limited attempt records nothing</li>
+<li><strong>Per-IP failure tracking and DoS blocking</strong> — IPs exceeding <code>maxFailedAttempts</code> are temporarily blocked and immediately disconnected. The tracker is capped at <code>MaxIpFailureTrackerEntries</code> (50,000); at the cap <code>TryTrackIpFailure</code> returns <code>false</code> so the caller fails closed rather than silently skipping the increment, which would let an offender sit just under the block threshold indefinitely</li>
+<li><strong>Global hourly creation cap</strong> — <code>maxGlobalAccountCreationsPerHour</code> (default 1000) bounds the blast radius of a distributed registration flood that per-IP limits cannot see. The window is UTC hours-since-epoch, held under <code>globalCreationsCounterLock</code>; the budget is <em>checked</em> at enqueue and <em>consumed</em> only after a successful persist, so failed requests do not deplete it. A value of 0 or less disables the cap and logs a loud startup <code>Warning</code></li>
+<li><strong>Per-IP verification debounce</strong> — <code>AccountVerifyBroadcast</code> is debounced to one attempt per IP per second by an <code>ExpiringKeyTracker&lt;string&gt;</code> (<code>VerifyRateLimitDuration</code>), independent of the failure counter. Before it, every verify message from an unauthenticated connection bought a decrypt and a database lookup until <code>maxFailedAttempts</code> had accumulated</li>
+<li><strong>Proxy / NAT / load balancer compatibility</strong> — optional <code>useConnectionIdForRateLimiting</code> mode switches the rate-limiting key from IP to <code>conn.ClientId</code>; enabling it logs a startup warning that it is only safe behind a trusted reverse proxy</li>
+<li><strong>Bounded async worker backpressure</strong> — <code>AsyncWorkerData</code> refuses admission once its outstanding-item cap is reached, preventing unbounded queue growth under attack</li>
+<li><strong>Main-thread time-slicing</strong> — configurable <code>maxMainThreadResponsesPerFrame</code> prevents frame spikes during login waves</li>
+<li><strong>Automatic memory hygiene</strong> — <code>CryptographicOperations.ZeroMemory()</code> scrubs decrypted byte arrays immediately after use (or on failure)</li>
+<li><strong>Strict UTF-8 validation</strong> — <code>CryptoHelper.StrictUtf8</code> with <code>DecoderFallbackException</code> rejects malformed payloads</li>
+<li><strong>Username validation</strong> — centralized <code>Authentication.IsAllowedUsername()</code> check before any DB call</li>
+<li><strong>Salt / verifier length validation</strong> — <code>MaxSaltLength</code> (256) and <code>MaxVerifierLength</code> (1024) enforced before persistence</li>
+<li><strong>Encrypted field size guard</strong> — <code>MaxEncryptedFieldSize</code> (2048 bytes) rejects oversized payloads on the network thread</li>
+<li><strong>Periodic stale-entry cleanup</strong> — every second, head-first sweeps evict expired per-IP records and per-username windows in expiry order, stopping at the first live entry, so every expired entry is reached and an idle pass costs a comparison. A per-IP record (and any block) lapses <code>ipBlockDurationSeconds</code> after its last accepted attempt or recorded failure</li>
+<li><strong>Per-connection caching</strong> — <code>LastSeenCacheTracker</code> caches IP addresses and encryption data to reduce lock pressure on <code>AccountManager</code></li>
+<li><strong>Thread-safe runtime metrics</strong> — <code>Interlocked</code>-backed counters for <code>TotalProcessed</code>, <code>TotalRejected</code>, <code>TotalFailed</code></li>
+<li><strong>Database error mapping</strong> — <code>UniqueViolation</code> and <code>ValidationError</code> mapped to <code>InvalidUsernameOrPassword</code>; other errors map to <code>ServerBusy</code></li>
+<li><strong>Graceful shutdown</strong> — full queue drain on deinitialize ensures clients receive final responses</li>
+<li><strong>Stateless behaviour</strong> — all mutable state in <code>RuntimeDataContainer</code> instances; system logic is pure and testable</li>
+<li><strong>Engine-agnostic core</strong> — interface/implementation split with generic <code>TConnection</code> parameter</li>
+<li><strong>Account verification</strong> — encrypted verification code flow via <code>AccountVerifyBroadcast</code>. One conditional update (<code>IAccountService.PersistVerifiedByCodeAsync</code>) tries the code against every code the account holds — email, SMS and Discord — and a match on any one of them verifies the account, so the broadcast's channel field is not consulted. A wrong code is counted in the database (<code>VerificationFailureTicket.RecordAsync</code>, shared with the Control Panel) and the third in a row opens a support ticket for the account. The client's answer is <code>InvalidUsernameOrPassword</code> either way: the message is accepted before any password, so it must not say which accounts exist and are waiting for a code</li>
+<li><strong>Per-username verification brute-force protection</strong> — failed verification attempts tracked per username (lowercased) in a <code>FixedWindowCounter</code> on the monotonic clock. After <code>MaxVerifyFailuresPerUsername</code> (5) failures within <code>VerifyUsernameLockoutDuration</code> (60 minutes) of the first, further attempts are rejected until that window closes. A head-first sweep (<code>VerifyUsernameFailureSweepMaxRemovals</code>, 256 per pass) evicts closed windows oldest first. Hard cap of <code>MaxVerifyUsernameFailureEntries</code> (50,000) prevents memory exhaustion.</li>
+<li><strong>Verification delivery</strong> — email codes are enqueued to <code>email_queue</code> and SMS codes to <code>sms_queue</code>, both drained by the Control Panel. A Discord code is only issued (<code>PersistDiscordVerifyCodeAsync</code>, once per account, never replaced); issuing it raises a PostgreSQL notification that wakes FishMMO-DiscordBot, which sends the account's one DM when the player is in the game's Discord server</li>
+<li><strong>No grace period</strong> — an unverified account cannot sign in, whether or not a message has reached it yet: after a correct password the server answers <code>AccountUnverified</code> and the client asks for a code. Which channels count is <code>AccountVerificationRules</code> (FishMMO-DB), shared with the Control Panel: the player's choices that <code>VerifyEmail</code> / <code>VerifySms</code> / <code>VerifyDiscord</code> switch on and the account can receive, falling back to email. Registration is refused (<code>AccountDetailsInvalid</code>) when no enabled channel could reach the new account; an existing account in that position is let in, because it cannot be asked</li>
+<li><strong>Dev/Release mode gating</strong> — <code>#if UNITY_EDITOR || DEVELOPMENT_BUILD</code> lets <code>AutoVerifyAccounts</code> skip the verification codes in development builds; release builds always send them. Two-factor is not part of this: it follows the player's opt-in in every build</li>
+<li><strong>Single verification policy</strong> — <code>AccountVerificationPolicy.IsAutoVerifyEnabled</code> is the one place that answers &quot;is the email-verification gate bypassed?&quot;. Both call sites consult it: account creation (persist <code>verified = true</code> instead of queueing a code) and the login lookup (let an unverified account sign in without a code). Without the login side honouring it, accounts created before the flag was enabled stayed locked out of a local server permanently. It fails closed on a null configuration and is compiled out entirely in production builds, so a Development <code>LoginServer.cfg</code> that leaks into a production deployment cannot re-enable the bypass — which also means a server built with the Production working environment ignores the key</li>
+<li><strong>Opt-in 2FA setup</strong> — when the player ticks two-factor on the register form (<code>RegistrationProfile.EnableTwoFactor</code>), account creation generates a TOTP secret (encrypted at rest with the server-side master key), recovery codes (PBKDF2-SHA256 hashed), and delivers the otpauth URI and plaintext recovery codes to the client via AES-encrypted transport</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>FishNet networking framework (provides <code>NetworkConnection</code>, <code>IBroadcast</code>, <code>ServerManager</code>)</li>
+<li><code>AsyncWorkerData</code> runtime data container registered in the <code>DataContainerRegistry</code></li>
+<li><code>AccountManager</code> providing per-connection AES key/IV via <code>GetConnectionEncryptionData()</code></li>
+<li>Database layer with <code>IAccountService</code>, <code>IEmailQueueService</code>, and <code>ITwoFactorRecoveryCodeService</code> registered in the <code>Database.ServiceRegistry</code> (Npgsql-backed)</li>
+<li><code>email_queue</code> table — outbound email queue for SMTP delivery of verification codes</li>
+<li>SMTP configuration (<code>Smtp:Host</code>, <code>Smtp:Port</code>, <code>Smtp:Username</code>, <code>Smtp:Password</code>, <code>Smtp:FromAddress</code>, <code>Smtp:FromName</code>, <code>Smtp:UseSsl</code>) for production email delivery</li>
+<li><code>ISmtpService</code> — implemented by <code>FishMMO.Server.Implementation.Smtp.SmtpService</code> (<code>Server/Implementation/Smtp/SmtpService.cs</code>), constructed lazily from <code>Server.Configuration</code> on first use. It is not registered in <code>Database.ServiceRegistry</code></li>
+<li><code>CryptoHelper</code> shared utility for AES decrypt, strict UTF-8 encoding, and AAD construction</li>
+<li><code>Authentication</code> shared utility providing <code>IsAllowedUsername()</code> validation</li>
+</ul>
+<h2 id="installation--build">Installation / Build</h2>
+<p>This is an integrated module within the FishMMO server architecture. No separate installation is required.</p>
+<ol>
+<li>The <code>AccountCreationSystem</code> ScriptableObject is created via <strong>Assets → Create → FishMMO → Server → LoginServer → Account Creation System</strong>.</li>
+<li>Add the asset to the Login Server's <code>ServerBehaviour</code> list.</li>
+<li>Ensure the following <code>[RequiresDataContainer]</code> dependencies are registered in the <code>DataContainerRegistry</code>:
+<ul>
+<li><code>AsyncWorkerData</code></li>
+<li><code>AccountCreationSystemRuntimeData</code></li>
+<li><code>AccountCreationSystemMappingData</code></li>
+<li><code>AccountCreationSystemMainThreadQueueData</code></li>
+</ul>
+</li>
+</ol>
+<h2 id="quick-start-guides">Quick Start Guides</h2>
+<h3 id="creating-the-system-asset">Creating the System Asset</h3>
+<ol>
+<li>In the Unity Editor, right-click in the Project window.</li>
+<li>Select <strong>Create → FishMMO → Server → LoginServer → Account Creation System</strong>.</li>
+<li>Name the asset <code>AccountCreationSystem</code>.</li>
+<li>Assign it to the Login Server's behaviour list.</li>
+</ol>
+<h3 id="tuning-for-production">Tuning for Production</h3>
+<ol>
+<li>Set <code>ipRateLimitSeconds</code> to a value appropriate for expected registration traffic (default: <code>5.0</code>).</li>
+<li>Set <code>maxFailedAttempts</code> to limit brute-force attempts (default: <code>5</code>).</li>
+<li>Set <code>ipBlockDurationSeconds</code> for how long blocked IPs remain blocked (default: <code>300</code> — 5 minutes).</li>
+<li>Set <code>maxMainThreadResponsesPerFrame</code> based on server frame budget (default: <code>100</code>).</li>
+<li>If behind a proxy/NAT/load balancer, enable <code>useConnectionIdForRateLimiting</code>.</li>
+<li>Set <code>maxGlobalAccountCreationsPerHour</code> above expected organic growth; leaving it at 0 or less disables the global DoS cap and is warned about at startup.</li>
+</ol>
+<h3 id="monitoring-at-runtime">Monitoring at Runtime</h3>
+<p>Query the public behaviour properties to monitor system health:</p>
+<ul>
+<li><code>PendingRequestCount</code> — current async queue depth</li>
+<li><code>TotalProcessed</code> — successful account creations since start</li>
+<li><code>TotalRejected</code> — rate-limited or backpressure-rejected requests since start</li>
+</ul>
+<h2 id="configuration">Configuration</h2>
+<h3 id="inspector-fields">Inspector Fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Header</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ipRateLimitSeconds</code></td>
+<td><code>float</code></td>
+<td><code>5.0</code></td>
+<td>Rate Limiting</td>
+<td>Minimum seconds between account creation attempts from the same IP address</td>
+</tr>
+<tr>
+<td><code>maxFailedAttempts</code></td>
+<td><code>int</code></td>
+<td><code>5</code></td>
+<td>Rate Limiting</td>
+<td>Maximum failed attempts allowed before an IP is temporarily blocked</td>
+</tr>
+<tr>
+<td><code>ipBlockDurationSeconds</code></td>
+<td><code>float</code></td>
+<td><code>300.0</code></td>
+<td>Rate Limiting</td>
+<td>Duration in seconds that an IP remains blocked after exceeding the failed-attempt threshold (5 minutes)</td>
+</tr>
+<tr>
+<td><code>maxGlobalAccountCreationsPerHour</code></td>
+<td><code>int</code></td>
+<td><code>1000</code></td>
+<td>Rate Limiting</td>
+<td>Rolling one-hour global ceiling on successful account creations. Excess requests are refused as <code>ServerBusy</code>. <code>&lt;= 0</code> disables the cap and logs a startup warning.</td>
+</tr>
+<tr>
+<td><code>maxMainThreadResponsesPerFrame</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Main Thread Dispatch</td>
+<td>Maximum number of queued main-thread response actions processed per frame</td>
+</tr>
+<tr>
+<td><code>cleanupMaxScanPerMap</code></td>
+<td><code>int</code></td>
+<td><code>256</code></td>
+<td>Cleanup Bounds</td>
+<td>Maximum entries scanned per map during one maintenance sweep</td>
+</tr>
+<tr>
+<td><code>cleanupMaxRemovalsPerMap</code></td>
+<td><code>int</code></td>
+<td><code>128</code></td>
+<td>Cleanup Bounds</td>
+<td>Maximum entries removed per map during one maintenance sweep</td>
+</tr>
+<tr>
+<td><code>useConnectionIdForRateLimiting</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Proxy Compatibility</td>
+<td>Use <code>conn.ClientId</code> instead of IP for rate limiting; enable when behind a proxy/NAT/load balancer where all clients share one IP. Safe only behind a trusted reverse proxy — enabling it logs a startup warning.</td>
+</tr>
+<tr>
+<td><code>emailSendIntervalSeconds</code></td>
+<td><code>float</code></td>
+<td><code>10.0</code></td>
+<td>Email Queue</td>
+<td>Seconds between email queue processing sweeps; set to 0 to disable</td>
+</tr>
+</tbody>
+</table>
+<p>All tunables are clamped to safe minimums during <code>InitializeOnce()</code>:</p>
+<ul>
+<li><code>ipRateLimitSeconds</code> → <code>max(0, value)</code></li>
+<li><code>maxFailedAttempts</code> → <code>max(1, value)</code></li>
+<li><code>ipBlockDurationSeconds</code> → <code>max(1, value)</code></li>
+<li><code>maxMainThreadResponsesPerFrame</code> → <code>max(1, value)</code></li>
+<li><code>cleanupMaxScanPerMap</code> → <code>max(1, value)</code></li>
+<li><code>cleanupMaxRemovalsPerMap</code> → <code>max(1, value)</code></li>
+</ul>
+<h3 id="compile-time-constants">Compile-Time Constants</h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MaxEncryptedFieldSize</code></td>
+<td><code>2048</code> bytes</td>
+<td>Rejects oversized encrypted payloads on the network thread before any decryption or allocation</td>
+</tr>
+<tr>
+<td><code>MaxSaltLength</code></td>
+<td><code>256</code> chars</td>
+<td>Maximum allowed length for the decrypted SRP salt string</td>
+</tr>
+<tr>
+<td><code>MaxVerifierLength</code></td>
+<td><code>1024</code> chars</td>
+<td>Maximum allowed length for the decrypted SRP verifier string</td>
+</tr>
+<tr>
+<td><code>MaxVerifyFailuresPerUsername</code></td>
+<td><code>5</code></td>
+<td>Maximum failed verification attempts per username before lockout. Tightened from 10: against a 900,000-value six-digit code space, 10 attempts with IP rotation gave a non-trivial success probability</td>
+</tr>
+<tr>
+<td><code>VerifyUsernameLockoutDuration</code></td>
+<td><code>60</code> min</td>
+<td>Lockout window for per-username verification failures. Extended from 30 minutes to outlast typical email-delivery windows</td>
+</tr>
+<tr>
+<td><code>MaxVerifyUsernameFailureEntries</code></td>
+<td><code>50,000</code></td>
+<td>Hard cap on tracked username entries to prevent memory exhaustion</td>
+</tr>
+<tr>
+<td><code>VerifyUsernameFailureSweepMaxRemovals</code></td>
+<td><code>256</code></td>
+<td>Maximum closed verification-failure windows removed per sweep</td>
+</tr>
+<tr>
+<td><code>MaxIpFailureTrackerEntries</code></td>
+<td><code>50,000</code></td>
+<td>Hard cap on the per-IP failure tracker; at the cap <code>TryTrackIpFailure</code> returns <code>false</code> and the request fails closed</td>
+</tr>
+<tr>
+<td><code>VerifyRateLimitDuration</code></td>
+<td><code>1</code> s</td>
+<td>Per-IP debounce for <code>AccountVerifyBroadcast</code>, held in an <code>ExpiringKeyTracker&lt;string&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="enqueuing-an-account-creation-request-programmatically">Enqueuing an Account Creation Request Programmatically</h3>
+<pre><code class="lang-csharp">// Build an AccountCreationRequest with encrypted credentials
+var request = new AccountCreationRequest&lt;NetworkConnection&gt;(
+    conn,
+    encryptedUsername,   // AES-encrypted byte[]
+    encryptedSalt,       // AES-encrypted byte[]
+    encryptedVerifier,   // AES-encrypted byte[]
+    encryptionData,      // ConnectionEncryptionData from handshake
+    ipAddress,
+    seq                  // Client-sent sequence number
+);
+
+// Attempt to enqueue
+bool accepted = accountCreationSystem.TryEnqueueAccountCreation(request);
+if (!accepted)
+{
+    // Request was rate-limited, blocked, or queue full
+}
+</code></pre>
+<h3 id="querying-runtime-metrics">Querying Runtime Metrics</h3>
+<pre><code class="lang-csharp">// From any server system with access to the AccountCreationSystem reference
+int pending   = accountCreationSystem.PendingRequestCount;
+long created  = accountCreationSystem.TotalProcessed;
+long rejected = accountCreationSystem.TotalRejected;
+</code></pre>
+<h3 id="client-side-broadcast">Client-Side Broadcast</h3>
+<pre><code class="lang-csharp">// Client sends encrypted SRP credentials to the login server
+var broadcast = new CreateAccountBroadcast
+{
+    Username = encryptedUsername,  // byte[]
+    Salt     = encryptedSalt,     // byte[]
+    Verifier = encryptedVerifier, // byte[]
+    Seq      = sequenceNumber     // uint
+};
+ClientManager.Broadcast(broadcast);
+</code></pre>
+<h2 id="operational-checks">Operational Checks</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Method</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System initializes</td>
+<td>Assign asset to Login Server behaviour list and start server</td>
+<td>Log: <code>&quot;Initialized (RateLimit=5s, MaxFailures=5, BlockDuration=300s)&quot;</code></td>
+</tr>
+<tr>
+<td>Normal account creation (dev)</td>
+<td>Client sends valid <code>CreateAccountBroadcast</code> under <code>DEVELOPMENT_BUILD</code></td>
+<td><code>ClientAuthResultBroadcast</code> with <code>AccountVerified</code> immediately; no 2FA or email</td>
+</tr>
+<tr>
+<td>Normal account creation (release)</td>
+<td>Client sends valid <code>CreateAccountBroadcast</code> in release build</td>
+<td>2FA setup + verification email enqueued; <code>AccountCreated</code> result; SMTP processor delivers email in background</td>
+</tr>
+<tr>
+<td>Rate-limited request</td>
+<td>Same IP sends two requests within <code>ipRateLimitSeconds</code></td>
+<td><code>ClientAuthResultBroadcast</code> with <code>ServerBusy</code> (unreliable channel); <code>TotalRejected</code> increments</td>
+</tr>
+<tr>
+<td>Blocked IP</td>
+<td>IP exceeds <code>maxFailedAttempts</code> failures</td>
+<td>Connection disconnected immediately; <code>TotalRejected</code> increments</td>
+</tr>
+<tr>
+<td>Queue full</td>
+<td><code>AsyncWorkerData</code> bounded channel is at capacity</td>
+<td><code>ClientAuthResultBroadcast</code> with <code>ServerBusy</code>; <code>TotalRejected</code> increments</td>
+</tr>
+<tr>
+<td>Oversized payload</td>
+<td>Encrypted field exceeds 2048 bytes</td>
+<td>Connection disconnected on network thread; no decryption attempted</td>
+</tr>
+<tr>
+<td>Invalid encrypted data</td>
+<td>Decryption fails (bad key/nonce/tampered)</td>
+<td><code>CryptographicException</code> caught; connection disconnected; failure tracked against IP</td>
+</tr>
+<tr>
+<td>Malformed UTF-8</td>
+<td>Decrypted bytes are not valid UTF-8</td>
+<td><code>DecoderFallbackException</code> caught; decrypted arrays zeroed; connection disconnected</td>
+</tr>
+<tr>
+<td>Invalid username</td>
+<td>Username fails <code>Authentication.IsAllowedUsername()</code></td>
+<td><code>InvalidUsernameOrPassword</code> response; no DB call made</td>
+</tr>
+<tr>
+<td>Duplicate username</td>
+<td>DB returns <code>UniqueViolation</code></td>
+<td><code>InvalidUsernameOrPassword</code> response; IP failure count incremented</td>
+</tr>
+<tr>
+<td>Stale entry cleanup</td>
+<td>1 second elapses</td>
+<td>Expired per-IP records and verification-failure windows evicted head-first</td>
+</tr>
+<tr>
+<td>Graceful shutdown</td>
+<td>Server deinitializes</td>
+<td>Remaining queued responses fully drained; broadcasts unregistered; caches cleared</td>
+</tr>
+<tr>
+<td>Proxy mode</td>
+<td><code>useConnectionIdForRateLimiting = true</code></td>
+<td>Rate limiting keyed by <code>conn.ClientId</code> instead of IP address; startup logs a warning that this needs a trusted proxy</td>
+</tr>
+<tr>
+<td>Global hourly cap</td>
+<td>Exceed <code>maxGlobalAccountCreationsPerHour</code> successful creations within one UTC hour</td>
+<td>Further requests refused with <code>ServerBusy</code> (indistinguishable from queue-full, by design) until the hour rolls over</td>
+</tr>
+<tr>
+<td>Global cap disabled</td>
+<td>Set <code>maxGlobalAccountCreationsPerHour</code> to 0</td>
+<td>Startup <code>Warning</code>: &quot;the global account-creation DoS cap is DISABLED&quot;</td>
+</tr>
+<tr>
+<td>Verify flood</td>
+<td>Same IP sends <code>AccountVerifyBroadcast</code> twice within one second</td>
+<td>Second message dropped with no reply, no decrypt, and no database lookup</td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-diagram">Flow Diagram</h2>
+<h3 id="high-level-overview">High-Level Overview</h3>
+<pre><code class="lang-mermaid">flowchart LR
+    Client[Unity Client] --&gt;|CreateAccount request| Sys[AccountCreationSystem]
+    Sys --&gt;|validate username/password| Sys
+    Sys --&gt;|check existing| DB[(PostgreSQL Accounts)]
+    DB --&gt;|exists?| Sys
+    Sys --&gt;|hash + insert| DB
+    Sys --&gt;|result code| Client
+</code></pre>
+<pre><code>┌─────────┐    CreateAccountBroadcast     ┌────────────────────────────────┐
+│  Client  │ ──────────────────────────▶  │   Network Thread (UDP Gate)    │
+└─────────┘                               │                                │
+                                          │  1. Verify encryption data     │
+                                          │  2. Reject oversized fields    │
+                                          │  3. Capture IP address         │
+                                          │  4. Build immutable request    │
+                                          │  5. Check IP block list        │
+                                          │  6. Atomic rate-limit check    │
+                                          │  7. Enqueue to async worker    │
+                                          └──────────┬─────────────────────┘
+                                                     │
+                                          ┌──────────▼─────────────────────┐
+                                          │   AsyncWorkerData (Bounded)    │
+                                          │   entityKey = conn.ClientId    │
+                                          └──────────┬─────────────────────┘
+                                                     │
+                                          ┌──────────▼─────────────────────┐
+                                          │   Worker Thread                │
+                                          │                                │
+                                          │  1. Consume &amp; validate seqs    │
+                                          │  2. AES-GCM decrypt fields     │
+                                          │     (nonce = seq-derived)      │
+                                          │  3. StrictUtf8 → strings       │
+                                          │  4. ZeroMemory(decrypted[])    │
+                                          │  5. IsAllowedUsername() check   │
+                                          │  6. Validate salt/verifier len │
+                                          │  7. IAccountService.PersistAsync│
+                                          │  8. Generate TOTP + recovery   │
+                                          │     codes (release builds)     │
+                                          │  9. Enqueue verification email │
+                                          │ 10. Consume global hour budget │
+                                          │ 11. Update metrics &amp; IP track  │
+                                          │ 12. Enqueue response action    │
+                                          └──────────┬─────────────────────┘
+                                                     │
+                                          ┌──────────▼─────────────────────┐
+                                          │   Main Thread Queue            │
+                                          │   (time-sliced drain per frame)│
+                                          └──────────┬─────────────────────┘
+                                                     │
+                                          ┌──────────▼─────────────────────┐
+┌─────────┐  ClientAuthResultBroadcast    │   Main Thread (OnUpdate)       │
+│  Client  │ ◀────────────────────────── │   Broadcast result to client   │
+└─────────┘                               └────────────────────────────────┘
+
+Rejection paths (no worker involvement):
+  • Oversized payload      → disconnect on network thread
+  • Blocked IP             → disconnect on network thread
+  • Rate-limited / full    → ServerBusy (unreliable) on network thread
+  • Global hour cap spent  → ServerBusy (unreliable) on network thread
+  • Verify debounce hit    → dropped silently on network thread
+  • Crypto failure         → disconnect via main-thread queue
+  • Malformed UTF-8        → disconnect via main-thread queue
+</code></pre>
+<h2 id="project-structure">Project Structure</h2>
+<h3 id="directory-tree">Directory Tree</h3>
+<pre><code>Server/Implementation/LoginServer/AccountCreation/
+├── AccountCreationSystem.cs                     # Stateless ServerBehaviour logic and worker orchestration
+├── AccountCreationSystemRuntimeData.cs          # Metrics, connection caches, cleanup timer
+├── AccountCreationSystemMappingData.cs          # Per-IP rate/failure trackers (DoS/rate-limiting)
+├── AccountCreationSystemMainThreadQueueData.cs  # Per-system main-thread action queue container
+├── IAccountCreationPuzzleProvider.cs            # Proof-of-work scaffold — NOT wired in (see below)
+└── README.md
+
+Server/Core/LoginServer/AccountCreation/
+├── IAccountCreationSystem.cs                    # Engine-agnostic public API interface
+├── IAccountCreationSystemRuntimeData.cs         # Runtime metrics interface
+├── IAccountCreationSystemMappingData.cs         # Mapping data interface (rate-limit/failure)
+├── IAccountCreationSystemMainThreadQueueData.cs # Main-thread queue interface
+├── IpAbuseTracker.cs                            # Per-IP rate limit + failure block, one record per IP, head-first expiry
+└── AccountCreationRequest.cs                    # Immutable request struct (generic over TConnection)
+</code></pre>
+<h4 id="proof-of-work-scaffold-not-shipped">Proof-of-work scaffold (not shipped)</h4>
+<p><code>IAccountCreationPuzzleProvider</code>, <code>AccountCreationPuzzle</code> and <code>NullAccountCreationPuzzleProvider</code> describe a client-side proof-of-work challenge intended to make a registration flood cost the attacker CPU. Nothing in <code>AccountCreationSystem</code> calls any of it at HEAD — there is no puzzle on the wire and no client implementation. The interface exists so a production implementation can be wired in without touching call sites; <code>maxGlobalAccountCreationsPerHour</code> is the mechanism actually protecting the endpoint today.</p>
+<h3 id="inheritance-hierarchies">Inheritance Hierarchies</h3>
+<h4 id="behaviour">Behaviour</h4>
+<pre><code>ServerBehaviour
+└── AccountCreationSystem : IAccountCreationSystem&lt;NetworkConnection&gt;
+</code></pre>
+<h4 id="runtime-data-containers">Runtime Data Containers</h4>
+<pre><code>RuntimeDataContainer
+├── AccountCreationSystemRuntimeData         : IAccountCreationSystemRuntimeData
+├── AccountCreationSystemMappingData         : IAccountCreationSystemMappingData
+└── MainThreadQueueData (abstract)
+    └── SystemMainThreadQueueData (abstract)
+        └── AccountCreationSystemMainThreadQueueData : IAccountCreationSystemMainThreadQueueData
+</code></pre>
+<h3 id="runtime-data-container-details">Runtime Data Container Details</h3>
+<h4 id="accountcreationsystemruntimedata">AccountCreationSystemRuntimeData</h4>
+<p>Runtime statistics, connection caches, and worker tracking. Implements <code>IAccountCreationSystemRuntimeData</code>. Counter fields use <code>Interlocked</code> for thread-safe increments from async workers.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ConnectionIpCache</code></td>
+<td><code>LastSeenCacheTracker&lt;int, string&gt;</code></td>
+<td>Per-connection IP address cache for ingress validation</td>
+</tr>
+<tr>
+<td><code>ConnectionEncryptionCache</code></td>
+<td><code>LastSeenCacheTracker&lt;int, ConnectionEncryptionData&gt;</code></td>
+<td>Per-connection AES key/IV cache for decryption</td>
+</tr>
+<tr>
+<td><code>TotalProcessed</code></td>
+<td><code>long</code></td>
+<td>Successfully processed account creations since start</td>
+</tr>
+<tr>
+<td><code>TotalRejected</code></td>
+<td><code>long</code></td>
+<td>Rejected requests (rate-limited, queue full) since start</td>
+</tr>
+<tr>
+<td><code>TotalFailed</code></td>
+<td><code>long</code></td>
+<td>Failed creations (DB/decrypt errors) since start</td>
+</tr>
+<tr>
+<td><code>CleanupTimer</code></td>
+<td><code>float</code></td>
+<td>Accumulator for periodic mapping data cleanup sweeps</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lifecycle:</strong> <code>InitializeOnce()</code> creates fresh <code>LastSeenCacheTracker</code> instances and zeros all counters. <code>Clear()</code> clears caches and resets counters without nulling references. <code>OnDeinitialize()</code> clears and nulls all references.</p>
+<h4 id="accountcreationsystemmappingdata">AccountCreationSystemMappingData</h4>
+<p>Thread-safe per-IP rate limiting and DoS protection data. Implements <code>IAccountCreationSystemMappingData</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IpAbuse</code></td>
+<td><code>IpAbuseTracker</code></td>
+<td>Per-IP last accepted attempt (rate limit) and failure count (block), one record per IP, kept in activity order</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Thread Safety:</strong> <code>IpAbuseTracker</code> takes one short lock per operation — safe for simultaneous access from network and worker threads.</p>
+<p><strong>Lifecycle:</strong> <code>InitializeOnce()</code> creates an empty tracker. <code>Clear()</code> clears it without nulling (it may be accessed from other threads during runtime). <code>OnDeinitialize()</code> clears and nulls the reference.</p>
+<h4 id="accountcreationsystemmainthreadqueuedata">AccountCreationSystemMainThreadQueueData</h4>
+<p>Per-system main-thread action queue. Inherits from <code>SystemMainThreadQueueData</code> → <code>MainThreadQueueData</code>. Implements <code>IAccountCreationSystemMainThreadQueueData</code>.</p>
+<p>Provides <code>Enqueue(Action)</code> and <code>Drain(int)</code> methods for marshalling async worker responses back to the Unity main thread. A separate concrete type ensures the <code>DataContainerRegistry</code> creates an independent instance for this system.</p>
+<h3 id="external-integration-points">External Integration Points</h3>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>FishNet</strong></td>
+<td>Receives <code>CreateAccountBroadcast</code>, sends <code>ClientAuthResultBroadcast</code></td>
+</tr>
+<tr>
+<td><strong>AccountManager</strong></td>
+<td>Provides per-connection AES key/IV needed to decrypt payloads</td>
+</tr>
+<tr>
+<td><strong>Database Service Registry</strong></td>
+<td>Resolves <code>IAccountService</code> for persistence via <code>PersistAsync(username, salt, verifier)</code></td>
+</tr>
+<tr>
+<td><strong><code>ExpiringKeyTracker&lt;string&gt;</code></strong> (<code>Server/Core/Collections/</code>)</td>
+<td>Backs the per-IP verification debounce</td>
+</tr>
+<tr>
+<td><strong>IEmailQueueService</strong></td>
+<td>Enqueues verification emails for asynchronous SMTP delivery via <code>EnqueueAsync</code></td>
+</tr>
+<tr>
+<td><strong>ISmtpService</strong></td>
+<td>Sends emails via SMTP using server-configured credentials (lazily constructed from <code>IServerConfiguration</code>)</td>
+</tr>
+<tr>
+<td><strong>ITwoFactorRecoveryCodeService</strong></td>
+<td>Stores PBKDF2-SHA256 hashed recovery codes via <code>PersistManyAsync</code> during account creation</td>
+</tr>
+<tr>
+<td><strong>DataContainerRegistry</strong></td>
+<td>Supplies queue, runtime, mapping, and main-thread queue containers</td>
+</tr>
+<tr>
+<td><strong>CryptoHelper</strong></td>
+<td>AES decrypt, strict UTF-8 encoding, AAD construction, <code>AuthMessageType.CreateAccount</code></td>
+</tr>
+<tr>
+<td><strong>Authentication</strong></td>
+<td>Centralized <code>IsAllowedUsername()</code> validation</td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>This module is part of the FishMMO project and is subject to the FishMMO project license.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -155,7 +155,7 @@ PersistAsync uses atomic UPSERT to prevent race conditions during concurrent reg
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_DeleteAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ISceneServerService.DeleteAsync(System.Int64,System.Threading.CancellationToken)">
   DeleteAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L117"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L137"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Deletes a scene server registration.</p>
@@ -202,7 +202,7 @@ failures are automatically retried.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_FetchSceneServersByIDsAsync_System_Collections_Generic_List_System_Int64__System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ISceneServerService.FetchSceneServersByIDsAsync(System.Collections.Generic.List{System.Int64},System.Int32,System.Threading.CancellationToken)">
   FetchSceneServersByIDsAsync(List&lt;long&gt;, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L126"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L151"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Retrieves multiple scene servers by their IDs in batches.</p>
@@ -239,6 +239,11 @@ failures are automatically retried.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_FetchSceneServersByIDsAsync_System_Collections_Generic_List_System_Int64__System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Each row carries <a class="xref" href="FishMMO.Database.Data.SceneServerData.html#FishMMO_Database_Data_SceneServerData_PulseAgeSeconds">PulseAgeSeconds</a>, measured by the database
+clock as it was read, which is what a caller must judge liveness by. So does
+<code>FetchAsync</code>.</p>
+</div>
 
 
 
@@ -306,10 +311,11 @@ failures are automatically retried. Uses PostgreSQL ON CONFLICT for atomic UPSER
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_PulseAsync_System_Int64_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ISceneServerService.PulseAsync(System.Int64,System.Int32,System.Threading.CancellationToken)">
   PulseAsync(long, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L78"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L79"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Updates the last pulse timestamp, character count, and lock state for a scene server (heartbeat).</p>
+  <div class="markdown level1 summary"><p>Updates the last pulse timestamp and character count for a scene server (heartbeat), and
+reads its operator control state back in the same statement.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -333,8 +339,9 @@ failures are automatically retried. Uses PostgreSQL ON CONFLICT for atomic UPSER
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.ServerControlState.html">ServerControlState</a>&gt;&gt;</dt>
-    <dd><p>A <a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a> indicating success or containing a DatabaseException on failure.
-Returns DatabaseEntityNotFoundException if server doesn't exist.</p>
+    <dd><p>The row's <a class="xref" href="FishMMO.Database.Data.ServerControlState.html">ServerControlState</a>: its lock, and any scheduled shutdown with the
+seconds left before it as the database clock measured them
+(<a class="xref" href="FishMMO.Database.Data.ServerControlState.html#FishMMO_Database_Data_ServerControlState_ShutdownInSeconds">ShutdownInSeconds</a>). NotFound when the row is gone.</p>
 </dd>
   </dl>
 
@@ -345,8 +352,8 @@ Returns DatabaseEntityNotFoundException if server doesn't exist.</p>
 
 
   <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_PulseAsync_System_Int64_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Uses ExecuteSqlRawAsync with execution strategy wrapping to ensure transient database
-failures are automatically retried. Updates timestamp to current UTC time along with character count and lock state.</p>
+  <div class="markdown level1 remarks"><p>Transient failures are retried by the execution wrapper. The pulse writes neither
+control column: the row is the authority for both, and the server adopts what it reads.</p>
 </div>
 
 
@@ -356,7 +363,7 @@ failures are automatically retried. Updates timestamp to current UTC time along 
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_SetLockedAsync_System_Int64_System_Boolean_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ISceneServerService.SetLockedAsync(System.Int64,System.Boolean,System.Threading.CancellationToken)">
   SetLockedAsync(long, bool, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L92"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L93"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Opens or closes this scene server to new arrivals.</p>
@@ -406,7 +413,7 @@ playing. The row is the authority; the server adopts it on its next pulse.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_SetShutdownAsync_System_Int64_System_Nullable_System_DateTime__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ISceneServerService.SetShutdownAsync(System.Int64,System.Nullable{System.DateTime},System.Threading.CancellationToken)">
   SetShutdownAsync(long, DateTime?, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L102"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L107"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Schedules or cancels this scene server's shutdown.</p>
@@ -444,7 +451,60 @@ playing. The row is the authority; the server adopts it on its next pulse.</p>
 
 
   <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_SetShutdownAsync_System_Int64_System_Nullable_System_DateTime__System_Threading_CancellationToken__remarks">Remarks</h4>
-  <div class="markdown level1 remarks"><p>Scheduling also locks the server; cancelling does not unlock it.</p>
+  <div class="markdown level1 remarks"><p>Scheduling also locks the server; cancelling does not unlock it. For an absolute instant
+the caller already holds; a delay belongs on <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.ISceneServerService.html#FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_SetShutdownInAsync_System_Int64_System_Int32_System_Threading_CancellationToken_">SetShutdownInAsync(long, int, CancellationToken)</a>, for the
+reason given on <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IWorldServerService.html#FishMMO_Database_Npgsql_Services_Interfaces_IWorldServerService_SetShutdownAsync_System_Int64_System_Nullable_System_DateTime__System_Threading_CancellationToken_">SetShutdownAsync(long, DateTime?, CancellationToken)</a>.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_SetShutdownInAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ISceneServerService.SetShutdownInAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_SetShutdownInAsync_System_Int64_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.ISceneServerService.SetShutdownInAsync(System.Int64,System.Int32,System.Threading.CancellationToken)">
+  SetShutdownInAsync(long, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/ISceneServerService.cs/#L122"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Schedules this scene server's shutdown a number of seconds from now by the database
+clock, and locks it.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;DateTime&gt;&gt; SetShutdownInAsync(long serverId, int seconds, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>serverId</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>Scene server row to update.</p>
+</dd>
+    <dt><code>seconds</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>Delay in seconds. Zero means now; negative is refused.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>&gt;&gt;</dt>
+    <dd><p>The UTC deadline written, or NotFound when the row is gone.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_ISceneServerService_SetShutdownInAsync_System_Int64_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The deadline is taken from the database clock inside the writing statement, so the
+delay asked for is the delay that elapses. See
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IWorldServerService.html#FishMMO_Database_Npgsql_Services_Interfaces_IWorldServerService_SetShutdownInAsync_System_Int64_System_Int32_System_Threading_CancellationToken_">SetShutdownInAsync(long, int, CancellationToken)</a>, including what a retry does.</p>
 </div>
 
 

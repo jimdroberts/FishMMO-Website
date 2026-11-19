@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>Client Connection Manager | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Client Connection Manager | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-Unity/Assets/FishMMO/Client/Connection/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../../../../index.html">
+            <img id="logo" class="svg" src="../../../../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="client-connection-manager">Client Connection Manager</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-Unity/Assets/FishMMO/Client/Connection/README.md">View this file on GitHub</a></p>
+</blockquote>
+<h2 id="overview">Overview</h2>
+<p>Manages the client connection lifecycle: connect, disconnect, and automatic reconnection with exponential backoff.</p>
+<h2 id="connection-states">Connection States</h2>
+<ul>
+<li><code>None</code> — No active connection</li>
+<li><code>Login</code> — Connected to LoginServer</li>
+<li><code>ConnectingToWorld</code> — Transitioning to WorldServer</li>
+<li><code>World</code> — Connected to WorldServer</li>
+<li><code>Scene</code> — Connected to SceneServer</li>
+</ul>
+<h2 id="reconnection">Reconnection</h2>
+<p>Automatic reconnection targets the WorldServer. <code>CanReconnect</code> gates it on the current
+connection type — <code>World</code>, <code>Scene</code>, or <code>ConnectingToWorld</code>. A <code>Login</code> connection that drops
+is not reconnectable and raises <code>OnConnectionAttemptFailed</code> instead. <code>Client</code> responds to that
+by invalidating the cached login server list (so the next attempt re-probes IPFetch) <strong>and</strong>
+running <code>QuitToLogin</code>. Without the second half, a client kicked or timed out on the login
+server was left with no visible panel at all: <code>UITKCharacterSelect</code> hides itself on any stop and
+<code>UITKLogin</code> never re-showed, so the only recovery was restarting the client.</p>
+<p>That teardown also stages an <code>Unspecified</code> disconnect notice when the client is holding a
+session token, so the player is told <em>something</em> — a login server that restarts or times a
+connection out sends nothing, and <code>QuitToLogin</code> only surfaces a reason the server supplied. The
+token check is what keeps it from firing on a first connect attempt that never reached a server,
+where the login panel's own message (&quot;the connection was closed before it answered&quot;) is both
+more specific and more accurate.</p>
+<ul>
+<li>Maximum attempts: 10 (configurable)</li>
+<li>Base delay: 5 seconds (configurable)</li>
+<li>Maximum delay: 60 seconds (configurable)</li>
+<li>Algorithm: <code>baseDelay * 2^min(attempt, 6)</code> with 25% random jitter, then capped at the maximum delay</li>
+<li><strong>Exception — deliberate scene handoffs.</strong> The first retry after a <code>Scene</code> connection drops
+uses <code>SceneHandoffReconnectDelay</code> (0.25 s, jittered) instead of the full base delay. A
+scene-to-scene transfer <em>is</em> a deliberate drop: the scene server releases the character and
+disconnects, expecting the client to return through the world server. Charging it the
+failure backoff cost every teleport and channel switch ~5 s of dead time, during which the
+scene had already unloaded. Only attempt 0 from a <code>Scene</code> drop is fast-pathed; if it fails,
+normal exponential backoff resumes from attempt 1, so an unreachable world server is still
+not hammered.</li>
+<li>Reconnection is canceled by <code>ForceDisconnect()</code> or <code>CancelReconnect()</code></li>
+<li><code>OnReconnectPending</code> fires the moment a retry is <em>armed</em>, before its delay elapses.
+<code>OnReconnectAttempt</code> fires when the retry actually starts, which leaves the whole backoff
+window unreported — and that window is not idle during a transfer, because the scene has
+already unloaded. Both loading screens treat &quot;a reconnect is coming&quot; as a transition in
+progress so the overlay never drops over an emptied world.</li>
+<li>Every attempt dials <code>lastWorldAddress</code> / <code>lastWorldPort</code>, recorded on the last world
+connect. A dropped <em>Scene</em> connection therefore reconnects to the WorldServer, which
+re-routes the client, rather than back to the scene server directly.</li>
+</ul>
+<h3 id="why-connectingtoworld-counts-as-reconnectable">Why <code>ConnectingToWorld</code> counts as reconnectable</h3>
+<p>The retry loop spans two connection types, and missing either one breaks it:</p>
+<ol>
+<li>A drop arms the retry timer, then clears <code>CurrentConnectionType</code> to <code>None</code>.</li>
+<li><code>TryReconnect()</code> calls <code>ConnectToServer(..., isWorldServer: true)</code>, which sets
+<code>ConnectingToWorld</code> for the in-flight attempt.</li>
+<li>If that attempt fails, <code>ConnectingToWorld</code> is the only type still describing it — <code>World</code>
+and <code>Scene</code> are long gone.</li>
+</ol>
+<p>So a <code>CanReconnect</code> that accepted only <code>World</code> and <code>Scene</code> reported false at step 3: no
+further retry was armed, <code>MaxReconnectAttempts</code> never counted past one, <code>OnReconnectFailed</code>
+(and the quit-to-login forward hanging off it) never fired, and the client sat disconnected
+with no path forward. <code>OnConnectionAttemptFailed</code> fired in its place, throwing away the
+cached login server list over what was a world server outage.</p>
+<p>The same gate covers the initial Login→World hop, which is also typed <code>ConnectingToWorld</code>.
+A world server that is down at server-select now retries with backoff behind the cancellable
+<code>UITKReconnectDisplay</code> and ends in quit-to-login, rather than failing silently on the first try.</p>
+<h2 id="connection-type-transitions">Connection Type Transitions</h2>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>Trigger</th>
+<th>To</th>
+<th>Set by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>None</code></td>
+<td>Login server authenticates</td>
+<td><code>Login</code></td>
+<td><code>Client.OnAuthenticationResult</code></td>
+</tr>
+<tr>
+<td><code>Login</code></td>
+<td><code>ConnectToServer(isWorldServer: true)</code></td>
+<td><code>ConnectingToWorld</code></td>
+<td><code>ConnectToServer</code></td>
+</tr>
+<tr>
+<td><code>ConnectingToWorld</code></td>
+<td>World server authenticates</td>
+<td><code>World</code></td>
+<td><code>Client.OnAuthenticationResult</code></td>
+</tr>
+<tr>
+<td><code>World</code></td>
+<td>Scene server authenticates after a hop</td>
+<td><code>Scene</code></td>
+<td><code>Client.OnAuthenticationResult</code></td>
+</tr>
+<tr>
+<td>any</td>
+<td>Connection stops, and it was not a deliberate hop</td>
+<td><code>None</code></td>
+<td><code>OnClientConnectionState</code></td>
+</tr>
+</tbody>
+</table>
+<p>A deliberate teardown — the <code>StopConnection()</code> that <code>ConnectToServer</code> issues before dialing
+somewhere new — is flagged with <code>stoppingForConnect</code> and leaves the type alone, so
+<code>ConnectingToWorld</code> survives the stop it was set for.</p>
+<h2 id="forcedisconnect-lifecycle"><code>forceDisconnect</code> lifecycle</h2>
+<p><code>ForceDisconnect()</code> latches a flag that suppresses the reconnect timer and
+<code>OnConnectionAttemptFailed</code> for the stop it causes. Two rules keep that flag from being
+stranded or cleared too early:</p>
+<ul>
+<li><strong>It is only latched when there is a connection left to tear down.</strong> <code>OnClientConnectionState</code>
+is what consumes it, so latching against an already-<code>Stopped</code> connection strands it — no
+further transition arrives to clear it, and the next <code>ConnectToServer</code> aborts inside
+<code>OnAwaitingConnectionReady</code>, silently, with the guard released and no connection started.
+The login screen reaches that state routinely, because every auth-error dialog calls
+<code>ForceDisconnect</code> whether or not the transport is still up.</li>
+<li><strong>The <code>Stopped</code> handler consumes it.</strong> <code>ResetReconnectState()</code> therefore only clears it when
+the connection is <em>already</em> stopped. <code>QuitToLogin</code> calls <code>ForceDisconnect</code> then
+<code>ResetReconnectState</code> on the same synchronous path, but the transport reports <code>Stopped</code> a
+frame or more later — clearing unconditionally meant that stop arrived with nothing marking
+it deliberate, and an ordinary quit-to-login was reported as a failed connection attempt.</li>
+</ul>
+<h2 id="leaked-guard-recovery">Leaked-guard recovery</h2>
+<p><code>connectingGuard</code> is released on every exit path of <code>OnAwaitingConnectionReady</code>, but the
+coroutine has to actually run for that to happen, and <code>CoroutineRunner</code> hosts it on a
+GameObject this class does not own. If it never starts or is stopped from outside, the guard
+stays acquired and every later connect is refused for the life of the process — which presents
+as a login button that silently stops working. <code>ConnectToServer</code> therefore checks the age of
+the acquisition when the CAS fails, and reclaims a guard held longer than any legitimate
+acquisition could last (stop wait × 2 + establish timeout + 30 s).</p>
+<h2 id="abort-paths-clear-stoppingforconnect">Abort paths clear <code>stoppingForConnect</code></h2>
+<p><code>ConnectToServer</code> sets <code>stoppingForConnect</code> and expects the Stopped transition it asked for to
+consume it. Every abort inside <code>OnAwaitingConnectionReady</code> is reached in exactly the cases
+where that does not happen — the teardown timed out, or the connection was already stopped so
+no transition was ever raised. <code>AbortConnectAttempt</code> therefore clears the flag along with the
+guard; leaving it latched handed it to the <em>next</em> Stopped, which is a real drop, and a drop
+marked deliberate arms no reconnect and raises no <code>OnConnectionAttemptFailed</code>, so the client
+sat disconnected with nothing driving it anywhere.</p>
+<h2 id="loop-guards-are-sized-from-the-timeout-not-a-frame-count">Loop guards are sized from the timeout, not a frame count</h2>
+<p>The waits inside <code>OnAwaitingConnectionReady</code> are bounded by <code>Time.realtimeSinceStartup</code>
+deadlines. Their iteration counters are only a backstop against a clock that stops advancing,
+so they are derived from the timeout (<code>IterationCapForSeconds</code>). Fixed frame counts made the
+counter the <em>tighter</em> bound on any client rendering faster than count ÷ timeout — routine,
+since FishNet's <code>ClientManager.FrameRate</code> defaults to 500 and the login screen renders almost
+nothing. The 20 s establish wait aborted after roughly five seconds and reported an internal
+&quot;iteration limit exceeded&quot; instead of a connection failure.</p>
+<h2 id="waiting-is-not-disconnecting">Waiting is not disconnecting</h2>
+<p>Two of the pipeline's queues hold a client on a live, authenticated connection while it waits:
+the LoginServer's admission queue, and the WorldServer's scene-routing queue (see
+<a href="../../Server/Implementation/World/WorldServer/WorldScene/README.html#scene-routing-queue-feedback">World Scene System → Scene-routing queue feedback</a>).
+Neither involves this class while it waits — no connection state changes, so nothing here
+fires — which is exactly why they need their own feedback channel.</p>
+<p>Both are shown on one panel, <code>UITKWorldQueueDisplay</code> (<code>UIWorldQueueDisplay</code> in ClientPreboot),
+at <code>UITKPanelLayer.SystemStatus</code>: above the loading overlay, because every return through the
+world server after a zone change, channel switch or bind-point respawn has that overlay up, and
+the shared dialog (a <code>Modal</code>) was drawn underneath it. It shows the position, the queue's size,
+the server's estimate, the elapsed wait and a bar for how much of the line ahead has cleared,
+with <strong>Leave queue</strong>. The queue it is showing (<code>QueueKind</code>) picks the wording in
+<code>WorldQueuePresentation</code>:</p>
+<ul>
+<li>The <strong>login queue</strong> (&quot;CONNECTING&quot;) has one wait. <strong>Leave queue</strong> is <code>QuitToLogin</code>. When the
+login server gives up (<code>-1</code>: timed out, or shutting down) the client is already back at the
+login screen, and the panel explains why with a single <strong>Close</strong>: rejoining means signing in
+again, and the login queue keeps nothing across connections.</li>
+<li>The <strong>world scene-routing queue</strong> (&quot;ENTERING THE WORLD&quot;) names what it is waiting for.
+<strong>Leave queue</strong> is <code>Client.LeaveWorldQueue</code>, which sends <code>WorldSceneQueueLeaveBroadcast</code> before
+<code>QuitToLogin</code>: the world server holds an account's place for a grace window after a drop, and
+a player who chose to go must not keep one.</li>
+</ul>
+<p>Without the panel, both fall back to the shared dialog, and the client logs the missing panel
+once.</p>
+<p>When the world server gives up on a wait it sends position <code>-1</code> and closes the connection. This
+class would read that close as a drop and redial on its own after the backoff, behind a
+&quot;reconnecting&quot; overlay the player never asked for, so <code>Client</code> calls <code>ForceDisconnect()</code> first,
+and the panel offers the choice instead: <strong>Try again</strong> (<code>Client.RejoinWorldQueue</code> →
+<code>TryReconnect()</code>, the ordinary world reconnect with the session still held) or <strong>Return to
+login</strong>. Try again keeps the place in line: the world server holds it for about a minute after
+a purge (see <a href="../../Server/Implementation/World/WorldServer/WorldScene/README.html#keeping-a-place-in-line">Keeping a place in line</a>),
+and it does the same for a connection that simply dropped and reconnected. Try again waits for <code>ClientState == Stopped</code>
+(<code>Client.CanRejoinWorldQueue</code>): reconnecting while the forced close is still in flight lets that
+close consume the new attempt's teardown flag, and the attempt aborts without a word.</p>
+<h2 id="no-panel-waits-on-a-reply-forever">No panel waits on a reply forever</h2>
+<p>Every login-flow panel disables its action control, sends a request, and re-enables it when the
+reply arrives. That is correct right up until the reply never arrives — at which point the panel
+is a dead end, and the only way out is to quit to login.</p>
+<p>The reply can go missing for reasons the client cannot see: the server's main-thread queue
+rejecting the action at capacity, a handler throwing before it sends, or the server never
+getting to it. <code>PendingReplyGuard</code> makes the panel stop waiting rather than enumerate those
+causes. It is armed by the same method that disables the control and cleared by the same method
+that re-enables it, so the two cannot drift apart.</p>
+<p>Three properties matter:</p>
+<ul>
+<li><strong>Non-destructive.</strong> The timeout re-enables the control and says so. Nothing is torn down and
+no connection is dropped, so a late reply is still handled normally when it lands.</li>
+<li><strong>It must not end the auth flow.</strong> <code>UITKLogin</code> and <code>UITKRegister</code> gate their auth-result
+handler on <code>isAuthFlowActive</code>, which their <em>unlock</em> clears — so routing the timeout through
+the unlock would make the panel ignore a reply that arrives after the deadline, turning a
+slow login into a permanently stuck one. The timeout calls <code>ReleaseControls</code> instead, which
+only flips <code>SetEnabled</code> on the panel's own controls. A genuine disconnect still goes through
+the unlock, because then the flow really is over.</li>
+<li><strong>Progress refreshes it.</strong> Any auth result at all is proof the server is still working the
+request — the SRP exchange and the two-factor prompt both report progress before they finish,
+and a client can sit in the login queue for minutes. Each one buys the deadline again.</li>
+<li><strong>So does a queue position.</strong> The login queue is the one place a login legitimately outlasts
+the deadline, and its <code>LoginQueuePositionBroadcast</code> is handled by <code>Client</code> (which shows it on
+the queue panel), not by the login panels. Both login panels therefore register for it
+themselves and refresh the guard on any position ≥ 0. Without that the panel announced &quot;the
+server did not respond&quot; <em>beside</em> a live queue display, with sign-in re-enabled — and clicking
+it only produced &quot;connection already in progress&quot;.</li>
+</ul>
+<p>Server-select is deliberately <strong>not</strong> guarded. Its lock spans a whole multi-hop journey — world
+login, scene routing, scene load — not one round trip, and that journey has its own queue
+feedback with a Close button. A 30-second deadline there would fire during a perfectly healthy
+scene load.</p>
+<p>Character-select clears its guard on a successful selection, because the server list takes over
+from there; leaving it armed would fire the timeout later and put the panel back on top of the
+server-select screen.</p>
+<h2 id="unhandled-exceptions-from-the-networking-stack">Unhandled exceptions from the networking stack</h2>
+<p><code>Client.OnLogMessage</code> watches for exceptions raised inside the networking layer and tears the
+session down, because a connection whose reader or transport has thrown cannot be trusted. Two
+rules keep that from doing more harm than the fault it responds to:</p>
+<ul>
+<li><strong>Only the throwing frame counts.</strong> Matching the whole stack caught <code>FishNet.Managing.</code> for
+every exception raised inside <em>any</em> broadcast or RPC handler, since that is the code that
+dispatches them — so a null reference in a HUD panel was indistinguishable from a corrupted
+transport stream, and both cost the player their session. <code>IsNetworkStack</code> now reads only the
+first line of the stack trace, which is the throw site.</li>
+<li><strong>It ends somewhere.</strong> The teardown used to be <code>RevokeAndClearAuthToken</code> plus
+<code>ForceDisconnect</code>, and <code>ForceDisconnect</code> deliberately suppresses both the reconnect timer and
+<code>OnConnectionAttemptFailed</code> — so nothing ran afterwards. World scenes stayed loaded, no login
+panel appeared, and the token was already revoked, so waiting could not recover it. It routes
+through <code>QuitToLogin</code> instead.</li>
+</ul>
+<h2 id="thread-safety">Thread Safety</h2>
+<ul>
+<li><code>connectingGuard</code> uses <code>Interlocked.CompareExchange</code> for CAS-based concurrency control</li>
+<li><code>forceDisconnect</code> is <code>volatile</code> for cross-thread visibility</li>
+<li>All state transitions happen on the Unity main thread via FishNet callbacks</li>
+</ul>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

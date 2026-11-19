@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+      <title>FishMMO Control Panel | FishMMO Documentation </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="FishMMO Control Panel | FishMMO Documentation ">
+      
+      
+      <link rel="icon" href="../../../images/favicon.ico">
+      <link rel="stylesheet" href="../../../public/docfx.min.css">
+      <link rel="stylesheet" href="../../../public/main.css">
+      <meta name="docfx:navrel" content="../../../toc.html">
+      <meta name="docfx:tocrel" content="../../../toc.html">
+      
+      <meta name="docfx:rel" content="../../../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/jimdroberts/FishMMO/blob/dev/Documentation/guides/FishMMO-WebServers/FishMMO-ControlPanel/README.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../../../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../../../index.html">
+            <img id="logo" class="svg" src="../../../images/logo.png" alt="FishMMO">
+            FishMMO
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="fishmmo-control-panel">FishMMO Control Panel</h1>
+
+<blockquote>
+<p><a href="https://github.com/jimdroberts/FishMMO/blob/main/FishMMO-WebServers/FishMMO-ControlPanel/README.md">View this file on GitHub</a></p>
+</blockquote>
+<blockquote>
+<p><strong>Status (2026-09-26): every route the sidebar offers is built.</strong> Sign-in, registration,
+two-factor enrolment, self-service, the operator character surface, account search and
+moderation, the audit log, chat log search, the support ticket system, guilds and parties,
+the server board with lock and shutdown control, sequenced maintenance windows, scene
+instances, per-server bandwidth, the daemon control plane (start, stop and restart through a
+database command queue, plus the supervisor's own history), platform health, secrets and
+queues, and the dashboard all run against PostgreSQL. <strong>There is no fake login and no way to
+opt into one</strong>, and no operator surface serves fabricated data in any build: the design mock
+and its fixtures were deleted, and <code>?mock=1</code> does nothing.</p>
+<p><code>built: false</code> in <code>wwwroot/js/routes.js</code> marks a route whose backend does not exist; no route
+carries it today. Such a route is kept out of the sidebar and says so plainly if reached
+directly — it does not error and it does not invent numbers. A control panel showing a
+reassuring green where there is simply nothing is its worst failure mode. Arena history and
+housing plots have no operator surface, and <code>js/api.js</code> deliberately has no method for them.</p>
+<p><strong>Every Game Master and Admin action is recorded</strong> in <code>admin_audit_log</code>, in the panel and
+in the game alike. On the HTTP side an action filter records every privileged write
+whether or not its author added anything, and the panel refuses to start outside
+production if a privileged endpoint does not declare what it records.</p>
+<p><strong>Staff reads are recorded too, except automatic refreshes</strong> (2026-09-14). The first load of
+a page and every refresh somebody asked for — Refresh, a filter, a page, the re-read after an
+action — write a <code>view.&lt;controller&gt;.&lt;action&gt;</code> row. A page re-reading itself on a timer (the
+server board, maintenance, bandwidth, daemon hosts, platform health and queues, the character
+editor's kick-and-wait) sends <code>X-Panel-Refresh: auto</code> through <code>api.auto.*</code> in <code>js/api.js</code>, and a GET or
+HEAD carrying it is not recorded. The header is trusted for reads only: a write is recorded
+whatever it carries, and a <strong>refused</strong> request is recorded even when marked, a refused poll
+being a probe. The in-game staff console follows the same rule with <code>AutoRefresh</code> on its roster
+request. The mark is the client's word: an operator who edits the page's script to mark every
+read would go unrecorded, which is the accepted cost of a client-side mark.</p>
+</blockquote>
+<p>The Game Control Panel and Admin Dashboard for a FishMMO shard: account self-service,
+character management, live server monitoring and per-server lifecycle control, gated on
+<code>AccessLevel</code>. It is the out-of-game counterpart to the authentication the LoginServer
+performs and to the in-game <code>/admin</code> chat commands.</p>
+<p>Renamed and relocated from <code>FishMMO-CMS</code> at the repository root. The full design, the API
+inventory, the schema additions and the phase plan live in
+<a href="../../CONTROL_PANEL_DESIGN.md">CONTROL_PANEL_DESIGN.md</a>.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#not-a-news-cms">Not a news CMS</a></li>
+<li><a href="#run-it-locally">Run it locally</a></li>
+<li><a href="#project-structure">Project structure</a></li>
+<li><a href="#design-decisions-the-panel-enforces">Design decisions the panel enforces</a></li>
+<li><a href="#srp">SRP</a></li>
+<li><a href="#account-security-issue-252">Account security (issue #252)</a></li>
+<li><a href="#design-system">Design system</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#deployment">Deployment</a></li>
+<li><a href="#api-endpoints">API endpoints</a></li>
+<li><a href="#implementation-status">Implementation status</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="not-a-news-cms">Not a news CMS</h2>
+<p>The launcher's news panel is fetched from <code>Constants.Configuration.LauncherHtmlUrl</code>, baked
+at build time from <code>HostConfig.LauncherHtmlUrl</code> (CI substitutes it from
+<code>FISHMMO_ROOT_DOMAIN</code>). Nothing in this project serves it.</p>
+<h2 id="run-it-locally">Run it locally</h2>
+<p><code>run-local.sh</code> is the supported way: it checks that the database credentials will resolve,
+publishes, and serves the publish on <code>http://localhost:8100</code> (<code>--port</code>, <code>--env Production</code>,
+<code>--check</code>, <code>--no-build</code>; <code>--migrate</code> applies pending migrations to the database it points at,
+and <code>--grant-admin NAME</code> makes an existing account an Admin). It serves publish output rather than
+ordinary build output because the web assets are mapped back to the source tree only in Development. By hand:</p>
+<pre><code class="lang-fish">cd FishMMO-WebServers/FishMMO-ControlPanel
+dotnet build FishMMO-ControlPanel.slnx -c Release
+dotnet run --project ControlPanel
+# then browse http://localhost:8100/
+</code></pre>
+<p>Kestrel binds loopback on the port from <code>WebServer:HttpPort</code> (8100 by default). There is no
+HTTPS redirect: TLS terminates at NGINX in a real deployment, and redirecting would break
+opening the panel locally.</p>
+<p><code>Properties/launchSettings.json</code> sets <code>ASPNETCORE_ENVIRONMENT=Development</code> for <code>dotnet run</code>.
+Without it the host starts in Production, loads <code>appsettings.Production.json</code> — whose
+<code>AllowedHosts</code> is the deployed panel hostname — and answers every request from localhost
+with <strong>400</strong>. Running the built assembly directly needs the variable set by hand:</p>
+<pre><code class="lang-fish">set -x ASPNETCORE_ENVIRONMENT Development
+dotnet ../../Builds/ControlPanel/Release/net8.0/FishMMO-ControlPanel.dll
+</code></pre>
+<p><code>FISHMMO_ENVIRONMENT</code> also works and is what the systemd unit sets, matching the other web
+hosts.</p>
+<h3 id="signing-in">Signing in</h3>
+<p>There are no demo accounts. Create one through <strong>Create an account</strong> on the sign-in card,
+or use an account that already exists in the shard's database — the panel and the game
+client authenticate the same accounts.</p>
+<p>Registration mirrors the in-game panel field for field: account name, email, password and
+age, validated by the same rules, and it produces the same result — an unverified account
+with a verification code emailed, a TOTP secret enrolled, and recovery codes shown once.</p>
+<p><strong>Your password never leaves the browser.</strong> It is turned into an SRP salt and verifier
+locally, and only those are sent, exactly as the game client does. Even field validation
+is performed locally against rules the server publishes, so that no endpoint ever has a
+reason to receive a password.</p>
+<h3 id="no-fixture-mode">No fixture mode</h3>
+<p>There is none, and there must not be one reachable from a query parameter: a panel that can be
+made to show invented numbers will one day show them to somebody who believes them. Every view
+reads through <code>js/api.js</code>, and <code>js/api.js</code> has a method only for a route a controller serves —
+one that answered in development and 404ed in production would be worse than a missing method.</p>
+<h2 id="project-structure">Project structure</h2>
+<pre><code>FishMMO-ControlPanel/
+├── FishMMO-ControlPanel.slnx
+├── README.md
+├── run-local.sh                 # preflight, publish and serve on localhost
+└── ControlPanel/
+    ├── ControlPanel.csproj      # net8.0 web SDK; assembly FishMMO-ControlPanel;
+    │                            # copies appsettings from FishMMO-Setup
+    ├── Program.cs               # Host builder, Kestrel, policies, services, static files, SPA fallback
+    ├── Auth/                    # Panel sessions, policies (Support / Operator / *StepUp)
+    ├── Controllers/             # One per surface: Auth, Account, MyTickets, Support*, Admin*,
+    │                            #   Servers, Maintenance, ServerBandwidth, Daemon, Platform*,
+    │                            #   Dashboard; ModerationGuards and DatabaseReplies helpers
+    ├── Services/                # Registration, SRP and two-factor, self-service, password reset,
+    │                            #   the audit writer and filter, email/SMS drains, the maintenance
+    │                            #   advance and the bandwidth rollup (background services)
+    └── wwwroot/                 # The single-page app
+        ├── index.html
+        ├── css/                 # tokens, base, layout, components
+        ├── srp-selftest.html    # verifies js/srp.js against the server's vectors
+        ├── qr-selftest.html     # verifies the enrolment QR encoder
+        └── js/
+            ├── api.js           # THE SEAM — every HTTP call goes through it
+            ├── app.js           # shell, router, session, step-up
+            ├── routes.js        # navigation map + access levels
+            ├── srp.js           # SRP-6a client, byte-compatible with the LoginServer
+            ├── srp-vectors.json # known answers generated from the .NET library
+            ├── qr.js            # QR encoder for the one-time enrolment handover
+            ├── register.js, reset-password.js
+            ├── ui.js            # escaping, formatting, components, modals
+            └── views/           # one module per page, lazily imported
+</code></pre>
+<p>No bundler, no framework, no npm. Every file is served as authored, which keeps the design
+reviewable and the diff readable. No view builds a URL or calls <code>fetch</code>; every call goes
+through the <code>api</code> object in <code>js/api.js</code>, so if a framework is wanted later that is the only
+file it has to keep.</p>
+<h2 id="design-decisions-the-panel-enforces">Design decisions the panel enforces</h2>
+<p>The decisions that are easy to get wrong, and where to see each one:</p>
+<table>
+<thead>
+<tr>
+<th>Behaviour</th>
+<th>Where to see it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A live character cannot be edited.</strong> Its state lives in the owning scene server's memory and would overwrite the row on the next save, so the editor refuses and offers &quot;kick and wait&quot; instead</td>
+<td>Administration → Character editor, pick a character shown <em>in world</em></td>
+</tr>
+<tr>
+<td><strong>A maintenance window is one operation, not a row of buttons.</strong> It locks every server picked, gives their players a drain, then stops them; each step is rows in the database, so it survives the panel restarting mid-drain</td>
+<td>Servers → Maintenance</td>
+</tr>
+<tr>
+<td><strong>A process an operator stopped stays stopped.</strong> The supervisor tracks the intent itself, does not restart or health-check it, and reports it as stopped by an operator rather than as a fault, until an operator starts or restarts it</td>
+<td>Daemon → Hosts and processes</td>
+</tr>
+<tr>
+<td><strong>Cancelling a shutdown leaves the server locked.</strong> Reopening is a separate decision</td>
+<td>Servers → Board, on a server that is shutting down</td>
+</tr>
+<tr>
+<td><strong>Destructive actions need the target's name typed and a reason.</strong> The reason lands in the audit log</td>
+<td>Any red button</td>
+</tr>
+<tr>
+<td><strong>Step-up.</strong> Destructive actions demand a fresh authenticator code, and the action is retried after it rather than lost</td>
+<td>Any red button, five minutes after signing in</td>
+</tr>
+<tr>
+<td><strong>Denied attempts are audited too</strong></td>
+<td>Administration → Audit log, filter by Denied</td>
+</tr>
+<tr>
+<td><strong>Secrets are an inventory, never a value</strong>, and there is no rotation here</td>
+<td>Platform → Secrets</td>
+</tr>
+<tr>
+<td><strong>Nobody may act on their own account, or on a peer or superior</strong>, and nobody may grant a level at or above their own</td>
+<td>Support → Accounts → an account</td>
+</tr>
+<tr>
+<td><strong>Bandwidth figures say how they were obtained.</strong> Game data and UDP payload are measured by each server's transport; the bytes on the wire are an estimate, drawn and labelled as one; a window with no rows says &quot;no data&quot;, never 0</td>
+<td>Servers → Bandwidth</td>
+</tr>
+<tr>
+<td><strong>The password never leaves the browser.</strong> The sign-in runs a real SRP exchange; only a public ephemeral and a proof are sent</td>
+<td>Sign in with a wrong password — it fails on the proof, not on a comparison</td>
+</tr>
+<tr>
+<td><strong>The challenge endpoint is not a username oracle.</strong> An account that does not exist gets a plausible salt and ephemeral, and fails identically</td>
+<td>Sign in as a name that does not exist</td>
+</tr>
+</tbody>
+</table>
+<h2 id="srp">SRP</h2>
+<p><code>js/srp.js</code> is the browser half of the login. It runs SRP-6a over the RFC 5054 2048-bit
+group with SHA-512, so the password never leaves the browser: the server stores only a
+salt and a verifier and never sees a password-equivalent secret, exactly as the LoginServer
+already works.</p>
+<p>It is <strong>byte-compatible with the server</strong>, and that was measured rather than assumed. Every
+intermediate value was compared against the <code>srp</code> 1.0.7 .NET library the LoginServer
+authenticates with — private key, verifier, both ephemerals, the session key and both
+proofs — across fixed vectors and 150 randomised full exchanges, 11 of which carried a
+leading-zero value.</p>
+<p>The compatibility hinges on one asymmetry that no reimplementation would guess: the
+multiplier <code>k</code> hashes the generator <strong>padded</strong> to the group size, while the <code>H(g)</code> term
+inside the client proof hashes it <strong>unpadded</strong>, as a single <code>0x02</code> byte. Get that wrong and
+the private key, verifier, ephemeral and session key all still match the server exactly —
+only the proof is rejected, on every single login.</p>
+<p>Open <strong><code>/srp-selftest.html</code></strong> to check the implementation against
+<code>js/srp-vectors.json</code>, which holds known answers generated from the .NET library. It runs
+21 checks, needs no build step and no dependencies, and must be served over
+<code>http://localhost</code> or HTTPS — <code>crypto.subtle</code> does not exist on <code>file://</code>.</p>
+<p>Regenerate the vectors only if the server's SRP configuration changes. A diff in that file
+means the wire protocol moved and every stored verifier is invalid.</p>
+<p>The full conventions are tabulated in
+<a href="../../CONTROL_PANEL_DESIGN.md">CONTROL_PANEL_DESIGN.md §5.5</a>.</p>
+<h2 id="account-security-issue-252">Account security (issue #252)</h2>
+<p>The panel side of registration fields, verification channels, the beta gate, the registration
+honeypot, sign-in lockout and the delayed self-service two-factor reset. The database layer
+(<code>IAccountService</code>, <code>IBetaCodeService</code>, <code>ITwoFactorResetRequestService</code>, <code>ISmsQueueService</code>) holds
+the state and the concurrency control; the panel holds the policy described here.</p>
+<h3 id="registration-fields-and-verification">Registration fields and verification</h3>
+<p>Registration accepts, beyond name, email, password and age: an optional <strong>phone number</strong> (E.164,
+with its country code), an optional <strong>Discord username</strong> (<code>fishfan</code>, or the older <code>FishFan#1234</code>), an
+optional <strong>beta code</strong> (required while the gate is on), optional <strong>real name</strong>, <strong>country or region</strong>,
+<strong>address</strong> and <strong>referring account</strong>, and a choice of <strong>verification channels</strong> — email, SMS and a
+Discord DM, SMS needing a phone and Discord a username. The optional fields are validated by
+<code>AccountProfileRules.TryValidate</code>, the one rule set the game and the panel share, and its messages come
+back as field errors (<code>{ error, field }</code>). They are written with <code>PersistProfileAsync</code> immediately after
+the account row is created and before anything else, following the same best-effort discipline as the
+rest of <code>AccountRegistrationService</code>: once the row exists, a failed follow-on step is logged and the
+account is kept. The referring account is not checked for existence — an anonymous form that said &quot;no
+such account&quot; would be an oracle.</p>
+<p><strong>Any one code verifies the account.</strong> A player who chooses several channels is sent a code on each,
+and whichever arrives first can be typed. More channels are more ways to receive a code, never more
+codes to enter — the earlier rule, where every chosen channel had to be proven, turned a slow SMS
+gateway into a locked account for somebody whose email code had arrived long before.</p>
+<p><code>Verification:Email</code>, <code>Verification:Sms</code> and <code>Verification:Discord</code> say which channels the server
+switches on, and <strong><code>AccountVerificationRules</code></strong> (in the database layer, shared with the login server)
+decides which codes an account is sent and asked for. The panel never re-implements it:</p>
+<ul>
+<li>A chosen channel that is switched on, and that the account can receive, gets a six-digit code. Email
+and SMS codes expire after 24 hours and go out through <code>email_queue</code> / <code>sms_queue</code>.</li>
+<li>When <strong>nothing the player chose</strong> is switched on, the account falls back to the first channel that is
+— email, then SMS, then Discord. Every account has an email address, so switching a channel off
+never lets an account in without a code; it moves the code to another channel.</li>
+<li>An account <strong>no enabled channel can reach</strong> (SMS alone switched on, no phone given) is verified
+without a code with <code>PersistChannelsVerifiedAsync</code>, because no code could ever arrive.</li>
+<li><strong>All three off</strong> takes the auto-verify path (<code>PersistAutoVerifiedAsync</code>) — the same path the
+development-only <code>Panel:AutoVerifyAccounts</code> takes. There is one mechanism, reachable two ways, and
+the panel logs a warning at startup when a server verifies nothing.</li>
+</ul>
+<p>The switches must equal the login server's <code>VerifyEmail</code> / <code>VerifySms</code> / <code>VerifyDiscord</code>: both read the
+same rule over the same row, and different switches would let an account into one and not the other.</p>
+<p><strong>Discord.</strong> The panel does not talk to Discord. It issues the code with <code>PersistDiscordVerifyCodeAsync</code>,
+which wakes the Discord bot (<code>FishMMO-DiscordBot</code>), and the bot sends it as a direct message. A bot can
+only message someone who shares a server with it, so the form shows <code>Verification:DiscordInviteUrl</code>
+beside the username field and asks the player to join first; the bot waits for them if they have not.
+The code is sent <strong>exactly once, ever</strong>: the database refuses to issue a second one, and there is no
+resend button, because a new code would make the DM the player already has worthless and the bot never
+sends another. An account that chose Discord and has no code yet — one made in-game before the bot was
+running — is issued one after its next <strong>correct</strong> password at panel sign-in, never before, so a wrong
+password cannot make the bot message a stranger. One Discord account can be linked to only one game
+account; a code that would link a Discord user already linked elsewhere does not match.</p>
+<p><code>POST verify</code> takes a code from any channel; the database matches it against every code the account
+holds in one statement. A correct code answers <code>{ verified: true, outstanding: [] }</code> — nothing is ever
+still owed after one. The old <code>verify-phone</code> twin is gone with the every-channel rule.</p>
+<p><strong>Three wrong codes open a support ticket.</strong> Each wrong code is counted in the database, in the same
+column the login server counts into, through <code>VerificationFailureTicket.RecordAsync</code>, and the third in a
+row opens a ticket filed as the account, which the player can follow from <strong>My tickets</strong>. It is for the
+player who never receives a code: with no grace period, staff are their only way in. What recording
+did — a count, a ticket, a ticket that could not be opened — is logged and never returned. Every wrong
+answer is the same <code>400</code> with the same words (wrong code, unknown account, verified account, the
+ticket-opening third), because the endpoint is anonymous; the words say what three wrong codes do,
+which is true of every account and so tells nobody anything.</p>
+<p><code>POST verify/resend</code> sends a new <code>email</code> or <code>sms</code> code with a two-minute per-account cooldown, never
+replaces a code still waiting in its queue, and answers identically whether or not anything was sent.
+<code>discord</code> is refused with a <code>400</code> for every account alike, which is not an oracle for the same reason.</p>
+<p><strong>No grace period.</strong> An unverified account used to be allowed to sign in until its first code had been
+delivered (<code>verification_email_sent_at</code> still null). That made a broken mail relay indistinguishable
+from &quot;this shard does not verify&quot;, for as long as the relay stayed broken. Now an account owes a code
+from the moment it exists. At sign-in it gets its real salt; a wrong password still fails exactly as
+before, and a <strong>correct</strong> one is answered <code>403</code> with stage <code>verification-required</code> and the <code>outstanding</code>
+channels, whose message names every place a code went. That answer exists only after a correct proof,
+so it tells nothing to anyone without the password.</p>
+<p><strong>SMS delivery.</strong> There is no SMS gateway. <code>LoggingSmsSender</code> writes each message to the panel log.
+It is configured by default outside Production; in Production only when <code>Sms:Provider</code> is <code>log</code>
+explicitly (it then logs verification codes, and says so at startup). Otherwise <code>SmsQueueDrainService</code>
+logs once and idles, as the email drain does with no SMTP host. The drain mirrors the email drain —
+claim identity, batch size, backoff — and stamps <code>verification_email_sent_at</code> after delivering a
+<em>verification</em> SMS. Sign-in no longer reads that column; it records when a code last reached the player,
+which is what staff need to know about an account that cannot verify, and the database has no
+SMS-specific one.</p>
+<h3 id="beta-gate">Beta gate</h3>
+<p>With <code>Beta:Enabled</code>, registration requires a code. <code>CheckRedeemableAsync(code, Beta:Programs)</code> runs
+<strong>before</strong> the account exists — redeeming first would attach a use to a name the insert may then find
+taken — and every failure (unknown, revoked, expired, used up, malformed, wrong program) answers with
+one message, &quot;That beta code is not valid.&quot;. Then the account is created, then <code>RedeemAsync</code>. If the
+redeem loses a race for the code's last use, the account exists without access and the response says so
+and points at <strong>My account → Beta access</strong>, where <code>POST api/account/beta/redeem</code> redeems a code later.
+Panel sign-in is never gated on beta access, precisely so that path exists. <code>GET api/account/policy</code>
+publishes <code>betaRequired</code> so the form marks the field required.</p>
+<p>Administrators mint and revoke codes under <strong>Administration → Beta codes</strong>. A minted batch is shown
+once, with copy-all and a plain-text download. The <code>beta.mint</code> audit row records the program, count,
+uses and expiry — <strong>never the codes</strong>: the audit log is read by more people than that page, and a live
+code in it is a code anyone reading the log can redeem.</p>
+<h3 id="registration-honeypot">Registration honeypot</h3>
+<p><code>GET api/account/register/form</code> issues a token, <code>base64url(json).base64url(HMAC-SHA256)</code> under a
+random per-process key, binding the issue time and two or three decoy field names drawn at random from
+names autofill and form-filling bots fill (<code>website</code>, <code>company</code>, <code>fax</code>, <code>middle_name</code>, <code>url</code>,
+<code>homepage</code>, <code>nickname</code>...). The page renders the decoys as ordinary labelled text inputs, positioned
+off-screen (not <code>display:none</code>), <code>aria-hidden</code>, <code>tabindex=-1</code>, <code>autocomplete=off</code>, and posts them back
+under their own names with the token. Registration is refused when:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Why it exists</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Token missing, malformed or its MAC does not verify</td>
+<td>A script posting straight to <code>register</code> never fetched a form. A forged or edited token cannot name different decoys or an older issue time. A panel restart changes the key, so a form opened before it is refused once — the cost is a reload</td>
+</tr>
+<tr>
+<td>Submitted less than 3 s after issue</td>
+<td>Nobody types a name, an address, two matching passwords and picks an age in three seconds; a script does it in milliseconds</td>
+</tr>
+<tr>
+<td>Token older than 1 hour</td>
+<td>A harvested token is not good forever</td>
+</tr>
+<tr>
+<td>Any decoy has a value</td>
+<td>A person never sees them. A bot fills every field it finds, and because the names are random per form it cannot learn one fixed list to leave empty</td>
+</tr>
+</tbody>
+</table>
+<p>Every refusal answers with <strong>exactly</strong> the body a genuine creation failure gets — <code>400</code>,
+&quot;That account could not be created.&quot; — plus a warning in the panel log naming the check. Nothing in
+the response says which check tripped: a bot told why it was refused passes next time.</p>
+<p><strong>The in-game client gets no honeypot.</strong> Bots there speak the LoginServer's protocol, not a page;
+there is no form for them to fill and nothing a decoy field could catch. The game's defences are its
+own rate limits and the same lockout counters described below.</p>
+<h3 id="sign-in-lockout">Sign-in lockout</h3>
+<p>Failures are counted in the database with <code>RecordAuthFailureAsync</code>, in the same columns the
+LoginServer counts into, so the panel and the game share one count per account. The thresholds are
+<code>Auth:Lockout:*</code> and must match the game's: 5 failed passwords in 15 minutes lock password sign-in for
+15 minutes; 5 failed authenticator or recovery codes in 15 minutes lock the second step for 30.</p>
+<ul>
+<li><strong>Password step</strong> (<code>srp/proof</code>). A locked account is refused <strong>without evaluating the proof</strong>. The
+refusal is the one generic message every password failure gets — &quot;That username and password do
+not match an account, or sign-in is temporarily locked after repeated failures. Try again later.&quot; —
+so a lock can never confirm that a name exists or that a guess was right. The lookup and the count
+run for unknown and banned names too, so the paths cost the same. A good proof clears the count.
+The failure that starts a lock queues one <code>SecurityNotice</code> email to the account.</li>
+<li><strong>Two-factor step</strong> (<code>2fa/verify</code>, <code>step-up</code>, <code>2fa/reset/confirm</code>). The session has already proven
+the password, so a lock is stated plainly: <code>423</code> with <code>lockedUntilUtc</code>. The lock that starts also
+emails the holder, warning that somebody knows the password.</li>
+<li><strong>Staff</strong> see both locks on the account page and can clear them with <code>clear-lockout</code>
+(step-up, reason required, audited <code>account.clear-lockout</code>).</li>
+</ul>
+<h3 id="self-service-two-factor-reset">Self-service two-factor reset</h3>
+<p>For an account holder who has lost the authenticator <strong>and</strong> every recovery code. The owner chose
+self-service with a waiting period, which staff may shorten or cancel.</p>
+<ol>
+<li>At the two-factor step of sign-in — the password is proven — <strong>Lost your authenticator AND your
+recovery codes?</strong> leads to <code>POST api/auth/2fa/reset/request</code>. It opens a request effective in
+<code>TwoFactorReset:DelayDays</code> (7) and emails the account: when it takes effect, and that signing in with
+the authenticator or a recovery code before then cancels it. Asking again returns the same request;
+the clock never restarts and never shortens.</li>
+<li><strong>Any</strong> successful two-factor verification — <code>2fa/verify</code> with a TOTP or recovery code, and
+<code>step-up</code> — cancels a pending request and emails that it was cancelled. Passing the real factor
+proves the owner still has it, which is the case the waiting period exists to catch.</li>
+<li>Once effective, the password-proven session calls <code>2fa/reset/complete</code>. <code>CompleteAsync</code> spends the
+request in one conditional update. The account page's own enrolment code
+(<code>SelfServiceService.BeginTwoFactorSetupAsync</code>) then overwrites the secret and replaces the recovery
+codes <strong>while <code>totp_enabled</code> stays on</strong>. Every other panel session and every game token is revoked,
+a <code>SecurityNotice</code> is sent, and the new otpauth URI and codes go to the same handover screen
+registration uses (QR, manual key, &quot;I have saved them&quot;).</li>
+<li>Nothing is signed in until <code>2fa/reset/confirm</code> receives a code from the <strong>new</strong> authenticator;
+recovery codes are refused there.</li>
+</ol>
+<p>The rules this keeps:</p>
+<ul>
+<li><strong>A reset never immediately satisfies two-factor.</strong> Completion issues a fresh session that has
+proven only the password.</li>
+<li><strong>The account is never left with two-factor cleared.</strong> Clearing first and enrolling second would
+leave a window — or, after a failed write, an account — guarded by the password alone. The game
+demands the new authenticator from the moment the reset completes. The KEK is checked before the
+request is spent, so a server that cannot encrypt a new secret does not use up the player's week.</li>
+<li><strong>A password reset never satisfies two-factor, and a recovery code never resets a password.</strong>
+Nothing here touches the SRP credentials, and <code>PasswordResetService</code> touches nothing here.</li>
+</ul>
+<p>Staff see a pending reset on the account page, in the account history's <strong>Standing</strong>, and in a list of
+every pending reset on <strong>Support → Accounts</strong>. They can <strong>Shorten</strong> it to now or a chosen earlier time,
+or <strong>Cancel</strong> it. Both are step-up with a reason, audited (<code>account.2fa-reset-shorten</code>,
+<code>account.2fa-reset-cancel</code>), refused against one's own or a peer's account, and emailed to the holder.</p>
+<p><strong>Platform → Queues</strong> shows the SMS queue beside the email queue: the same states, counts,
+oldest-pending alarm and step-up retry (<code>IQueueBoardService.FetchSmsQueueAsync</code> / <code>RetrySmsAsync</code>).
+The phone number is masked by the server to its last four digits (<code>+44•••••0123</code>) before it reaches
+the browser, the search matches a number only whole so a masked one cannot be recovered a digit at a
+time, and neither the number nor the message body is read into an audit row or the log.</p>
+<h2 id="design-system">Design system</h2>
+<p>Every colour, radius, spacing step and font size resolves through a token in
+<code>css/tokens.css</code>. Nothing else declares a literal colour, so retheming is one file.</p>
+<ul>
+<li><strong>Light and dark.</strong> The light palette is the base declaration; dark redefines only the
+tokens whose role changes, under both <code>prefers-color-scheme</code> and an explicit
+<code>data-theme</code>, so the in-app toggle wins in both directions. The choice persists in
+<code>localStorage</code> and every read and write is wrapped, so a private window still works.</li>
+<li><strong>Responsive to 400px.</strong> The sidebar becomes a drawer below 900px. Tables scroll inside
+their own container; the page body never scrolls horizontally.</li>
+<li><strong>Icons</strong> are inline SVG paths using <code>currentColor</code> — no icon font, no network request.</li>
+<li><strong>Charts</strong> are hand-rolled inline SVG sparklines, likewise <code>currentColor</code>.</li>
+<li><strong>Focus is never removed</strong>, only restyled. <code>prefers-reduced-motion</code> is honoured.</li>
+<li><strong>Every interpolation into markup is escaped</strong> through <code>ui.esc</code>. Chat messages, account
+names, character names and audit reasons are all player-supplied.</li>
+</ul>
+<h2 id="configuration">Configuration</h2>
+<p><code>Program.cs</code> layers configuration in this order:</p>
+<ol>
+<li><strong>Bundled defaults</strong> — the build copies <code>FishMMO-Setup/Development/appsettings.ControlPanel.json</code>
+to the output directory as <code>appsettings.json</code>, and the Production variant as
+<code>appsettings.Production.json</code>.</li>
+<li><strong>Working-directory overrides</strong> — <code>./appsettings.json</code> and
+<code>./appsettings.{Environment}.json</code>, both optional, both reloading on change.</li>
+</ol>
+<p>Edit the templates under <code>FishMMO-Setup/</code>, not the copies in <code>Builds/ControlPanel/</code> — the build overwrites
+those.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WebServer:HttpPort</code></td>
+<td>Kestrel loopback port. Default 8100</td>
+</tr>
+<tr>
+<td><code>AllowedHosts</code></td>
+<td>Host filter. <code>localhost</code> in Development, the panel hostname in Production</td>
+</tr>
+<tr>
+<td><code>Cors:AllowedOrigins</code></td>
+<td>Empty by design — the app is served same-origin</td>
+</tr>
+<tr>
+<td><code>Npgsql:*</code></td>
+<td>Database settings, per the shared database template</td>
+</tr>
+<tr>
+<td><code>ConnectionStrings:NpgsqlConnection</code></td>
+<td>Read only by the Production SSL-mode guard; supply via <code>ConnectionStrings__NpgsqlConnection</code></td>
+</tr>
+<tr>
+<td><code>Verification:Email</code> / <code>Verification:Sms</code> / <code>Verification:Discord</code></td>
+<td>Which channels a code can be sent on; any one code verifies. A player whose choices are all off is sent a code on one that is on; all three off verifies every account on creation. Must match the login server's <code>VerifyEmail</code> / <code>VerifySms</code> / <code>VerifyDiscord</code>. Discord needs the Discord bot running. Default <code>true</code> / <code>true</code> / <code>true</code> (Production template: Discord <code>false</code>)</td>
+</tr>
+<tr>
+<td><code>Verification:DiscordInviteUrl</code></td>
+<td>The <code>https://</code> invite to the game's Discord server, shown beside the Discord username field — the bot can only message members. Anything not <code>https://</code> is ignored with a startup warning. Default empty</td>
+</tr>
+<tr>
+<td><code>Beta:Enabled</code> / <code>Beta:Programs</code></td>
+<td>Registration requires a beta code of one of these program keys (empty list: any program). Default off</td>
+</tr>
+<tr>
+<td><code>Auth:Lockout:PasswordThreshold</code> / <code>PasswordWindowMinutes</code> / <code>PasswordLockMinutes</code></td>
+<td>5 failed passwords in 15 minutes lock password sign-in for 15. Shared with the LoginServer; keep equal</td>
+</tr>
+<tr>
+<td><code>Auth:Lockout:TwoFactorThreshold</code> / <code>TwoFactorWindowMinutes</code> / <code>TwoFactorLockMinutes</code></td>
+<td>5 failed codes in 15 minutes lock the second step for 30. Shared with the LoginServer; keep equal</td>
+</tr>
+<tr>
+<td><code>TwoFactorReset:DelayDays</code></td>
+<td>Waiting period before a self-service two-factor reset may be completed. Default 7 (clamped 1–90)</td>
+</tr>
+<tr>
+<td><code>Sms:Provider</code></td>
+<td><code>log</code> writes messages to the panel log. Empty: <code>log</code> outside Production, idle in Production. Nothing else exists yet</td>
+</tr>
+<tr>
+<td><code>Sms:DrainIntervalSeconds</code> / <code>Sms:MaxPerPass</code></td>
+<td>The SMS drain's pace, as <code>Email:*</code> is the email drain's. Defaults 2 / 5</td>
+</tr>
+</tbody>
+</table>
+<p>Database credentials are resolved at runtime from <code>FISHMMO_DB_USERNAME</code> /
+<code>FISHMMO_DB_PASSWORD</code> or <code>/etc/fishmmo/db-secrets.env</code>. They never live in a committed file.</p>
+<p>The installer configures this component under <strong>Configuration → Web Server Settings →
+Control Panel</strong>.</p>
+<h2 id="deployment">Deployment</h2>
+<p><code>FishMMO-Setup/nginx.conf</code> carries a <code>panel.fishmmo.com</code> vhost proxying to
+<code>127.0.0.1:8100</code>, with a tighter body cap than the patch host, a strict Content-Security-Policy,
+a dedicated rate-limit zone, a much tighter one on <code>api/auth</code>, and a commented-out IP
+allowlist for the privileged API surface.</p>
+<p><code>SystemdServiceInstaller</code> registers it as <code>fishmmo-controlpanel</code>.</p>
+<p><strong>The <code>X-FishMMO-Client</code> gate is deliberately not applied here.</strong> That header is produced by
+<code>ClientApiSigner</code> using a secret compiled into the shipped game client; a browser cannot
+produce it, and shipping the secret to a web page would be worse than not gating at all.
+Authority comes from the panel's own session, its two-factor requirement and its audit log.
+This is an intentional divergence from the other three web hosts.</p>
+<h2 id="api-endpoints">API endpoints</h2>
+<h3 id="apiauth--sign-in"><code>api/auth</code> — sign-in</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>srp/challenge</code></td>
+<td>Username in; salt, server ephemeral and an exchange handle out. <strong>Never takes a password</strong></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>srp/proof</code></td>
+<td>Client ephemeral and proof in; server proof and a session out</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>2fa/verify</code></td>
+<td>A TOTP code or a recovery code; promotes a pending session. Counted and locked (<code>423</code>); cancels a pending two-factor reset</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>step-up</code></td>
+<td>Re-prove the authenticator for a destructive action. Counted and locked like <code>2fa/verify</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>2fa/reset</code></td>
+<td>TwoFactorPending. The pending self-service reset: requested and effective times, <code>delayDays</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>2fa/reset/request</code></td>
+<td>TwoFactorPending. Opens a delayed reset, or returns the pending one unchanged; emails the account</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>2fa/reset/complete</code></td>
+<td>TwoFactorPending. Uses an effective reset: new secret and recovery codes for the handover, other sessions and game tokens revoked, a fresh password-only session. Does NOT sign in</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>2fa/reset/confirm</code></td>
+<td>TwoFactorPending. A code from the NEW authenticator (no recovery codes); promotes the session</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>session</code></td>
+<td>The current identity, or nothing</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>logout</code></td>
+<td>Revoke this session</td>
+</tr>
+</tbody>
+</table>
+<p><code>srp/proof</code> answers every failure — wrong password, unknown or banned account, locked sign-in — with
+one <code>401</code> and one message. Its only other refusal, <code>403</code> with <code>stage: &quot;verification-required&quot;</code> and
+<code>outstanding</code>, is given only after a correct proof. None of these endpoints is audited: they are
+anonymous or <code>TwoFactorPending</code>, an account authenticating as itself.</p>
+<h3 id="apiaccount--player-self-service"><code>api/account</code> — player self-service</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Policy</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>register/form</code></td>
+<td>Anonymous, <code>Register</code> rate limit</td>
+<td>A signed form token and 2–3 randomised decoy field names (the honeypot)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>register</code></td>
+<td>Anonymous, <code>Register</code></td>
+<td>Create an account from a browser-computed salt and verifier, plus the optional profile, channels and beta code, and <code>enableTwoFactor</code> (opt-in; only then does the response carry the authenticator URI and recovery codes, once). Errors carry <code>field</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>verify</code></td>
+<td>Anonymous, <code>Register</code></td>
+<td>A code from any channel; one correct code verifies. Every failure is one message; the third wrong code in a row opens a support ticket</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>verify/resend</code></td>
+<td>Anonymous, <code>Register</code></td>
+<td>A new code for <code>email</code> or <code>sms</code>, two-minute cooldown; always the same answer. <code>discord</code> is refused: that code is sent once</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>policy</code></td>
+<td>Anonymous</td>
+<td>The account rules, <code>betaRequired</code>, the verification switches with the Discord invite, and profile limits. Takes no input</td>
+</tr>
+<tr>
+<td>GET</td>
+<td>(root)</td>
+<td>Self</td>
+<td>The signed-in account's profile, including phone and verification state</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>beta</code></td>
+<td>Self</td>
+<td>The beta codes this account has redeemed</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>beta/redeem</code></td>
+<td>Self, <code>Auth</code> rate limit</td>
+<td>Redeem a beta code later</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>sessions</code></td>
+<td>Self</td>
+<td>The signed-in account's live panel sessions</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>sessions/{id}</code></td>
+<td>Self</td>
+<td>Revoke one of them</td>
+</tr>
+</tbody>
+</table>
+<h3 id="apisupportaccounts--account-security-issue-252"><code>api/support/accounts</code> — account security (issue #252)</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Policy</th>
+<th>Audit action</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>{username}</code></td>
+<td>Support</td>
+<td><code>view.supportaccounts.get</code></td>
+<td>The detail projection: the list fields plus phone, Discord username and where its one DM stands, verification state with the wrong-code count and last delivery, real name, country, address, referral, both lockouts, the pending reset and beta codes. The search projection carries none of these</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>2fa-resets</code></td>
+<td>Support</td>
+<td><code>view.supportaccounts.pendingtwofactorresets</code></td>
+<td>Every pending self-service reset, soonest first</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>{username}/clear-lockout</code></td>
+<td>SupportStepUp</td>
+<td><code>account.clear-lockout</code></td>
+<td>Lift both sign-in locks. Reason required</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>{username}/2fa-reset/shorten</code></td>
+<td>SupportStepUp</td>
+<td><code>account.2fa-reset-shorten</code></td>
+<td>Bring a pending reset forward to <code>effectiveUtc</code> (null: now). Earlier only. Reason required; holder emailed</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>{username}/2fa-reset/cancel</code></td>
+<td>SupportStepUp</td>
+<td><code>account.2fa-reset-cancel</code></td>
+<td>Cancel a pending reset. Reason required; holder emailed</td>
+</tr>
+</tbody>
+</table>
+<p>The writes apply <code>ModerationGuards.Check</code>: not one's own account, not a peer or superior.</p>
+<h3 id="apiadminbeta--beta-codes"><code>api/admin/beta</code> — beta codes</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Policy</th>
+<th>Audit action</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>programs</code></td>
+<td>Operator</td>
+<td><code>view.adminbeta.programs</code></td>
+<td>Program totals and the registration gate's configuration</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>codes?program=&amp;includeRevoked=&amp;page=&amp;pageSize=</code></td>
+<td>Operator</td>
+<td><code>view.adminbeta.codes</code></td>
+<td>Codes, newest first</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>mint</code></td>
+<td>OperatorStepUp</td>
+<td><code>beta.mint</code></td>
+<td>Mint <code>count</code> codes of <code>program</code> with <code>maxUses</code> and optional <code>expiresUtc</code> and <code>note</code>. Reason required. The codes are in the response only; the audit row holds program, count, uses and expiry</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>{id}/revoke</code></td>
+<td>OperatorStepUp</td>
+<td><code>beta.revoke</code></td>
+<td>Revoke a code, ending the access of every account that redeemed it. Reason required</td>
+</tr>
+</tbody>
+</table>
+<h3 id="apiplatformqueues--outbound-messages-and-the-group-finder"><code>api/platform/queues</code> — outbound messages and the group finder</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Policy</th>
+<th>Audit action</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>email?state=&amp;search=&amp;page=&amp;pageSize=</code></td>
+<td>Operator</td>
+<td><code>view.platformqueues.emailqueue</code></td>
+<td>Email queue page, whole-table counts and the oldest pending/unsent ages. Never the body</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>email/{id}/retry</code></td>
+<td>OperatorStepUp</td>
+<td><code>platform.email-retry</code></td>
+<td>Release the claim on a claimed or failed email. Reason required. Sends nothing; attempts and error kept</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>sms?state=&amp;search=&amp;page=&amp;pageSize=</code></td>
+<td>Operator</td>
+<td><code>view.platformqueues.smsqueue</code></td>
+<td>SMS queue page, the same shape. <code>recipientPhone</code> masked to the last four digits; <code>search</code> is an account substring or a whole number. Never the body</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>sms/{id}/retry</code></td>
+<td>OperatorStepUp</td>
+<td><code>platform.sms-retry</code></td>
+<td>Release the claim on a claimed or failed SMS. Reason required. The audit row names the account, never the number</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>group-finder?status=&amp;page=&amp;pageSize=</code></td>
+<td>Operator</td>
+<td><code>view.platformqueues.groupfinderqueue</code></td>
+<td>Group finder rows with heartbeat staleness. Read-only. The wait and the heartbeat age are measured by the database clock in the reading statement (it stamped both), never by the panel host's</td>
+</tr>
+</tbody>
+</table>
+<p>There is no purge or delete for any queue. Retry only ever puts a message back in line.</p>
+<h3 id="apisupportaccounts-and-apiadminaccounts--moderation"><code>api/support/accounts</code> and <code>api/admin/accounts</code> — moderation</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Policy</th>
+<th>Audit action</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>api/support/accounts?query=&amp;accessLevel=&amp;includeBanned=&amp;page=&amp;pageSize=</code></td>
+<td>Support</td>
+<td><code>view.supportaccounts.search</code></td>
+<td>Account search</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>api/support/accounts/{username}/history</code></td>
+<td>Support</td>
+<td><code>view.supportaccounts.history</code></td>
+<td>The account's standing and moderation history</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>api/support/accounts/{username}/kick</code></td>
+<td>Support</td>
+<td><code>account.kick</code></td>
+<td>Disconnect the account from the game</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>api/support/accounts/{username}/ban</code></td>
+<td>SupportStepUp</td>
+<td><code>account.ban</code></td>
+<td>One transaction: access level <code>Banned</code>, game tokens and panel sessions revoked, a kick request</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>api/support/accounts/{username}/unban</code></td>
+<td>SupportStepUp</td>
+<td><code>account.unban</code></td>
+<td>Restore <code>Player</code> — never the previous level, and never the revoked tokens</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>api/support/accounts/{username}/revoke-tokens</code></td>
+<td>SupportStepUp</td>
+<td><code>account.revoke-tokens</code></td>
+<td>Force re-authentication everywhere</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>api/support/accounts/{username}/reset-2fa</code></td>
+<td>SupportStepUp</td>
+<td><code>account.reset-2fa</code></td>
+<td>Clear the TOTP secret and recovery codes</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>api/admin/accounts/{username}/access-level</code></td>
+<td>OperatorStepUp</td>
+<td><code>account.access-level</code></td>
+<td>Set an access level: not one's own account, not an account at or above one's own, and not a level at or above one's own — the rules the in-game <code>/admin access</code> command applies</td>
+</tr>
+</tbody>
+</table>
+<p>There is deliberately <strong>no password reset and no account deletion</strong>: an operator who can set a
+password can sign in as the player, which is what SRP exists to prevent, and deleting an account
+would take its audit history with it. Every write applies <code>ModerationGuards</code> and requires a reason.</p>
+<h3 id="apiserversbandwidth--per-server-traffic"><code>api/servers/bandwidth</code> — per-server traffic</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Policy</th>
+<th>Audit action</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>?range=hour\|day\|month&amp;kind=login\|world\|scene&amp;name=</code></td>
+<td>Operator</td>
+<td><code>view.serverbandwidth.get</code></td>
+<td>Per-server and per-tier figures and one chart: the last hour (1-minute points), 24 hours (5-minute) or 30 days (1-hour), for every server, one tier, or one server</td>
+</tr>
+</tbody>
+</table>
+<p>Each game server files its transport counters once a minute into <code>server_bandwidth_minute</code>
+(<code>ServerBandwidthRecorder</code> in the Unity server). <code>ServerBandwidthRollupService</code>, a background
+service in this panel, rolls minutes into <code>server_bandwidth_hour</code> every five minutes (the first
+pass after startup is a catch-up), and enforces retention: minutes for 14 days, hours for 13
+months. Every hour row is recomputed and SET, never added to, and a pass takes a transaction-level
+advisory lock, so two panels, or a pass run twice, change nothing. The page re-reads once a minute
+through <code>api.auto</code>, which the audit log does not record.</p>
+<h2 id="implementation-status">Implementation status</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Every route in <code>routes.js</code></td>
+<td><strong>Built</strong> against PostgreSQL; <code>built: false</code> marks nothing</td>
+</tr>
+<tr>
+<td>Design tokens, light and dark, responsive to 400px</td>
+<td><strong>Done</strong></td>
+</tr>
+<tr>
+<td>Input validation</td>
+<td>Done — via <code>FishMMO.Shared.Authentication</code> and the published account rules</td>
+</tr>
+<tr>
+<td>Static hosting and SPA fallback</td>
+<td><strong>Done</strong></td>
+</tr>
+<tr>
+<td>Swagger / OpenAPI</td>
+<td>Done (Development only)</td>
+</tr>
+<tr>
+<td>Configuration layering</td>
+<td>Done</td>
+</tr>
+<tr>
+<td>NGINX vhost, systemd unit, installer entry</td>
+<td><strong>Done</strong></td>
+</tr>
+<tr>
+<td>Browser-side SRP</td>
+<td><strong>Done</strong> — proven byte-compatible, pinned by <code>srp-selftest.html</code></td>
+</tr>
+<tr>
+<td>SRP login, registration, verification, two-factor</td>
+<td><strong>Done</strong> — verified against PostgreSQL</td>
+</tr>
+<tr>
+<td>Panel session store (<code>web_sessions</code>)</td>
+<td><strong>Done</strong></td>
+</tr>
+<tr>
+<td>Authorization policies and a fallback deny</td>
+<td><strong>Done</strong></td>
+</tr>
+<tr>
+<td>Audit log of every privileged write and staff read</td>
+<td><strong>Done</strong></td>
+</tr>
+<tr>
+<td>Daemon control plane (start / stop / restart)</td>
+<td><strong>Done</strong> — a database command queue the AppHealthMonitor polls</td>
+</tr>
+<tr>
+<td>Server bandwidth (per-server traffic, hour rollup, retention)</td>
+<td><strong>Done</strong></td>
+</tr>
+<tr>
+<td>Arena history, housing plots</td>
+<td><strong>Not started</strong> — no operator surface</td>
+</tr>
+<tr>
+<td>Password reset by staff, account deletion</td>
+<td><strong>Not built, deliberately</strong> (see moderation above)</td>
+</tr>
+</tbody>
+</table>
+<p>Authorization now fails closed. <code>Program.cs</code> registers a fallback policy requiring an
+authenticated administrator with two-factor satisfied, so a route that carries no policy
+attribute is <strong>denied</strong> rather than permitted — the defect the old CMS scaffold shipped
+with, where <code>UseAuthorization</code> ran with nothing to enforce and every administrative route
+was anonymous.</p>
+<p>The stub <code>AdminController</code> the old scaffold shipped (ban, unban and the rest answering success
+with no database write) is deleted; those actions are the real routes above.</p>
+<h2 id="license">License</h2>
+<p>This project is part of the FishMMO project and is distributed under the FishMMO project
+license.</p>
+
+</article>
+
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <div class="fish-footer"><span>&copy; 2023&ndash;2026 jimdroberts &middot; <a href="https://github.com/jimdroberts/FishMMO/blob/main/LICENSE">MIT License</a></span><span class="fish-footer-links"><a href="https://github.com/jimdroberts/FishMMO">GitHub</a><a href="https://discord.gg/9JQEYjkSNk">Discord</a><a href="https://dotnet.github.io/docfx">Built with docfx</a></span></div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

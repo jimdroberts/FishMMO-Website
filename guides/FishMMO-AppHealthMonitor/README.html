@@ -95,9 +95,12 @@ one or more FishMMO server executables. It is intended to be the &quot;service
 manager&quot; for headless Unity server builds (LoginServer, WorldServer,
 SceneServer) and any auxiliary processes (IPFetch, Patcher API, etc.) when a
 full systemd/Docker setup isn't desired.</p>
-<p>The supervisor performs <strong>process liveness, TCP/UDP/WebSocket port probes, CPU
-and memory thresholds, exponential-backoff restarts, and a circuit breaker</strong> to
-stop hammering a permanently broken process.</p>
+<p>The supervisor performs <strong>process liveness, TCP/UDP port probes, a database
+pulse check for the game servers, CPU and memory thresholds, exponential-backoff
+restarts, and a circuit breaker</strong> to stop hammering a permanently broken
+process. With database credentials it also joins the <strong>control plane</strong>: it
+reports what it supervises and carries out Start/Stop/Restart commands an
+operator queued for its host.</p>
 <hr>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
@@ -114,6 +117,8 @@ stop hammering a permanently broken process.</p>
 <li><a href="#console-commands">Console Commands</a></li>
 <li><a href="#build--run">Build &amp; Run</a></li>
 <li><a href="#headless-mode">Headless Mode</a></li>
+<li><a href="#database-pulse-check">Database Pulse Check</a></li>
+<li><a href="#control-plane">Control Plane</a></li>
 <li><a href="#known-limitations">Known Limitations</a></li>
 <li><a href="#flow-diagram">Flow Diagram</a></li>
 </ul>
@@ -125,8 +130,9 @@ application. Each <code>HealthMonitor</code> launches its process, waits for the
 initial-health-check delay, then enters a polling loop that:</p>
 <ol>
 <li>Verifies the process is still alive.</li>
-<li>Probes the configured port(s) using <code>TcpHealthChecker</code>, <code>UdpHealthChecker</code>,
-or <code>WebSocketHealthChecker</code> (selected by <code>PortType</code>).</li>
+<li>Runs the configured checks (selected by <code>PortType</code>): <code>TcpHealthChecker</code>,
+<code>UdpHealthChecker</code>, or <code>PulseHealthChecker</code>, which reads the game server's
+heartbeat from the database (see <a href="#database-pulse-check">Database Pulse Check</a>).</li>
 <li>Optionally samples CPU and memory usage and compares to configured
 thresholds (with a tolerance counter to ignore transient spikes).</li>
 <li>On consecutive failures, kills the process gracefully (with a force-kill
@@ -193,16 +199,18 @@ inspect status and intervene without restarting the supervisor itself.</p>
 <pre><code>FishMMO-AppHealthMonitor/AppHealthMonitor/
 ├── Program.cs                # Entry point; builds DaemonOrchestrator + CommandHandler
 ├── DaemonOrchestrator.cs     # Manages monitor lifecycle, start/stop signalling, shutdown
+├── DaemonControlPlane.cs     # Database control plane: host/app status rows, command queue
+├── ISupervisionHost.cs       # Seam a monitor uses to rejoin the running cycle on revival
 ├── CommandHandler.cs         # Interactive console command loop
 ├── ConsoleCommand.cs         # record: Name, Description, Func&lt;Task&gt; Action
 ├── HealthMonitor.cs          # One per app — launch / probe / restart loop
 ├── HealthMonitorStatus.cs    # Snapshot DTO used by 'status' command
-├── HealthCheckerFactory.cs   # Selects TCP/UDP/WebSocket probe per PortType
-├── IHealthChecker.cs         # Probe contract: Task&lt;bool&gt; CheckAsync(...)
+├── HealthCheckerFactory.cs   # Selects the check per PortType
+├── IHealthChecker.cs         # Check contract: Task&lt;bool&gt; IsResponsiveAsync(...)
 ├── TcpHealthChecker.cs       # TCP connect probe
-├── UdpHealthChecker.cs       # UDP send/receive probe
-├── WebSocketHealthChecker.cs # WebSocket upgrade probe
-├── PortType.cs               # enum: TCP, UDP, WebSocket
+├── UdpHealthChecker.cs       # UDP send probe
+├── PulseHealthChecker.cs     # Game-server heartbeat age, read from the database
+├── PortType.cs               # enum: TCP, UDP, DatabasePulse
 ├── AppConfig.cs              # Per-application config + validation
 └── appsettings.json          # Headless flag + Applications[] array
 </code></pre>
@@ -221,6 +229,10 @@ inspect status and intervene without restarting the supervisor itself.</p>
 <td>Top-level lifecycle. Builds the per-app <code>HealthMonitor</code> set, exposes <code>TrySignalStart()</code>, <code>CancelCurrentMonitoring()</code>, <code>GetActiveMonitorStatuses()</code>, and <code>Shutdown()</code>.</td>
 </tr>
 <tr>
+<td><code>DaemonControlPlane</code></td>
+<td>Optional. Heartbeats this host's row, reports a status row per supervised app, and claims and executes the commands queued for this host (see <a href="#control-plane">Control Plane</a>). <code>TryCreate</code> returns null, and the daemon supervises as before, when no database credentials are configured or <code>ControlPlane:Enabled</code> is false.</td>
+</tr>
+<tr>
 <td><code>HealthMonitor</code></td>
 <td>Owns one child process. Implements launch, settle-delay, probe loop, threshold breach detection, graceful + forced kill, and exponential-backoff restart with a circuit breaker.</td>
 </tr>
@@ -233,8 +245,12 @@ inspect status and intervene without restarting the supervisor itself.</p>
 <td>Returns the right <code>IHealthChecker</code> for each <code>PortType</code> declared in the app config.</td>
 </tr>
 <tr>
-<td><code>IHealthChecker</code> / <code>Tcp</code>/<code>Udp</code>/<code>WebSocket</code> checkers</td>
+<td><code>IHealthChecker</code> / <code>Tcp</code>/<code>Udp</code> checkers</td>
 <td>Stateless probes invoked per cycle.</td>
+</tr>
+<tr>
+<td><code>PulseHealthChecker</code></td>
+<td>Reads a game server's pulse age from the database by tier and registered name. Fails open.</td>
 </tr>
 <tr>
 <td><code>AppConfig</code></td>
@@ -280,8 +296,11 @@ inspect status and intervene without restarting the supervisor itself.</p>
       &quot;Name&quot;: &quot;LoginServer&quot;,
       &quot;ApplicationExePath&quot;: &quot;/path/to/GameServer&quot;,
       &quot;LaunchArguments&quot;: &quot;LOGIN&quot;,
-      &quot;MonitoredPort&quot;: 7770,
-      &quot;PortTypes&quot;: [ &quot;TCP&quot;, &quot;UDP&quot; ],
+      &quot;MonitoredPort&quot;: 0,
+      &quot;PortTypes&quot;: [ &quot;DatabasePulse&quot; ],
+      &quot;PulseTier&quot;: &quot;login&quot;,
+      &quot;PulseServerName&quot;: &quot;LoginServer&quot;,
+      &quot;PulseStaleSeconds&quot;: 90,
 
       &quot;CheckIntervalSeconds&quot;: 30,
       &quot;LaunchDelaySeconds&quot;: 2,
@@ -301,7 +320,6 @@ inspect status and intervene without restarting the supervisor itself.</p>
       &quot;CircuitBreakerFailureThreshold&quot;: 3,
 
       &quot;PortCheckTimeoutMs&quot;: 2000,
-      &quot;WebSocketCheckTimeoutMs&quot;: 5000,
       &quot;HealthCheckHost&quot;: &quot;127.0.0.1&quot;
     }
   ]
@@ -325,7 +343,7 @@ inspect status and intervene without restarting the supervisor itself.</p>
 <tr>
 <td><code>ApplicationExePath</code></td>
 <td>required</td>
-<td>Absolute or relative path to the executable; resolved via <code>Path.GetFullPath</code> and verified to exist.</td>
+<td>Absolute or relative executable path, verified to exist. <code>Builds/...</code> paths resolve from the enclosing centralized <code>Builds</code> directory when the monitor runs there; other relative paths (and <code>Builds/...</code> outside that layout) resolve from the working directory.</td>
 </tr>
 <tr>
 <td><code>LaunchArguments</code></td>
@@ -340,7 +358,22 @@ inspect status and intervene without restarting the supervisor itself.</p>
 <tr>
 <td><code>PortTypes</code></td>
 <td><code>[]</code></td>
-<td>Subset of <code>TCP</code>, <code>UDP</code>, <code>WebSocket</code>. Empty = process-only.</td>
+<td>Subset of <code>TCP</code>, <code>UDP</code>, <code>DatabasePulse</code>. Empty = process-only. Every configured check must pass. The game servers use <code>DatabasePulse</code>: WebTransport is QUIC over UDP, so a TCP probe fails against a healthy server and a UDP send succeeds against a dead one.</td>
+</tr>
+<tr>
+<td><code>PulseTier</code></td>
+<td>required with <code>DatabasePulse</code></td>
+<td><code>login</code>, <code>world</code> or <code>scene</code>: which server table to read.</td>
+</tr>
+<tr>
+<td><code>PulseServerName</code></td>
+<td><code>Name</code></td>
+<td>The name the server registers under (its own <code>ServerName</code> setting). Matched by name, not address or port.</td>
+</tr>
+<tr>
+<td><code>PulseStaleSeconds</code></td>
+<td><code>90</code></td>
+<td>Pulse age, as the database measures it, above which the server counts as down (three missed 30 s beats).</td>
 </tr>
 <tr>
 <td><code>CheckIntervalSeconds</code></td>
@@ -410,12 +443,7 @@ inspect status and intervene without restarting the supervisor itself.</p>
 <tr>
 <td><code>PortCheckTimeoutMs</code></td>
 <td>min <code>1</code></td>
-<td>TCP / UDP probe timeout.</td>
-</tr>
-<tr>
-<td><code>WebSocketCheckTimeoutMs</code></td>
-<td>min <code>1</code></td>
-<td>WebSocket probe timeout (the upgrade handshake needs more time than a raw TCP connect).</td>
+<td>TCP / UDP probe timeout. A pulse read gets the larger of this and 5 s, since it is a database round trip, not a socket connect.</td>
 </tr>
 <tr>
 <td><code>HealthCheckHost</code></td>
@@ -494,7 +522,7 @@ path as the <code>shutdown</code> command.</li>
 <h3 id="running-as-a-systemd-service-linux">Running as a systemd service (Linux)</h3>
 <p>The <a href="../FishMMO-Installer/README.html">FishMMO-Installer</a> can install the daemon as a systemd service:</p>
 <pre><code class="lang-bash"># Publish the project first:
-dotnet publish AppHealthMonitor/AppHealthMonitor.csproj -c Release -o publish
+dotnet publish AppHealthMonitor/AppHealthMonitor.csproj -c Release
 # Install the service:
 FishMMO-Installer --component apphealthmonitor-service
 </code></pre>
@@ -511,7 +539,7 @@ Description=FishMMO Application Health Monitor Daemon
 After=network.target postgresql.service
 
 [Service]
-WorkingDirectory=/opt/fishmmo/FishMMO-AppHealthMonitor/AppHealthMonitor/bin/Release/net8.0/publish
+WorkingDirectory=/opt/fishmmo/Builds/AppHealthMonitor/Release/net8.0/publish
 ExecStart=/usr/bin/dotnet &quot;AppHealthMonitor.dll&quot;
 Restart=always
 RestartSec=10
@@ -526,6 +554,42 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now fishmmo-apphealthmonitor
 </code></pre>
+<hr>
+<h2 id="database-pulse-check">Database Pulse Check</h2>
+<p><code>PulseHealthChecker</code> asks the database how long ago the server last pulsed
+(<code>IServerBoardService.FetchPulseAgeAsync</code>). The age is measured by the database,
+which stamped the pulse, so this host's clock plays no part: subtracting a local
+<code>DateTime.UtcNow</code> from the stamp made a daemon host running fast restart every
+healthy server on every check, and one running slow keep a dead server
+&quot;healthy&quot; for the size of the lag.</p>
+<p><strong>It fails open.</strong> A database that cannot be read, a read that times out, or a
+name with no registered row reports healthy, with a log line. During a database
+outage every pulse looks stale at once, and failing closed would have every
+daemon restart every server together; a server still starting has not
+registered yet, and killing it mid-start would make that permanent. The cost is
+that a genuinely dead server is not caught while the database is unreadable.</p>
+<p>Without database credentials the pulse check cannot run: <code>HealthCheckerFactory</code>
+logs a warning for each application configured with it and skips the check, and
+the application is still supervised by its process and any other checks.</p>
+<hr>
+<h2 id="control-plane">Control Plane</h2>
+<p>With database credentials, and unless <code>ControlPlane:Enabled</code> is <code>false</code>, the
+daemon polls every <code>ControlPlane:PollSeconds</code> (default 10, kept within 5–300):
+it heartbeats its host row, reports one status row per supervised application,
+and claims up to 10 commands queued for <strong>its own host</strong>. A command is a verb
+from a closed set (Start / Stop / Restart) and the <strong>name</strong> of an application
+this daemon already supervises. The name is resolved against the daemon's own
+<code>appsettings.json</code>; anything else is refused. No path, argument or shell ever
+comes from the database, so write access to the database can restart a FishMMO
+process but cannot make a host run something new.</p>
+<p><strong>Expiry is judged without this host's wall clock.</strong> Commands live five
+minutes. The claim returns the seconds each command has left as the database
+measured them in the claiming statement (<code>ExpiresInSeconds</code>), and the daemon
+counts them down on a monotonic clock anchored just before it sent the claim
+(<code>DaemonCommandExpiry</code>, FishMMO-DB), so any error is toward refusing. Comparing
+the command's <code>ExpiresUtc</code> with the local clock refused every command on a host
+running five minutes fast and ran stale ones on a host running slow. A command
+that expired before it could run is recorded as refused and nothing is done.</p>
 <hr>
 <h2 id="known-limitations">Known Limitations</h2>
 <ul>
@@ -563,7 +627,7 @@ on next launch).</li>
 
     Probe --&gt; Alive{Process alive?}
     Alive -- no --&gt; Restart
-    Alive -- yes --&gt; Port[TCP / UDP / WS probe]
+    Alive -- yes --&gt; Port[TCP / UDP probe or database pulse]
     Port --&gt; Res[CPU / memory sample]
     Res --&gt; OK{All within thresholds?}
     OK -- yes --&gt; Probe
@@ -580,6 +644,118 @@ on next launch).</li>
     CancelCycle --&gt; Wait
     Shutdown --&gt; Stop([Daemon exits])
 </code></pre>
+<h2 id="current-local-development-configuration">Current local development configuration</h2>
+<p>Run <code>./run-local.sh --check-config</code> from this directory to validate the bundled
+settings without launching services. Run <code>./run-local.sh</code>, then enter <code>start</code>
+to supervise the three game-server roles and four local web services:</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Executable under <code>Builds/</code></th>
+<th>TCP health port</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IPFetch</td>
+<td><code>IpFetchServer/Debug/net8.0/IpFetchServer</code></td>
+<td>8080</td>
+</tr>
+<tr>
+<td>Patcher</td>
+<td><code>Patcher/Debug/net8.0/Patcher</code></td>
+<td>8090</td>
+</tr>
+<tr>
+<td>WebGL</td>
+<td><code>WebGLServer/Debug/net8.0/WebGLServer</code></td>
+<td>8000</td>
+</tr>
+<tr>
+<td>Control panel</td>
+<td><code>ControlPanel/Debug/net8.0/FishMMO-ControlPanel</code></td>
+<td>8100</td>
+</tr>
+</tbody>
+</table>
+<p>The canonical development template and bundled monitor settings now select
+PgBouncer at <code>127.0.0.1:6432</code>. Credentials still come from the existing secure
+sources; no passwords were added to JSON. Each child receives Development
+settings and port 6432. WebGL receives the built directory containing <code>index.html</code>
+via <code>ASPNETCORE_WEBROOT</code>; the control panel receives its own frontend directory.
+The working directory defaults to the executable directory. This keeps relative
+server configuration and content lookups independent of the monitor's launch directory.</p>
+<p>LoginServer, WorldServer and SceneServer are enabled using
+<code>Builds/Server/Linux Server/FishMMO GameServer Linux/GameServer.exe</code>.
+Each role is passed first (<code>LOGIN</code>, <code>WORLD</code>, <code>SCENE</code>), followed by Unity's
+<code>-batchmode -nographics</code> flags. Terminal launches use <code>-logFile -</code> with a
+separate <code>&lt;Role&gt;.Player.log</code> tee in the server build directory. DatabasePulse names match the actual server configuration:
+<code>LoginServer</code>, <code>World Server</code>, and <code>Scene Server</code>. Monitor labels remain
+<code>LoginServer</code>, <code>WorldServer</code>, and <code>SceneServer</code>. The database read service is
+initialized before constructing the pulse checkers.</p>
+<p>New per-application settings:</p>
+<ul>
+<li><code>Enabled</code> defaults to true. Disabled entries are not validated, launched, or exposed as supervised control-plane applications.</li>
+<li><code>WorkingDirectory</code> defaults to the executable directory and supports portable <code>Builds/</code> paths.</li>
+<li><code>EnvironmentVariables</code> supplies child-only overrides; keep credentials out of this dictionary.</li>
+</ul>
+<p>The launcher anchors configuration lookup to the bundled output directory.
+<code>Headless</code> remains false, so <code>start</code> begins supervision interactively. Setting
+<code>Headless=true</code> in the launch environment enables automatic startup as before.
+This monitor configuration does not create the separate API gateway at port 8088;
+the individual IPFetch and Patcher services remain on 8080 and 8090.</p>
+<p>Regression verification:</p>
+<pre><code class="lang-bash">dotnet run --project Tools/Configuration.Tests
+# Also verify real credentials against PgBouncer with a read-only SELECT 1:
+dotnet run --project Tools/Configuration.Tests -- --database
+</code></pre>
+<p>On 2026-10-25, the rebuilt bundled configuration passed <code>--check-config</code>, and
+54 child-process/configuration checks passed, including successful PgBouncer
+6432 authentication and SELECT 1. No supervised application services were started
+by these checks. The production template was not changed.</p>
+<h2 id="separate-application-terminals-linux-desktop">Separate application terminals (Linux desktop)</h2>
+<p>The local development template enables <code>LaunchInTerminal</code> for all seven services.
+Restart AppHealthMonitor to load the rebuilt monitor and configuration, then enter
+<code>start</code>. Each service opens in its own terminal window. The daemon supervises the
+application PID, including resource checks and stop/restart commands; the terminal
+or helper PID is never substituted for the application PID.</p>
+<p>No terminal path is required. Detection searches PATH for Konsole, GNOME Terminal,
+Xfce Terminal, Kitty, Alacritty, Foot, then XTerm. Konsole is installed on the current
+machine. To override detection, set this per-application configuration:</p>
+<pre><code class="lang-json">{
+  &quot;LaunchInTerminal&quot;: true,
+  &quot;TerminalExecutable&quot;: &quot;/usr/bin/konsole&quot;,
+  &quot;TerminalLaunchTimeoutSeconds&quot;: 15,
+  &quot;TerminalLogPath&quot;: &quot;LoginServer.Player.log&quot;
+}
+</code></pre>
+<p><code>TerminalExecutable</code> is optional and may be a supported executable name on PATH or
+an absolute path. Its basename must match one of the supported terminals. Omit it
+or leave it empty for automatic detection. Set <code>LaunchInTerminal</code> to false for an
+individual application to launch directly.</p>
+<p>For game servers, <code>-logFile -</code> makes Unity print full logs to its terminal. The
+terminal helper also appends stdout/stderr to the existing per-role <code>.Player.log</code>
+file via <code>TerminalLogPath</code>, resolved relative to the application's working directory.
+A launch banner separates restarts in the appended log. With Headless=true or no
+desktop/terminal available, launches remain direct; Unity's output is redirected
+back to its configured per-role file in that mode. Production templates remain
+unchanged. This terminal implementation targets Linux desktops; other platforms
+continue direct launching.</p>
+<p>Terminal startup uses a private launch request and PID handshake with kernel
+process-start identities. Arguments are passed without shell interpolation.
+The helper closes when its application exits and stops its child if the monitor
+owner disappears. Failed/timed-out/canceled launches are cleaned up. Closing an
+application window or its terminal can trigger the monitor's normal restart
+policy; use the monitor's <code>stop</code> command for an intentional stop.</p>
+<p>Verify without starting the real application services:</p>
+<pre><code class="lang-bash">./run-local.sh --check-config
+dotnet run --project Tools/Terminal.Tests
+</code></pre>
+<p>The terminal integration test requires a graphical Linux session and opens short-lived
+verification windows. It exercises the actual terminal/helper/application path,
+PID ownership, arguments, working directory, environment, both output streams,
+headless file logging, owner death, timeout and cancellation cleanup.</p>
 
 </article>
 

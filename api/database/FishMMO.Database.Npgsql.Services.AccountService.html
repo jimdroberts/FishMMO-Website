@@ -203,11 +203,210 @@ Returns DatabaseResult for consistent, safe error handling with sanitized messag
 </h2>
 
 
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_BanAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.BanAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_BanAsync_System_String_System_Nullable_System_DateTime__System_String_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.BanAsync(System.String,System.Nullable{System.DateTime},System.String,System.String,System.Threading.CancellationToken)">
+  BanAsync(string, DateTime?, string?, string?, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1270"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Bans an account: drops it to <code>AccessLevel.Banned</code>, revokes its auth tokens and
+Control Panel sessions, queues a kick so the game servers disconnect it, and records
+who banned it, why, and when the ban lifts.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; BanAsync(string accountName, DateTime? bannedUntilUtc, string? bannedBy, string? reason, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account to ban. Matched case-insensitively.</p>
+</dd>
+    <dt><code>bannedUntilUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>?</dt>
+    <dd><p>When the ban lifts, or null for a permanent ban.</p>
+</dd>
+    <dt><code>bannedBy</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Operator account applying the ban, or null when not recorded.</p>
+</dd>
+    <dt><code>reason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The reason, or null when not recorded.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>Success, or DB_NOT_FOUND when no such account exists.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_BanAsync_System_String_System_Nullable_System_DateTime__System_String_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+All four writes land together or none of them do. A half-applied ban leaves the
+account playing: the access level is the login gate and nothing else, so lowering it
+alone stops the next sign-in and does nothing to the session already connected, while
+revoking tokens alone lets the player sign straight back in. The failure this
+atomicity exists to prevent is exactly that — an operator who is told the ban
+succeeded, watching the banned account keep playing.
+</p>
+<p>
+This layer does no policy checking. Who may ban whom is the caller's decision, and
+every caller must record the ban in the audit log.
+</p>
+<p>
+A null <code class="paramref">bannedUntilUtc</code> is a permanent ban. A temporary one is lifted by
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html#FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_FetchForLoginAsync_System_String_System_Boolean_System_Threading_CancellationToken_">FetchForLoginAsync(string, bool, CancellationToken)</a> at the first sign-in attempt after the instant passes,
+which restores <code>Player</code>.
+</p>
+<p>
+The only ban. A one-argument overload that recorded neither actor nor reason was removed
+(issue #267): an account page showing "banned by: —, reason: —" is a ban nobody can
+explain or appeal, and every real caller already passed both.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_ClearAuthFailuresAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ClearAuthFailuresAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_ClearAuthFailuresAsync_System_String_FishMMO_Database_Data_AuthFailureKind_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ClearAuthFailuresAsync(System.String,FishMMO.Database.Data.AuthFailureKind,System.Threading.CancellationToken)">
+  ClearAuthFailuresAsync(string, AuthFailureKind, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1725"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Clears one step's failure count after it succeeds.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; ClearAuthFailuresAsync(string accountName, AuthFailureKind kind, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>kind</code> <a class="xref" href="FishMMO.Database.Data.AuthFailureKind.html">AuthFailureKind</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_ClearAuthLockoutAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ClearAuthLockoutAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_ClearAuthLockoutAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ClearAuthLockoutAsync(System.String,System.Threading.CancellationToken)">
+  ClearAuthLockoutAsync(string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1748"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Lifts both sign-in lockouts: the staff action. True when one was in force.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; ClearAuthLockoutAsync(string accountName, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_ClearMuteAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ClearMuteAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_ClearMuteAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ClearMuteAsync(System.String,System.Threading.CancellationToken)">
+  ClearMuteAsync(string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1515"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Lifts an account's chat mute, clearing who set it and why.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; ClearMuteAsync(string accountName, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account to unmute. Matched case-insensitively.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>Success, or DB_NOT_FOUND when no such account exists.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_AccountService_ClearTotpAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ClearTotpAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_ClearTotpAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ClearTotpAsync(System.String,System.Threading.CancellationToken)">
   ClearTotpAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L508"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L674"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears all TOTP fields when a user disables 2FA.
@@ -251,7 +450,7 @@ Recovery codes should be invalidated separately via ITwoFactorRecoveryCodeServic
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_ExistsAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ExistsAsync(System.String,System.Threading.CancellationToken)">
   ExistsAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L283"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L307"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Checks whether an entity exists for the given key.</p>
@@ -287,37 +486,181 @@ Recovery codes should be invalidated separately via ITwoFactorRecoveryCodeServic
 
 
 
-  <a id="FishMMO_Database_Npgsql_Services_AccountService_FetchByDiscordLinkCodeAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.FetchByDiscordLinkCodeAsync*"></a>
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_ExpirePhoneVerifyCodeAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ExpirePhoneVerifyCodeAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_FetchByDiscordLinkCodeAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.FetchByDiscordLinkCodeAsync(System.String,System.Threading.CancellationToken)">
-  FetchByDiscordLinkCodeAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L566"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_ExpirePhoneVerifyCodeAsync_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ExpirePhoneVerifyCodeAsync(System.String,System.Int32,System.Threading.CancellationToken)">
+  ExpirePhoneVerifyCodeAsync(string, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1005"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Fetches an account by its Discord link code for verification.
-Used by the Discord bot to confirm in-game verification.</p>
+  <div class="markdown level1 summary"><p>Expires the account's phone verification code NOW, but only if it is still
+<code class="paramref">verifyCode</code>. See <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html#FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_ExpireVerifyCodeAsync_System_String_System_Int32_System_Threading_CancellationToken_">ExpireVerifyCodeAsync(string, int, CancellationToken)</a>.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;AccountData?&gt;&gt; FetchByDiscordLinkCodeAsync(string linkCode, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; ExpirePhoneVerifyCodeAsync(string accountName, int verifyCode, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>linkCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd><p>The Discord link code to search for.</p>
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>verifyCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;&gt;</dt>
+    <dd><p>True when that code was expired; false when the account holds a different code.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_ExpireVerifyCodeAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ExpireVerifyCodeAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_ExpireVerifyCodeAsync_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.ExpireVerifyCodeAsync(System.String,System.Int32,System.Threading.CancellationToken)">
+  ExpireVerifyCodeAsync(string, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1001"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Expires the account's email verification code NOW, but only if it is still
+<code class="paramref">verifyCode</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; ExpireVerifyCodeAsync(string accountName, int verifyCode, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>verifyCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;&gt;</dt>
+    <dd><p>True when that code was expired; false when the account holds a different code.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_ExpireVerifyCodeAsync_System_String_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>For a code that was stored and then could not be delivered: expiring it makes the next
+sign-in issue a fresh one instead of the player waiting out a code they never received.
+Conditional on the code, because doing it by re-writing the code unconditionally would
+retire a NEWER code another server issued in the meantime — the one the player may be
+holding (issue #267).</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_FetchAdminAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.FetchAdminAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_FetchAdminAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.FetchAdminAsync(System.String,System.Threading.CancellationToken)">
+  FetchAdminAsync(string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1191"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Fetches a single account for an operator.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;AccountAdminData&gt;&gt; FetchAdminAsync(string accountName, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account to fetch. Matched case-insensitively.</p>
 </dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
-    <dd><p>Token to cancel the operation.</p>
+    <dd><p>Cancellation token.</p>
 </dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.AccountData.html">AccountData</a>?&gt;&gt;</dt>
-    <dd><p>DatabaseResult containing the AccountData if found, or null.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.AccountAdminData.html">AccountAdminData</a>&gt;&gt;</dt>
+    <dd><p>The account, or DB_NOT_FOUND when no such account exists.</p>
 </dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_FetchAdminAsync_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Not <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html#FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_FetchForLoginAsync_System_String_System_Boolean_System_Threading_CancellationToken_">FetchForLoginAsync(string, bool, CancellationToken)</a>. That method refuses banned accounts and reports
+a missing account and a banned one with the same message, because a login path that
+distinguished them would be an account-enumeration oracle. Both behaviours are wrong
+here: the operator most likely to open an account page is the one looking at a ban,
+and an operator who cannot tell "no such account" from "banned" cannot do the job.
+</p>
+<p>
+The caller is responsible for the access-level check that makes that distinction safe
+to expose, and for auditing the read if the deployment audits reads.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_FetchAuthLockoutAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.FetchAuthLockoutAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_FetchAuthLockoutAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.FetchAuthLockoutAsync(System.String,System.Threading.CancellationToken)">
+  FetchAuthLockoutAsync(string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1774"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads an account's sign-in lockouts. An unknown account reads as locked out of nothing.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;AuthLockoutState&gt;&gt; FetchAuthLockoutAsync(string accountName, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.AuthLockoutState.html">AuthLockoutState</a>&gt;&gt;</dt>
+    <dd></dd>
   </dl>
 
 
@@ -451,11 +794,114 @@ Failure cases:</p>
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_FetchPendingTotpSecretAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.FetchPendingTotpSecretAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_FetchPendingTotpSecretAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.FetchPendingTotpSecretAsync(System.String,System.Threading.CancellationToken)">
+  FetchPendingTotpSecretAsync(string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L536"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The staged re-enrolment secret, encrypted, or null when none is staged.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;string?&gt;&gt; FetchPendingTotpSecretAsync(string accountName, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a>&gt;&gt;</dt>
+    <dd><p>NotFound when the account does not exist.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistAccessLevelAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistAccessLevelAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistAccessLevelAsync_System_String_System_Byte_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistAccessLevelAsync(System.String,System.Byte,System.Threading.CancellationToken)">
+  PersistAccessLevelAsync(string, byte, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L858"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Marks an account verified without requiring a verification code, clearing any
+pending code in the process.</p>
+<p>This is the server-initiated counterpart to PersistVerifiedAsync and
+exists for the development-only <code>AutoVerifyAccounts</code> path, where no code is
+ever generated or emailed. It performs no code check, so it must never be reachable
+from a client-supplied value — client-driven verification goes through
+PersistVerifiedAsync, which validates the code atomically.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistAccessLevelAsync(string accountName, byte accessLevel, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The account name.</p>
+</dd>
+    <dt><code>accessLevel</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.byte">byte</a></dt>
+    <dd><p>The new level.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Token to cancel the operation.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>DatabaseResult indicating success or failure.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_PersistAccessLevelAsync_System_String_System_Byte_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+The level is the account's whole authorization surface, in the game and in the Control
+Panel alike, so this is the single most consequential write in this service. It does
+no policy checking of its own — who may promote whom, and how far, is the caller's to
+decide and depends on the caller's own level, which this layer cannot see.
+</p>
+<p>
+Every caller must record the change in the audit log. A level that changed with no
+record of who changed it is indistinguishable from a compromise.
+</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistAgeAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistAgeAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistAgeAsync_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistAgeAsync(System.String,System.Int32,System.Threading.CancellationToken)">
   PersistAgeAsync(string, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L363"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L439"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the age for an account.</p>
@@ -563,16 +1009,16 @@ Failure cases:</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistAutoVerifiedAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistAutoVerifiedAsync(System.String,System.Threading.CancellationToken)">
   PersistAutoVerifiedAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L636"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L931"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Marks an account verified without requiring a verification code, clearing any
 pending code in the process.</p>
-<p>This is the server-initiated counterpart to <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html#FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_PersistVerifiedAsync_System_String_System_Int32_System_Threading_CancellationToken_">PersistVerifiedAsync(string, int, CancellationToken)</a> and
+<p>This is the server-initiated counterpart to PersistVerifiedAsync and
 exists for the development-only <code>AutoVerifyAccounts</code> path, where no code is
 ever generated or emailed. It performs no code check, so it must never be reachable
 from a client-supplied value — client-driven verification goes through
-<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html#FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_PersistVerifiedAsync_System_String_System_Int32_System_Threading_CancellationToken_">PersistVerifiedAsync(string, int, CancellationToken)</a>, which validates the code atomically.</p>
+PersistVerifiedAsync, which validates the code atomically.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
@@ -607,39 +1053,82 @@ from a client-supplied value — client-driven verification goes through
 
 
 
-  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistDiscordLinkCodeAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistDiscordLinkCodeAsync*"></a>
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistChannelsVerifiedAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistChannelsVerifiedAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistDiscordLinkCodeAsync_System_String_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistDiscordLinkCodeAsync(System.String,System.String,System.Threading.CancellationToken)">
-  PersistDiscordLinkCodeAsync(string, string?, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L533"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistChannelsVerifiedAsync_System_String_FishMMO_Database_Data_Enums_AccountVerificationChannels_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistChannelsVerifiedAsync(System.String,FishMMO.Database.Data.Enums.AccountVerificationChannels,System.Threading.CancellationToken)">
+  PersistChannelsVerifiedAsync(string, AccountVerificationChannels, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1607"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Sets the temporary Discord link verification code for an account.
-The Discord bot generates this code; the user verifies in-game with /verify.</p>
+  <div class="markdown level1 summary"><p>Verifies an account without a code: marks the given channels proven and sets <code>verified</code>.
+The SMS channel is only marked when a number is on record; Discord is never marked, because a
+proven Discord channel means a linked Discord user.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistDiscordLinkCodeAsync(string accountName, string? linkCode, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistChannelsVerifiedAsync(string accountName, AccountVerificationChannels channels, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd><p>The account name.</p>
-</dd>
-    <dt><code>linkCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd><p>The link code, or null to clear after verification.</p>
-</dd>
+    <dd></dd>
+    <dt><code>channels</code> <a class="xref" href="FishMMO.Database.Data.Enums.AccountVerificationChannels.html">AccountVerificationChannels</a></dt>
+    <dd></dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
-    <dd><p>Token to cancel the operation.</p>
-</dd>
+    <dd></dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
-    <dd><p>DatabaseResult indicating success or failure.</p>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_PersistChannelsVerifiedAsync_System_String_FishMMO_Database_Data_Enums_AccountVerificationChannels_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>For an account <a class="xref" href="FishMMO.Database.Data.AccountVerificationRules.html#FishMMO_Database_Data_AccountVerificationRules_IsWaived_FishMMO_Database_Data_AccountData__FishMMO_Database_Data_Enums_AccountVerificationChannels_">IsWaived(in AccountData, AccountVerificationChannels)</a> — verification is required but no
+enabled channel can reach it. Server-initiated only; never reachable from a client-supplied value.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistDiscordVerifyCodeAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistDiscordVerifyCodeAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistDiscordVerifyCodeAsync_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistDiscordVerifyCodeAsync(System.String,System.Int32,System.Threading.CancellationToken)">
+  PersistDiscordVerifyCodeAsync(string, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L706"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Issues the account's Discord verification code and wakes the Discord bot to deliver it.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; PersistDiscordVerifyCodeAsync(string accountName, int verifyCode, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>verifyCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;&gt;</dt>
+    <dd><p>True when this call issued the code.</p>
 </dd>
   </dl>
 
@@ -649,6 +1138,12 @@ The Discord bot generates this code; the user verifies in-game with /verify.</p>
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_PersistDiscordVerifyCodeAsync_System_String_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Once per account, ever. Nothing is written when a code was already issued, the DM has been sent
+or taken by the bot, the account has no Discord username, or it is already verified: the one DM
+carries this code, and replacing it would strand a DM nobody will ever resend. See
+<a class="xref" href="FishMMO.Database.Data.DiscordVerification.html">DiscordVerification</a>.</p>
+</div>
 
 
 
@@ -657,7 +1152,7 @@ The Discord bot generates this code; the user verifies in-game with /verify.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistEmailAsync_System_String_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistEmailAsync(System.String,System.String,System.Threading.CancellationToken)">
   PersistEmailAsync(string, string?, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L328"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L400"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the email address for an account.</p>
@@ -702,7 +1197,7 @@ The Discord bot generates this code; the user verifies in-game with /verify.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistLastLoginAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistLastLoginAsync(System.String,System.Threading.CancellationToken)">
   PersistLastLoginAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L257"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L277"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the last login timestamp for an account atomically.
@@ -758,7 +1253,7 @@ Failure cases:</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistLastTotpWindowAsync_System_String_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistLastTotpWindowAsync(System.String,System.Int64,System.Threading.CancellationToken)">
   PersistLastTotpWindowAsync(string, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L482"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L648"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Updates the last TOTP time-step window used for an account, preventing replay attacks.
@@ -800,11 +1295,259 @@ Only updates if the new window is greater than the stored value.</p>
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistMuteAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistMuteAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistMuteAsync_System_String_System_Nullable_System_DateTime__System_String_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistMuteAsync(System.String,System.Nullable{System.DateTime},System.String,System.String,System.Threading.CancellationToken)">
+  PersistMuteAsync(string, DateTime?, string?, string?, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1475"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Mutes an account in chat, silencing every character it owns.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistMuteAsync(string accountName, DateTime? mutedUntilUtc, string? mutedBy, string? reason, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account to mute. Matched case-insensitively.</p>
+</dd>
+    <dt><code>mutedUntilUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>?</dt>
+    <dd><p>When the mute lifts, or null for no end.</p>
+</dd>
+    <dt><code>mutedBy</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Operator account applying the mute.</p>
+</dd>
+    <dt><code>reason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The reason recorded with it.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>Success, or DB_NOT_FOUND when no such account exists.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_PersistMuteAsync_System_String_System_Nullable_System_DateTime__System_String_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Replaces any mute already on the account rather than extending it: the operator applying
+the mute has just decided how long it should be, and quietly keeping a longer earlier one
+would contradict the acknowledgement they are shown. Game servers read the mute when a
+character loads; a character already in the world is silenced by the server that applied
+it and by any other only when it next loads there.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistPendingTotpSecretAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistPendingTotpSecretAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistPendingTotpSecretAsync_System_String_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistPendingTotpSecretAsync(System.String,System.String,System.Threading.CancellationToken)">
+  PersistPendingTotpSecretAsync(string, string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L505"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Stages a re-enrolment's encrypted TOTP secret without touching the live one.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistPendingTotpSecretAsync(string accountName, string encryptedTotpSecret, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>encryptedTotpSecret</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>NotFound when the account does not exist.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_PersistPendingTotpSecretAsync_System_String_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Sign-in never reads the pending secret, so an abandoned re-enrolment leaves the account's
+authenticator working (issue #267). A later staging replaces an earlier one. Promoted by
+<a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html#FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_PromotePendingTotpSecretAsync_System_String_System_Int64_System_Threading_CancellationToken_">PromotePendingTotpSecretAsync(string, long, CancellationToken)</a> once a code from the new authenticator verifies.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistPhoneVerifyCodeAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistPhoneVerifyCodeAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistPhoneVerifyCodeAsync_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistPhoneVerifyCodeAsync(System.String,System.Int32,System.DateTime,System.Threading.CancellationToken)">
+  PersistPhoneVerifyCodeAsync(string, int, DateTime, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1640"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Records an outstanding SMS verification code. Refused when the account has no number.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistPhoneVerifyCodeAsync(string accountName, int verifyCode, DateTime expiresUtc, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>verifyCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+    <dt><code>expiresUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistProfileAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistProfileAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistProfileAsync_System_String_FishMMO_Database_Data_AccountProfileData_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistProfileAsync(System.String,FishMMO.Database.Data.AccountProfileData,System.Threading.CancellationToken)">
+  PersistProfileAsync(string, AccountProfileData, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1546"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Writes the optional contact and identity details, and the verification channels chosen.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistProfileAsync(string accountName, AccountProfileData profile, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>profile</code> <a class="xref" href="FishMMO.Database.Data.AccountProfileData.html">AccountProfileData</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_PersistProfileAsync_System_String_FishMMO_Database_Data_AccountProfileData_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Validated by <a class="xref" href="FishMMO.Database.Data.AccountProfileRules.html">AccountProfileRules</a>. A changed phone number loses its verification
+and any outstanding SMS code; <code>verified</code> is not touched, so editing a number never locks a
+player out of signing in.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistSrpCredentialsAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistSrpCredentialsAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistSrpCredentialsAsync_System_String_System_String_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistSrpCredentialsAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
+  PersistSrpCredentialsAsync(string, string, string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L362"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Replaces the SRP salt and verifier for an account, for a password change.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistSrpCredentialsAsync(string accountName, string salt, string verifier, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The account name.</p>
+</dd>
+    <dt><code>salt</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The new SRP salt, derived client-side.</p>
+</dd>
+    <dt><code>verifier</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The new SRP verifier, derived client-side.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Token to cancel the operation.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>DatabaseResult indicating success or failure.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_PersistSrpCredentialsAsync_System_String_System_String_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The caller must already have proved possession of the CURRENT password — this method
+performs no such check. The panel proves it by running a full SRP exchange against the
+stored verifier before calling here; the plaintext password is never seen by either
+side, so there is nothing else this layer could verify.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistTotpEnabledAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistTotpEnabledAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistTotpEnabledAsync_System_String_System_Boolean_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistTotpEnabledAsync(System.String,System.Boolean,System.Threading.CancellationToken)">
   PersistTotpEnabledAsync(string, bool, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L429"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L595"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Enables or disables TOTP two-factor authentication for an account.</p>
@@ -849,7 +1592,7 @@ Only updates if the new window is greater than the stored value.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistTotpSecretAsync_System_String_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistTotpSecretAsync(System.String,System.String,System.Threading.CancellationToken)">
   PersistTotpSecretAsync(string, string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L396"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L472"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Stores the encrypted TOTP secret and enables TOTP for an account.
@@ -895,7 +1638,7 @@ Called during 2FA enrollment after the server generates the secret.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistTotpVerifiedAtAsync_System_String_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistTotpVerifiedAtAsync(System.String,System.Int64,System.Threading.CancellationToken)">
   PersistTotpVerifiedAtAsync(string, long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L455"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L621"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Records the first successful TOTP verification timestamp, confirming 2FA setup.
@@ -941,7 +1684,7 @@ Atomically sets totp_verified_at and updates last_totp_window.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistVerificationEmailSentAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistVerificationEmailSentAsync(System.String,System.Threading.CancellationToken)">
   PersistVerificationEmailSentAsync(string, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L697"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1038"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Records that the verification email has been successfully sent via SMTP.
@@ -980,39 +1723,35 @@ Once set, login is blocked for unverified accounts until the user provides the c
 
 
 
-  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistVerifiedAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistVerifiedAsync*"></a>
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PersistVerifiedByCodeAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistVerifiedByCodeAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistVerifiedAsync_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistVerifiedAsync(System.String,System.Int32,System.Threading.CancellationToken)">
-  PersistVerifiedAsync(string, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L589"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistVerifiedByCodeAsync_System_String_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistVerifiedByCodeAsync(System.String,System.Int32,System.Threading.CancellationToken)">
+  PersistVerifiedByCodeAsync(string, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L760"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Sets the verified status for an account.
-Called when the user provides the correct verify code from the email verification link.</p>
+  <div class="markdown level1 summary"><p>Redeems a verification code from any channel, in one conditional update.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; PersistVerifiedAsync(string accountName, int verifyCode, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;AccountVerificationChannels&gt;&gt; PersistVerifiedByCodeAsync(string accountName, int verifyCode, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
-    <dd><p>The account name.</p>
-</dd>
+    <dd></dd>
     <dt><code>verifyCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
-    <dd><p>The verification code the user provided. Must match the stored verify code.</p>
-</dd>
+    <dd></dd>
     <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
-    <dd><p>Token to cancel the operation.</p>
-</dd>
+    <dd></dd>
   </dl>
 
   <h4 class="section">Returns</h4>
   <dl class="parameters">
-    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
-    <dd><p>DatabaseResult indicating success or failure.</p>
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.Enums.AccountVerificationChannels.html">AccountVerificationChannels</a>&gt;&gt;</dt>
+    <dd><p>The channel or channels the code proved.</p>
 </dd>
   </dl>
 
@@ -1022,6 +1761,18 @@ Called when the user provides the correct verify code from the email verificatio
 
 
 
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_PersistVerifiedByCodeAsync_System_String_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+The code is matched against every code the account holds — email, SMS and Discord — and a match
+on any one of them verifies the account. The update also clears every other outstanding code and
+the failed-code count. A Discord match links the account to the Discord user the DM reached,
+unless that user is already linked to a different account, in which case it does not match.
+</p>
+<p>
+Only an unverified account can match. A wrong code, an expired one, an unknown account and a
+verified account all fail with the same validation error.
+</p>
+</div>
 
 
 
@@ -1030,7 +1781,7 @@ Called when the user provides the correct verify code from the email verificatio
 
   <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PersistVerifyCodeAsync_System_String_System_Int32_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PersistVerifyCodeAsync(System.String,System.Int32,System.DateTime,System.Threading.CancellationToken)">
   PersistVerifyCodeAsync(string, int, DateTime, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L667"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L971"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Sets the verification code for an account, along with the UTC expiry timestamp
@@ -1071,6 +1822,268 @@ after which the code is no longer redeemable.</p>
 
 
 
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_PromotePendingTotpSecretAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PromotePendingTotpSecretAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_PromotePendingTotpSecretAsync_System_String_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.PromotePendingTotpSecretAsync(System.String,System.Int64,System.Threading.CancellationToken)">
+  PromotePendingTotpSecretAsync(string, long, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L563"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Makes the staged secret live, in one statement: it replaces the live secret, two-factor is
+enabled, the confirmation time is recorded and the replay window starts at
+<code class="paramref">totpWindow</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;bool&gt;&gt; PromotePendingTotpSecretAsync(string accountName, long totpWindow, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The account.</p>
+</dd>
+    <dt><code>totpWindow</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>The window of the code that confirmed the new authenticator.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Token to cancel the operation.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a>&gt;&gt;</dt>
+    <dd><p>True when a staged secret was promoted; false when none was staged.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_RecordAuthFailureAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.RecordAuthFailureAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_RecordAuthFailureAsync_System_String_FishMMO_Database_Data_AuthFailureKind_System_Int32_System_TimeSpan_System_TimeSpan_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.RecordAuthFailureAsync(System.String,FishMMO.Database.Data.AuthFailureKind,System.Int32,System.TimeSpan,System.TimeSpan,System.Threading.CancellationToken)">
+  RecordAuthFailureAsync(string, AuthFailureKind, int, TimeSpan, TimeSpan, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1672"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Counts one failed sign-in step and locks that step once <code class="paramref">threshold</code> failures
+land inside <code class="paramref">window</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;DateTime?&gt;&gt; RecordAuthFailureAsync(string accountName, AuthFailureKind kind, int threshold, TimeSpan window, TimeSpan lockout, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>kind</code> <a class="xref" href="FishMMO.Database.Data.AuthFailureKind.html">AuthFailureKind</a></dt>
+    <dd></dd>
+    <dt><code>threshold</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd></dd>
+    <dt><code>window</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
+    <dd></dd>
+    <dt><code>lockout</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.timespan">TimeSpan</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>?&gt;&gt;</dt>
+    <dd><p>When the step is now locked until, or null when it is not locked.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_RecordAuthFailureAsync_System_String_FishMMO_Database_Data_AuthFailureKind_System_Int32_System_TimeSpan_System_TimeSpan_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+In the database, in one statement, so every login server and the panel share the count and
+concurrent failures cannot lose an increment. Passwords and authenticator codes are counted
+apart.
+</p>
+<p>
+An unknown or malformed account name succeeds with null. The caller must answer a locked
+account and a wrong password identically to the client, or the lockout becomes a way to learn
+which accounts exist.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_RecordVerificationFailureAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.RecordVerificationFailureAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_RecordVerificationFailureAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.RecordVerificationFailureAsync(System.String,System.Threading.CancellationToken)">
+  RecordVerificationFailureAsync(string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L833"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Counts an incorrect verification code against an unverified account.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;int&gt;&gt; RecordVerificationFailureAsync(string accountName, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
+    <dd><p>The count since the last correct code, or 0 for an unknown or already verified account.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_RecordVerificationFailureAsync_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>In the database, so the login servers and the panel share one count. Callers go through
+<code>VerificationFailureTicket.RecordAsync</code>, which opens the support ticket.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_SearchAdminAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.SearchAdminAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_SearchAdminAsync_FishMMO_Database_Data_AccountAdminQuery_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.SearchAdminAsync(FishMMO.Database.Data.AccountAdminQuery,System.Threading.CancellationToken)">
+  SearchAdminAsync(AccountAdminQuery, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1057"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Searches accounts for an operator, one page at a time.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&lt;AccountAdminPage&gt;&gt; SearchAdminAsync(AccountAdminQuery query, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>query</code> <a class="xref" href="FishMMO.Database.Data.AccountAdminQuery.html">AccountAdminQuery</a></dt>
+    <dd><p>The filter. Null is treated as an unfiltered first page.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="FishMMO.Database.Data.AccountAdminPage.html">AccountAdminPage</a>&gt;&gt;</dt>
+    <dd><p>One page of matching accounts, with the total for the pager.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_SearchAdminAsync_FishMMO_Database_Data_AccountAdminQuery_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Returns <a class="xref" href="FishMMO.Database.Data.AccountAdminData.html">AccountAdminData</a>, which deliberately carries no SRP or TOTP
+material. See that type's remarks; do not "helpfully" widen it.
+</p>
+<p>
+The text filter is a prefix match, and <a class="xref" href="FishMMO.Database.Data.AccountAdminQuery.html#FishMMO_Database_Data_AccountAdminQuery_PageSize">PageSize</a> is
+clamped by the implementation. Both are deliberate: a search box is reachable by
+anyone who reaches the panel, and neither an unanchored pattern nor an unbounded page
+size gets to decide how much of the table one request reads.
+</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_AccountService_UnbanAsync_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.UnbanAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_AccountService_UnbanAsync_System_String_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.AccountService.UnbanAsync(System.String,System.Threading.CancellationToken)">
+  UnbanAsync(string, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Login/AccountService.cs/#L1393"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Lifts a ban by restoring <code>AccessLevel.Player</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Task&lt;DatabaseResult&gt; UnbanAsync(string accountName, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account to unban. Matched case-insensitively.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd><p>Cancellation token.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult.html">DatabaseResult</a>&gt;</dt>
+    <dd><p>Success, or DB_NOT_FOUND when no such account exists.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_AccountService_UnbanAsync_System_String_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+Deliberately not the inverse of <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html#FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_BanAsync_System_String_System_Nullable_System_DateTime__System_String_System_String_System_Threading_CancellationToken_">BanAsync(string, DateTime?, string?, string?, CancellationToken)</a>. It restores the level and
+nothing else: the auth tokens and panel sessions the ban revoked are correctly gone,
+and reviving them would hand back credentials that may well be the reason for the ban
+and have since been shared or stolen. The player signs in again, which re-issues
+everything through the paths that are allowed to mint it.
+</p>
+<p>
+It restores <code>Player</code> specifically, not whatever the level was before. This layer
+does not record the previous level, and guessing wrong in the upward direction would
+silently hand back operator access.
+</p>
+</div>
 
 
 

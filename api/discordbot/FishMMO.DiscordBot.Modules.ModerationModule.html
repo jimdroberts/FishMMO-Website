@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_DiscordBot_Modules_ModerationModule" data-uid="FishMMO.DiscordBot.Modules.ModerationModule" class="text-break">
-Class ModerationModule  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L19"><i class="bi bi-code-slash"></i></a>
+Class ModerationModule  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L44"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -178,6 +178,26 @@ public class ModerationModule : ModuleBase&lt;SocketCommandContext&gt;, IModuleB
 
 
 
+  <h2 id="FishMMO_DiscordBot_Modules_ModerationModule_remarks">Remarks</h2>
+  <div class="markdown level0 remarks"><p>
+<b>Kick, ban and unban act on game accounts, so they obey the game's rules, not Discord's.</b>
+They used to write the account row directly: any holder of Discord's ManageGuild could ban or
+unban any account — an Admin's included — with no audit row, and the ban set the level alone,
+leaving the account's tokens and panel sessions live. Now:
+</p>
+<ul><li>
+The Discord user must be linked (<code>/link</code>) to a game account at Game Master or above, and
+that account is the actor. The same guards the Control Panel and the in-game commands apply:
+not your own account, and not one at or above your own level. Two surfaces onto one capability
+must not disagree about who may use it, or the weaker one becomes the way round the stronger.
+</li><li>
+The writes are the same service calls the panel makes — <code>BanAsync</code> is the level, the game
+tokens, the panel sessions and a kick request in one transaction.
+</li><li>
+Every attempt by a resolved actor, refused or done, is written to the admin audit log with
+source <code>discord</code>. The typed command line is the reason, as it is for a chat command.
+</li></ul>
+</div>
 
 
   <h2 class="section" id="constructors">Constructors
@@ -186,25 +206,31 @@ public class ModerationModule : ModuleBase&lt;SocketCommandContext&gt;, IModuleB
 
   <a id="FishMMO_DiscordBot_Modules_ModerationModule__ctor_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.#ctor*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Modules_ModerationModule__ctor_System_IServiceProvider_FishMMO_DiscordBot_Services_BridgeBanService_FishMMO_DiscordBot_Services_BotConfigurationService_Microsoft_Extensions_Logging_ILogger_FishMMO_DiscordBot_Modules_ModerationModule__" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.#ctor(System.IServiceProvider,FishMMO.DiscordBot.Services.BridgeBanService,FishMMO.DiscordBot.Services.BotConfigurationService,Microsoft.Extensions.Logging.ILogger{FishMMO.DiscordBot.Modules.ModerationModule})">
-  ModerationModule(IServiceProvider, BridgeBanService, BotConfigurationService, ILogger&lt;ModerationModule&gt;)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L30"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Modules_ModerationModule__ctor_FishMMO_DiscordBot_Services_BridgeBanService_FishMMO_DiscordBot_Services_BotConfigurationService_FishMMO_DiscordBot_Services_AccountLinkingService_FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_FishMMO_Database_Npgsql_Services_Interfaces_IKickRequestService_FishMMO_Database_Npgsql_Services_Interfaces_IAdminAuditService_Microsoft_Extensions_Logging_ILogger_FishMMO_DiscordBot_Modules_ModerationModule__" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.#ctor(FishMMO.DiscordBot.Services.BridgeBanService,FishMMO.DiscordBot.Services.BotConfigurationService,FishMMO.DiscordBot.Services.AccountLinkingService,FishMMO.Database.Npgsql.Services.Interfaces.IAccountService,FishMMO.Database.Npgsql.Services.Interfaces.IKickRequestService,FishMMO.Database.Npgsql.Services.Interfaces.IAdminAuditService,Microsoft.Extensions.Logging.ILogger{FishMMO.DiscordBot.Modules.ModerationModule})">
+  ModerationModule(BridgeBanService, BotConfigurationService, AccountLinkingService, IAccountService, IKickRequestService, IAdminAuditService, ILogger&lt;ModerationModule&gt;)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L65"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"></div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">public ModerationModule(IServiceProvider serviceProvider, BridgeBanService bridgeBanService, BotConfigurationService botConfigService, ILogger&lt;ModerationModule&gt; logger)</code></pre>
+    <pre><code class="lang-csharp hljs">public ModerationModule(BridgeBanService bridgeBanService, BotConfigurationService botConfigService, AccountLinkingService accountLinkingService, IAccountService accounts, IKickRequestService kickRequests, IAdminAuditService auditLog, ILogger&lt;ModerationModule&gt; logger)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
-    <dt><code>serviceProvider</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.iserviceprovider">IServiceProvider</a></dt>
-    <dd></dd>
     <dt><code>bridgeBanService</code> <a class="xref" href="FishMMO.DiscordBot.Services.BridgeBanService.html">BridgeBanService</a></dt>
     <dd></dd>
     <dt><code>botConfigService</code> <a class="xref" href="FishMMO.DiscordBot.Services.BotConfigurationService.html">BotConfigurationService</a></dt>
+    <dd></dd>
+    <dt><code>accountLinkingService</code> <a class="xref" href="FishMMO.DiscordBot.Services.AccountLinkingService.html">AccountLinkingService</a></dt>
+    <dd></dd>
+    <dt><code>accounts</code> <a class="xref" href="../database/FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html">IAccountService</a></dt>
+    <dd></dd>
+    <dt><code>kickRequests</code> <a class="xref" href="../database/FishMMO.Database.Npgsql.Services.Interfaces.IKickRequestService.html">IKickRequestService</a></dt>
+    <dd></dd>
+    <dt><code>auditLog</code> <a class="xref" href="../database/FishMMO.Database.Npgsql.Services.Interfaces.IAdminAuditService.html">IAdminAuditService</a></dt>
     <dd></dd>
     <dt><code>logger</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger-1">ILogger</a>&lt;<a class="xref" href="FishMMO.DiscordBot.Modules.ModerationModule.html">ModerationModule</a>&gt;</dt>
     <dd></dd>
@@ -227,25 +253,26 @@ public class ModerationModule : ModuleBase&lt;SocketCommandContext&gt;, IModuleB
 
   <a id="FishMMO_DiscordBot_Modules_ModerationModule_BanAsync_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.BanAsync*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_BanAsync_System_String_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.BanAsync(System.String)">
-  BanAsync(string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L94"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_BanAsync_System_String_System_String_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.BanAsync(System.String,System.String)">
+  BanAsync(string, string?)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L115"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Bans a game account by setting its AccessLevel to Banned (0).
-Also inserts a kick request to immediately disconnect the player.</p>
+  <div class="markdown level1 summary"><p>Bans a game account: level, game tokens, panel sessions and a kick request, in one transaction.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
     <pre><code class="lang-csharp hljs">[Command(&quot;ban&quot;)]
-[Summary(&quot;Bans a game account (sets AccessLevel to Banned and kicks).&quot;)]
-public Task BanAsync(string accountName)</code></pre>
+[Summary(&quot;Bans a game account (level, tokens, sessions and a kick, together). Needs your Discord linked to a Game Master account.&quot;)]
+public Task BanAsync(string accountName, string? reason = null)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>reason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd></dd>
   </dl>
 
@@ -269,7 +296,7 @@ public Task BanAsync(string accountName)</code></pre>
 
   <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_BanBridgeAsync_System_String_System_String_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.BanBridgeAsync(System.String,System.String)">
   BanBridgeAsync(string, string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L197"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L320"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Bans a character or account from the Discord chat bridge.
@@ -309,25 +336,26 @@ public Task BanBridgeAsync(string name, string reason = &quot;No reason provided
 
   <a id="FishMMO_DiscordBot_Modules_ModerationModule_KickAsync_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.KickAsync*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_KickAsync_System_String_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.KickAsync(System.String)">
-  KickAsync(string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L46"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_KickAsync_System_String_System_String_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.KickAsync(System.String,System.String)">
+  KickAsync(string, string?)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L86"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Kicks a player by inserting a kick request into the game database.
-The game server processes kick requests on its next tick.</p>
+  <div class="markdown level1 summary"><p>Kicks a player by writing a kick request, which the game servers act on at their next poll.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
     <pre><code class="lang-csharp hljs">[Command(&quot;kick&quot;)]
-[Summary(&quot;Kicks a player from the game server by account name.&quot;)]
-public Task KickAsync(string accountName)</code></pre>
+[Summary(&quot;Kicks a player from the game by account name. Needs your Discord linked to a Game Master account.&quot;)]
+public Task KickAsync(string accountName, string? reason = null)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>reason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd></dd>
   </dl>
 
@@ -351,7 +379,7 @@ public Task KickAsync(string accountName)</code></pre>
 
   <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_ListBridgeBansAsync" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.ListBridgeBansAsync">
   ListBridgeBansAsync()
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L255"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L378"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Lists all current bridge bans.</p>
@@ -383,24 +411,26 @@ public Task ListBridgeBansAsync()</code></pre>
 
   <a id="FishMMO_DiscordBot_Modules_ModerationModule_UnbanAsync_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.UnbanAsync*"></a>
 
-  <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_UnbanAsync_System_String_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.UnbanAsync(System.String)">
-  UnbanAsync(string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L149"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_UnbanAsync_System_String_System_String_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.UnbanAsync(System.String,System.String)">
+  UnbanAsync(string, string?)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L154"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Unbans a game account by setting its AccessLevel back to Player (1).</p>
+  <div class="markdown level1 summary"><p>Lifts a ban, restoring Player. Revoked tokens and sessions stay revoked.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
     <pre><code class="lang-csharp hljs">[Command(&quot;unban&quot;)]
-[Summary(&quot;Unbans a game account (restores AccessLevel to Player).&quot;)]
-public Task UnbanAsync(string accountName)</code></pre>
+[Summary(&quot;Unbans a game account (restores Player). Needs your Discord linked to a Game Master account.&quot;)]
+public Task UnbanAsync(string accountName, string? reason = null)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
   <dl class="parameters">
     <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+    <dt><code>reason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
     <dd></dd>
   </dl>
 
@@ -424,7 +454,7 @@ public Task UnbanAsync(string accountName)</code></pre>
 
   <h3 id="FishMMO_DiscordBot_Modules_ModerationModule_UnbanBridgeAsync_System_String_" data-uid="FishMMO.DiscordBot.Modules.ModerationModule.UnbanBridgeAsync(System.String)">
   UnbanBridgeAsync(string)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L226"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-DiscordBot/FishMMO-DiscordBot/Modules/ModerationModule.cs/#L349"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Removes a bridge ban from a character or account.</p>

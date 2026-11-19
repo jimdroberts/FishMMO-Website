@@ -6,7 +6,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="title" content="Class AccountVerificationPolicy | FishMMO Documentation ">
       
-      <meta name="description" content="Single source of truth for the development-only &amp;quot;skip email verification&amp;quot; policy driven by the AutoVerifyAccounts configuration key. Two call sites must agree on this answer:  Account creation, which persists verified = true instead of generating a verify code, queueing a verification email, and enrolling mandatory TOTP. The login lookup, which otherwise rejects an unverified account once verification_email_sent_at has been stamped. Without the login side honouring the flag, accounts created before auto-verify was enabled (or created against a production build) stay locked out of a local server forever.  The compile-time guard is deliberate: a production player build ignores the key entirely, so a Development LoginServer.cfg that leaks into a production deployment cannot re-enable the bypass. Consequently the flag also has no effect in a server binary built with the Production working environment — build the server with the Development working environment for local testing.">
+      <meta name="description" content="Single source of truth for whether, and on which channels, new accounts must prove their contact details: the development-only AutoVerifyAccounts bypass and the per-channel VerifyEmail / VerifySms / VerifyDiscord switches. Which codes an account is then sent and asked for is AccountVerificationRules, shared with the Control Panel. Two call sites must agree on these answers:  Account creation, which decides which codes to send and whether to verify the account outright. The login lookup, which otherwise rejects an unverified account. Without the login side honouring the same switches, an account created before a switch changed would be asked for a code no server will ever send, or let in without one it still owes.  Precedence, highest first. AutoVerifyAccounts=true (editor and development builds only): every account is   verified at creation and no code is sent.VerifyEmail / VerifySms / VerifyDiscord say which channels this server   sends codes on. When all three are false, every new account is verified at creation through   the same database write the bypass uses.Otherwise a code goes out on each channel the player chose that is switched on and the   account can receive, falling back to email; any one code verifies the account, and   there is no grace period: sign-in asks for a code until one is entered. The compile-time guard on  is deliberate: a production player build ignores that key entirely, so a Development LoginServer.cfg that leaks into a production deployment cannot re-enable the bypass. Consequently the flag also has no effect in a server binary built with the Production working environment — build the server with the Development working environment for local testing. The channel switches have no such guard; a missing or unreadable value counts as true, so a typo verifies more, never less. None of this decides two-factor. An authenticator is set up when the player opts in at registration, however the account was verified, on the game and the Control Panel alike.">
       <link rel="icon" href="../../images/favicon.ico">
       <link rel="stylesheet" href="../../public/docfx.min.css">
       <link rel="stylesheet" href="../../public/main.css">
@@ -89,7 +89,7 @@
 
 
   <h1 id="FishMMO_Server_Implementation_AccountVerificationPolicy" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy" class="text-break">
-Class AccountVerificationPolicy  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L23"><i class="bi bi-code-slash"></i></a>
+Class AccountVerificationPolicy  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L44"><i class="bi bi-code-slash"></i></a>
   </h1>
 
   <div class="facts text-secondary">
@@ -97,22 +97,32 @@ Class AccountVerificationPolicy  <a class="header-action link-secondary" title="
   <dl><dt>Assembly</dt><dd>FishMMO.Server.dll</dd></dl>
   </div>
 
-  <div class="markdown summary"><p>Single source of truth for the development-only &quot;skip email verification&quot; policy
-driven by the <code>AutoVerifyAccounts</code> configuration key.</p>
-<p>Two call sites must agree on this answer:</p>
+  <div class="markdown summary"><p>Single source of truth for whether, and on which channels, new accounts must prove their
+contact details: the development-only <code>AutoVerifyAccounts</code> bypass and the per-channel
+<code>VerifyEmail</code> / <code>VerifySms</code> / <code>VerifyDiscord</code> switches. Which codes an account is
+then sent and asked for is <code>AccountVerificationRules</code>, shared with the Control Panel.</p>
+<p>Two call sites must agree on these answers:</p>
 <ul>
-<li>Account creation, which persists <code>verified = true</code> instead of generating a
-verify code, queueing a verification email, and enrolling mandatory TOTP.</li>
-<li>The login lookup, which otherwise rejects an unverified account once
-<code>verification_email_sent_at</code> has been stamped. Without the login side
-honouring the flag, accounts created before auto-verify was enabled (or created
-against a production build) stay locked out of a local server forever.</li>
+<li>Account creation, which decides which codes to send and whether to verify the account outright.</li>
+<li>The login lookup, which otherwise rejects an unverified account. Without the login side
+honouring the same switches, an account created before a switch changed would be asked
+for a code no server will ever send, or let in without one it still owes.</li>
 </ul>
-<p>The compile-time guard is deliberate: a production player build ignores the key
-entirely, so a Development <code>LoginServer.cfg</code> that leaks into a production
-deployment cannot re-enable the bypass. Consequently the flag also has no effect in a
-server binary built with the Production working environment — build the server with
-the Development working environment for local testing.</p>
+<p><b>Precedence, highest first.</b></p>
+<ol><li><code>AutoVerifyAccounts=true</code> (editor and development builds only): every account is
+  verified at creation and no code is sent.</li><li><code>VerifyEmail</code> / <code>VerifySms</code> / <code>VerifyDiscord</code> say which channels this server
+  sends codes on. When all three are false, every new account is verified at creation through
+  the same database write the bypass uses.</li><li>Otherwise a code goes out on each channel the player chose that is switched on and the
+  account can receive, falling back to email; <b>any one code verifies the account</b>, and
+  there is no grace period: sign-in asks for a code until one is entered.</li></ol>
+<p>The compile-time guard on <a class="xref" href="FishMMO.Server.Implementation.AccountVerificationPolicy.html#FishMMO_Server_Implementation_AccountVerificationPolicy_IsAutoVerifyEnabled_FishMMO_Server_Core_IServerConfiguration_">IsAutoVerifyEnabled(IServerConfiguration)</a> is deliberate: a production player
+build ignores that key entirely, so a Development <code>LoginServer.cfg</code> that leaks into a
+production deployment cannot re-enable the bypass. Consequently the flag also has no effect in a
+server binary built with the Production working environment — build the server with the
+Development working environment for local testing. The channel switches have no such guard;
+a missing or unreadable value counts as <code>true</code>, so a typo verifies more, never less.</p>
+<p>None of this decides two-factor. An authenticator is set up when the player opts in at
+registration, however the account was verified, on the game and the Control Panel alike.</p>
 </div>
   <div class="markdown conceptual"></div>
 
@@ -171,7 +181,7 @@ the Development working environment for local testing.</p>
 
   <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_AutoVerifyAccountsKey" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.AutoVerifyAccountsKey">
   AutoVerifyAccountsKey
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L26"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L47"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Configuration key that enables the development email-verification bypass.</p>
@@ -199,15 +209,213 @@ the Development working environment for local testing.</p>
 
 
 
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_VerifyDiscordKey" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.VerifyDiscordKey">
+  VerifyDiscordKey
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L56"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Configuration key switching Discord-DM verification on or off. Default true.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const string VerifyDiscordKey = &quot;VerifyDiscord&quot;</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_VerifyEmailKey" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.VerifyEmailKey">
+  VerifyEmailKey
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L50"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Configuration key switching email-code verification on or off. Default true.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const string VerifyEmailKey = &quot;VerifyEmail&quot;</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_VerifySmsKey" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.VerifySmsKey">
+  VerifySmsKey
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L53"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Configuration key switching SMS-code verification on or off. Default true.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public const string VerifySmsKey = &quot;VerifySms&quot;</code></pre>
+  </div>
+
+
+
+
+  <h4 class="section">Field Value</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
   <h2 class="section" id="methods">Methods
 </h2>
+
+
+  <a id="FishMMO_Server_Implementation_AccountVerificationPolicy_EnabledChannels_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.EnabledChannels*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_EnabledChannels_FishMMO_Server_Core_IServerConfiguration_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.EnabledChannels(FishMMO.Server.Core.IServerConfiguration)">
+  EnabledChannels(IServerConfiguration)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L105"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>The channels this server sends verification codes on.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static AccountVerificationChannels EnabledChannels(IServerConfiguration configuration)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>configuration</code> <a class="xref" href="FishMMO.Server.Core.IServerConfiguration.html">IServerConfiguration</a></dt>
+    <dd><p>Server configuration; null counts as every channel switched on.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="../database/FishMMO.Database.Data.Enums.AccountVerificationChannels.html">AccountVerificationChannels</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_AccountVerificationPolicy_ExpireUndeliveredCodeAsync_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.ExpireUndeliveredCodeAsync*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_ExpireUndeliveredCodeAsync_FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_System_String_System_Int32_FishMMO_Database_Data_Enums_AccountVerificationChannels_System_String_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.ExpireUndeliveredCodeAsync(FishMMO.Database.Npgsql.Services.Interfaces.IAccountService,System.String,System.Int32,FishMMO.Database.Data.Enums.AccountVerificationChannels,System.String)">
+  ExpireUndeliveredCodeAsync(IAccountService, string, int, AccountVerificationChannels, string)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L145"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Expires an email or SMS verification code that was stored but could not be queued for
+delivery, so the next sign-in issues a fresh one.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static Task ExpireUndeliveredCodeAsync(IAccountService accountService, string accountName, int verifyCode, AccountVerificationChannels channel, string logSource)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>accountService</code> <a class="xref" href="../database/FishMMO.Database.Npgsql.Services.Interfaces.IAccountService.html">IAccountService</a></dt>
+    <dd><p>Account service.</p>
+</dd>
+    <dt><code>accountName</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Account whose code is retired.</p>
+</dd>
+    <dt><code>verifyCode</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The code that was stored and not delivered.</p>
+</dd>
+    <dt><code>channel</code> <a class="xref" href="../database/FishMMO.Database.Data.Enums.AccountVerificationChannels.html">AccountVerificationChannels</a></dt>
+    <dd><p>Which code: <a class="xref" href="../database/FishMMO.Database.Data.Enums.AccountVerificationChannels.html#FishMMO_Database_Data_Enums_AccountVerificationChannels_Email">Email</a> or <a class="xref" href="../database/FishMMO.Database.Data.Enums.AccountVerificationChannels.html#FishMMO_Database_Data_Enums_AccountVerificationChannels_Sms">Sms</a>.</p>
+</dd>
+    <dt><code>logSource</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>Log source of the caller.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task">Task</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_AccountVerificationPolicy_ExpireUndeliveredCodeAsync_FishMMO_Database_Npgsql_Services_Interfaces_IAccountService_System_String_System_Int32_FishMMO_Database_Data_Enums_AccountVerificationChannels_System_String__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>
+A code is stored before it is queued — the other order could deliver a code the database
+never held — and it is stored live for 24 hours. Sign-in re-issues a code only once the
+stored one has expired or is missing, and nothing else in the game re-issues one. So a code
+whose queue insert failed stayed live and undelivered for a day, and the player could not
+verify at all until it lapsed. Expiring that code now leaves nothing redeemable and makes
+the very next correct sign-in send a new one.
+</p>
+<p>
+Best effort and bounded to one write: if it fails as well, the day's wait is what remains,
+and the log says so. The write is pinned to the code this server stored
+(<code>IAccountService.ExpireVerifyCodeAsync</code>), so a newer code another server issued in
+the meantime is left alone; it used to be an unconditional re-write that retired it.
+</p>
+</div>
+
+
 
 
   <a id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsAutoVerifyEnabled_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsAutoVerifyEnabled*"></a>
 
   <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsAutoVerifyEnabled_FishMMO_Server_Core_IServerConfiguration_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsAutoVerifyEnabled(FishMMO.Server.Core.IServerConfiguration)">
   IsAutoVerifyEnabled(IServerConfiguration)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/Scripts/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L34"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L64"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Returns <code>true</code> when new accounts should be verified on creation and unverified
@@ -231,6 +439,212 @@ development builds.</p>
   <dl class="parameters">
     <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
     <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsDiscordVerificationEnabled_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsDiscordVerificationEnabled*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsDiscordVerificationEnabled_FishMMO_Server_Core_IServerConfiguration_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsDiscordVerificationEnabled(FishMMO.Server.Core.IServerConfiguration)">
+  IsDiscordVerificationEnabled(IServerConfiguration)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L100"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Whether a player who chose Discord verification must enter the code the Discord bot sent.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool IsDiscordVerificationEnabled(IServerConfiguration configuration)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>configuration</code> <a class="xref" href="FishMMO.Server.Core.IServerConfiguration.html">IServerConfiguration</a></dt>
+    <dd><p>Server configuration; null counts as switched on.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsDiscordVerificationEnabled_FishMMO_Server_Core_IServerConfiguration__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>Needs FishMMO-DiscordBot running against the same database: it delivers the code.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsEmailVerificationEnabled_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsEmailVerificationEnabled*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsEmailVerificationEnabled_FishMMO_Server_Core_IServerConfiguration_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsEmailVerificationEnabled(FishMMO.Server.Core.IServerConfiguration)">
+  IsEmailVerificationEnabled(IServerConfiguration)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L89"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Whether a player who chose email verification must enter an emailed code.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool IsEmailVerificationEnabled(IServerConfiguration configuration)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>configuration</code> <a class="xref" href="FishMMO.Server.Core.IServerConfiguration.html">IServerConfiguration</a></dt>
+    <dd><p>Server configuration; null counts as switched on.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsSmsCodeResendDue_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsSmsCodeResendDue*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsSmsCodeResendDue_System_Nullable_System_DateTime__System_DateTime_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsSmsCodeResendDue(System.Nullable{System.DateTime},System.DateTime)">
+  IsSmsCodeResendDue(DateTime?, DateTime)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L117"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Whether the sign-in path owes a fresh SMS verification code: none was ever issued (null), or
+the one on record has expired. Unlike the email resend, a missing code counts — SMS has no
+delivery-stamp grace period, so an account waiting on a code nobody sent would be stuck.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool IsSmsCodeResendDue(DateTime? phoneVerifyCodeExpiresUtc, DateTime nowUtc)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>phoneVerifyCodeExpiresUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a>?</dt>
+    <dd><p>The stored SMS code expiry, or null.</p>
+</dd>
+    <dt><code>nowUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd><p>The current UTC time.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsSmsVerificationEnabled_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsSmsVerificationEnabled*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_IsSmsVerificationEnabled_FishMMO_Server_Core_IServerConfiguration_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.IsSmsVerificationEnabled(FishMMO.Server.Core.IServerConfiguration)">
+  IsSmsVerificationEnabled(IServerConfiguration)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L94"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Whether a player who chose SMS verification must enter a texted code.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool IsSmsVerificationEnabled(IServerConfiguration configuration)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>configuration</code> <a class="xref" href="FishMMO.Server.Core.IServerConfiguration.html">IServerConfiguration</a></dt>
+    <dd><p>Server configuration; null counts as switched on.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+
+
+
+
+  <a id="FishMMO_Server_Implementation_AccountVerificationPolicy_TryReadBool_" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.TryReadBool*"></a>
+
+  <h3 id="FishMMO_Server_Implementation_AccountVerificationPolicy_TryReadBool_FishMMO_Server_Core_IServerConfiguration_System_String_System_Boolean__" data-uid="FishMMO.Server.Implementation.AccountVerificationPolicy.TryReadBool(FishMMO.Server.Core.IServerConfiguration,System.String,System.Boolean@)">
+  TryReadBool(IServerConfiguration, string, out bool)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Unity/Assets/FishMMO/Server/Implementation/Authentication/AccountVerificationPolicy.cs/#L173"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Reads a boolean key. <a class="xref" href="FishMMO.Server.Core.IServerConfiguration.html">IServerConfiguration</a> has no boolean accessor, so every
+boolean in a <code>.cfg</code> is a string parsed here.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static bool TryReadBool(IServerConfiguration configuration, string key, out bool value)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>configuration</code> <a class="xref" href="FishMMO.Server.Core.IServerConfiguration.html">IServerConfiguration</a></dt>
+    <dd><p>Server configuration, or null.</p>
+</dd>
+    <dt><code>key</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.string">string</a></dt>
+    <dd><p>The key.</p>
+</dd>
+    <dt><code>value</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>The parsed value; false when the method returns false.</p>
+</dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.boolean">bool</a></dt>
+    <dd><p>True only when the key is present and reads as <code>true</code> or <code>false</code>.</p>
+</dd>
   </dl>
 
 

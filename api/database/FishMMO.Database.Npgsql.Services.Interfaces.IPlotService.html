@@ -182,11 +182,88 @@ again.</p>
 
 
 
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_ChargeTaxOfflineAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.ChargeTaxOfflineAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_ChargeTaxOfflineAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_PlotTaxCharge__System_Int32_System_DateTime_System_Int32_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.ChargeTaxOfflineAsync(System.Collections.Generic.IReadOnlyList{FishMMO.Database.Data.PlotTaxCharge},System.Int32,System.DateTime,System.Int32,System.Int32,System.Threading.CancellationToken)">
+  ChargeTaxOfflineAsync(IReadOnlyList&lt;PlotTaxCharge&gt;, int, DateTime, int, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L224"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Bills a batch of due plots to owners nobody is hosting, in one transaction.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;List&lt;PlotTaxChargeResult&gt;&gt;&gt; ChargeTaxOfflineAsync(IReadOnlyList&lt;PlotTaxCharge&gt; charges, int currencyTemplateID, DateTime ownedElsewhereRetryUtc, int ledgerReason, int ledgerState, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>charges</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlylist-1">IReadOnlyList</a>&lt;<a class="xref" href="FishMMO.Database.Data.PlotTaxCharge.html">PlotTaxCharge</a>&gt;</dt>
+    <dd><p>One entry per plot, as the sweep read and priced them: each carries its own amount and
+next due date, because a bill covers every period that plot has fallen behind by. An
+owner may appear only once.</p>
+</dd>
+    <dt><code>currencyTemplateID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The attribute template tax is paid in.</p>
+</dd>
+    <dt><code>ownedElsewhereRetryUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd><p>When a plot whose owner a server is holding may next be tried (stored as
+<code>tax_next_attempt_utc</code>).</p>
+</dd>
+    <dt><code>ledgerReason</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The ledger reason recorded for each payment (<code>CurrencyMovementReason.LandTax</code>).</p>
+</dd>
+    <dt><code>ledgerState</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
+    <dd><p>The ledger state recorded for each payment (<code>CurrencyMovementState.Absorbed</code>).</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<a class="xref" href="FishMMO.Database.Data.PlotTaxChargeResult.html">PlotTaxChargeResult</a>&gt;&gt;&gt;</dt>
+    <dd><p>One result per distinct plot in <code class="paramref">charges</code>.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_ChargeTaxOfflineAsync_System_Collections_Generic_IReadOnlyList_FishMMO_Database_Data_PlotTaxCharge__System_Int32_System_DateTime_System_Int32_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The offline charge that used to be one transaction per plot — ownership assertion,
+attribute read, advance, debit, lifted mark, each a round trip — as a handful of
+set-based statements for the whole batch. The orderings it keeps are the ones the housing
+README names: the bill is won before any money moves (a locked plot still holding the
+date the sweep read), a missed-payment mark comes off in the same commit as the payment,
+and an unpaid bill is marked in the commit that advanced it. A bill is paid in full or
+not at all.</p>
+<p>An owner is charged here only while no server holds their session, asserted under
+the row lock for the whole transaction, because a held owner's balance is in that
+server's memory and its next save would overwrite a debit made underneath it. A held
+owner's plot is deferred instead (<a class="xref" href="FishMMO.Database.Data.PlotTaxChargeOutcome.html#FishMMO_Database_Data_PlotTaxChargeOutcome_OwnedElsewhere">OwnedElsewhere</a>); a
+deleted or missing owner cannot pay and is marked like any other miss
+(<a class="xref" href="FishMMO.Database.Data.PlotTaxChargeOutcome.html#FishMMO_Database_Data_PlotTaxChargeOutcome_OwnerGone">OwnerGone</a>), so their land reaches the end of its
+grace rather than staying owned forever.</p>
+<p>Never waits on a lock: a character or plot another transaction holds is skipped for
+this sweep. Safe to run from every scene server at once — a period produces one charge
+however many servers sweep it — and a retry after a lost commit reply changes nothing.</p>
+<p>Paid bills are recorded in the currency ledger inside the same commit. Nothing here
+marks <code>plot_updates</code>: a charge changes nothing another channel draws.</p>
+</div>
+
+
+
+
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_ClearTaxDelinquencyAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.ClearTaxDelinquencyAsync*"></a>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_ClearTaxDelinquencyAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.ClearTaxDelinquencyAsync(System.Int64,System.Threading.CancellationToken)">
   ClearTaxDelinquencyAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L181"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L283"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Clears a plot's delinquency after a successful payment.</p>
@@ -217,6 +294,49 @@ again.</p>
 
 
 
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchByIdsAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.FetchByIdsAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchByIdsAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.FetchByIdsAsync(System.Collections.Generic.IReadOnlyCollection{System.Int64},System.Threading.CancellationToken)">
+  FetchByIdsAsync(IReadOnlyCollection&lt;long&gt;, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L182"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Fetches plots by ID. IDs with no row are simply absent from the result.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;List&lt;PlotData&gt;&gt;&gt; FetchByIdsAsync(IReadOnlyCollection&lt;long&gt; plotIDs, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>plotIDs</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlycollection-1">IReadOnlyCollection</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;</dt>
+    <dd></dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<a class="xref" href="FishMMO.Database.Data.PlotData.html">PlotData</a>&gt;&gt;&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchByIdsAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>For the cross-channel sync, which knows exactly which plots changed and used to re-read
+every plot of every scene to find them.</p>
+</div>
 
 
 
@@ -342,17 +462,17 @@ again.</p>
 
   <a id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchTaxDueAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.FetchTaxDueAsync*"></a>
 
-  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchTaxDueAsync_System_Int64_System_DateTime_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.FetchTaxDueAsync(System.Int64,System.DateTime,System.Int32,System.Threading.CancellationToken)">
-  FetchTaxDueAsync(long, DateTime, int, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L145"><i class="bi bi-code-slash"></i></a>
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchTaxDueAsync_System_Int64_System_DateTime_System_DateTime_System_Int64_System_Int32_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.FetchTaxDueAsync(System.Int64,System.DateTime,System.DateTime,System.Int64,System.Int32,System.Threading.CancellationToken)">
+  FetchTaxDueAsync(long, DateTime, DateTime, long, int, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L156"><i class="bi bi-code-slash"></i></a>
   </h3>
 
-  <div class="markdown level1 summary"><p>Fetches owned plots whose tax has fallen due.</p>
+  <div class="markdown level1 summary"><p>Fetches one page of a world's owned plots whose tax has fallen due, in due order.</p>
 </div>
   <div class="markdown level1 conceptual"></div>
 
   <div class="codewrapper">
-    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;List&lt;PlotData&gt;&gt;&gt; FetchTaxDueAsync(long worldServerID, DateTime asOfUtc, int limit, CancellationToken cancellationToken = default)</code></pre>
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;List&lt;PlotData&gt;&gt;&gt; FetchTaxDueAsync(long worldServerID, DateTime asOfUtc, DateTime afterDueUtc, long afterPlotID, int limit, CancellationToken cancellationToken = default)</code></pre>
   </div>
 
   <h4 class="section">Parameters</h4>
@@ -362,6 +482,13 @@ again.</p>
 </dd>
     <dt><code>asOfUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
     <dd><p>The moment to judge against.</p>
+</dd>
+    <dt><code>afterDueUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd><p>The keyset cursor: the due date of the last plot of the previous page, or
+<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime.minvalue">MinValue</a> for the first page.</p>
+</dd>
+    <dt><code>afterPlotID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>The ID of the last plot of the previous page, or zero for the first page.</p>
 </dd>
     <dt><code>limit</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a></dt>
     <dd><p>Most rows to return.</p>
@@ -382,9 +509,66 @@ again.</p>
 
 
 
-  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchTaxDueAsync_System_Int64_System_DateTime_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchTaxDueAsync_System_Int64_System_DateTime_System_DateTime_System_Int64_System_Int32_System_Threading_CancellationToken__remarks">Remarks</h4>
   <div class="markdown level1 remarks"><p>Bounded, because a server that has been down over a billing period comes back to every
-plot at once and an unbounded sweep would try to charge all of them in one pass.</p>
+plot at once and an unbounded read would load all of them.</p>
+<p>Paged by a keyset rather than from the head, because the plots a page could not
+settle stay exactly where they were: a sweep that re-read from the head after each page
+would read them again and never reach the plots behind them. Plots whose
+<code>tax_next_attempt_utc</code> is still ahead of <code class="paramref">asOfUtc</code> are left out —
+their owner is being billed by the server holding them.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchTaxDueForOwnersAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.FetchTaxDueForOwnersAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchTaxDueForOwnersAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.FetchTaxDueForOwnersAsync(System.Collections.Generic.IReadOnlyCollection{System.Int64},System.DateTime,System.Threading.CancellationToken)">
+  FetchTaxDueForOwnersAsync(IReadOnlyCollection&lt;long&gt;, DateTime, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L173"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Fetches the plots, in any world, whose tax has fallen due and whose owner is one of
+<code class="paramref">characterIDs</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;List&lt;PlotData&gt;&gt;&gt; FetchTaxDueForOwnersAsync(IReadOnlyCollection&lt;long&gt; characterIDs, DateTime asOfUtc, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>characterIDs</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.ireadonlycollection-1">IReadOnlyCollection</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a>&gt;</dt>
+    <dd><p>The characters the calling server holds.</p>
+</dd>
+    <dt><code>asOfUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd><p>The moment to judge against.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.collections.generic.list-1">List</a>&lt;<a class="xref" href="FishMMO.Database.Data.PlotData.html">PlotData</a>&gt;&gt;&gt;</dt>
+    <dd></dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_FetchTaxDueForOwnersAsync_System_Collections_Generic_IReadOnlyCollection_System_Int64__System_DateTime_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>The holding server's half of the sweep. A logged-in owner's balance lives in the memory of
+the server holding them, so only that server may charge them — and that server may be
+hosting nothing of the world their land is in. This asks by owner instead of by world,
+so where the owner happens to be playing no longer decides whether they are billed.</p>
+<p>Ignores the deferral: it exists to keep other servers from re-reading a plot that
+only this one can bill. At most one row per character, by the one-house index.</p>
 </div>
 
 
@@ -394,7 +578,7 @@ plot at once and an unbounded sweep would try to charge all of them in one pass.
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_MarkTaxDelinquentAsync_System_Int64_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.MarkTaxDelinquentAsync(System.Int64,System.DateTime,System.Threading.CancellationToken)">
   MarkTaxDelinquentAsync(long, DateTime, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L176"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L278"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Records that a tax payment was missed, without disturbing an earlier miss.</p>
@@ -497,7 +681,7 @@ as already-owned land to everybody on every other world.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_ReleaseAllForGuildAsync_System_Int64_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.ReleaseAllForGuildAsync(System.Int64,System.Threading.CancellationToken)">
   ReleaseAllForGuildAsync(long, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L192"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L294"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Releases every plot a guild owns.</p>
@@ -599,7 +783,7 @@ differently and tells a passer-by a different story.</p>
 
   <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_TryAdvanceTaxAsync_System_Int64_System_DateTime_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.TryAdvanceTaxAsync(System.Int64,System.DateTime,System.DateTime,System.Threading.CancellationToken)">
   TryAdvanceTaxAsync(long, DateTime, DateTime, CancellationToken)
-  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L164"><i class="bi bi-code-slash"></i></a>
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L249"><i class="bi bi-code-slash"></i></a>
   </h3>
 
   <div class="markdown level1 summary"><p>Moves a plot's tax date forward, if it still holds the date the caller charged against.</p>
@@ -712,6 +896,61 @@ pay for, or one that every channel draws as available.</p>
 partial unique index, because this clause alone cannot stop two simultaneous claims on
 two scene servers. A caller that gets <code>UNIQUE_VIOLATION</code> back rather than a row
 count lost that race and should report it the same way it reports zero.</p>
+</div>
+
+
+
+
+  <a id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_TryRestoreTaxDueAsync_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.TryRestoreTaxDueAsync*"></a>
+
+  <h3 id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_TryRestoreTaxDueAsync_System_Int64_System_DateTime_System_DateTime_System_Threading_CancellationToken_" data-uid="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.TryRestoreTaxDueAsync(System.Int64,System.DateTime,System.DateTime,System.Threading.CancellationToken)">
+  TryRestoreTaxDueAsync(long, DateTime, DateTime, CancellationToken)
+  <a class="header-action link-secondary" title="View source" href="https://github.com/jimdroberts/FishMMO/blob/dev/FishMMO-Database/FishMMO-DB/Npgsql/Services/Interfaces/IPlotService.cs/#L266"><i class="bi bi-code-slash"></i></a>
+  </h3>
+
+  <div class="markdown level1 summary"><p>Hands a won tax period back: moves the due date back to what it was, if it still holds
+the date this caller advanced it to.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">Task&lt;DatabaseResult&lt;int&gt;&gt; TryRestoreTaxDueAsync(long plotID, DateTime advancedToUtc, DateTime restoreToUtc, CancellationToken cancellationToken = default)</code></pre>
+  </div>
+
+  <h4 class="section">Parameters</h4>
+  <dl class="parameters">
+    <dt><code>plotID</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int64">long</a></dt>
+    <dd><p>The plot.</p>
+</dd>
+    <dt><code>advancedToUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd><p>The date <a class="xref" href="FishMMO.Database.Npgsql.Services.Interfaces.IPlotService.html#FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_TryAdvanceTaxAsync_System_Int64_System_DateTime_System_DateTime_System_Threading_CancellationToken_">TryAdvanceTaxAsync(long, DateTime, DateTime, CancellationToken)</a> set it to.</p>
+</dd>
+    <dt><code>restoreToUtc</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.datetime">DateTime</a></dt>
+    <dd><p>The date it held before; must be earlier.</p>
+</dd>
+    <dt><code>cancellationToken</code> <a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.cancellationtoken">CancellationToken</a></dt>
+    <dd></dd>
+  </dl>
+
+  <h4 class="section">Returns</h4>
+  <dl class="parameters">
+    <dt><a class="xref" href="https://learn.microsoft.com/dotnet/api/system.threading.tasks.task-1">Task</a>&lt;<a class="xref" href="FishMMO.Database.DatabaseResult-1.html">DatabaseResult</a>&lt;<a class="xref" href="https://learn.microsoft.com/dotnet/api/system.int32">int</a>&gt;&gt;</dt>
+    <dd><p>1 when the period was handed back, 0 when the date has moved on since.</p>
+</dd>
+  </dl>
+
+
+
+
+
+
+
+  <h4 class="section" id="FishMMO_Database_Npgsql_Services_Interfaces_IPlotService_TryRestoreTaxDueAsync_System_Int64_System_DateTime_System_DateTime_System_Threading_CancellationToken__remarks">Remarks</h4>
+  <div class="markdown level1 remarks"><p>For a caller that won a period and then could not charge the owner at all (the character
+unreachable, the charge faulting on every attempt). Without it the period simply went
+unbilled: the date only ever moves forward. Pinned the same way as the advance, so it can
+never undo a LATER period another server has since won — that one is left alone and this
+returns 0.</p>
 </div>
 
 
